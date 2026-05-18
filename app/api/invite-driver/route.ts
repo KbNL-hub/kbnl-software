@@ -15,7 +15,7 @@ export async function POST(req: Request) {
 
   // Invite user
   const { data, error: inviteError } = await supabaseAdmin.auth.admin.inviteUserByEmail(email, {
-  redirectTo: "https://truck-system-ten.vercel.app/auth/callback"
+  redirectTo: `${process.env.NEXT_PUBLIC_APP_URL}/auth/callback`
   })
 
   if (inviteError) {
