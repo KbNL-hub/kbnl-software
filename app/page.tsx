@@ -1,9 +1,5 @@
-import StopForm from "@/components/StopForm"
+import { redirect } from "next/navigation"
 
 export default function Home() {
-  return (
-    <main>
-      <StopForm tripId="e0d339fc-3ffb-4d34-98ea-b27461e2fb0e" />
-    </main>
-  )
+  redirect("/login")
 }

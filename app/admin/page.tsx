@@ -1,0 +1,96 @@
+"use client"
+
+import { useState } from "react"
+import { useRouter } from "next/navigation"
+import { supabase } from "@/lib/supabase"
+import AddTruck from "@/components/admin/AddTruck"
+import AddDriver from "@/components/admin/AddDriver"
+import MonitorTrucks from "@/components/admin/MonitorTrucks"
+import ManageTrucks from "@/components/admin/ManageTrucks"
+import ManageDrivers from "@/components/admin/ManageDrivers"
+import MonitorTrips from "@/components/admin/MonitorTrips"
+
+const navItems = [
+  { label: "Add New Truck", key: "add-truck" },
+  { label: "Add New Driver", key: "add-driver" },
+  { label: "Monitor Trucks", key: "monitor-trucks" },
+  { label: "Manage Trucks", key: "manage-trucks" },
+  { label: "Manage Drivers", key: "manage-drivers" },
+  { label: "Monitor Trips", key: "monitor-trips" },
+]
+
+export default function AdminDashboard() {
+  const [active, setActive] = useState("")
+  const router = useRouter()
+
+  async function handleLogout() {
+    await supabase.auth.signOut()
+    router.push("/login")
+  }
+
+  function renderContent() {
+    switch (active) {
+      case "add-truck": return <AddTruck />
+      case "add-driver": return <AddDriver />
+      case "monitor-trucks": return <MonitorTrucks />
+      case "manage-trucks": return <ManageTrucks />
+      case "manage-drivers": return <ManageDrivers />
+      case "monitor-trips": return <MonitorTrips />
+      default: return (
+        <div>
+          <h1 style={{ marginBottom: 8 }}>Welcome, Admin</h1>
+          <p style={{ color: "#888" }}>Select a section from the sidebar.</p>
+        </div>
+      )
+    }
+  }
+
+  return (
+    <div style={{ display: "flex", minHeight: "100vh", fontFamily: "Arial" }}>
+
+      {/* Sidebar */}
+      <div style={{
+        width: 240, background: "#1a1a2e", color: "white",
+        display: "flex", flexDirection: "column", padding: "24px 0"
+      }}>
+        <h2 style={{ padding: "0 24px", marginBottom: 32, fontSize: 16, color: "#aaa" }}>
+          Admin Panel
+        </h2>
+
+        {navItems.map((item) => (
+          <button
+            key={item.key}
+            onClick={() => setActive(item.key)}
+            style={{
+              background: active === item.key ? "#0070f3" : "transparent",
+              color: "white", border: "none", textAlign: "left",
+              padding: "12px 24px", cursor: "pointer", fontSize: 14,
+              borderLeft: active === item.key ? "3px solid white" : "3px solid transparent"
+            }}
+          >
+            {item.label}
+          </button>
+        ))}
+
+        <div style={{ marginTop: "auto", padding: "0 24px" }}>
+          <button
+            onClick={handleLogout}
+            style={{
+              width: "100%", padding: "10px 0", background: "#ff4444",
+              color: "white", border: "none", borderRadius: 6,
+              cursor: "pointer", fontSize: 14
+            }}
+          >
+            Logout
+          </button>
+        </div>
+      </div>
+
+      {/* Main Content */}
+      <div style={{ flex: 1, padding: 40, background: "#f9f9f9" }}>
+        {renderContent()}
+      </div>
+
+    </div>
+  )
+}
