@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useRef } from "react"
 import { supabase } from "@/lib/supabase"
 import { useRouter } from "next/navigation"
 
@@ -10,6 +10,7 @@ export default function LoginPage() {
   const [message, setMessage] = useState("")
   const [loading, setLoading] = useState(false)
   const router = useRouter()
+  const passwordInputRef = useRef<HTMLInputElement | null>(null)
 
   async function handleLogin() {
     if (!email || !password) return setMessage("Enter email and password")
@@ -60,11 +61,13 @@ export default function LoginPage() {
           placeholder="Email"
           value={email}
           onChange={(e) => setEmail(e.target.value)}
+          onKeyDown={(e) => { if (e.key === "Enter") passwordInputRef.current?.focus() }}
           style={{ width: "100%", padding: 10, marginBottom: 12, boxSizing: "border-box" }}
         />
 
         <input
           type="password"
+          ref={passwordInputRef}
           placeholder="Password"
           value={password}
           onChange={(e) => setPassword(e.target.value)}
