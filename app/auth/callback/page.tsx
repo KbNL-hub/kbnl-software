@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useRef } from "react"
+import { useState, useRef, useEffect } from "react"
 import { supabase } from "@/lib/supabase"
 import { useRouter } from "next/navigation"
 
@@ -9,9 +9,21 @@ export default function SetPassword() {
   const [confirm, setConfirm] = useState("")
   const [message, setMessage] = useState("")
   const [submitting, setSubmitting] = useState(false)
+  const [ready, setReady] = useState(false)
   const router = useRouter()
-
   const confirmRef = useRef<HTMLInputElement>(null)
+
+  useEffect(() => {
+    // Supabase automatically handles the token in the URL
+    // We just need to confirm a session exists
+    supabase.auth.getSession().then(({ data }) => {
+      if (data.session) {
+        setReady(true)
+      } else {
+        setMessage("Invalid or expired invite link.")
+      }
+    })
+  }, [])
 
   async function handleSetPassword() {
     if (!password) return setMessage("Enter a password")
@@ -47,44 +59,56 @@ export default function SetPassword() {
           Choose a password to activate your account
         </p>
 
-        <input
-          type="password"
-          placeholder="New password"
-          value={password}
-          onChange={(e) => { setPassword(e.target.value); setMessage("") }}
-          onKeyDown={(e) => { if (e.key === "Enter") confirmRef.current?.focus() }}
-          style={{ width: "100%", padding: 10, marginBottom: 12, boxSizing: "border-box" }}
-        />
+        {!ready && !message && (
+          <p style={{ textAlign: "center", color: "#888" }}>Verifying invite link...</p>
+        )}
 
-        <input
-          ref={confirmRef}
-          type="password"
-          placeholder="Confirm password"
-          value={confirm}
-          onChange={(e) => { setConfirm(e.target.value); setMessage("") }}
-          onKeyDown={(e) => { if (e.key === "Enter") handleSetPassword() }}
-          style={{ width: "100%", padding: 10, marginBottom: 20, boxSizing: "border-box" }}
-        />
+        {message && !ready && (
+          <p style={{ color: "red", textAlign: "center" }}>{message}</p>
+        )}
 
-        <button
-          onClick={handleSetPassword}
-          disabled={submitting}
-          style={{
-            width: "100%", padding: "12px 0", background: "#0070f3",
-            color: "white", border: "none", borderRadius: 6,
-            fontSize: 16, cursor: submitting ? "not-allowed" : "pointer"
-          }}
-        >
-          {submitting ? "Saving..." : "Set Password"}
-        </button>
+        {ready && (
+          <>
+            <input
+              type="password"
+              placeholder="New password"
+              value={password}
+              onChange={(e) => { setPassword(e.target.value); setMessage("") }}
+              onKeyDown={(e) => { if (e.key === "Enter") confirmRef.current?.focus() }}
+              style={{ width: "100%", padding: 10, marginBottom: 12, boxSizing: "border-box" }}
+            />
 
-        {message && (
-          <p style={{
-            marginTop: 16, fontWeight: "bold", textAlign: "center",
-            color: message.startsWith("✅") ? "green" : "red"
-          }}>
-            {message}
-          </p>
+            <input
+              ref={confirmRef}
+              type="password"
+              placeholder="Confirm password"
+              value={confirm}
+              onChange={(e) => { setConfirm(e.target.value); setMessage("") }}
+              onKeyDown={(e) => { if (e.key === "Enter") handleSetPassword() }}
+              style={{ width: "100%", padding: 10, marginBottom: 20, boxSizing: "border-box" }}
+            />
+
+            <button
+              onClick={handleSetPassword}
+              disabled={submitting}
+              style={{
+                width: "100%", padding: "12px 0", background: "#0070f3",
+                color: "white", border: "none", borderRadius: 6,
+                fontSize: 16, cursor: submitting ? "not-allowed" : "pointer"
+              }}
+            >
+              {submitting ? "Saving..." : "Set Password"}
+            </button>
+
+            {message && (
+              <p style={{
+                marginTop: 16, fontWeight: "bold", textAlign: "center",
+                color: message.startsWith("✅") ? "green" : "red"
+              }}>
+                {message}
+              </p>
+            )}
+          </>
         )}
       </div>
     </div>
