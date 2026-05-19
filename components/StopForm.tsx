@@ -18,9 +18,10 @@ type Customer = {
 
 type Props = {
   tripId: string
+  onStopLogged: () => void
 }
 
-export default function StopForm({ tripId }: Props) {
+export default function StopForm({ tripId, onStopLogged }: Props) {
   const [selectedBroker, setSelectedBroker] = useState<Broker | null>(null)
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null)
   const [quantityOffloaded, setQuantityOffloaded] = useState("")
@@ -111,16 +112,8 @@ export default function StopForm({ tripId }: Props) {
       console.error(error)
       setMessage("Failed to save stop")
     } else {
-      // Update local state immediately without refetching
       setOffloadedSoFar((prev) => prev + inputQty)
-      setMessage("✅ Stop logged successfully")
-      setSelectedBroker(null)
-      setSelectedCustomer(null)
-      setQuantityOffloaded("")
-      setStopLocation("")
-      setLatitude(null)
-      setLongitude(null)
-      setGpsStatus("Tap to capture GPS")
+      onStopLogged()
     }
   }
 
