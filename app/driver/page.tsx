@@ -145,7 +145,7 @@ export default function DriverDashboard() {
         product,
         material_centre: materialCentre,
         loaded_quantity: parseInt(loadedQuantity),
-        atc: materialCentre === "Main Store" ? atc : null,
+        ATC: materialCentre === "Main Store" ? atc : null,
         trip_status: "In transit",
       }])
       .select()
