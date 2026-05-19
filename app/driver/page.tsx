@@ -27,7 +27,7 @@ type Stop = {
 }
 
 const materialCentres = [
-  "Main Store",
+  "Main store (ATCs)",
   "Brooks Outlet",
   "Calabar Warehouse",
   "E1 Outlet",
@@ -133,7 +133,7 @@ export default function DriverDashboard() {
     if (!product) return setMessage("Select a product")
     if (!materialCentre) return setMessage("Select a material centre")
     if (!loadedQuantity) return setMessage("Enter loaded quantity")
-    if (materialCentre === "Main Store" && !atc.trim()) return setMessage("ATC number is required for Main Store")
+    if (materialCentre === "Main store (ATCs)" && !atc.trim()) return setMessage("ATC number is required for Main store (ATCs)")
 
     setSubmitting(true)
 
@@ -145,7 +145,7 @@ export default function DriverDashboard() {
         product,
         material_centre: materialCentre,
         loaded_quantity: parseInt(loadedQuantity),
-        ATC: materialCentre === "Main Store" ? atc : null,
+        ATC: materialCentre === "Main store (ATCs)" ? atc : null,
         trip_status: "In transit",
       }])
       .select()
