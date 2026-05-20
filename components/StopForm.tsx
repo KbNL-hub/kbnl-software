@@ -97,6 +97,7 @@ export default function StopForm({ tripId, onStopLogged }: Props) {
     const { error } = await supabase.from("Stops").insert([{
       trip_id: tripId,
       broker_id: selectedBroker.broker_id,
+      customer_id: selectedCustomer?.customer_id ?? null,
       quantity_offloaded: inputQty,
       stop_location: stopLocation,
       latitude,
