@@ -4,16 +4,17 @@ import { useState, useRef, useEffect } from "react"
 import { supabase } from "@/lib/supabase"
 import { useRouter } from "next/navigation"
 
-useEffect(() => {
-  supabase.auth.signOut()
-}, [])
-
 export default function LoginPage() {
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
   const [message, setMessage] = useState("")
   const [loading, setLoading] = useState(false)
   const router = useRouter()
+
+  useEffect(() => {
+    supabase.auth.signOut()
+  }, [])
+
   const passwordInputRef = useRef<HTMLInputElement | null>(null)
 
   async function handleLogin() {
