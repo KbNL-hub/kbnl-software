@@ -57,6 +57,8 @@ export default function LoginPage() {
       router.push("/admin")
     } else if (profile.role === "Driver") {
       router.push("/driver")
+    } else if (profile.role === "Broker") {
+      router.push("/broker")
     }
   }
 

@@ -41,11 +41,19 @@ export default function SetPassword() {
       return
     }
 
-    // Flip driver status to Active
-    await supabase
-      .from("Drivers")
-      .update({ status: "Active" })
-      .eq("driver_id", (await supabase.auth.getUser()).data.user?.id)
+    // Flip status to Active based on role
+    const { data: profile } = await supabase
+      .from("Profiles")
+      .select("role")
+      .eq("user_id", (await supabase.auth.getUser()).data.user?.id)
+      .single()
+
+    if (profile?.role === "Driver") {
+      await supabase
+        .from("Drivers")
+        .update({ status: "Active" })
+        .eq("driver_id", (await supabase.auth.getUser()).data.user?.id)
+    }
 
     setMessage("✅ Password set! Redirecting...")
     setTimeout(() => router.push("/login"), 2000)
