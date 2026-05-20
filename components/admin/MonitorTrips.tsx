@@ -77,16 +77,20 @@ export default function MonitorTrips() {
               .eq("broker_id", stop.broker_id)
               .single()
 
-            const { data: customer } = await supabase
-              .from("Customers")
-              .select("full_name")
-              .eq("customer_id", stop.customer_id)
-              .single()
+            let customer = null
+            if (stop.customer_id) {
+              const { data: customerData } = await supabase
+                .from("Customers")
+                .select("full_name")
+                .eq("customer_id", stop.customer_id)
+                .single()
+              customer = customerData
+            }
 
             return {
               stop_id: stop.stop_id,
               broker_name: broker?.broker_name ?? "Unknown",
-              customer_name: customer?.full_name ?? "Unknown",
+              customer_name: customer?.full_name ?? "Not provided",
               quantity_offloaded: stop.quantity_offloaded,
               latitude: stop.latitude,
               longitude: stop.longitude,
@@ -112,7 +116,7 @@ export default function MonitorTrips() {
           stop_count: stops.length,
           stops,
           trip_status: trip.trip_status,
-          atc: trip.atc,
+          atc: trip.ATC ?? null,
           created_at: trip.created_at,
           completed_at: trip.trip_status === "Completed" ? trip.updated_at ?? null : null,
         }
