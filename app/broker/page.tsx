@@ -84,6 +84,7 @@ export default function BrokerDashboard() {
           .single()
 
         // Get customer name
+        console.log("customer_id:", stop.customer_id, typeof stop.customer_id)
         let customerName = "Not provided"
         if (stop.customer_id) {
           const { data: customer } = await supabase

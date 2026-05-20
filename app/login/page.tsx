@@ -1,8 +1,12 @@
 "use client"
 
-import { useState, useRef } from "react"
+import { useState, useRef, useEffect } from "react"
 import { supabase } from "@/lib/supabase"
 import { useRouter } from "next/navigation"
+
+useEffect(() => {
+  supabase.auth.signOut()
+}, [])
 
 export default function LoginPage() {
   const [email, setEmail] = useState("")
