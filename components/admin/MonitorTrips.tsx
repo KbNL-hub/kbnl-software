@@ -28,6 +28,7 @@ type Trip = {
   stop_count: number
   stops: Stop[]
   trip_status: string
+  atc: string | null
   created_at: string
   completed_at: string | null
 }
@@ -41,6 +42,7 @@ export default function MonitorTrips() {
   const [selectedDriver, setSelectedDriver] = useState<Pick<Trip, "driver_name" | "driver_phone" | "driver_status"> | null>(null)
   const [selectedStops, setSelectedStops] = useState<Stop[] | null>(null)
   const [selectedPlate, setSelectedPlate] = useState("")
+  const [selectedTrip, setSelectedTrip] = useState<Pick<Trip, "trip_id" | "plate_number" | "atc"> | null>(null)
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null)
 
   async function fetchTrips() {
@@ -110,6 +112,7 @@ export default function MonitorTrips() {
           stop_count: stops.length,
           stops,
           trip_status: trip.trip_status,
+          atc: trip.atc,
           created_at: trip.created_at,
           completed_at: trip.trip_status === "Completed" ? trip.updated_at ?? null : null,
         }
@@ -199,6 +202,7 @@ export default function MonitorTrips() {
                 <th style={th}>Driver</th>
                 <th style={th}>Product</th>
                 <th style={th}>Centre</th>
+                <th style={th}>ATC Number</th>
                 <th style={th}>Loaded</th>
                 <th style={th}>Remaining</th>
                 <th style={th}>Stops</th>
@@ -227,6 +231,7 @@ export default function MonitorTrips() {
                     </td>
                     <td style={td}>{trip.product}</td>
                     <td style={td}>{trip.material_centre}</td>
+                    <td style={td}>{trip.atc || "N/A"}</td>
                     <td style={td}>{trip.loaded_quantity} bags</td>
                     <td style={td}>
                       <span style={{
@@ -241,6 +246,7 @@ export default function MonitorTrips() {
                         onClick={() => {
                           setSelectedStops(trip.stops)
                           setSelectedPlate(trip.plate_number)
+                          setSelectedTrip({ trip_id: trip.trip_id, plate_number: trip.plate_number, atc: trip.atc })
                         }}
                         style={{ color: "#0070f3", cursor: "pointer", textDecoration: "underline" }}
                       >
@@ -317,6 +323,18 @@ export default function MonitorTrips() {
             {selectedStops && (
               <>
                 <h3 style={{ marginBottom: 20 }}>Stops — {selectedPlate}</h3>
+
+                {selectedTrip?.atc && (
+                  <div style={{
+                    background: "#fff8e1", border: "1px solid #f5a623",
+                    borderRadius: 8, padding: "10px 14px", marginBottom: 16
+                  }}>
+                    <p style={{ margin: 0, fontSize: 13 }}>
+                      <strong>ATC Number:</strong> {selectedTrip.atc}
+                    </p>
+                  </div>
+                )}
+
                 {selectedStops.length === 0 && (
                   <p style={{ color: "#888" }}>No stops logged yet.</p>
                 )}

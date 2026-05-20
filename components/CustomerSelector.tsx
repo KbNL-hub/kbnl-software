@@ -75,7 +75,7 @@ export default function CustomerSelector({ onSelect }: Props) {
 
   return (
     <div>
-      <label style={{ fontWeight: "bold" }}>Customer *</label>
+      {/* <label style={{ fontWeight: "bold" }}>Customer *</label> */}
 
       <div style={{ position: "relative", width: 320, marginTop: 6 }}>
         <input

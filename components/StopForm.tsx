@@ -86,7 +86,6 @@ export default function StopForm({ tripId, onStopLogged }: Props) {
 
   async function handleSubmit() {
     if (!selectedBroker) return setMessage("Select a broker")
-    if (!selectedCustomer) return setMessage("Select or create a customer")
     if (!quantityOffloaded) return setMessage("Enter quantity offloaded")
     if (inputQty <= 0) return setMessage("Quantity must be greater than 0")
     if (inputQty > remaining) return setMessage(`Only ${remaining} bags remaining`)
@@ -98,7 +97,6 @@ export default function StopForm({ tripId, onStopLogged }: Props) {
     const { error } = await supabase.from("Stops").insert([{
       trip_id: tripId,
       broker_id: selectedBroker.broker_id,
-      customer_id: selectedCustomer.customer_id,
       quantity_offloaded: inputQty,
       stop_location: stopLocation,
       latitude,
@@ -169,7 +167,10 @@ export default function StopForm({ tripId, onStopLogged }: Props) {
 
       {/* Customer */}
       <div style={{ marginBottom: 20 }}>
-        <CustomerSelector onSelect={(customer) => setSelectedCustomer(customer)} />
+        <label style={{ fontWeight: "bold" }}>Customer</label>
+        <div style={{ marginTop: 6 }}>
+          <CustomerSelector onSelect={(customer) => setSelectedCustomer(customer)} />
+        </div>
       </div>
 
       {/* Quantity */}

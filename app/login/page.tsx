@@ -38,6 +38,21 @@ export default function LoginPage() {
       return
     }
 
+    if (profile.role === "Driver") {
+      const { data: driverData } = await supabase
+        .from("Drivers")
+        .select("status")
+        .eq("driver_id", data.user.id)
+        .single()
+
+      if (driverData?.status === "Suspended") {
+        await supabase.auth.signOut()
+        setMessage("Your account has been suspended. Contact admin.")
+        setLoading(false)
+        return
+      }
+    }
+
     if (profile.role === "Admin") {
       router.push("/admin")
     } else if (profile.role === "Driver") {

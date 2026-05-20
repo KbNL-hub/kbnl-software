@@ -26,22 +26,6 @@ type Stop = {
   stop_time: string
 }
 
-const materialCentres = [
-  "Main store (ATCs)",
-  "Brooks Outlet",
-  "Calabar Warehouse",
-  "E1 Outlet",
-  "Ikom Mini Depot",
-  "Ogoja Outlet",
-  "Ogoja Warehouse",
-  "Reserve Store",
-  "Urua Ekpa Outlet",
-  "Urua Nyemeiko Outlet",
-  "Uyo Warehouse",
-]
-
-const products = ["BUA Cement","Dangote 3X", "Dangote Falcon", "Lafarge Classic", "Lafarge Supafix", "Lafarge Supaset"]
-
 export default function DriverDashboard() {
   const [driver, setDriver] = useState<Driver | null>(null)
   const [activeTrip, setActiveTrip] = useState<Trip | null>(null)
@@ -53,6 +37,9 @@ export default function DriverDashboard() {
   const [message, setMessage] = useState("")
   const [showEndConfirm, setShowEndConfirm] = useState(false)
   const [showHoldConfirm, setShowHoldConfirm] = useState(false)
+
+  const [materialCentres, setMaterialCentres] = useState<string[]>([])
+  const [productOptions, setProductOptions] = useState<string[]>([])
 
   // Start trip form
   const [plateNumber, setPlateNumber] = useState("")
@@ -100,12 +87,26 @@ export default function DriverDashboard() {
 
     // Fetch available trucks
     const { data: trucksData } = await supabase
-      .from("Trucks")
-      .select("plate_number")
-      .eq("status", "Empty")
+    .from("Trucks")
+    .select("plate_number")
+    .eq("status", "Empty")
+    .not("plate_number", "in", `(${
+      (await supabase
+        .from("Trips")
+        .select("plate_number")
+        .in("trip_status", ["In transit", "On hold"])
+      ).data?.map(t => t.plate_number).join(",") || "NULL"
+    })`)
 
     setTrucks(trucksData || [])
     setLoading(false)
+
+    // Fetch material centres and products for dropdowns
+    const { data: centresData } = await supabase.rpc("get_material_centres")
+    if (centresData) setMaterialCentres(centresData.map((r: { value: string }) => r.value))
+
+    const { data: productsData } = await supabase.rpc("get_products")
+    if (productsData) setProductOptions(productsData.map((r: { value: string }) => r.value))
   }
 
   async function fetchStops(tripId: string, loadedQty: number) {
@@ -297,9 +298,10 @@ export default function DriverDashboard() {
               style={{ width: "100%", padding: 10, boxSizing: "border-box" }}
             >
               <option value="">Select product</option>
-              {products.map((p) => (
+              {productOptions.map((p) => (
                 <option key={p} value={p}>{p}</option>
               ))}
+
             </select>
           </div>
 
@@ -317,7 +319,7 @@ export default function DriverDashboard() {
             </select>
           </div>
 
-          {materialCentre === "Main Store" && (
+          {materialCentre === "Main store (ATCs)" && (
             <div style={{ marginBottom: 16 }}>
               <label style={{ fontWeight: "bold", display: "block", marginBottom: 6 }}>ATC Number *</label>
               <input
@@ -460,16 +462,6 @@ export default function DriverDashboard() {
               {activeTrip.trip_status === "On hold" ? "Resume Trip" : "Put Trip On Hold"}
             </button>
 
-            <button
-              onClick={() => setShowEndConfirm(true)}
-              style={{
-                width: "100%", padding: "12px 0", background: "white",
-                color: "#ff4444", border: "1px solid #ff4444",
-                borderRadius: 8, fontSize: 16, cursor: "pointer"
-              }}
-            >
-              End Trip
-            </button>
           </div>
         </div>
       )}
