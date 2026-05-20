@@ -139,7 +139,6 @@ export default function BrokerDashboard() {
         confirmed: true,
         customer_id: customerIdToSave,
         updated_by: user.id,
-        updated_at: new Date().toISOString(),
       })
       .eq("stop_id", selectedStop.stop_id)
 
