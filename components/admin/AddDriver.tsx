@@ -19,7 +19,7 @@ export default function AddDriver() {
 
     setSubmitting(true)
 
-    const res = await fetch("/api/invite-driver", {
+    const res = await fetch("/api/invite-user", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ email, fullName, phoneNumber }),

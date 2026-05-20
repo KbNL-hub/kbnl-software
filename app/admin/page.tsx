@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation"
 import { supabase } from "@/lib/supabase"
 import AddTruck from "@/components/admin/AddTruck"
 import AddDriver from "@/components/admin/AddDriver"
+import ManageBrokers from "@/components/admin/ManageBrokers"
 import MonitorTrucks from "@/components/admin/MonitorTrucks"
 import ManageTrucks from "@/components/admin/ManageTrucks"
 import ManageDrivers from "@/components/admin/ManageDrivers"
@@ -13,6 +14,7 @@ import MonitorTrips from "@/components/admin/MonitorTrips"
 const navItems = [
   { label: "Add New Truck", key: "add-truck" },
   { label: "Add New Driver", key: "add-driver" },
+  { label: "Manage Brokers", key: "manage-brokers" },
   { label: "Monitor Trucks", key: "monitor-trucks" },
   { label: "Manage Trucks", key: "manage-trucks" },
   { label: "Manage Drivers", key: "manage-drivers" },
@@ -32,6 +34,7 @@ export default function AdminDashboard() {
     switch (active) {
       case "add-truck": return <AddTruck />
       case "add-driver": return <AddDriver />
+      case "manage-brokers": return <ManageBrokers />
       case "monitor-trucks": return <MonitorTrucks />
       case "manage-trucks": return <ManageTrucks />
       case "manage-drivers": return <ManageDrivers />

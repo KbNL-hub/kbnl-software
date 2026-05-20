@@ -398,3 +398,4 @@ const th: React.CSSProperties = {
 const td: React.CSSProperties = {
   padding: "12px 16px"
 }
+
