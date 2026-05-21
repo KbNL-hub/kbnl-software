@@ -30,6 +30,8 @@ export default function BrokerDashboard() {
   const [selectedStop, setSelectedStop] = useState<Stop | null>(null)
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null)
   const [pricePerBag, setPricePerBag] = useState("")
+  const [disputingStop, setDisputingStop] = useState<Stop | null>(null)
+  const [disputeReason, setDisputeReason] = useState("")
   const [message, setMessage] = useState("")
   const [submitting, setSubmitting] = useState(false)
   const [loading, setLoading] = useState(true)
@@ -60,9 +62,10 @@ export default function BrokerDashboard() {
     // Fetch unconfirmed stops
     const { data: unconfirmed } = await supabase
       .from("Stops")
-      .select("stop_id, trip_id, customer_id, quantity_offloaded, stop_location, stop_time, confirmed")
+      .select("stop_id, trip_id, customer_id, quantity_offloaded, stop_location, stop_time, confirmed, disputed")
       .eq("broker_id", bId)
       .eq("confirmed", false)
+      .eq("disputed", false)
       .order("stop_time", { ascending: false })
 
     // Fetch last 3 confirmed stops
@@ -121,6 +124,37 @@ export default function BrokerDashboard() {
     setMessage("")
   }
 
+  async function handleDispute() {
+    if (!disputingStop) return
+    if (!disputeReason.trim()) return setMessage("Please provide a reason for the dispute")
+
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return
+
+    setSubmitting(true)
+
+    const { error } = await supabase
+      .from("Stops")
+      .update({
+        disputed: true,
+        dispute_reason: disputeReason,
+        disputed_by: user.id,
+      })
+      .eq("stop_id", disputingStop.stop_id)
+
+    setSubmitting(false)
+
+    if (error) {
+      setMessage("Failed to dispute stop")
+      return
+    }
+
+    setDisputingStop(null)
+    setDisputeReason("")
+    setMessage("")
+    if (brokerId) fetchStops(brokerId)
+  }
+
   async function handleConfirm() {
     if (!selectedStop) return
     if (!pricePerBag) return setMessage("Price per bag is required")
@@ -161,6 +195,12 @@ export default function BrokerDashboard() {
     setSubmitting(false)
 
     if (confirmError) {
+      setMessage("Stop updated but confirmation record failed")
+      return
+    }
+
+    if (confirmError) {
+      console.error("Confirmation error:", JSON.stringify(confirmError))
       setMessage("Stop updated but confirmation record failed")
       return
     }
@@ -213,20 +253,18 @@ export default function BrokerDashboard() {
             padding: 16, marginBottom: 12, boxShadow: "0 2px 8px rgba(0,0,0,0.05)"
           }}
         >
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-            <div>
-              <p style={{ margin: 0, fontWeight: "bold" }}>{stop.plate_number}</p>
-              <p style={{ margin: "4px 0", fontSize: 13, color: "#555" }}>{stop.stop_location}</p>
-              <p style={{ margin: "4px 0", fontSize: 13, color: "#555" }}>
-                {stop.quantity_offloaded} bags
-              </p>
-              <p style={{ margin: "4px 0", fontSize: 12, color: "#888" }}>
+          <p style={{ margin: 0, fontWeight: "bold" }}>{stop.plate_number}</p>
+          <p style={{ margin: "4px 0", fontSize: 13, color: "#555" }}>{stop.stop_location}</p>
+          <p style={{ margin: "4px 0", fontSize: 13, color: "#555" }}>
+            {stop.quantity_offloaded} bags
+          </p>
+          <p style={{ margin: "4px 0", fontSize: 12, color: "#888" }}>
                 Customer: {stop.customer_name}
               </p>
-              <p style={{ margin: "4px 0", fontSize: 12, color: "#aaa" }}>
-                {new Date(stop.stop_time).toLocaleString()}
-              </p>
-            </div>
+          <p style={{ margin: "4px 0", fontSize: 12, color: "#aaa" }}>
+            {new Date(stop.stop_time).toLocaleString()}
+          </p>
+          <div style={{ display: "flex", gap: 8 }}>
             <button
               onClick={() => openConfirmModal(stop)}
               style={{
@@ -236,6 +274,16 @@ export default function BrokerDashboard() {
               }}
             >
               Confirm
+            </button>
+            <button
+              onClick={() => { setDisputingStop(stop); setDisputeReason(""); setMessage("") }}
+              style={{
+                padding: "8px 16px", background: "white", color: "#ff4444",
+                border: "1px solid #ff4444", borderRadius: 6, cursor: "pointer", fontSize: 13,
+                whiteSpace: "nowrap"
+              }}
+            >
+              Dispute
             </button>
           </div>
         </div>
@@ -344,6 +392,77 @@ export default function BrokerDashboard() {
               </button>
               <button
                 onClick={closeModal}
+                style={{
+                  flex: 1, padding: "10px 0", background: "white",
+                  color: "#333", border: "1px solid #ddd", borderRadius: 6,
+                  cursor: "pointer"
+                }}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Dispute Modal */}
+      {disputingStop && (
+        <div
+          onClick={() => setDisputingStop(null)}
+          style={{
+            position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)",
+            display: "flex", alignItems: "center", justifyContent: "center",
+            zIndex: 100
+          }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              background: "white", borderRadius: 12, padding: 32,
+              width: 400, maxWidth: "90vw",
+              boxShadow: "0 8px 32px rgba(0,0,0,0.2)"
+            }}
+          >
+            <h3 style={{ marginBottom: 4, color: "#ff4444" }}>Dispute Stop</h3>
+            <p style={{ color: "#888", fontSize: 13, marginBottom: 20 }}>
+              {disputingStop.plate_number} — {disputingStop.stop_location}
+            </p>
+
+            <div style={{ marginBottom: 24 }}>
+              <label style={{ fontWeight: "bold", display: "block", marginBottom: 6 }}>
+                Reason for Dispute *
+              </label>
+              <textarea
+                placeholder="e.g. This stop does not belong to me. The correct broker is..."
+                value={disputeReason}
+                onChange={(e) => { setDisputeReason(e.target.value); setMessage("") }}
+                rows={4}
+                style={{
+                  width: "100%", padding: 10, boxSizing: "border-box",
+                  borderRadius: 6, border: "1px solid #ddd", fontSize: 14,
+                  resize: "vertical"
+                }}
+              />
+            </div>
+
+            {message && (
+              <p style={{ color: "red", marginBottom: 12, fontWeight: "bold" }}>{message}</p>
+            )}
+
+            <div style={{ display: "flex", gap: 8 }}>
+              <button
+                onClick={handleDispute}
+                disabled={submitting}
+                style={{
+                  flex: 1, padding: "10px 0", background: "#ff4444",
+                  color: "white", border: "none", borderRadius: 6,
+                  cursor: submitting ? "not-allowed" : "pointer"
+                }}
+              >
+                {submitting ? "Submitting..." : "Submit Dispute"}
+              </button>
+              <button
+                onClick={() => setDisputingStop(null)}
                 style={{
                   flex: 1, padding: "10px 0", background: "white",
                   color: "#333", border: "1px solid #ddd", borderRadius: 6,

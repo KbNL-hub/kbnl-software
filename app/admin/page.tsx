@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import { supabase } from "@/lib/supabase"
 import AddTruck from "@/components/admin/AddTruck"
@@ -24,6 +24,28 @@ const navItems = [
 export default function AdminDashboard() {
   const [active, setActive] = useState("")
   const router = useRouter()
+
+  const [disputedCount, setDisputedCount] = useState(0)
+
+  useEffect(() => {
+    async function checkDisputed() {
+      const { count } = await supabase
+        .from("Stops")
+        .select("*", { count: "exact", head: true })
+        .eq("disputed", true)
+
+      setDisputedCount(count || 0)
+
+      // Auto-select Disputed filter when admin opens Monitor Trips
+      if (count && count > 0 && active === "monitor-trips") {
+        // MonitorTrips handles its own filter state
+      }
+    }
+
+    checkDisputed()
+    const interval = setInterval(checkDisputed, 30000)
+    return () => clearInterval(interval)
+  }, [])
 
   async function handleLogout() {
     await supabase.auth.signOut()
@@ -68,10 +90,21 @@ export default function AdminDashboard() {
               background: active === item.key ? "#0070f3" : "transparent",
               color: "white", border: "none", textAlign: "left",
               padding: "12px 24px", cursor: "pointer", fontSize: 14,
-              borderLeft: active === item.key ? "3px solid white" : "3px solid transparent"
+              borderLeft: active === item.key ? "3px solid white" : "3px solid transparent",
+              display: "flex", alignItems: "center", justifyContent: "space-between",
+              width: "100%"
             }}
           >
             {item.label}
+            {item.key === "monitor-trips" && disputedCount > 0 && (
+              <span style={{
+                background: "#ff4444", color: "white", borderRadius: "50%",
+                width: 18, height: 18, fontSize: 11, fontWeight: "bold",
+                display: "flex", alignItems: "center", justifyContent: "center"
+              }}>
+                {disputedCount}
+              </span>
+            )}
           </button>
         ))}
 

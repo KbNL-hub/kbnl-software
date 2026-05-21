@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react"
 import { supabase } from "@/lib/supabase"
+import ReassignBroker from "@/components/admin/ReassignBroker"
 
 type Stop = {
   stop_id: string
@@ -12,6 +13,9 @@ type Stop = {
   longitude: number
   stop_time: string
   stop_location: string
+  confirmed: boolean
+  disputed: boolean
+  dispute_reason: string | null
 }
 
 type Trip = {
@@ -33,7 +37,7 @@ type Trip = {
   completed_at: string | null
 }
 
-const filterOptions = ["Active", "All", "In transit", "On hold", "Completed"]
+const filterOptions = ["Active", "All", "In transit", "On hold", "Completed", "Disputed"]
 
 export default function MonitorTrips() {
   const [trips, setTrips] = useState<Trip[]>([])
@@ -65,7 +69,7 @@ export default function MonitorTrips() {
         // Fetch stops with broker and customer names
         const { data: stopsRaw } = await supabase
           .from("Stops")
-          .select("stop_id, quantity_offloaded, latitude, longitude, stop_time, stop_location, broker_id, customer_id")
+          .select("stop_id, quantity_offloaded, latitude, longitude, stop_time, stop_location, broker_id, customer_id, confirmed, disputed, dispute_reason")
           .eq("trip_id", trip.trip_id)
           .order("stop_time", { ascending: true })
 
@@ -96,6 +100,9 @@ export default function MonitorTrips() {
               longitude: stop.longitude,
               stop_time: stop.stop_time,
               stop_location: stop.stop_location,
+              confirmed: stop.confirmed,
+              disputed: stop.disputed,
+              dispute_reason: stop.dispute_reason
             }
           })
         )
@@ -135,10 +142,12 @@ export default function MonitorTrips() {
   }, [])
 
   const filteredTrips = filterStatus === "All"
-    ? trips
-    : filterStatus === "Active"
-    ? trips.filter((t) => t.trip_status === "In transit" || t.trip_status === "On hold")
-    : trips.filter((t) => t.trip_status === filterStatus)
+  ? trips
+  : filterStatus === "Active"
+  ? trips.filter((t) => t.trip_status === "In transit" || t.trip_status === "On hold")
+  : filterStatus === "Disputed"
+  ? trips.filter((t) => t.stops.some((s) => s.disputed))
+  : trips.filter((t) => t.trip_status === filterStatus)
 
   const statusColor = (status: string) => {
     switch (status) {
@@ -347,10 +356,22 @@ export default function MonitorTrips() {
                     key={stop.stop_id}
                     style={{
                       marginBottom: 16, padding: 16,
-                      border: "1px solid #eee", borderRadius: 8
+                      border: `1px solid ${stop.disputed ? "#ff4444" : stop.confirmed ? "#00aa00" : "#eee"}`,
+                      borderRadius: 8,
+                      background: stop.disputed ? "#fff5f5" : "white"
                     }}
                   >
-                    <p style={{ fontWeight: "bold", marginBottom: 8 }}>Stop {index + 1}</p>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+                      <p style={{ fontWeight: "bold", margin: 0 }}>Stop {index + 1}</p>
+                      <span style={{
+                        padding: "3px 10px", borderRadius: 12, fontSize: 11, fontWeight: "bold",
+                        background: stop.disputed ? "#ff444422" : stop.confirmed ? "#00aa0022" : "#f0f0f0",
+                        color: stop.disputed ? "#ff4444" : stop.confirmed ? "#00aa00" : "#888"
+                      }}>
+                        {stop.disputed ? "Disputed" : stop.confirmed ? "Confirmed" : "Pending"}
+                      </span>
+                    </div>
+
                     <p style={{ marginBottom: 6 }}><strong>Broker:</strong> {stop.broker_name}</p>
                     <p style={{ marginBottom: 6 }}><strong>Customer:</strong> {stop.customer_name}</p>
                     <p style={{ marginBottom: 6 }}><strong>Bags Offloaded:</strong> {stop.quantity_offloaded}</p>
@@ -366,7 +387,23 @@ export default function MonitorTrips() {
                         View on Maps 📍
                       </a>
                     </p>
-                    <p style={{ marginBottom: 0, color: "#888", fontSize: 12 }}>
+
+                    {stop.disputed && stop.dispute_reason && (
+                      <div style={{
+                        marginTop: 8, padding: 10, background: "#fff0f0",
+                        borderRadius: 6, border: "1px solid #ffcccc"
+                      }}>
+                        <p style={{ margin: 0, fontSize: 13, color: "#ff4444", fontWeight: "bold" }}>
+                          Dispute Reason:
+                        </p>
+                        <p style={{ margin: "4px 0 0", fontSize: 13, color: "#555" }}>
+                          {stop.dispute_reason}
+                        </p>
+                        <ReassignBroker stopId={stop.stop_id} onReassigned={fetchTrips} />
+                      </div>
+                    )}
+
+                    <p style={{ marginBottom: 0, color: "#888", fontSize: 12, marginTop: 8 }}>
                       {new Date(stop.stop_time).toLocaleString()}
                     </p>
                   </div>
