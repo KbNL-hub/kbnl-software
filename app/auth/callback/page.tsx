@@ -42,17 +42,27 @@ export default function SetPassword() {
     }
 
     // Flip status to Active based on role
+    const { data: { user } } = await supabase.auth.getUser()
+    const userId = user?.id
+
     const { data: profile } = await supabase
       .from("Profiles")
       .select("role")
-      .eq("user_id", (await supabase.auth.getUser()).data.user?.id)
+      .eq("user_id", userId)
       .single()
 
     if (profile?.role === "Driver") {
       await supabase
         .from("Drivers")
         .update({ status: "Active" })
-        .eq("driver_id", (await supabase.auth.getUser()).data.user?.id)
+        .eq("driver_id", userId)
+    }
+
+    if (profile?.role === "StationManager") {
+      await supabase
+        .from("station_managers")
+        .update({ status: "Active" })
+        .eq("manager_id", userId)
     }
 
     setMessage("✅ Password set! Redirecting...")

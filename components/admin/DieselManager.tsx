@@ -30,6 +30,8 @@ export default function DieselManager() {
   const [requests, setRequests] = useState<FuelRequest[]>([])
   const [loading, setLoading] = useState(true)
   const [requestFilter, setRequestFilter] = useState("All")
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null)
+  const [requestsLoading, setRequestsLoading] = useState(false)
 
   // Add company form
   const [showAddModal, setShowAddModal] = useState(false)
@@ -57,7 +59,9 @@ export default function DieselManager() {
 
   useEffect(() => {
     fetchAll()
-  }, [])
+    const interval = setInterval(fetchRequests, 30000)
+    return () => clearInterval(interval)
+    }, [])
 
   async function fetchAll() {
     setLoading(true)
@@ -75,41 +79,42 @@ export default function DieselManager() {
 
   async function fetchRequests() {
     const { data: requestsRaw } = await supabase
-      .from("fuel_requests")
-      .select("request_id, driver_id, company_id, litres, rate_per_litre, total_amount, status, requested_at")
-      .order("requested_at", { ascending: false })
+        .from("fuel_requests")
+        .select("request_id, driver_id, company_id, litres, rate_per_litre, total_amount, status, requested_at")
+        .order("requested_at", { ascending: false })
 
     if (!requestsRaw) return
 
     const enriched = await Promise.all(
-      requestsRaw.map(async (r) => {
+        requestsRaw.map(async (r) => {
         const { data: driver } = await supabase
-          .from("Drivers")
-          .select("full_name")
-          .eq("driver_id", r.driver_id)
-          .single()
+            .from("Drivers")
+            .select("full_name")
+            .eq("driver_id", r.driver_id)
+            .single()
 
         const { data: company } = await supabase
-          .from("fuel_companies")
-          .select("company_name")
-          .eq("company_id", r.company_id)
-          .single()
+            .from("fuel_companies")
+            .select("company_name")
+            .eq("company_id", r.company_id)
+            .single()
 
         return {
-          request_id: r.request_id,
-          driver_name: driver?.full_name ?? "Unknown",
-          company_name: company?.company_name ?? "Unknown",
-          litres: r.litres,
-          rate_per_litre: r.rate_per_litre,
-          total_amount: r.total_amount,
-          status: r.status,
-          requested_at: r.requested_at,
+            request_id: r.request_id,
+            driver_name: driver?.full_name ?? "Unknown",
+            company_name: company?.company_name ?? "Unknown",
+            litres: r.litres,
+            rate_per_litre: r.rate_per_litre,
+            total_amount: r.total_amount,
+            status: r.status,
+            requested_at: r.requested_at,
         }
-      })
+        })
     )
 
     setRequests(enriched)
-  }
+    setLastUpdated(new Date())
+}
 
   async function handleAddCompany() {
     if (!newCompanyName.trim()) return setAddError("Company name is required")
@@ -320,27 +325,41 @@ export default function DieselManager() {
       )}
 
       {/* Requests Tab */}
-      {!loading && tab === "requests" && (
-        <div>
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 16 }}>
+    {!loading && tab === "requests" && (
+    <div>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
             {requestFilters.map((f) => (
-              <button
+            <button
                 key={f}
                 onClick={() => setRequestFilter(f)}
                 style={{
-                  padding: "6px 14px", borderRadius: 20, fontSize: 13,
-                  cursor: "pointer", border: "1px solid #ddd",
-                  background: requestFilter === f ? "#0070f3" : "white",
-                  color: requestFilter === f ? "white" : "#333",
-                  fontWeight: requestFilter === f ? "bold" : "normal"
+                padding: "6px 14px", borderRadius: 20, fontSize: 13,
+                cursor: "pointer", border: "1px solid #ddd",
+                background: requestFilter === f ? "#0070f3" : "white",
+                color: requestFilter === f ? "white" : "#333",
+                fontWeight: requestFilter === f ? "bold" : "normal"
                 }}
-              >
+            >
                 {f}
-              </button>
+            </button>
             ))}
-          </div>
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 12, fontSize: 12, color: "#888", whiteSpace: "nowrap" }}>
+            {lastUpdated && `Updated: ${lastUpdated.toLocaleTimeString()}`}
+            <button
+            onClick={fetchRequests}
+            style={{
+                padding: "4px 12px", fontSize: 12, cursor: "pointer",
+                borderRadius: 4, border: "1px solid #ddd", background: "white"
+            }}
+            >
+            Refresh
+            </button>
+        </div>
+        </div>
 
-          {filteredRequests.length === 0 && <p style={{ color: "#888" }}>No requests found.</p>}
+        {filteredRequests.length === 0 && <p style={{ color: "#888" }}>No requests found.</p>}
 
           <div style={{ overflowX: "auto" }}>
             <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 14 }}>

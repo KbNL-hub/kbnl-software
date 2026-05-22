@@ -7,10 +7,14 @@ const supabaseAdmin = createClient(
 )
 
 export async function POST(req: Request) {
-  const { email, fullName, phoneNumber, role } = await req.json()
+  const { email, fullName, phoneNumber, role, companyId } = await req.json()
 
   if (!email || !fullName || !role) {
     return NextResponse.json({ error: "Email, full name and role are required" }, { status: 400 })
+  }
+
+  if (role === "StationManager" && !companyId) {
+    return NextResponse.json({ error: "Company is required for Station Manager" }, { status: 400 })
   }
 
   const { data, error: inviteError } = await supabaseAdmin.auth.admin.inviteUserByEmail(email, {
@@ -42,7 +46,6 @@ export async function POST(req: Request) {
       full_name: fullName,
       phone_number: phoneNumber || null,
     }])
-
     if (driverError) {
       return NextResponse.json({ error: "Invite sent but driver record failed" }, { status: 500 })
     }
@@ -55,9 +58,21 @@ export async function POST(req: Request) {
       broker_name: fullName,
       phone_number: phoneNumber || null,
     }])
-
     if (brokerError) {
       return NextResponse.json({ error: "Invite sent but broker record failed" }, { status: 500 })
+    }
+  }
+
+  // If StationManager, also insert into station_managers table
+  if (role === "StationManager") {
+    const { error: smError } = await supabaseAdmin.from("station_managers").insert([{
+      manager_id: userId,
+      full_name: fullName,
+      phone_number: phoneNumber || null,
+      company_id: companyId,
+    }])
+    if (smError) {
+      return NextResponse.json({ error: "Invite sent but station manager record failed" }, { status: 500 })
     }
   }
 

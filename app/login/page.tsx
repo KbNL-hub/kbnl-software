@@ -64,6 +64,10 @@ export default function LoginPage() {
       router.push("/driver")
     } else if (profile.role === "Broker") {
       router.push("/broker")
+    } else if (profile.role === "StationManager") {
+      router.push("/station-manager")
+    } else {
+      setMessage("Unknown role. Contact admin.")
     }
   }
 

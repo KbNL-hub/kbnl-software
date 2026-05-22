@@ -1,7 +1,6 @@
 "use client"
 
 import { useState, useRef } from "react"
-import { supabase } from "@/lib/supabase"
 
 export default function AddDriver() {
   const [fullName, setFullName] = useState("")
@@ -22,7 +21,7 @@ export default function AddDriver() {
     const res = await fetch("/api/invite-user", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email, fullName, phoneNumber }),
+      body: JSON.stringify({ email, fullName, phoneNumber, role: "Driver" }),
     })
 
     const result = await res.json()

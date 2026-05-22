@@ -11,6 +11,7 @@ import ManageTrucks from "@/components/admin/ManageTrucks"
 import ManageDrivers from "@/components/admin/ManageDrivers"
 import MonitorTrips from "@/components/admin/MonitorTrips"
 import DieselManager from "@/components/admin/DieselManager"
+import StationManagers from "@/components/admin/StationManagers"
 
 const navItems = [
   { label: "Add New Truck", key: "add-truck" },
@@ -21,6 +22,7 @@ const navItems = [
   { label: "Manage Drivers", key: "manage-drivers" },
   { label: "Monitor Trips", key: "monitor-trips" },
   { label: "Diesel Manager", key: "diesel-manager" },
+  { label: "Station Managers", key: "station-managers" }
 ]
 
 type LowBalanceCompany = {
@@ -93,6 +95,7 @@ export default function AdminDashboard() {
       case "manage-trucks": return <ManageTrucks />
       case "manage-drivers": return <ManageDrivers />
       case "monitor-trips": return <MonitorTrips />
+      case "station-managers": return <StationManagers />
       case "diesel-manager": return <DieselManager />
       default: return (
         <div>
