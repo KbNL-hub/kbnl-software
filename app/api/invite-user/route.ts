@@ -27,6 +27,8 @@ export async function POST(req: Request) {
 
   const userId = data.user.id
 
+  console.log("Inserting profile:", { userId, role, fullName, phoneNumber })
+
   // Insert into Profiles
   const { error: profileError } = await supabaseAdmin.from("Profiles").insert([{
     user_id: userId,
@@ -34,6 +36,8 @@ export async function POST(req: Request) {
     full_name: fullName,
     phone_number: phoneNumber || null,
   }])
+
+  console.log("Profile error:", profileError)
 
   if (profileError) {
     return NextResponse.json({ error: "Invite sent but profile failed" }, { status: 500 })
@@ -46,6 +50,7 @@ export async function POST(req: Request) {
       full_name: fullName,
       phone_number: phoneNumber || null,
     }])
+    console.log("Driver error:", driverError)
     if (driverError) {
       return NextResponse.json({ error: "Invite sent but driver record failed" }, { status: 500 })
     }
@@ -58,6 +63,7 @@ export async function POST(req: Request) {
       broker_name: fullName,
       phone_number: phoneNumber || null,
     }])
+    console.log("Broker error:", brokerError)
     if (brokerError) {
       return NextResponse.json({ error: "Invite sent but broker record failed" }, { status: 500 })
     }

@@ -21,16 +21,16 @@ export default function StationManagerDashboard() {
   const [managerId, setManagerId] = useState("")
   const [companyId, setCompanyId] = useState("")
   const [companyName, setCompanyName] = useState("")
+  const [currentBalance, setCurrentBalance] = useState<number | null>(null)
+  const [lowThreshold, setLowThreshold] = useState<number>(0)
   const [requests, setRequests] = useState<FuelRequest[]>([])
   const [filter, setFilter] = useState("Pending")
   const [loading, setLoading] = useState(true)
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null)
 
-  // Validate modal
   const [validating, setValidating] = useState<FuelRequest | null>(null)
   const [validateLoading, setValidateLoading] = useState(false)
 
-  // Reject modal
   const [rejecting, setRejecting] = useState<FuelRequest | null>(null)
   const [rejectReason, setRejectReason] = useState("")
   const [rejectError, setRejectError] = useState("")
@@ -60,13 +60,7 @@ export default function StationManagerDashboard() {
       setManagerId(manager.manager_id)
       setCompanyId(manager.company_id)
 
-      const { data: company } = await supabase
-        .from("fuel_companies")
-        .select("company_name")
-        .eq("company_id", manager.company_id)
-        .single()
-
-      setCompanyName(company?.company_name ?? "")
+      await fetchCompanyData(manager.company_id)
       await fetchRequests(manager.company_id)
       setLoading(false)
     }
@@ -76,9 +70,26 @@ export default function StationManagerDashboard() {
 
   useEffect(() => {
     if (!companyId) return
-    const interval = setInterval(() => fetchRequests(companyId), 30000)
+    const interval = setInterval(() => {
+      fetchCompanyData(companyId)
+      fetchRequests(companyId)
+    }, 30000)
     return () => clearInterval(interval)
   }, [companyId])
+
+  async function fetchCompanyData(cId: string) {
+    const { data } = await supabase
+      .from("fuel_companies")
+      .select("company_name, current_balance, low_balance_threshold")
+      .eq("company_id", cId)
+      .single()
+
+    if (data) {
+      setCompanyName(data.company_name)
+      setCurrentBalance(data.current_balance)
+      setLowThreshold(data.low_balance_threshold)
+    }
+  }
 
   async function fetchRequests(cId: string) {
     const { data: requestsRaw } = await supabase
@@ -117,26 +128,19 @@ export default function StationManagerDashboard() {
     if (!validating) return
     setValidateLoading(true)
 
-    // Update request status
     await supabase
       .from("fuel_requests")
       .update({ status: "Validated", validated_at: new Date().toISOString(), validated_by: managerId })
       .eq("request_id", validating.request_id)
 
-    // Deduct from company balance
-    const { data: company } = await supabase
+    const newBalance = Math.max(0, (currentBalance ?? 0) - validating.total_amount)
+    await supabase
       .from("fuel_companies")
-      .select("current_balance")
+      .update({ current_balance: newBalance })
       .eq("company_id", companyId)
-      .single()
 
-    if (company) {
-      const newBalance = Math.max(0, company.current_balance - validating.total_amount)
-      await supabase
-        .from("fuel_companies")
-        .update({ current_balance: newBalance })
-        .eq("company_id", companyId)
-    }
+    // Update balance immediately in UI
+    setCurrentBalance(newBalance)
 
     setValidateLoading(false)
     setValidating(null)
@@ -178,6 +182,8 @@ export default function StationManagerDashboard() {
     }
   }
 
+  const isLow = currentBalance !== null && currentBalance < lowThreshold
+
   if (loading) {
     return (
       <div style={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: "100vh", fontFamily: "Arial" }}>
@@ -199,17 +205,34 @@ export default function StationManagerDashboard() {
         </div>
         <button
           onClick={handleLogout}
-          style={{
-            padding: "8px 20px", background: "#ff4444", color: "white",
-            border: "none", borderRadius: 6, cursor: "pointer", fontSize: 14
-          }}
+          style={{ padding: "8px 20px", background: "#ff4444", color: "white", border: "none", borderRadius: 6, cursor: "pointer", fontSize: 14 }}
         >
           Logout
         </button>
       </div>
 
-      {/* Content */}
       <div style={{ padding: 24, maxWidth: 800, margin: "0 auto" }}>
+        {/* Balance Card */}
+        <div style={{
+          background: isLow ? "#fff8e1" : "white",
+          border: `1px solid ${isLow ? "#f5a623" : "#eee"}`,
+          borderRadius: 12, padding: 24, marginBottom: 24,
+          boxShadow: "0 2px 8px rgba(0,0,0,0.06)"
+        }}>
+          <p style={{ margin: "0 0 4px", fontSize: 13, color: "#888" }}>Available Balance</p>
+          <p style={{
+            margin: 0, fontSize: 36, fontWeight: "bold",
+            color: isLow ? "#f5a623" : "#00aa00"
+          }}>
+            ₦{currentBalance !== null ? currentBalance.toLocaleString() : "—"}
+          </p>
+          {isLow && (
+            <p style={{ margin: "8px 0 0", fontSize: 13, color: "#f5a623" }}>
+              ⚠️ Balance is below threshold (₦{lowThreshold.toLocaleString()})
+            </p>
+          )}
+        </div>
+
         {/* Filter pills + refresh */}
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
@@ -232,11 +255,8 @@ export default function StationManagerDashboard() {
           <div style={{ display: "flex", alignItems: "center", gap: 12, fontSize: 12, color: "#888" }}>
             {lastUpdated && `Updated: ${lastUpdated.toLocaleTimeString()}`}
             <button
-              onClick={() => fetchRequests(companyId)}
-              style={{
-                padding: "4px 12px", fontSize: 12, cursor: "pointer",
-                borderRadius: 4, border: "1px solid #ddd", background: "white"
-              }}
+              onClick={() => { fetchCompanyData(companyId); fetchRequests(companyId) }}
+              style={{ padding: "4px 12px", fontSize: 12, cursor: "pointer", borderRadius: 4, border: "1px solid #ddd", background: "white" }}
             >
               Refresh
             </button>
@@ -253,23 +273,14 @@ export default function StationManagerDashboard() {
             return (
               <div
                 key={r.request_id}
-                style={{
-                  background: "white", border: "1px solid #eee",
-                  borderRadius: 10, padding: 20,
-                  boxShadow: "0 2px 8px rgba(0,0,0,0.04)"
-                }}
+                style={{ background: "white", border: "1px solid #eee", borderRadius: 10, padding: 20, boxShadow: "0 2px 8px rgba(0,0,0,0.04)" }}
               >
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 12 }}>
                   <div>
                     <p style={{ margin: 0, fontWeight: "bold", fontSize: 15 }}>{r.driver_name}</p>
-                    <p style={{ margin: "4px 0 0", fontSize: 12, color: "#aaa" }}>
-                      {new Date(r.requested_at).toLocaleString()}
-                    </p>
+                    <p style={{ margin: "4px 0 0", fontSize: 12, color: "#aaa" }}>{new Date(r.requested_at).toLocaleString()}</p>
                   </div>
-                  <span style={{
-                    padding: "4px 10px", borderRadius: 12, fontSize: 12,
-                    background: bg, color, fontWeight: "bold"
-                  }}>
+                  <span style={{ padding: "4px 10px", borderRadius: 12, fontSize: 12, background: bg, color, fontWeight: "bold" }}>
                     {r.status}
                   </span>
                 </div>
@@ -293,21 +304,13 @@ export default function StationManagerDashboard() {
                   <div style={{ display: "flex", gap: 8 }}>
                     <button
                       onClick={() => setValidating(r)}
-                      style={{
-                        flex: 1, padding: "10px 0", background: "#00aa00",
-                        color: "white", border: "none", borderRadius: 6,
-                        cursor: "pointer", fontWeight: "bold", fontSize: 14
-                      }}
+                      style={{ flex: 1, padding: "10px 0", background: "#00aa00", color: "white", border: "none", borderRadius: 6, cursor: "pointer", fontWeight: "bold", fontSize: 14 }}
                     >
                       Validate
                     </button>
                     <button
                       onClick={() => { setRejecting(r); setRejectReason(""); setRejectError("") }}
-                      style={{
-                        flex: 1, padding: "10px 0", background: "white",
-                        color: "#ff4444", border: "1px solid #ff4444", borderRadius: 6,
-                        cursor: "pointer", fontWeight: "bold", fontSize: 14
-                      }}
+                      style={{ flex: 1, padding: "10px 0", background: "white", color: "#ff4444", border: "1px solid #ff4444", borderRadius: 6, cursor: "pointer", fontWeight: "bold", fontSize: 14 }}
                     >
                       Reject
                     </button>
@@ -319,22 +322,22 @@ export default function StationManagerDashboard() {
         </div>
       </div>
 
-      {/* Validate Confirmation Modal */}
+      {/* Validate Modal */}
       {validating && (
         <div style={overlay}>
           <div style={modal}>
             <h3 style={{ marginBottom: 12 }}>Confirm Validation</h3>
-            <p style={{ color: "#555", marginBottom: 16 }}>
-              Confirm that this diesel request is correct:
-            </p>
-            <div style={{ background: "#f9f9f9", borderRadius: 8, padding: 16, marginBottom: 24 }}>
+            <p style={{ color: "#555", marginBottom: 16 }}>Confirm that this diesel request is correct:</p>
+            <div style={{ background: "#f9f9f9", borderRadius: 8, padding: 16, marginBottom: 16 }}>
               <p style={{ margin: "0 0 8px" }}><strong>Driver:</strong> {validating.driver_name}</p>
               <p style={{ margin: "0 0 8px" }}><strong>Litres:</strong> {validating.litres.toLocaleString()}L</p>
               <p style={{ margin: "0 0 8px" }}><strong>Rate/Litre:</strong> ₦{validating.rate_per_litre.toLocaleString()}</p>
               <p style={{ margin: 0 }}><strong>Total:</strong> <span style={{ color: "#0070f3", fontWeight: "bold" }}>₦{validating.total_amount.toLocaleString()}</span></p>
             </div>
             <p style={{ fontSize: 13, color: "#888", marginBottom: 24 }}>
-              This will deduct ₦{validating.total_amount.toLocaleString()} from the {companyName} balance.
+              New balance after deduction: <strong style={{ color: isLow ? "#f5a623" : "#333" }}>
+                ₦{Math.max(0, (currentBalance ?? 0) - validating.total_amount).toLocaleString()}
+              </strong>
             </p>
             <div style={{ display: "flex", gap: 8 }}>
               <button onClick={() => setValidating(null)} style={cancelBtn}>Cancel</button>
@@ -354,19 +357,13 @@ export default function StationManagerDashboard() {
             <p style={{ color: "#555", marginBottom: 16 }}>
               <strong>{rejecting.driver_name}</strong> — ₦{rejecting.total_amount.toLocaleString()}
             </p>
-            <label style={{ display: "block", fontWeight: "bold", marginBottom: 6, fontSize: 14 }}>
-              Reason for rejection *
-            </label>
+            <label style={{ display: "block", fontWeight: "bold", marginBottom: 6, fontSize: 14 }}>Reason for rejection *</label>
             <textarea
               value={rejectReason}
               onChange={(e) => { setRejectReason(e.target.value); setRejectError("") }}
               placeholder="e.g. Incorrect litres entered"
               rows={3}
-              style={{
-                width: "100%", padding: 10, boxSizing: "border-box",
-                borderRadius: 6, border: "1px solid #ddd", fontSize: 14,
-                resize: "none", marginBottom: 8
-              }}
+              style={{ width: "100%", padding: 10, boxSizing: "border-box", borderRadius: 6, border: "1px solid #ddd", fontSize: 14, resize: "none", marginBottom: 8 }}
             />
             {rejectError && <p style={{ color: "red", fontSize: 13, marginBottom: 8 }}>{rejectError}</p>}
             <div style={{ display: "flex", gap: 8, marginTop: 16 }}>
@@ -382,19 +379,7 @@ export default function StationManagerDashboard() {
   )
 }
 
-const overlay: React.CSSProperties = {
-  position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)",
-  display: "flex", alignItems: "center", justifyContent: "center", zIndex: 100
-}
-const modal: React.CSSProperties = {
-  background: "white", borderRadius: 12, padding: 32,
-  width: 420, maxWidth: "90vw", boxShadow: "0 8px 32px rgba(0,0,0,0.2)"
-}
-const primaryBtn: React.CSSProperties = {
-  flex: 1, padding: "10px 0", background: "#0070f3",
-  color: "white", border: "none", borderRadius: 6, cursor: "pointer", fontWeight: "bold"
-}
-const cancelBtn: React.CSSProperties = {
-  flex: 1, padding: "10px 0", background: "white",
-  border: "1px solid #ddd", borderRadius: 6, cursor: "pointer"
-}
+const overlay: React.CSSProperties = { position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 100 }
+const modal: React.CSSProperties = { background: "white", borderRadius: 12, padding: 32, width: 420, maxWidth: "90vw", boxShadow: "0 8px 32px rgba(0,0,0,0.2)" }
+const primaryBtn: React.CSSProperties = { flex: 1, padding: "10px 0", background: "#0070f3", color: "white", border: "none", borderRadius: 6, cursor: "pointer", fontWeight: "bold" }
+const cancelBtn: React.CSSProperties = { flex: 1, padding: "10px 0", background: "white", border: "1px solid #ddd", borderRadius: 6, cursor: "pointer" }
