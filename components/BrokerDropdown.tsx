@@ -42,7 +42,7 @@ export default function BrokerDropdown({ onSelect }: Props) {
   }
 
   return (
-    <div style={{ padding: 40, fontFamily: "Arial" }}>
+    <div style={{ padding: 12, fontFamily: "Arial" }}>
       <h2>Select Broker</h2>
 
       <div style={{ position: "relative", width: 320 }}>

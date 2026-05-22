@@ -46,8 +46,11 @@ export default function MonitorTrips() {
   const [selectedDriver, setSelectedDriver] = useState<Pick<Trip, "driver_name" | "driver_phone" | "driver_status"> | null>(null)
   const [selectedStops, setSelectedStops] = useState<Stop[] | null>(null)
   const [selectedPlate, setSelectedPlate] = useState("")
-  const [selectedTrip, setSelectedTrip] = useState<Pick<Trip, "trip_id" | "plate_number" | "atc"> | null>(null)
+  const [selectedTrip, setSelectedTrip] = useState<Pick<Trip, "trip_id" | "plate_number" | "atc" | "trip_status"> | null>(null)
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null)
+  const [endingTrip, setEndingTrip] = useState<string | null>(null) // trip_id pending confirmation
+  const [endTripError, setEndTripError] = useState<string | null>(null)
+  const [endTripLoading, setEndTripLoading] = useState(false)
 
   async function fetchTrips() {
     const { data: tripsData, error } = await supabase
@@ -59,14 +62,12 @@ export default function MonitorTrips() {
 
     const enriched = await Promise.all(
       tripsData.map(async (trip) => {
-        // Fetch driver
         const { data: driver } = await supabase
           .from("Drivers")
           .select("full_name, phone_number, status")
           .eq("driver_id", trip.driver_id)
           .single()
 
-        // Fetch stops with broker and customer names
         const { data: stopsRaw } = await supabase
           .from("Stops")
           .select("stop_id, quantity_offloaded, latitude, longitude, stop_time, stop_location, broker_id, customer_id, confirmed, disputed, dispute_reason")
@@ -141,13 +142,47 @@ export default function MonitorTrips() {
     return () => clearInterval(interval)
   }, [])
 
+  function handleEndTripClick() {
+    if (!selectedStops || !selectedTrip) return
+    setEndTripError(null)
+
+    const hasUnresolved = selectedStops.some((s) => !s.confirmed || s.disputed)
+    if (hasUnresolved) {
+      setEndTripError("Resolve all disputed and unconfirmed stops before ending this trip.")
+      return
+    }
+
+    setEndingTrip(selectedTrip.trip_id)
+  }
+
+  async function confirmEndTrip() {
+    if (!endingTrip || !selectedTrip) return
+    setEndTripLoading(true)
+
+    await supabase
+      .from("Trips")
+      .update({ trip_status: "Completed" })
+      .eq("trip_id", endingTrip)
+
+    await supabase
+      .from("Trucks")
+      .update({ status: "Empty" })
+      .eq("plate_number", selectedTrip.plate_number)
+
+    setEndTripLoading(false)
+    setEndingTrip(null)
+    setSelectedStops(null)
+    setSelectedTrip(null)
+    fetchTrips()
+  }
+
   const filteredTrips = filterStatus === "All"
-  ? trips
-  : filterStatus === "Active"
-  ? trips.filter((t) => t.trip_status === "In transit" || t.trip_status === "On hold")
-  : filterStatus === "Disputed"
-  ? trips.filter((t) => t.stops.some((s) => s.disputed))
-  : trips.filter((t) => t.trip_status === filterStatus)
+    ? trips
+    : filterStatus === "Active"
+    ? trips.filter((t) => t.trip_status === "In transit" || t.trip_status === "On hold")
+    : filterStatus === "Disputed"
+    ? trips.filter((t) => t.stops.some((s) => s.disputed))
+    : trips.filter((t) => t.trip_status === filterStatus)
 
   const statusColor = (status: string) => {
     switch (status) {
@@ -161,6 +196,8 @@ export default function MonitorTrips() {
   function closeModals() {
     setSelectedDriver(null)
     setSelectedStops(null)
+    setEndTripError(null)
+    setEndingTrip(null)
   }
 
   return (
@@ -259,7 +296,13 @@ export default function MonitorTrips() {
                         onClick={() => {
                           setSelectedStops(trip.stops)
                           setSelectedPlate(trip.plate_number)
-                          setSelectedTrip({ trip_id: trip.trip_id, plate_number: trip.plate_number, atc: trip.atc })
+                          setSelectedTrip({
+                            trip_id: trip.trip_id,
+                            plate_number: trip.plate_number,
+                            atc: trip.atc,
+                            trip_status: trip.trip_status,
+                          })
+                          setEndTripError(null)
                         }}
                         style={{ color: "#0070f3", cursor: "pointer", textDecoration: "underline" }}
                       >
@@ -306,20 +349,13 @@ export default function MonitorTrips() {
               overflowY: "auto", boxShadow: "0 8px 32px rgba(0,0,0,0.2)"
             }}
           >
-
             {/* Driver Modal */}
             {selectedDriver && (
               <>
                 <h3 style={{ marginBottom: 20 }}>Driver Info</h3>
-                <p style={{ marginBottom: 12 }}>
-                  <strong>Name:</strong> {selectedDriver.driver_name}
-                </p>
-                <p style={{ marginBottom: 12 }}>
-                  <strong>Phone:</strong> {selectedDriver.driver_phone}
-                </p>
-                <p style={{ marginBottom: 24 }}>
-                  <strong>Status:</strong> {selectedDriver.driver_status}
-                </p>
+                <p style={{ marginBottom: 12 }}><strong>Name:</strong> {selectedDriver.driver_name}</p>
+                <p style={{ marginBottom: 12 }}><strong>Phone:</strong> {selectedDriver.driver_phone}</p>
+                <p style={{ marginBottom: 24 }}><strong>Status:</strong> {selectedDriver.driver_status}</p>
                 <button
                   onClick={closeModals}
                   style={{
@@ -351,6 +387,7 @@ export default function MonitorTrips() {
                 {selectedStops.length === 0 && (
                   <p style={{ color: "#888" }}>No stops logged yet.</p>
                 )}
+
                 {selectedStops.map((stop, index) => (
                   <div
                     key={stop.stop_id}
@@ -371,7 +408,6 @@ export default function MonitorTrips() {
                         {stop.disputed ? "Disputed" : stop.confirmed ? "Confirmed" : "Pending"}
                       </span>
                     </div>
-
                     <p style={{ marginBottom: 6 }}><strong>Broker:</strong> {stop.broker_name}</p>
                     <p style={{ marginBottom: 6 }}><strong>Customer:</strong> {stop.customer_name}</p>
                     <p style={{ marginBottom: 6 }}><strong>Bags Offloaded:</strong> {stop.quantity_offloaded}</p>
@@ -387,7 +423,6 @@ export default function MonitorTrips() {
                         View on Maps 📍
                       </a>
                     </p>
-
                     {stop.disputed && stop.dispute_reason && (
                       <div style={{
                         marginTop: 8, padding: 10, background: "#fff0f0",
@@ -402,25 +437,92 @@ export default function MonitorTrips() {
                         <ReassignBroker stopId={stop.stop_id} onReassigned={fetchTrips} />
                       </div>
                     )}
-
                     <p style={{ marginBottom: 0, color: "#888", fontSize: 12, marginTop: 8 }}>
                       {new Date(stop.stop_time).toLocaleString()}
                     </p>
                   </div>
                 ))}
-                <button
-                  onClick={closeModals}
-                  style={{
-                    width: "100%", padding: "10px 0", background: "#0070f3",
-                    color: "white", border: "none", borderRadius: 6,
-                    cursor: "pointer", marginTop: 8
-                  }}
-                >
-                  Close
-                </button>
+
+                {/* End Trip Error */}
+                {endTripError && (
+                  <div style={{
+                    background: "#fff5f5", border: "1px solid #ffcccc",
+                    borderRadius: 8, padding: "10px 14px", marginBottom: 12
+                  }}>
+                    <p style={{ margin: 0, fontSize: 13, color: "#ff4444" }}>{endTripError}</p>
+                  </div>
+                )}
+
+                <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+                  {/* End Trip button — only for active trips */}
+                  {selectedTrip && (selectedTrip.trip_status === "In transit" || selectedTrip.trip_status === "On hold") && (
+                    <button
+                      onClick={handleEndTripClick}
+                      style={{
+                        flex: 1, padding: "10px 0", background: "#ff4444",
+                        color: "white", border: "none", borderRadius: 6, cursor: "pointer",
+                        fontWeight: "bold"
+                      }}
+                    >
+                      End Trip
+                    </button>
+                  )}
+                  <button
+                    onClick={closeModals}
+                    style={{
+                      flex: 1, padding: "10px 0", background: "#0070f3",
+                      color: "white", border: "none", borderRadius: 6, cursor: "pointer"
+                    }}
+                  >
+                    Close
+                  </button>
+                </div>
               </>
             )}
+          </div>
+        </div>
+      )}
 
+      {/* End Trip Confirmation Modal */}
+      {endingTrip && (
+        <div
+          style={{
+            position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)",
+            display: "flex", alignItems: "center", justifyContent: "center",
+            zIndex: 200
+          }}
+        >
+          <div style={{
+            background: "white", borderRadius: 12, padding: 32,
+            width: 400, maxWidth: "90vw", boxShadow: "0 8px 32px rgba(0,0,0,0.25)"
+          }}>
+            <h3 style={{ marginBottom: 12 }}>End Trip?</h3>
+            <p style={{ color: "#555", marginBottom: 24 }}>
+              This will mark the trip as <strong>Completed</strong> and set the truck status to <strong>Empty</strong>. This cannot be undone.
+            </p>
+            <div style={{ display: "flex", gap: 8 }}>
+              <button
+                onClick={() => setEndingTrip(null)}
+                disabled={endTripLoading}
+                style={{
+                  flex: 1, padding: "10px 0", background: "white",
+                  border: "1px solid #ddd", borderRadius: 6, cursor: "pointer"
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={confirmEndTrip}
+                disabled={endTripLoading}
+                style={{
+                  flex: 1, padding: "10px 0", background: "#ff4444",
+                  color: "white", border: "none", borderRadius: 6,
+                  cursor: endTripLoading ? "not-allowed" : "pointer", fontWeight: "bold"
+                }}
+              >
+                {endTripLoading ? "Ending..." : "Yes, End Trip"}
+              </button>
+            </div>
           </div>
         </div>
       )}
@@ -435,4 +537,3 @@ const th: React.CSSProperties = {
 const td: React.CSSProperties = {
   padding: "12px 16px"
 }
-

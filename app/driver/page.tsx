@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from "react"
 import { supabase } from "@/lib/supabase"
 import StopForm from "@/components/StopForm"
+import BuyDiesel from "@/components/BuyDiesel"
 
 type Driver = {
   driver_id: string
@@ -31,7 +32,7 @@ export default function DriverDashboard() {
   const [activeTrip, setActiveTrip] = useState<Trip | null>(null)
   const [stops, setStops] = useState<Stop[]>([])
   const [remaining, setRemaining] = useState(0)
-  const [view, setView] = useState<"dashboard" | "start-trip" | "active-trip" | "log-stop">("dashboard")
+  const [view, setView] = useState<"dashboard" | "start-trip" | "active-trip" | "log-stop" | "buy-diesel">("dashboard")
   const [loading, setLoading] = useState(true)
   const [submitting, setSubmitting] = useState(false)
   const [message, setMessage] = useState("")
@@ -251,17 +252,29 @@ export default function DriverDashboard() {
       {view === "dashboard" && (
         <div style={{ textAlign: "center", paddingTop: 60 }}>
           <h2 style={{ marginBottom: 8 }}>Ready to go?</h2>
-          <p style={{ color: "#888", marginBottom: 40 }}>No active trip. Start one below.</p>
-          <button
-            onClick={() => setView("start-trip")}
-            style={{
-              padding: "16px 48px", background: "#0070f3", color: "white",
-              border: "none", borderRadius: 8, fontSize: 18, cursor: "pointer",
-              fontWeight: "bold"
-            }}
-          >
-            Start a Trip
-          </button>
+          <p style={{ color: "#888", marginBottom: 40 }}>No active trip. What would you like to do?</p>
+          <div style={{ display: "flex", flexDirection: "column", gap: 12, maxWidth: 320, margin: "0 auto" }}>
+            <button
+              onClick={() => setView("start-trip")}
+              style={{
+                padding: "16px 48px", background: "#0070f3", color: "white",
+                border: "none", borderRadius: 8, fontSize: 18, cursor: "pointer",
+                fontWeight: "bold"
+              }}
+            >
+              Start a Trip
+            </button>
+            <button
+              onClick={() => setView("buy-diesel")}
+              style={{
+                padding: "16px 48px", background: "white", color: "#333",
+                border: "1px solid #ddd", borderRadius: 8, fontSize: 18, cursor: "pointer",
+                fontWeight: "bold"
+              }}
+            >
+              Buy Diesel
+            </button>
+          </div>
         </div>
       )}
 
@@ -477,6 +490,11 @@ export default function DriverDashboard() {
           </button>
           <StopForm tripId={activeTrip.trip_id} onStopLogged={handleStopLogged} />
         </div>
+      )}
+
+      {/* Buy Diesel View */}
+      {view === "buy-diesel" && (
+        <BuyDiesel driverId={driver?.driver_id ?? ""} onBack={() => setView("dashboard")} />
       )}
 
       {/* End Trip Confirmation Modal */}
