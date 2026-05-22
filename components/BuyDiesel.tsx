@@ -25,7 +25,7 @@ export default function BuyDiesel({ driverId, onBack }: Props) {
   useEffect(() => {
     async function fetchCompanies() {
       const { data } = await supabase
-        .from("Fuel_Companies")
+        .from("fuel_companies")
         .select("company_id, company_name")
         .order("company_name", { ascending: true })
       setCompanies(data || [])

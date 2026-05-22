@@ -67,7 +67,7 @@ export default function DieselManager() {
 
   async function fetchCompanies() {
     const { data } = await supabase
-      .from("Fuel_Companies")
+      .from("fuel_companies")
       .select("*")
       .order("created_at", { ascending: true })
     setCompanies(data || [])
@@ -90,7 +90,7 @@ export default function DieselManager() {
           .single()
 
         const { data: company } = await supabase
-          .from("Fuel_Companies")
+          .from("fuel_companies")
           .select("company_name")
           .eq("company_id", r.company_id)
           .single()
@@ -115,7 +115,7 @@ export default function DieselManager() {
     if (!newCompanyName.trim()) return setAddError("Company name is required")
     setAddLoading(true)
     const { error } = await supabase
-      .from("Fuel_Companies")
+      .from("fuel_companies")
       .insert([{ company_name: newCompanyName.trim() }])
     if (error) { setAddError("Failed to add company"); setAddLoading(false); return }
     setNewCompanyName("")
@@ -130,7 +130,7 @@ export default function DieselManager() {
     if (!editName.trim()) return setEditError("Company name is required")
     setEditLoading(true)
     const { error } = await supabase
-      .from("Fuel_Companies")
+      .from("fuel_companies")
       .update({ company_name: editName.trim() })
       .eq("company_id", editingCompany.company_id)
     if (error) { setEditError("Failed to update"); setEditLoading(false); return }
@@ -153,7 +153,7 @@ export default function DieselManager() {
     const newBalance = toppingUp.current_balance + amount
 
     const { error: companyError } = await supabase
-      .from("Fuel_Companies")
+      .from("fuel_companies")
       .update({ current_balance: newBalance, low_balance_threshold: threshold })
       .eq("company_id", toppingUp.company_id)
 
@@ -180,7 +180,7 @@ export default function DieselManager() {
     if (!deletingCompany) return
     setDeleteLoading(true)
     await supabase
-      .from("Fuel_Companies")
+      .from("fuel_companies")
       .delete()
       .eq("company_id", deletingCompany.company_id)
     setDeletingCompany(null)

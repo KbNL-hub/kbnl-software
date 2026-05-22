@@ -53,7 +53,7 @@ export default function AdminDashboard() {
 
     async function checkLowBalances() {
       const { data } = await supabase
-        .from("Fuel_Companies")
+        .from("fuel_companies")
         .select("company_id, company_name, current_balance, low_balance_threshold")
 
       if (!data) return
