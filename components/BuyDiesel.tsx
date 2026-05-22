@@ -44,7 +44,7 @@ export default function BuyDiesel({ driverId, onBack }: Props) {
 
     setSubmitting(true)
     const { error } = await supabase
-      .from("Fuel_Requests")
+      .from("fuel_requests")
       .insert([{
         driver_id: driverId,
         company_id: companyId,

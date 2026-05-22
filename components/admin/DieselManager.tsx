@@ -75,7 +75,7 @@ export default function DieselManager() {
 
   async function fetchRequests() {
     const { data: requestsRaw } = await supabase
-      .from("Fuel_Requests")
+      .from("fuel_requests")
       .select("request_id, driver_id, company_id, litres, rate_per_litre, total_amount, status, requested_at")
       .order("requested_at", { ascending: false })
 
@@ -160,7 +160,7 @@ export default function DieselManager() {
     if (companyError) { setTopUpError("Failed to top up"); setTopUpLoading(false); return }
 
     await supabase
-      .from("Fuel_Deposits")
+      .from("fuel_deposits")
       .insert([{
         company_id: toppingUp.company_id,
         amount,
