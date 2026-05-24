@@ -57,9 +57,19 @@ export default function DriverDashboard() {
     initDriver()
   }, [])
 
+  useEffect(() => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
+      if (event === "SIGNED_OUT" || event === "TOKEN_REFRESHED" && !supabase.auth.getSession()) {
+        window.location.href = "/login"
+      }
+    })
+    return () => subscription.unsubscribe()
+  }, [])
+
   async function initDriver() {
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) return
+    const { data: { session } } = await supabase.auth.getSession()
+    if (!session) { window.location.href = "/login"; return }
+    const user = session.user
 
     const { data: driverData } = await supabase
       .from("Drivers")

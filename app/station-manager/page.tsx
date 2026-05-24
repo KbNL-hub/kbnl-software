@@ -36,10 +36,22 @@ export default function StationManagerDashboard() {
   const [rejectError, setRejectError] = useState("")
   const [rejectLoading, setRejectLoading] = useState(false)
 
+  // Auth state listener — top level, NOT inside init
+  useEffect(() => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
+      if (event === "SIGNED_OUT") {
+        router.push("/login")
+      }
+    })
+    return () => subscription.unsubscribe()
+  }, [])
+
+  // Init
   useEffect(() => {
     async function init() {
-      const { data: { user } } = await supabase.auth.getUser()
-      if (!user) { router.push("/login"); return }
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session) { router.push("/login"); return }
+      const user = session.user
 
       const { data: profile } = await supabase
         .from("Profiles")
@@ -68,6 +80,7 @@ export default function StationManagerDashboard() {
     init()
   }, [])
 
+  // Auto-refresh
   useEffect(() => {
     if (!companyId) return
     const interval = setInterval(() => {
@@ -139,9 +152,7 @@ export default function StationManagerDashboard() {
       .update({ current_balance: newBalance })
       .eq("company_id", companyId)
 
-    // Update balance immediately in UI
     setCurrentBalance(newBalance)
-
     setValidateLoading(false)
     setValidating(null)
     fetchRequests(companyId)
@@ -220,10 +231,7 @@ export default function StationManagerDashboard() {
           boxShadow: "0 2px 8px rgba(0,0,0,0.06)"
         }}>
           <p style={{ margin: "0 0 4px", fontSize: 13, color: "#888" }}>Available Balance</p>
-          <p style={{
-            margin: 0, fontSize: 36, fontWeight: "bold",
-            color: isLow ? "#f5a623" : "#00aa00"
-          }}>
+          <p style={{ margin: 0, fontSize: 36, fontWeight: "bold", color: isLow ? "#f5a623" : "#00aa00" }}>
             ₦{currentBalance !== null ? currentBalance.toLocaleString() : "—"}
           </p>
           {isLow && (

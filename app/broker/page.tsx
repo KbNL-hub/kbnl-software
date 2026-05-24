@@ -40,9 +40,19 @@ export default function BrokerDashboard() {
     initBroker()
   }, [])
 
+  useEffect(() => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
+      if (event === "SIGNED_OUT") {
+        window.location.href = "/login"
+      }
+    })
+    return () => subscription.unsubscribe()
+  }, [])
+
   async function initBroker() {
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) return
+    const { data: { session } } = await supabase.auth.getSession()
+    if (!session) { window.location.href = "/login"; return }
+    const user = session.user
 
     setBrokerId(user.id)
 
