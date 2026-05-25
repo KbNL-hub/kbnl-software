@@ -12,6 +12,8 @@ import ManageDrivers from "@/components/admin/ManageDrivers"
 import MonitorTrips from "@/components/admin/MonitorTrips"
 import DieselManager from "@/components/admin/DieselManager"
 import StationManagers from "@/components/admin/StationManagers"
+import MaintenanceManagers from "@/components/admin/MaintenanceManagers"
+import TruckAdmins from "@/components/admin/TruckAdmins"
 
 const navItems = [
   { label: "Add New Truck", key: "add-truck" },
@@ -22,7 +24,9 @@ const navItems = [
   { label: "Manage Drivers", key: "manage-drivers" },
   { label: "Monitor Trips", key: "monitor-trips" },
   { label: "Diesel Manager", key: "diesel-manager" },
-  { label: "Station Managers", key: "station-managers" }
+  { label: "Station Managers", key: "station-managers" },
+  { label: "Maintenance Managers", key: "maintenance-managers" },
+  { label: "Truck Admins", key: "truck-admins" },
 ]
 
 type LowBalanceCompany = {
@@ -39,7 +43,6 @@ export default function AdminDashboard() {
   const [dismissedAlerts, setDismissedAlerts] = useState<Set<string>>(new Set())
 
   useEffect(() => {
-    // Load dismissed alerts from sessionStorage (clears on tab close)
     const stored = sessionStorage.getItem("dismissedFuelAlerts")
     if (stored) setDismissedAlerts(new Set(JSON.parse(stored)))
   }, [])
@@ -57,9 +60,7 @@ export default function AdminDashboard() {
       const { data } = await supabase
         .from("fuel_companies")
         .select("company_id, company_name, current_balance, low_balance_threshold")
-
       if (!data) return
-
       const low = data.filter((c) => c.current_balance < c.low_balance_threshold)
       setLowBalanceCompanies(low)
     }
@@ -95,8 +96,10 @@ export default function AdminDashboard() {
       case "manage-trucks": return <ManageTrucks />
       case "manage-drivers": return <ManageDrivers />
       case "monitor-trips": return <MonitorTrips />
-      case "station-managers": return <StationManagers />
       case "diesel-manager": return <DieselManager />
+      case "station-managers": return <StationManagers />
+      case "maintenance-managers": return <MaintenanceManagers />
+      case "truck-admins": return <TruckAdmins />
       default: return (
         <div>
           <h1 style={{ marginBottom: 8 }}>Welcome, Admin</h1>

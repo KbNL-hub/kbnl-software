@@ -82,5 +82,27 @@ export async function POST(req: Request) {
     }
   }
 
+  if (role === "MaintenanceManager") {
+    const { error: mmError } = await supabaseAdmin.from("maintenance_managers").insert([{
+      manager_id: userId,
+      full_name: fullName,
+      phone_number: phoneNumber || null,
+    }])
+    if (mmError) {
+      return NextResponse.json({ error: "Invite sent but maintenance manager record failed" }, { status: 500 })
+    }
+  }
+
+  if (role === "TruckAdmin") {
+    const { error: taError } = await supabaseAdmin.from("truck_admins").insert([{
+      admin_id: userId,
+      full_name: fullName,
+      phone_number: phoneNumber || null,
+    }])
+    if (taError) {
+      return NextResponse.json({ error: "Invite sent but truck admin record failed" }, { status: 500 })
+    }
+  }
+
   return NextResponse.json({ success: true })
 }
