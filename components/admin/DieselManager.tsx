@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react"
 import { supabase } from "@/lib/supabase"
+import { formatAmount, parseAmount } from "@/lib/formatAmount"
 
 type FuelCompany = {
   company_id: string
@@ -155,14 +156,14 @@ export default function DieselManager() {
 
   async function handleTopUp() {
     if (!toppingUp) return
-    if (!topUpAmount || isNaN(Number(topUpAmount)) || Number(topUpAmount) <= 0)
+    if (!topUpAmount || parseAmount(topUpAmount) <= 0)
       return setTopUpError("Enter a valid amount")
-    if (!topUpThreshold || isNaN(Number(topUpThreshold)) || Number(topUpThreshold) <= 0)
+    if (!topUpThreshold || parseAmount(topUpThreshold) <= 0)
       return setTopUpError("Enter a valid threshold")
 
     setTopUpLoading(true)
-    const amount = Number(topUpAmount)
-    const threshold = Number(topUpThreshold)
+    const amount = parseAmount(topUpAmount)
+    const threshold = parseAmount(topUpThreshold)
     const newBalance = toppingUp.current_balance + amount
 
     const { error: companyError } = await supabase
@@ -477,9 +478,9 @@ export default function DieselManager() {
             <h3 style={{ marginBottom: 4 }}>Top Up — {toppingUp.company_name}</h3>
             <p style={{ color: "#888", fontSize: 13, marginBottom: 20 }}>Current balance: ₦{toppingUp.current_balance.toLocaleString()}</p>
             <label style={label}>Deposit Amount (₦) *</label>
-            <input type="number" value={topUpAmount} onChange={(e) => { setTopUpAmount(e.target.value); setTopUpError("") }} placeholder="e.g. 500000" style={input} autoFocus />
+            <input type="text" inputMode="numeric" value={topUpAmount} onChange={(e) => { setTopUpAmount(formatAmount(e.target.value)); setTopUpError("") }} placeholder="e.g. 500,000" style={input} autoFocus />
             <label style={{ ...label, marginTop: 16 }}>Low Balance Threshold (₦) *</label>
-            <input type="number" value={topUpThreshold} onChange={(e) => { setTopUpThreshold(e.target.value); setTopUpError("") }} placeholder="e.g. 1000000" style={input} />
+            <input type="text" inputMode="numeric" value={topUpThreshold} onChange={(e) => { setTopUpThreshold(formatAmount(e.target.value)); setTopUpError("") }} placeholder="e.g. 1,000,000" style={input} />
             <label style={{ ...label, marginTop: 16 }}>Note (optional)</label>
             <input type="text" value={topUpNote} onChange={(e) => setTopUpNote(e.target.value)} placeholder="e.g. March deposit" style={input} />
             {topUpError && <p style={errorText}>{topUpError}</p>}

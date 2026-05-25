@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import { supabase } from "@/lib/supabase"
+import { formatAmount, parseAmount } from "@/lib/formatAmount"
 
 type AssignedTruck = {
   plate_number: string
@@ -155,7 +156,7 @@ export default function MaintenanceManagerDashboard() {
         manager_id: managerId,
         plate_number: logPlate,
         maintenance_type: finalType,
-        amount: Number(logAmount),
+        amount: parseAmount(logAmount),
         notes: logNotes.trim() || null,
       }])
 
@@ -203,9 +204,17 @@ export default function MaintenanceManagerDashboard() {
       <div style={{ padding: 24, maxWidth: 800, margin: "0 auto" }}>
         {/* Assigned Trucks Summary */}
         <div style={{ background: "white", border: "1px solid #eee", borderRadius: 12, padding: 20, marginBottom: 24, boxShadow: "0 2px 8px rgba(0,0,0,0.04)" }}>
-          <p style={{ margin: "0 0 12px", fontWeight: "bold", fontSize: 15 }}>
-            My Trucks ({assignedTrucks.length})
-          </p>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+            <p style={{ margin: 0, fontWeight: "bold", fontSize: 15 }}>
+              My Trucks ({assignedTrucks.length})
+            </p>
+            <button
+              onClick={() => fetchTrucks(managerId)}
+              style={{ padding: "4px 12px", fontSize: 12, cursor: "pointer", borderRadius: 4, border: "1px solid #ddd", background: "white" }}
+            >
+              Refresh
+            </button>
+          </div>
           {assignedTrucks.length === 0 && <p style={{ color: "#888", fontSize: 13, margin: 0 }}>No trucks assigned yet.</p>}
           <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
             {assignedTrucks.map((t) => (
@@ -369,10 +378,11 @@ export default function MaintenanceManagerDashboard() {
             <div style={{ marginBottom: 16 }}>
               <label style={label}>Amount Spent (₦) *</label>
               <input
-                type="number"
-                placeholder="e.g. 25000"
+                type="text"
+                inputMode="numeric"
+                placeholder="e.g. 25,000"
                 value={logAmount}
-                onChange={(e) => { setLogAmount(e.target.value); setLogError("") }}
+                onChange={(e) => { setLogAmount(formatAmount(e.target.value)); setLogError("") }}
                 style={inputStyle}
               />
             </div>

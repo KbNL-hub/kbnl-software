@@ -487,9 +487,11 @@ export default function MaintenanceManagers() {
                   </>
                 )}
 
-                <div style={{ marginTop: 24 }}>
-                  <button onClick={closeModals} style={{ ...primaryBtn }}>Done</button>
-                </div>
+                <div style={{ marginTop: 24, display: "flex", justifyContent: "flex-end" }}>
+                <button onClick={closeModals} style={{ padding: "10px 24px", background: "#0070f3", color: "white", border: "none", borderRadius: 6, cursor: "pointer", fontWeight: "medium" }}>
+                  Done
+                </button>
+              </div>
               </>
             )}
           </div>

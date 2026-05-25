@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react"
 import { supabase } from "@/lib/supabase"
+import { formatAmount, parseAmount } from "@/lib/formatAmount"
 import CustomerSelector from "@/components/CustomerSelector"
 
 type Customer = {
@@ -199,7 +200,7 @@ export default function BrokerDashboard() {
         stop_id: selectedStop.stop_id,
         broker_id: brokerId,
         customer_id: customerIdToSave,
-        price_per_bag: parseFloat(pricePerBag),
+        price_per_bag: parseAmount(pricePerBag),
       }])
 
     setSubmitting(false)
@@ -376,10 +377,11 @@ export default function BrokerDashboard() {
                 Price Per Bag (₦) *
               </label>
               <input
-                type="number"
-                placeholder="e.g. 4500"
+                type="text"
+                inputMode="numeric"
+                placeholder="e.g. 10,500"
                 value={pricePerBag}
-                onChange={(e) => { setPricePerBag(e.target.value); setMessage("") }}
+                onChange={(e) => { setPricePerBag(formatAmount(e.target.value)); setMessage("") }}
                 style={{ width: "100%", padding: 10, boxSizing: "border-box" }}
               />
             </div>

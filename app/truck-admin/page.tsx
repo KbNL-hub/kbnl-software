@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import { supabase } from "@/lib/supabase"
+import { formatAmount, parseAmount } from "@/lib/formatAmount"
 
 type MaintenanceReport = {
   report_id: string
@@ -15,6 +16,19 @@ type MaintenanceReport = {
   rejection_reason: string | null
   reported_at: string
 }
+
+type BulkProcurement = {
+  procurement_id: string
+  item_name: string
+  total_amount: number
+  notes: string | null
+  logged_at: string
+  distributions: { plate_number: string; amount_allocated: number }[]
+}
+
+type FeedItem =
+  | { kind: "report"; data: MaintenanceReport }
+  | { kind: "procurement"; data: BulkProcurement }
 
 type Truck = {
   plate_number: string
@@ -40,6 +54,7 @@ export default function TruckAdminDashboard() {
   const [adminId, setAdminId] = useState("")
   const [adminName, setAdminName] = useState("")
   const [reports, setReports] = useState<MaintenanceReport[]>([])
+  const [procurements, setProcurements] = useState<BulkProcurement[]>([])
   const [allTrucks, setAllTrucks] = useState<Truck[]>([])
   const [loading, setLoading] = useState(true)
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null)
@@ -61,9 +76,8 @@ export default function TruckAdminDashboard() {
   const [distributions, setDistributions] = useState<DistributionEntry[]>([])
   const [procError, setProcError] = useState("")
   const [procLoading, setProcLoading] = useState(false)
-  const [procSuccess, setProcSuccess] = useState(false)
 
-  const filters = ["All", "Pending", "Validated", "Rejected"]
+  const filters = ["All", "Pending", "Validated", "Rejected", "Bulk Procurement"]
 
   useEffect(() => {
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
@@ -97,7 +111,7 @@ export default function TruckAdminDashboard() {
       setAdminId(admin.admin_id)
       setAdminName(admin.full_name)
 
-      await Promise.all([fetchReports(), fetchTrucks()])
+      await Promise.all([fetchReports(), fetchProcurements(), fetchTrucks()])
       setLoading(false)
     }
     init()
@@ -105,7 +119,10 @@ export default function TruckAdminDashboard() {
 
   useEffect(() => {
     if (!adminId) return
-    const interval = setInterval(fetchReports, 30000)
+    const interval = setInterval(() => {
+      fetchReports()
+      fetchProcurements()
+    }, 30000)
     return () => clearInterval(interval)
   }, [adminId])
 
@@ -141,6 +158,35 @@ export default function TruckAdminDashboard() {
 
     setReports(enriched)
     setLastUpdated(new Date())
+  }
+
+  async function fetchProcurements() {
+    const { data: procRaw } = await supabase
+      .from("bulk_procurement")
+      .select("procurement_id, item_name, total_amount, notes, logged_at")
+      .order("logged_at", { ascending: false })
+
+    if (!procRaw) return
+
+    const enriched = await Promise.all(
+      procRaw.map(async (p) => {
+        const { data: dists } = await supabase
+          .from("procurement_distributions")
+          .select("plate_number, amount_allocated")
+          .eq("procurement_id", p.procurement_id)
+
+        return {
+          procurement_id: p.procurement_id,
+          item_name: p.item_name,
+          total_amount: p.total_amount,
+          notes: p.notes,
+          logged_at: p.logged_at,
+          distributions: dists || [],
+        }
+      })
+    )
+
+    setProcurements(enriched)
   }
 
   async function fetchTrucks() {
@@ -187,19 +233,21 @@ export default function TruckAdminDashboard() {
     }
   }
 
-  function updateDistributionAmount(plateNumber: string, amount: string) {
+  function updateDistributionAmount(plateNumber: string, value: string) {
+    const formatted = formatAmount(value)
     setDistributions(distributions.map(d =>
-      d.plate_number === plateNumber ? { ...d, amount } : d
+      d.plate_number === plateNumber ? { ...d, amount: formatted } : d
     ))
   }
 
-  const distributionTotal = distributions.reduce((sum, d) => sum + (Number(d.amount) || 0), 0)
+  const distributionTotal = distributions.reduce((sum, d) => sum + parseAmount(d.amount), 0)
 
   async function handleLogProcurement() {
     if (!procItem.trim()) return setProcError("Enter item name")
-    if (!procTotal || isNaN(Number(procTotal)) || Number(procTotal) <= 0) return setProcError("Enter a valid total amount")
+    const totalNum = parseAmount(procTotal)
+    if (!procTotal || totalNum <= 0) return setProcError("Enter a valid total amount")
     if (distributions.length === 0) return setProcError("Select at least one truck to distribute across")
-    const hasEmpty = distributions.some(d => !d.amount || isNaN(Number(d.amount)) || Number(d.amount) <= 0)
+    const hasEmpty = distributions.some(d => !d.amount || parseAmount(d.amount) <= 0)
     if (hasEmpty) return setProcError("Enter a valid amount for each selected truck")
 
     setProcLoading(true)
@@ -208,7 +256,7 @@ export default function TruckAdminDashboard() {
       .from("bulk_procurement")
       .insert([{
         item_name: procItem.trim(),
-        total_amount: Number(procTotal),
+        total_amount: totalNum,
         notes: procNotes.trim() || null,
         logged_by: adminId,
       }])
@@ -220,7 +268,7 @@ export default function TruckAdminDashboard() {
     const distRows = distributions.map(d => ({
       procurement_id: procurement.procurement_id,
       plate_number: d.plate_number,
-      amount_allocated: Number(d.amount),
+      amount_allocated: parseAmount(d.amount),
     }))
 
     const { error: distErr } = await supabase
@@ -232,13 +280,22 @@ export default function TruckAdminDashboard() {
 
     setProcItem(""); setProcTotal(""); setProcNotes("")
     setDistributions([]); setProcError("")
-    setProcSuccess(true)
-    setTimeout(() => setProcSuccess(false), 3000)
+    await fetchProcurements()
+    setTab("reports")
+    setFilter("Bulk Procurement")
   }
 
-  const filteredReports = filter === "All"
-    ? reports
-    : reports.filter(r => r.status === filter)
+  // Build combined feed sorted by date
+  const feedItems: FeedItem[] = [
+    ...reports.map(r => ({ kind: "report" as const, data: r, date: r.reported_at })),
+    ...procurements.map(p => ({ kind: "procurement" as const, data: p, date: p.logged_at })),
+  ].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+
+  const filteredFeed = filter === "All"
+    ? feedItems
+    : filter === "Bulk Procurement"
+    ? feedItems.filter(f => f.kind === "procurement")
+    : feedItems.filter(f => f.kind === "report" && (f.data as MaintenanceReport).status === filter)
 
   if (loading) return (
     <div style={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: "100vh", fontFamily: "Arial" }}>
@@ -275,10 +332,9 @@ export default function TruckAdminDashboard() {
                 background: tab === t ? "#0070f3" : "white",
                 color: tab === t ? "white" : "#333",
                 fontWeight: tab === t ? "bold" : "normal",
-                textTransform: "capitalize"
               }}
             >
-              {t === "reports" ? "Maintenance Reports" : "Bulk Procurement"}
+              {t === "reports" ? "Maintenance Reports" : "Log Bulk Procurement"}
             </button>
           ))}
         </div>
@@ -306,16 +362,64 @@ export default function TruckAdminDashboard() {
               </div>
               <div style={{ display: "flex", alignItems: "center", gap: 12, fontSize: 12, color: "#888" }}>
                 {lastUpdated && `Updated: ${lastUpdated.toLocaleTimeString()}`}
-                <button onClick={fetchReports} style={{ padding: "4px 12px", fontSize: 12, cursor: "pointer", borderRadius: 4, border: "1px solid #ddd", background: "white" }}>
+                <button onClick={() => { fetchReports(); fetchProcurements() }} style={{ padding: "4px 12px", fontSize: 12, cursor: "pointer", borderRadius: 4, border: "1px solid #ddd", background: "white" }}>
                   Refresh
                 </button>
               </div>
             </div>
 
-            {filteredReports.length === 0 && <p style={{ color: "#888" }}>No {filter === "All" ? "" : filter.toLowerCase()} reports.</p>}
+            {filteredFeed.length === 0 && <p style={{ color: "#888" }}>No {filter === "All" ? "" : filter.toLowerCase()} entries.</p>}
 
             <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-              {filteredReports.map(r => {
+              {filteredFeed.map(item => {
+                if (item.kind === "procurement") {
+                  const p = item.data as BulkProcurement
+                  return (
+                    <div key={p.procurement_id} style={{ background: "white", border: "1px solid #7c3aed33", borderRadius: 10, padding: 20, boxShadow: "0 2px 8px rgba(0,0,0,0.04)" }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 12 }}>
+                        <div>
+                          <p style={{ margin: 0, fontWeight: "bold", fontSize: 15 }}>{p.item_name}</p>
+                          <p style={{ margin: "4px 0 0", fontSize: 12, color: "#aaa" }}>{new Date(p.logged_at).toLocaleString()}</p>
+                        </div>
+                        <span style={{ padding: "4px 10px", borderRadius: 12, fontSize: 12, background: "#7c3aed22", color: "#7c3aed", fontWeight: "bold" }}>
+                          Bulk Procurement
+                        </span>
+                      </div>
+
+                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 12 }}>
+                        <div style={{ background: "#f9f9f9", borderRadius: 6, padding: "8px 12px" }}>
+                          <p style={{ margin: 0, fontSize: 11, color: "#888" }}>Total Amount</p>
+                          <p style={{ margin: 0, fontWeight: "bold", color: "#0070f3" }}>₦{p.total_amount.toLocaleString()}</p>
+                        </div>
+                        <div style={{ background: "#f9f9f9", borderRadius: 6, padding: "8px 12px" }}>
+                          <p style={{ margin: 0, fontSize: 11, color: "#888" }}>Trucks</p>
+                          <p style={{ margin: 0, fontWeight: "bold" }}>{p.distributions.length}</p>
+                        </div>
+                      </div>
+
+                      {p.distributions.length > 0 && (
+                        <div style={{ marginBottom: p.notes ? 12 : 0 }}>
+                          <p style={{ margin: "0 0 6px", fontSize: 12, color: "#888", fontWeight: "bold" }}>Distribution:</p>
+                          <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                            {p.distributions.map(d => (
+                              <span key={d.plate_number} style={{ fontSize: 12, padding: "3px 10px", borderRadius: 20, background: "#f0f7ff", border: "1px solid #0070f322", color: "#0070f3" }}>
+                                {d.plate_number} — ₦{d.amount_allocated.toLocaleString()}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {p.notes && (
+                        <p style={{ margin: "10px 0 0", fontSize: 13, color: "#555" }}>
+                          <strong>Notes:</strong> {p.notes}
+                        </p>
+                      )}
+                    </div>
+                  )
+                }
+
+                const r = item.data as MaintenanceReport
                 const { bg, color } = statusColor(r.status)
                 return (
                   <div key={r.report_id} style={{ background: "white", border: `1px solid ${r.status === "Rejected" ? "#ff444433" : "#eee"}`, borderRadius: 10, padding: 20, boxShadow: "0 2px 8px rgba(0,0,0,0.04)" }}>
@@ -374,12 +478,6 @@ export default function TruckAdminDashboard() {
           <div style={{ maxWidth: 600 }}>
             <h3 style={{ marginBottom: 20 }}>Log Bulk Procurement</h3>
 
-            {procSuccess && (
-              <div style={{ background: "#f0fff4", border: "1px solid #00aa0033", borderRadius: 8, padding: "12px 16px", marginBottom: 16 }}>
-                <p style={{ margin: 0, color: "#00aa00", fontWeight: "bold" }}>✅ Procurement logged successfully.</p>
-              </div>
-            )}
-
             <div style={{ marginBottom: 16 }}>
               <label style={label}>Item Name *</label>
               <input type="text" placeholder="e.g. Grease, Engine oil, Brake fluid" value={procItem} onChange={(e) => { setProcItem(e.target.value); setProcError("") }} style={inputStyle} />
@@ -387,7 +485,14 @@ export default function TruckAdminDashboard() {
 
             <div style={{ marginBottom: 16 }}>
               <label style={label}>Total Amount (₦) *</label>
-              <input type="number" placeholder="e.g. 150000" value={procTotal} onChange={(e) => { setProcTotal(e.target.value); setProcError("") }} style={inputStyle} />
+              <input
+                type="text"
+                inputMode="numeric"
+                placeholder="e.g. 150,000"
+                value={procTotal}
+                onChange={(e) => { setProcTotal(formatAmount(e.target.value)); setProcError("") }}
+                style={inputStyle}
+              />
             </div>
 
             <div style={{ marginBottom: 16 }}>
@@ -415,11 +520,12 @@ export default function TruckAdminDashboard() {
                       <span style={{ fontSize: 12, color: "#888", marginRight: 8 }}>{t.truck_model}</span>
                       {isSelected && (
                         <input
-                          type="number"
+                          type="text"
+                          inputMode="numeric"
                           placeholder="Amount"
                           value={dist.amount}
                           onChange={(e) => { updateDistributionAmount(t.plate_number, e.target.value); setProcError("") }}
-                          style={{ width: 100, padding: "4px 8px", borderRadius: 4, border: "1px solid #ddd", fontSize: 13 }}
+                          style={{ width: 110, padding: "4px 8px", borderRadius: 4, border: "1px solid #ddd", fontSize: 13 }}
                         />
                       )}
                     </div>
@@ -430,11 +536,11 @@ export default function TruckAdminDashboard() {
               {distributions.length > 0 && (
                 <div style={{ marginTop: 12, padding: "8px 12px", background: "#f9f9f9", borderRadius: 6 }}>
                   <p style={{ margin: 0, fontSize: 13 }}>
-                    Total distributed: <strong style={{ color: distributionTotal === Number(procTotal) ? "#00aa00" : "#f5a623" }}>
+                    Total distributed: <strong style={{ color: distributionTotal === parseAmount(procTotal) ? "#00aa00" : "#f5a623" }}>
                       ₦{distributionTotal.toLocaleString()}
                     </strong>
-                    {procTotal && ` / ₦${Number(procTotal).toLocaleString()}`}
-                    {distributionTotal !== Number(procTotal) && procTotal && (
+                    {procTotal && ` / ₦${parseAmount(procTotal).toLocaleString()}`}
+                    {distributionTotal !== parseAmount(procTotal) && procTotal && (
                       <span style={{ color: "#f5a623", marginLeft: 8, fontSize: 12 }}>⚠️ Doesn't match total</span>
                     )}
                   </p>
