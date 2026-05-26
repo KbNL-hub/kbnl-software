@@ -8,15 +8,20 @@ type FuelCompany = {
   company_name: string
 }
 
+type Truck = {
+  plate_number: string
+}
+
 type Props = {
   driverId: string
-  plateNumber: string
   onBack: () => void
 }
 
-export default function BuyDiesel({ driverId, plateNumber, onBack }: Props) {
+export default function BuyDiesel({ driverId, onBack }: Props) {
   const [companies, setCompanies] = useState<FuelCompany[]>([])
+  const [trucks, setTrucks] = useState<Truck[]>([])
   const [companyId, setCompanyId] = useState("")
+  const [selectedPlate, setSelectedPlate] = useState("")
   const [litres, setLitres] = useState("")
   const [rate, setRate] = useState("")
   const [message, setMessage] = useState("")
@@ -24,14 +29,30 @@ export default function BuyDiesel({ driverId, plateNumber, onBack }: Props) {
   const [submitted, setSubmitted] = useState(false)
 
   useEffect(() => {
-    async function fetchCompanies() {
-      const { data } = await supabase
+    async function fetchData() {
+      const { data: companiesData } = await supabase
         .from("fuel_companies")
         .select("company_id, company_name")
         .order("company_name", { ascending: true })
-      setCompanies(data || [])
+      setCompanies(companiesData || [])
+
+      // Same truck list as start trip — Empty trucks not on an active trip
+      const activeTripPlates = (await supabase
+        .from("Trips")
+        .select("plate_number")
+        .in("trip_status", ["In transit", "On hold"])
+      ).data?.map(t => t.plate_number) || []
+
+      const { data: trucksData } = await supabase
+        .from("Trucks")
+        .select("plate_number")
+        .eq("status", "Empty")
+        .not("plate_number", "in", `(${activeTripPlates.join(",") || "NULL"})`)
+        .order("plate_number", { ascending: true })
+
+      setTrucks(trucksData || [])
     }
-    fetchCompanies()
+    fetchData()
   }, [])
 
   const total = litres && rate && !isNaN(Number(litres)) && !isNaN(Number(rate))
@@ -39,6 +60,7 @@ export default function BuyDiesel({ driverId, plateNumber, onBack }: Props) {
     : null
 
   async function handleSubmit() {
+    if (!selectedPlate) return setMessage("Select a truck")
     if (!companyId) return setMessage("Select a fuel company")
     if (!litres || isNaN(Number(litres)) || Number(litres) <= 0) return setMessage("Enter valid litres")
     if (!rate || isNaN(Number(rate)) || Number(rate) <= 0) return setMessage("Enter valid rate per litre")
@@ -51,7 +73,7 @@ export default function BuyDiesel({ driverId, plateNumber, onBack }: Props) {
         company_id: companyId,
         litres: Number(litres),
         rate_per_litre: Number(rate),
-        plate_number: plateNumber || null,
+        plate_number: selectedPlate,
       }])
 
     if (error) {
@@ -74,10 +96,7 @@ export default function BuyDiesel({ driverId, plateNumber, onBack }: Props) {
         </p>
         <button
           onClick={onBack}
-          style={{
-            padding: "12px 32px", background: "#0070f3", color: "white",
-            border: "none", borderRadius: 8, fontSize: 16, cursor: "pointer", fontWeight: "bold"
-          }}
+          style={{ padding: "12px 32px", background: "#0070f3", color: "white", border: "none", borderRadius: 8, fontSize: 16, cursor: "pointer", fontWeight: "bold" }}
         >
           Back to Dashboard
         </button>
@@ -94,6 +113,20 @@ export default function BuyDiesel({ driverId, plateNumber, onBack }: Props) {
         ← Back
       </button>
       <h2 style={{ marginBottom: 24 }}>Buy Diesel</h2>
+
+      <div style={{ marginBottom: 16 }}>
+        <label style={{ fontWeight: "bold", display: "block", marginBottom: 6 }}>Truck *</label>
+        <select
+          value={selectedPlate}
+          onChange={(e) => { setSelectedPlate(e.target.value); setMessage("") }}
+          style={{ width: "100%", padding: 10, boxSizing: "border-box", borderRadius: 6, border: "1px solid #ddd" }}
+        >
+          <option value="">Select truck</option>
+          {trucks.map((t) => (
+            <option key={t.plate_number} value={t.plate_number}>{t.plate_number}</option>
+          ))}
+        </select>
+      </div>
 
       <div style={{ marginBottom: 16 }}>
         <label style={{ fontWeight: "bold", display: "block", marginBottom: 6 }}>Fuel Station *</label>
@@ -132,10 +165,7 @@ export default function BuyDiesel({ driverId, plateNumber, onBack }: Props) {
       </div>
 
       {total !== null && (
-        <div style={{
-          background: "#f0f7ff", border: "1px solid #0070f3",
-          borderRadius: 8, padding: "12px 16px", marginBottom: 16
-        }}>
+        <div style={{ background: "#f0f7ff", border: "1px solid #0070f3", borderRadius: 8, padding: "12px 16px", marginBottom: 16 }}>
           <p style={{ margin: 0, fontSize: 14, color: "#0070f3" }}>
             Total: <strong>₦{total.toLocaleString()}</strong>
           </p>
@@ -147,11 +177,7 @@ export default function BuyDiesel({ driverId, plateNumber, onBack }: Props) {
       <button
         onClick={handleSubmit}
         disabled={submitting}
-        style={{
-          width: "100%", padding: "14px 0", background: "#0070f3",
-          color: "white", border: "none", borderRadius: 8,
-          fontSize: 16, cursor: submitting ? "not-allowed" : "pointer", fontWeight: "bold"
-        }}
+        style={{ width: "100%", padding: "14px 0", background: "#0070f3", color: "white", border: "none", borderRadius: 8, fontSize: 16, cursor: submitting ? "not-allowed" : "pointer", fontWeight: "bold" }}
       >
         {submitting ? "Submitting..." : "Submit Request"}
       </button>

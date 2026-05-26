@@ -459,7 +459,7 @@ export default function DriverDashboard() {
 
       {/* Buy Diesel View */}
       {view === "buy-diesel" && (
-        <BuyDiesel driverId={driver?.driver_id ?? ""} plateNumber={activeTrip?.plate_number ?? ""} onBack={() => setView("dashboard")} />
+        <BuyDiesel driverId={driver?.driver_id ?? ""} onBack={() => setView("dashboard")} />
       )}
 
       {/* Discrepancy Modal */}
