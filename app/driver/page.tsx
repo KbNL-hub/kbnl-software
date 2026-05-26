@@ -39,6 +39,14 @@ export default function DriverDashboard() {
   const [showEndConfirm, setShowEndConfirm] = useState(false)
   const [showHoldConfirm, setShowHoldConfirm] = useState(false)
 
+  // Discrepancy modal
+  const [showDiscrepancyModal, setShowDiscrepancyModal] = useState(false)
+  const [discShortage, setDiscShortage] = useState("")
+  const [discCaked, setDiscCaked] = useState("")
+  const [discNotes, setDiscNotes] = useState("")
+  const [discError, setDiscError] = useState("")
+  const [discSubmitting, setDiscSubmitting] = useState(false)
+
   const [materialCentres, setMaterialCentres] = useState<string[]>([])
   const [productOptions, setProductOptions] = useState<string[]>([])
 
@@ -53,15 +61,11 @@ export default function DriverDashboard() {
   const loadedQtyRef = useRef<HTMLInputElement>(null)
   const atcRef = useRef<HTMLInputElement>(null)
 
-  useEffect(() => {
-    initDriver()
-  }, [])
+  useEffect(() => { initDriver() }, [])
 
   useEffect(() => {
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
-      if (event === "SIGNED_OUT" || event === "TOKEN_REFRESHED" && !supabase.auth.getSession()) {
-        window.location.href = "/login"
-      }
+      if (event === "SIGNED_OUT") window.location.href = "/login"
     })
     return () => subscription.unsubscribe()
   }, [])
@@ -80,7 +84,6 @@ export default function DriverDashboard() {
     if (!driverData) return
     setDriver(driverData)
 
-    // Check for active trip
     const { data: tripData } = await supabase
       .from("Trips")
       .select("*")
@@ -96,23 +99,21 @@ export default function DriverDashboard() {
       setView("dashboard")
     }
 
-    // Fetch available trucks
     const { data: trucksData } = await supabase
-    .from("Trucks")
-    .select("plate_number")
-    .eq("status", "Empty")
-    .not("plate_number", "in", `(${
-      (await supabase
-        .from("Trips")
-        .select("plate_number")
-        .in("trip_status", ["In transit", "On hold"])
-      ).data?.map(t => t.plate_number).join(",") || "NULL"
-    })`)
+      .from("Trucks")
+      .select("plate_number")
+      .eq("status", "Empty")
+      .not("plate_number", "in", `(${
+        (await supabase
+          .from("Trips")
+          .select("plate_number")
+          .in("trip_status", ["In transit", "On hold"])
+        ).data?.map(t => t.plate_number).join(",") || "NULL"
+      })`)
 
     setTrucks(trucksData || [])
     setLoading(false)
 
-    // Fetch material centres and products for dropdowns
     const { data: centresData } = await supabase.rpc("get_material_centres")
     if (centresData) setMaterialCentres(centresData.map((r: { value: string }) => r.value))
 
@@ -121,23 +122,27 @@ export default function DriverDashboard() {
   }
 
   async function fetchStops(tripId: string, loadedQty: number) {
-    const { data } = await supabase
+    const { data: stopsData } = await supabase
       .from("Stops")
       .select("stop_id, stop_location, quantity_offloaded, stop_time")
       .eq("trip_id", tripId)
       .order("stop_time", { ascending: false })
 
-    const stopList = data || []
+    // Fetch discrepancies to account for shortages
+    const { data: discData } = await supabase
+      .from("trip_discrepancies")
+      .select("shortage")
+      .eq("trip_id", tripId)
+
+    const stopList = stopsData || []
     setStops(stopList)
 
     const totalOffloaded = stopList.reduce((sum, s) => sum + s.quantity_offloaded, 0)
-    const rem = loadedQty - totalOffloaded
+    const totalShortage = (discData || []).reduce((sum, d) => sum + (d.shortage || 0), 0)
+    const rem = loadedQty - totalOffloaded - totalShortage
     setRemaining(rem)
 
-    // Auto-end if remaining hits zero
-    if (rem === 0 && activeTrip) {
-      setShowEndConfirm(true)
-    }
+    if (rem === 0 && activeTrip) setShowEndConfirm(true)
   }
 
   async function handleStartTrip() {
@@ -163,17 +168,9 @@ export default function DriverDashboard() {
       .select()
       .single()
 
-    if (error || !data) {
-      setMessage("Failed to start trip")
-      setSubmitting(false)
-      return
-    }
+    if (error || !data) { setMessage("Failed to start trip"); setSubmitting(false); return }
 
-    // Update truck status to Loaded
-    await supabase
-      .from("Trucks")
-      .update({ status: "Loaded" })
-      .eq("plate_number", plateNumber)
+    await supabase.from("Trucks").update({ status: "Loaded" }).eq("plate_number", plateNumber)
 
     setActiveTrip(data)
     setRemaining(parseInt(loadedQuantity))
@@ -192,10 +189,7 @@ export default function DriverDashboard() {
       .update({ trip_status: "Completed", updated_at: new Date().toISOString() })
       .eq("trip_id", activeTrip.trip_id)
 
-    await supabase
-      .from("Trucks")
-      .update({ status: "Empty" })
-      .eq("plate_number", activeTrip.plate_number)
+    await supabase.from("Trucks").update({ status: "Empty" }).eq("plate_number", activeTrip.plate_number)
 
     setSubmitting(false)
     setShowEndConfirm(false)
@@ -208,23 +202,54 @@ export default function DriverDashboard() {
   async function handleHoldTrip() {
     if (!activeTrip) return
     setSubmitting(true)
-
     const newStatus = activeTrip.trip_status === "On hold" ? "In transit" : "On hold"
-
-    await supabase
-      .from("Trips")
-      .update({ trip_status: newStatus })
-      .eq("trip_id", activeTrip.trip_id)
-
+    await supabase.from("Trips").update({ trip_status: newStatus }).eq("trip_id", activeTrip.trip_id)
     setActiveTrip({ ...activeTrip, trip_status: newStatus })
     setSubmitting(false)
     setShowHoldConfirm(false)
   }
 
+  async function handleReportDiscrepancy() {
+    const shortage = parseInt(discShortage) || 0
+    const caked = parseInt(discCaked) || 0
+
+    if (shortage === 0 && caked === 0) return setDiscError("Enter at least a shortage or caked bags count")
+    if (shortage < 0 || caked < 0) return setDiscError("Values cannot be negative")
+    if (shortage > remaining) return setDiscError(`Shortage cannot exceed remaining bags (${remaining})`)
+
+    setDiscSubmitting(true)
+
+    const { error } = await supabase.from("trip_discrepancies").insert([{
+      trip_id: activeTrip?.trip_id,
+      driver_id: driver?.driver_id,
+      shortage,
+      caked_bags: caked,
+      notes: discNotes.trim() || null,
+    }])
+
+    setDiscSubmitting(false)
+
+    if (error) { setDiscError("Failed to submit report"); return }
+
+    setShowDiscrepancyModal(false)
+    setDiscShortage("")
+    setDiscCaked("")
+    setDiscNotes("")
+    setDiscError("")
+
+    if (activeTrip) fetchStops(activeTrip.trip_id, activeTrip.loaded_quantity)
+  }
+
+  function closeDiscrepancyModal() {
+    setShowDiscrepancyModal(false)
+    setDiscShortage("")
+    setDiscCaked("")
+    setDiscNotes("")
+    setDiscError("")
+  }
+
   function handleStopLogged() {
-    if (activeTrip) {
-      fetchStops(activeTrip.trip_id, activeTrip.loaded_quantity)
-    }
+    if (activeTrip) fetchStops(activeTrip.trip_id, activeTrip.loaded_quantity)
     setView("active-trip")
   }
 
@@ -249,10 +274,7 @@ export default function DriverDashboard() {
         </div>
         <button
           onClick={async () => { await supabase.auth.signOut(); window.location.href = "/login" }}
-          style={{
-            padding: "6px 14px", background: "#ff4444", color: "white",
-            border: "none", borderRadius: 6, cursor: "pointer", fontSize: 13
-          }}
+          style={{ padding: "6px 14px", background: "#ff4444", color: "white", border: "none", borderRadius: 6, cursor: "pointer", fontSize: 13 }}
         >
           Logout
         </button>
@@ -266,21 +288,13 @@ export default function DriverDashboard() {
           <div style={{ display: "flex", flexDirection: "column", gap: 12, maxWidth: 320, margin: "0 auto" }}>
             <button
               onClick={() => setView("start-trip")}
-              style={{
-                padding: "16px 48px", background: "#0070f3", color: "white",
-                border: "none", borderRadius: 8, fontSize: 18, cursor: "pointer",
-                fontWeight: "bold"
-              }}
+              style={{ padding: "16px 48px", background: "#0070f3", color: "white", border: "none", borderRadius: 8, fontSize: 18, cursor: "pointer", fontWeight: "bold" }}
             >
               Start a Trip
             </button>
             <button
               onClick={() => setView("buy-diesel")}
-              style={{
-                padding: "16px 48px", background: "white", color: "#333",
-                border: "1px solid #ddd", borderRadius: 8, fontSize: 18, cursor: "pointer",
-                fontWeight: "bold"
-              }}
+              style={{ padding: "16px 48px", background: "white", color: "#333", border: "1px solid #ddd", borderRadius: 8, fontSize: 18, cursor: "pointer", fontWeight: "bold" }}
             >
               Buy Diesel
             </button>
@@ -291,96 +305,50 @@ export default function DriverDashboard() {
       {/* Start Trip View */}
       {view === "start-trip" && (
         <div>
-          <button
-            onClick={() => { setView("dashboard"); setMessage("") }}
-            style={{ background: "none", border: "none", color: "#0070f3", cursor: "pointer", marginBottom: 16, padding: 0 }}
-          >
+          <button onClick={() => { setView("dashboard"); setMessage("") }} style={{ background: "none", border: "none", color: "#0070f3", cursor: "pointer", marginBottom: 16, padding: 0 }}>
             ← Back
           </button>
           <h2 style={{ marginBottom: 24 }}>Start a Trip</h2>
 
           <div style={{ marginBottom: 16 }}>
             <label style={{ fontWeight: "bold", display: "block", marginBottom: 6 }}>Plate Number *</label>
-            <select
-              value={plateNumber}
-              onChange={(e) => { setPlateNumber(e.target.value); setMessage("") }}
-              style={{ width: "100%", padding: 10, boxSizing: "border-box" }}
-            >
+            <select value={plateNumber} onChange={(e) => { setPlateNumber(e.target.value); setMessage("") }} style={{ width: "100%", padding: 10, boxSizing: "border-box" }}>
               <option value="">Select plate number</option>
-              {trucks.map((t) => (
-                <option key={t.plate_number} value={t.plate_number}>{t.plate_number}</option>
-              ))}
+              {trucks.map((t) => (<option key={t.plate_number} value={t.plate_number}>{t.plate_number}</option>))}
             </select>
           </div>
 
           <div style={{ marginBottom: 16 }}>
             <label style={{ fontWeight: "bold", display: "block", marginBottom: 6 }}>Product *</label>
-            <select
-              value={product}
-              onChange={(e) => { setProduct(e.target.value); setMessage("") }}
-              style={{ width: "100%", padding: 10, boxSizing: "border-box" }}
-            >
+            <select value={product} onChange={(e) => { setProduct(e.target.value); setMessage("") }} style={{ width: "100%", padding: 10, boxSizing: "border-box" }}>
               <option value="">Select product</option>
-              {productOptions.map((p) => (
-                <option key={p} value={p}>{p}</option>
-              ))}
-
+              {productOptions.map((p) => (<option key={p} value={p}>{p}</option>))}
             </select>
           </div>
 
           <div style={{ marginBottom: 16 }}>
             <label style={{ fontWeight: "bold", display: "block", marginBottom: 6 }}>Material Centre *</label>
-            <select
-              value={materialCentre}
-              onChange={(e) => { setMaterialCentre(e.target.value); setMessage(""); setAtc("") }}
-              style={{ width: "100%", padding: 10, boxSizing: "border-box" }}
-            >
+            <select value={materialCentre} onChange={(e) => { setMaterialCentre(e.target.value); setMessage(""); setAtc("") }} style={{ width: "100%", padding: 10, boxSizing: "border-box" }}>
               <option value="">Select material centre</option>
-              {materialCentres.map((m) => (
-                <option key={m} value={m}>{m}</option>
-              ))}
+              {materialCentres.map((m) => (<option key={m} value={m}>{m}</option>))}
             </select>
           </div>
 
           {materialCentre === "Main store (ATCs)" && (
             <div style={{ marginBottom: 16 }}>
               <label style={{ fontWeight: "bold", display: "block", marginBottom: 6 }}>ATC Number *</label>
-              <input
-                ref={atcRef}
-                type="text"
-                placeholder="Enter ATC number"
-                value={atc}
-                onChange={(e) => { setAtc(e.target.value); setMessage("") }}
-                onKeyDown={(e) => { if (e.key === "Enter") loadedQtyRef.current?.focus() }}
-                style={{ width: "100%", padding: 10, boxSizing: "border-box" }}
-              />
+              <input ref={atcRef} type="text" placeholder="Enter ATC number" value={atc} onChange={(e) => { setAtc(e.target.value); setMessage("") }} onKeyDown={(e) => { if (e.key === "Enter") loadedQtyRef.current?.focus() }} style={{ width: "100%", padding: 10, boxSizing: "border-box" }} />
             </div>
           )}
 
           <div style={{ marginBottom: 24 }}>
             <label style={{ fontWeight: "bold", display: "block", marginBottom: 6 }}>Loaded Quantity (bags) *</label>
-            <input
-              ref={loadedQtyRef}
-              type="number"
-              placeholder="e.g. 600"
-              value={loadedQuantity}
-              onChange={(e) => { setLoadedQuantity(e.target.value); setMessage("") }}
-              onKeyDown={(e) => { if (e.key === "Enter") handleStartTrip() }}
-              style={{ width: "100%", padding: 10, boxSizing: "border-box" }}
-            />
+            <input ref={loadedQtyRef} type="number" placeholder="e.g. 600" value={loadedQuantity} onChange={(e) => { setLoadedQuantity(e.target.value); setMessage("") }} onKeyDown={(e) => { if (e.key === "Enter") handleStartTrip() }} style={{ width: "100%", padding: 10, boxSizing: "border-box" }} />
           </div>
 
           {message && <p style={{ color: "red", marginBottom: 16, fontWeight: "bold" }}>{message}</p>}
 
-          <button
-            onClick={handleStartTrip}
-            disabled={submitting}
-            style={{
-              width: "100%", padding: "14px 0", background: "#0070f3",
-              color: "white", border: "none", borderRadius: 8,
-              fontSize: 16, cursor: submitting ? "not-allowed" : "pointer", fontWeight: "bold"
-            }}
-          >
+          <button onClick={handleStartTrip} disabled={submitting} style={{ width: "100%", padding: "14px 0", background: "#0070f3", color: "white", border: "none", borderRadius: 8, fontSize: 16, cursor: submitting ? "not-allowed" : "pointer", fontWeight: "bold" }}>
             {submitting ? "Starting..." : "Start Trip"}
           </button>
         </div>
@@ -392,10 +360,7 @@ export default function DriverDashboard() {
           <h2 style={{ marginBottom: 20 }}>Active Trip</h2>
 
           {/* Trip Info Card */}
-          <div style={{
-            background: "white", border: "1px solid #eee", borderRadius: 12,
-            padding: 20, marginBottom: 24, boxShadow: "0 2px 8px rgba(0,0,0,0.06)"
-          }}>
+          <div style={{ background: "white", border: "1px solid #eee", borderRadius: 12, padding: 20, marginBottom: 24, boxShadow: "0 2px 8px rgba(0,0,0,0.06)" }}>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
               <div>
                 <p style={{ margin: 0, fontSize: 12, color: "#888" }}>Trip ID</p>
@@ -419,16 +384,11 @@ export default function DriverDashboard() {
               </div>
               <div>
                 <p style={{ margin: 0, fontSize: 12, color: "#888" }}>Remaining</p>
-                <p style={{
-                  margin: "2px 0 0", fontWeight: "bold",
-                  color: remaining === 0 ? "red" : remaining < activeTrip.loaded_quantity * 0.2 ? "orange" : "green"
-                }}>
+                <p style={{ margin: "2px 0 0", fontWeight: "bold", color: remaining === 0 ? "red" : remaining < activeTrip.loaded_quantity * 0.2 ? "orange" : "green" }}>
                   {remaining} bags
                 </p>
               </div>
             </div>
-
-            {/* Status Badge */}
             <div style={{ marginTop: 16, textAlign: "center" }}>
               <span style={{
                 padding: "4px 14px", borderRadius: 12, fontSize: 12, fontWeight: "bold",
@@ -445,10 +405,7 @@ export default function DriverDashboard() {
             <div style={{ marginBottom: 24 }}>
               <p style={{ fontWeight: "bold", marginBottom: 12 }}>Previous Stops ({stops.length})</p>
               {stops.map((stop, index) => (
-                <div key={stop.stop_id} style={{
-                  padding: 12, border: "1px solid #eee", borderRadius: 8,
-                  marginBottom: 8, background: "white", fontSize: 13
-                }}>
+                <div key={stop.stop_id} style={{ padding: 12, border: "1px solid #eee", borderRadius: 8, marginBottom: 8, background: "white", fontSize: 13 }}>
                   <p style={{ margin: 0, fontWeight: "bold" }}>Stop {stops.length - index}</p>
                   <p style={{ margin: "4px 0 0", color: "#555" }}>{stop.stop_location}</p>
                   <p style={{ margin: "4px 0 0", color: "#888" }}>{stop.quantity_offloaded} bags • {new Date(stop.stop_time).toLocaleTimeString()}</p>
@@ -462,29 +419,30 @@ export default function DriverDashboard() {
             {remaining > 0 && (
               <button
                 onClick={() => setView("log-stop")}
-                style={{
-                  width: "100%", padding: "14px 0", background: "#0070f3",
-                  color: "white", border: "none", borderRadius: 8,
-                  fontSize: 16, cursor: "pointer", fontWeight: "bold"
-                }}
+                style={{ width: "100%", padding: "14px 0", background: "#0070f3", color: "white", border: "none", borderRadius: 8, fontSize: 16, cursor: "pointer", fontWeight: "bold" }}
               >
                 Make a Stop
               </button>
             )}
 
             <button
+              onClick={() => { setShowDiscrepancyModal(true); setDiscError("") }}
+              style={{ width: "100%", padding: "12px 0", background: "white", color: "#f5a623", border: "1px solid #f5a623", borderRadius: 8, fontSize: 16, cursor: "pointer" }}
+            >
+              Report Shortage / Caked Bags
+            </button>
+
+            <button
               onClick={() => setShowHoldConfirm(true)}
               style={{
-                width: "100%", padding: "12px 0",
-                background: activeTrip.trip_status === "On hold" ? "white" : "white",
-                color: activeTrip.trip_status === "On hold" ? "#0070f3" : "#f5a623",
-                border: `1px solid ${activeTrip.trip_status === "On hold" ? "#0070f3" : "#f5a623"}`,
+                width: "100%", padding: "12px 0", background: "white",
+                color: activeTrip.trip_status === "On hold" ? "#0070f3" : "#888",
+                border: `1px solid ${activeTrip.trip_status === "On hold" ? "#0070f3" : "#ddd"}`,
                 borderRadius: 8, fontSize: 16, cursor: "pointer"
               }}
             >
               {activeTrip.trip_status === "On hold" ? "Resume Trip" : "Put Trip On Hold"}
             </button>
-
           </div>
         </div>
       )}
@@ -492,10 +450,7 @@ export default function DriverDashboard() {
       {/* Log Stop View */}
       {view === "log-stop" && activeTrip && (
         <div>
-          <button
-            onClick={() => setView("active-trip")}
-            style={{ background: "none", border: "none", color: "#0070f3", cursor: "pointer", marginBottom: 16, padding: 0 }}
-          >
+          <button onClick={() => setView("active-trip")} style={{ background: "none", border: "none", color: "#0070f3", cursor: "pointer", marginBottom: 16, padding: 0 }}>
             ← Back
           </button>
           <StopForm tripId={activeTrip.trip_id} onStopLogged={handleStopLogged} />
@@ -504,51 +459,80 @@ export default function DriverDashboard() {
 
       {/* Buy Diesel View */}
       {view === "buy-diesel" && (
-        <BuyDiesel driverId={driver?.driver_id ?? ""} onBack={() => setView("dashboard")} />
+        <BuyDiesel driverId={driver?.driver_id ?? ""} plateNumber={activeTrip?.plate_number ?? ""} onBack={() => setView("dashboard")} />
+      )}
+
+      {/* Discrepancy Modal */}
+      {showDiscrepancyModal && (
+        <div onClick={closeDiscrepancyModal} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 100 }}>
+          <div onClick={(e) => e.stopPropagation()} style={{ background: "white", borderRadius: 12, padding: 32, width: 340, maxWidth: "90vw", boxShadow: "0 8px 32px rgba(0,0,0,0.2)" }}>
+            <h3 style={{ marginBottom: 8 }}>Report Shortage / Caked Bags</h3>
+            <p style={{ color: "#888", fontSize: 13, marginBottom: 20 }}>Remaining bags: <strong>{remaining}</strong></p>
+
+            <div style={{ marginBottom: 16 }}>
+              <label style={{ fontWeight: "bold", display: "block", marginBottom: 6, fontSize: 14 }}>Shortage (bags)</label>
+              <p style={{ margin: "0 0 6px", fontSize: 12, color: "#888" }}>Will be deducted from remaining</p>
+              <input
+                type="number"
+                placeholder="0"
+                value={discShortage}
+                onChange={(e) => { setDiscShortage(e.target.value); setDiscError("") }}
+                style={{ width: "100%", padding: 10, boxSizing: "border-box", borderRadius: 6, border: "1px solid #ddd", fontSize: 14 }}
+              />
+            </div>
+
+            <div style={{ marginBottom: 16 }}>
+              <label style={{ fontWeight: "bold", display: "block", marginBottom: 6, fontSize: 14 }}>Caked Bags</label>
+              <p style={{ margin: "0 0 6px", fontSize: 12, color: "#888" }}>Logged for record only — returned to plant</p>
+              <input
+                type="number"
+                placeholder="0"
+                value={discCaked}
+                onChange={(e) => { setDiscCaked(e.target.value); setDiscError("") }}
+                style={{ width: "100%", padding: 10, boxSizing: "border-box", borderRadius: 6, border: "1px solid #ddd", fontSize: 14 }}
+              />
+            </div>
+
+            <div style={{ marginBottom: 24 }}>
+              <label style={{ fontWeight: "bold", display: "block", marginBottom: 6, fontSize: 14 }}>Notes (optional)</label>
+              <textarea
+                placeholder="Any additional context..."
+                value={discNotes}
+                onChange={(e) => setDiscNotes(e.target.value)}
+                rows={3}
+                style={{ width: "100%", padding: 10, boxSizing: "border-box", borderRadius: 6, border: "1px solid #ddd", fontSize: 14, resize: "none" }}
+              />
+            </div>
+
+            {discError && <p style={{ color: "red", fontSize: 13, marginBottom: 12 }}>{discError}</p>}
+
+            <div style={{ display: "flex", gap: 8 }}>
+              <button onClick={closeDiscrepancyModal} style={{ flex: 1, padding: "10px 0", background: "white", border: "1px solid #ddd", borderRadius: 6, cursor: "pointer" }}>
+                Cancel
+              </button>
+              <button onClick={handleReportDiscrepancy} disabled={discSubmitting} style={{ flex: 1, padding: "10px 0", background: "#f5a623", color: "white", border: "none", borderRadius: 6, cursor: discSubmitting ? "not-allowed" : "pointer", fontWeight: "bold" }}>
+                {discSubmitting ? "Submitting..." : "Submit Report"}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* End Trip Confirmation Modal */}
       {showEndConfirm && (
-        <div
-          onClick={() => setShowEndConfirm(false)}
-          style={{
-            position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)",
-            display: "flex", alignItems: "center", justifyContent: "center", zIndex: 100
-          }}
-        >
-          <div
-            onClick={(e) => e.stopPropagation()}
-            style={{
-              background: "white", borderRadius: 12, padding: 32,
-              width: 320, maxWidth: "90vw", boxShadow: "0 8px 32px rgba(0,0,0,0.2)"
-            }}
-          >
-            <h3 style={{ marginBottom: 12 }}>
-              {remaining === 0 ? "All bags offloaded!" : "End Trip Early?"}
-            </h3>
+        <div onClick={() => setShowEndConfirm(false)} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 100 }}>
+          <div onClick={(e) => e.stopPropagation()} style={{ background: "white", borderRadius: 12, padding: 32, width: 320, maxWidth: "90vw", boxShadow: "0 8px 32px rgba(0,0,0,0.2)" }}>
+            <h3 style={{ marginBottom: 12 }}>{remaining === 0 ? "All bags offloaded!" : "End Trip Early?"}</h3>
             <p style={{ marginBottom: 24, color: "#555" }}>
               {remaining === 0
                 ? "All bags have been offloaded. Ready to end this trip?"
                 : `You still have ${remaining} bags remaining. Are you sure you want to end the trip?`}
             </p>
             <div style={{ display: "flex", gap: 8 }}>
-              <button
-                onClick={handleEndTrip}
-                disabled={submitting}
-                style={{
-                  flex: 1, padding: "10px 0", background: "#0070f3",
-                  color: "white", border: "none", borderRadius: 6, cursor: "pointer"
-                }}
-              >
+              <button onClick={handleEndTrip} disabled={submitting} style={{ flex: 1, padding: "10px 0", background: "#0070f3", color: "white", border: "none", borderRadius: 6, cursor: "pointer" }}>
                 {submitting ? "Ending..." : "Yes, End Trip"}
               </button>
-              <button
-                onClick={() => setShowEndConfirm(false)}
-                style={{
-                  flex: 1, padding: "10px 0", background: "white",
-                  color: "#333", border: "1px solid #ddd", borderRadius: 6, cursor: "pointer"
-                }}
-              >
+              <button onClick={() => setShowEndConfirm(false)} style={{ flex: 1, padding: "10px 0", background: "white", color: "#333", border: "1px solid #ddd", borderRadius: 6, cursor: "pointer" }}>
                 Cancel
               </button>
             </div>
@@ -558,53 +542,25 @@ export default function DriverDashboard() {
 
       {/* Hold Trip Confirmation Modal */}
       {showHoldConfirm && (
-        <div
-          onClick={() => setShowHoldConfirm(false)}
-          style={{
-            position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)",
-            display: "flex", alignItems: "center", justifyContent: "center", zIndex: 100
-          }}
-        >
-          <div
-            onClick={(e) => e.stopPropagation()}
-            style={{
-              background: "white", borderRadius: 12, padding: 32,
-              width: 320, maxWidth: "90vw", boxShadow: "0 8px 32px rgba(0,0,0,0.2)"
-            }}
-          >
-            <h3 style={{ marginBottom: 12 }}>
-              {activeTrip?.trip_status === "On hold" ? "Resume Trip?" : "Put Trip On Hold?"}
-            </h3>
+        <div onClick={() => setShowHoldConfirm(false)} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 100 }}>
+          <div onClick={(e) => e.stopPropagation()} style={{ background: "white", borderRadius: 12, padding: 32, width: 320, maxWidth: "90vw", boxShadow: "0 8px 32px rgba(0,0,0,0.2)" }}>
+            <h3 style={{ marginBottom: 12 }}>{activeTrip?.trip_status === "On hold" ? "Resume Trip?" : "Put Trip On Hold?"}</h3>
             <p style={{ marginBottom: 24, color: "#555" }}>
               {activeTrip?.trip_status === "On hold"
                 ? "This will set your trip back to In Transit."
                 : "This will pause your trip. You can resume it later."}
             </p>
             <div style={{ display: "flex", gap: 8 }}>
-              <button
-                onClick={handleHoldTrip}
-                disabled={submitting}
-                style={{
-                  flex: 1, padding: "10px 0", background: "#f5a623",
-                  color: "white", border: "none", borderRadius: 6, cursor: "pointer"
-                }}
-              >
+              <button onClick={handleHoldTrip} disabled={submitting} style={{ flex: 1, padding: "10px 0", background: "#f5a623", color: "white", border: "none", borderRadius: 6, cursor: "pointer" }}>
                 {submitting ? "Updating..." : "Confirm"}
               </button>
-              <button
-                onClick={() => setShowHoldConfirm(false)}
-                style={{
-                  flex: 1, padding: "10px 0", background: "white",
-                  color: "#333", border: "1px solid #ddd", borderRadius: 6, cursor: "pointer"
-                }}
-              >
+              <button onClick={() => setShowHoldConfirm(false)} style={{ flex: 1, padding: "10px 0", background: "white", color: "#333", border: "1px solid #ddd", borderRadius: 6, cursor: "pointer" }}>
                 Cancel
               </button>
             </div>
           </div>
         </div>
       )}
-
     </div>
   )
 }

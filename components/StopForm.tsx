@@ -44,7 +44,6 @@ export default function StopForm({ tripId, onStopLogged }: Props) {
   }, [tripId])
 
   async function fetchTripData() {
-    // Fetch total loaded quantity for this trip
     const { data: tripData, error: tripError } = await supabase
       .from("Trips")
       .select("loaded_quantity")
@@ -54,15 +53,20 @@ export default function StopForm({ tripId, onStopLogged }: Props) {
     if (tripError || !tripData) return
     setLoadedQuantity(tripData.loaded_quantity)
 
-    // Fetch all stops for this trip and sum quantity offloaded
     const { data: stopsData, error: stopsError } = await supabase
       .from("Stops")
       .select("quantity_offloaded")
       .eq("trip_id", tripId)
 
+    const { data: discData } = await supabase
+      .from("trip_discrepancies")
+      .select("shortage")
+      .eq("trip_id", tripId)
+
     if (!stopsError && stopsData) {
-      const total = stopsData.reduce((sum, stop) => sum + (stop.quantity_offloaded || 0), 0)
-      setOffloadedSoFar(total)
+      const totalOffloaded = stopsData.reduce((sum, stop) => sum + (stop.quantity_offloaded || 0), 0)
+      const totalShortage = (discData || []).reduce((sum, d) => sum + (d.shortage || 0), 0)
+      setOffloadedSoFar(totalOffloaded + totalShortage)
     }
   }
 

@@ -10,10 +10,11 @@ type FuelCompany = {
 
 type Props = {
   driverId: string
+  plateNumber: string
   onBack: () => void
 }
 
-export default function BuyDiesel({ driverId, onBack }: Props) {
+export default function BuyDiesel({ driverId, plateNumber, onBack }: Props) {
   const [companies, setCompanies] = useState<FuelCompany[]>([])
   const [companyId, setCompanyId] = useState("")
   const [litres, setLitres] = useState("")
@@ -50,6 +51,7 @@ export default function BuyDiesel({ driverId, onBack }: Props) {
         company_id: companyId,
         litres: Number(litres),
         rate_per_litre: Number(rate),
+        plate_number: plateNumber || null,
       }])
 
     if (error) {
