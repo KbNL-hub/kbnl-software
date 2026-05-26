@@ -179,7 +179,7 @@ export default function BuyDiesel({ driverId, onBack }: Props) {
         disabled={submitting}
         style={{ width: "100%", padding: "14px 0", background: "#0070f3", color: "white", border: "none", borderRadius: 8, fontSize: 16, cursor: submitting ? "not-allowed" : "pointer", fontWeight: "bold" }}
       >
-        {submitting ? "Submitting..." : "Submit Request"}
+        {submitting ? "Submitting..." : "Submit"}
       </button>
     </div>
   )
