@@ -5,11 +5,7 @@ import { supabase } from "@/lib/supabase"
 import StopForm from "@/components/StopForm"
 import BuyDiesel from "@/components/BuyDiesel"
 
-type Driver = {
-  driver_id: string
-  full_name: string
-}
-
+type Driver = { driver_id: string; full_name: string }
 type Trip = {
   trip_id: string
   plate_number: string
@@ -19,13 +15,35 @@ type Trip = {
   trip_status: string
   atc: string | null
 }
-
 type Stop = {
   stop_id: string
   stop_location: string
   quantity_offloaded: number
   stop_time: string
 }
+type Truck = { plate_number: string; kbnl_truck_no: string }
+
+const LOADING_POINT_MAP: Record<string, string[]> = {
+  Factory: ["Lafarge (Unicem)", "Dangote BOCO"],
+  Depot: ["Calabar Mini Depot", "Ikom Mini Depot", "Ogoja Warehouse", "Uyo Warehouse", "Calabar Warehouse"],
+  Outlet: ["Brooks Outlet", "Urua Ekpa Outlet", "Urua Nyemeiko Outlet", "Reserve Store", "E1 Outlet", "Ogoja Outlet"],
+}
+
+const FACTORY_PRODUCTS: Record<string, string[]> = {
+  "Lafarge (Unicem)": ["Classic", "Supaset"],
+  "Dangote BOCO": ["Falcon", "3X"],
+}
+
+const COMPLAINT_TYPES = [
+  "Breakdown",
+  "Tyre Blowout",
+  "Accident",
+  "Police / Checkpoint Issue",
+  "Fuel Problem",
+  "Mechanical Fault",
+  "Road Blockage",
+  "Other",
+]
 
 export default function DriverDashboard() {
   const [driver, setDriver] = useState<Driver | null>(null)
@@ -36,30 +54,56 @@ export default function DriverDashboard() {
   const [loading, setLoading] = useState(true)
   const [submitting, setSubmitting] = useState(false)
   const [message, setMessage] = useState("")
+
+  // Modals
   const [showEndConfirm, setShowEndConfirm] = useState(false)
   const [showHoldConfirm, setShowHoldConfirm] = useState(false)
-
-  // Discrepancy modal
   const [showDiscrepancyModal, setShowDiscrepancyModal] = useState(false)
+  const [showComplaintModal, setShowComplaintModal] = useState(false)
+  const [showLoadMoreModal, setShowLoadMoreModal] = useState(false)
+
+  // Discrepancy
   const [discShortage, setDiscShortage] = useState("")
   const [discCaked, setDiscCaked] = useState("")
   const [discNotes, setDiscNotes] = useState("")
+  const [discDropLocation, setDiscDropLocation] = useState("")
   const [discError, setDiscError] = useState("")
   const [discSubmitting, setDiscSubmitting] = useState(false)
 
-  const [materialCentres, setMaterialCentres] = useState<string[]>([])
-  const [productOptions, setProductOptions] = useState<string[]>([])
+  // Complaint
+  const [complaintType, setComplaintType] = useState("")
+  const [complaintTruck, setComplaintTruck] = useState("")
+  const [complaintNotes, setComplaintNotes] = useState("")
+  const [complaintError, setComplaintError] = useState("")
+  const [complaintSubmitting, setComplaintSubmitting] = useState(false)
+  const [complaintPendingEndTrip, setComplaintPendingEndTrip] = useState(false)
 
-  // Start trip form
+  // Load more
+  const [loadMoreQty, setLoadMoreQty] = useState("")
+  const [loadMoreError, setLoadMoreError] = useState("")
+  const [loadMoreSubmitting, setLoadMoreSubmitting] = useState(false)
+  const [loadMoreCategory, setLoadMoreCategory] = useState("")
+  const [loadMoreLocationName, setLoadMoreLocationName] = useState("")
+  const [loadMoreProduct, setLoadMoreProduct] = useState("")
+  const [loadMoreProductOptions, setLoadMoreProductOptions] = useState<string[]>([])
+
+  // Start trip
   const [plateNumber, setPlateNumber] = useState("")
+  const [loadingPointCategory, setLoadingPointCategory] = useState("")
+  const [loadingPointName, setLoadingPointName] = useState("")
   const [product, setProduct] = useState("")
-  const [materialCentre, setMaterialCentre] = useState("")
   const [loadedQuantity, setLoadedQuantity] = useState("")
   const [atc, setAtc] = useState("")
-  const [trucks, setTrucks] = useState<{ plate_number: string }[]>([])
+  const [trucks, setTrucks] = useState<Truck[]>([])
+  const [allTrucks, setAllTrucks] = useState<Truck[]>([])
+  const [productOptions, setProductOptions] = useState<string[]>([])
+  const [allProducts, setAllProducts] = useState<string[]>([])
 
   const loadedQtyRef = useRef<HTMLInputElement>(null)
   const atcRef = useRef<HTMLInputElement>(null)
+  const loadMoreRef = useRef<HTMLInputElement>(null)
+
+  const allStoreLocations = [...LOADING_POINT_MAP.Depot, ...LOADING_POINT_MAP.Outlet]
 
   useEffect(() => { initDriver() }, [])
 
@@ -94,31 +138,33 @@ export default function DriverDashboard() {
     if (tripData) {
       setActiveTrip(tripData)
       await fetchStops(tripData.trip_id, tripData.loaded_quantity)
-      setView("active-trip")
-    } else {
-      setView("dashboard")
     }
+
+    // Available trucks (not on active trips)
+    const { data: activePlates } = await supabase
+      .from("Trips")
+      .select("plate_number")
+      .in("trip_status", ["In transit", "On hold"])
+
+    const usedPlates = activePlates?.map(t => t.plate_number) || []
 
     const { data: trucksData } = await supabase
       .from("Trucks")
-      .select("plate_number")
+      .select("plate_number, kbnl_truck_no")
       .eq("status", "Empty")
-      .not("plate_number", "in", `(${
-        (await supabase
-          .from("Trips")
-          .select("plate_number")
-          .in("trip_status", ["In transit", "On hold"])
-        ).data?.map(t => t.plate_number).join(",") || "NULL"
-      })`)
 
-    setTrucks(trucksData || [])
-    setLoading(false)
-
-    const { data: centresData } = await supabase.rpc("get_material_centres")
-    if (centresData) setMaterialCentres(centresData.map((r: { value: string }) => r.value))
+    const available = (trucksData || []).filter(t => !usedPlates.includes(t.plate_number))
+    setTrucks(available)
+    setAllTrucks(trucksData || [])
 
     const { data: productsData } = await supabase.rpc("get_products")
-    if (productsData) setProductOptions(productsData.map((r: { value: string }) => r.value))
+    if (productsData) {
+      const list = productsData.map((r: { value: string }) => r.value)
+      setAllProducts(list)
+      setProductOptions(list)
+    }
+
+    setLoading(false)
   }
 
   async function fetchStops(tripId: string, loadedQty: number) {
@@ -128,7 +174,6 @@ export default function DriverDashboard() {
       .eq("trip_id", tripId)
       .order("stop_time", { ascending: false })
 
-    // Fetch discrepancies to account for shortages
     const { data: discData } = await supabase
       .from("trip_discrepancies")
       .select("shortage")
@@ -142,15 +187,58 @@ export default function DriverDashboard() {
     const rem = loadedQty - totalOffloaded - totalShortage
     setRemaining(rem)
 
-    if (rem === 0 && activeTrip) setShowEndConfirm(true)
+    if (rem <= 0 && tripId) setShowEndConfirm(true)
   }
+
+  // Loading point cascade
+  function handleCategoryChange(cat: string) {
+    setLoadingPointCategory(cat)
+    setLoadingPointName("")
+    setProduct("")
+    setAtc("")
+    setMessage("")
+  }
+
+  function handleLoadMoreCategoryChange(cat: string) {
+    setLoadMoreCategory(cat)
+    setLoadMoreLocationName("")
+    setLoadMoreProduct("")
+    setLoadMoreProductOptions([])
+    setLoadMoreError("")
+  }
+
+  function handleLoadMoreLocationChange(name: string) {
+    setLoadMoreLocationName(name)
+    setLoadMoreProduct("")
+    setLoadMoreError("")
+    if (loadMoreCategory === "Depot" || loadMoreCategory === "Outlet") {
+      setLoadMoreProductOptions(allProducts)
+    }
+  }
+
+  function handleLoadingPointNameChange(name: string) {
+    setLoadingPointName(name)
+    setProduct("")
+    setAtc("")
+    setMessage("")
+
+    if (loadingPointCategory === "Factory") {
+      setProductOptions(FACTORY_PRODUCTS[name] || [])
+    } else {
+      setProductOptions(allProducts)
+    }
+  }
+
+  const showATC = loadingPointCategory === "Factory"
+  const availableLocations = LOADING_POINT_MAP[loadingPointCategory] || []
 
   async function handleStartTrip() {
     if (!plateNumber) return setMessage("Select a plate number")
+    if (!loadingPointCategory) return setMessage("Select a loading point type")
+    if (!loadingPointName) return setMessage("Select a loading point")
+    if (showATC && !atc.trim()) return setMessage("ATC number is required")
     if (!product) return setMessage("Select a product")
-    if (!materialCentre) return setMessage("Select a material centre")
-    if (!loadedQuantity) return setMessage("Enter loaded quantity")
-    if (materialCentre === "Main store (ATCs)" && !atc.trim()) return setMessage("ATC number is required for Main store (ATCs)")
+    if (!loadedQuantity) return setMessage("Enter no. of bags")
 
     setSubmitting(true)
 
@@ -160,9 +248,9 @@ export default function DriverDashboard() {
         driver_id: driver?.driver_id,
         plate_number: plateNumber,
         product,
-        material_centre: materialCentre,
+        material_centre: loadingPointName,
         loaded_quantity: parseInt(loadedQuantity),
-        ATC: materialCentre === "Main store (ATCs)" ? atc : null,
+        ATC: showATC ? atc.trim() : null,
         trip_status: "In transit",
       }])
       .select()
@@ -212,10 +300,10 @@ export default function DriverDashboard() {
   async function handleReportDiscrepancy() {
     const shortage = parseInt(discShortage) || 0
     const caked = parseInt(discCaked) || 0
-
     if (shortage === 0 && caked === 0) return setDiscError("Enter at least a shortage or caked bags count")
     if (shortage < 0 || caked < 0) return setDiscError("Values cannot be negative")
     if (shortage > remaining) return setDiscError(`Shortage cannot exceed remaining bags (${remaining})`)
+    if (!discDropLocation) return setDiscError("Select a drop location")
 
     setDiscSubmitting(true)
 
@@ -225,27 +313,76 @@ export default function DriverDashboard() {
       shortage,
       caked_bags: caked,
       notes: discNotes.trim() || null,
+      drop_location: discDropLocation,
     }])
 
     setDiscSubmitting(false)
-
     if (error) { setDiscError("Failed to submit report"); return }
 
     setShowDiscrepancyModal(false)
-    setDiscShortage("")
-    setDiscCaked("")
-    setDiscNotes("")
-    setDiscError("")
-
+    setDiscShortage(""); setDiscCaked(""); setDiscNotes(""); setDiscDropLocation(""); setDiscError("")
     if (activeTrip) fetchStops(activeTrip.trip_id, activeTrip.loaded_quantity)
   }
 
-  function closeDiscrepancyModal() {
-    setShowDiscrepancyModal(false)
-    setDiscShortage("")
-    setDiscCaked("")
-    setDiscNotes("")
-    setDiscError("")
+  async function handleLoadMore() {
+    const qty = parseInt(loadMoreQty)
+    if (!loadMoreCategory) return setLoadMoreError("Select a loading point type")
+    if (!loadMoreLocationName) return setLoadMoreError("Select a loading point")
+    if (!loadMoreProduct) return setLoadMoreError("Select a product")
+    if (!qty || qty <= 0) return setLoadMoreError("Enter a valid number of bags")
+    if (!activeTrip) return
+
+    setLoadMoreSubmitting(true)
+
+    const newTotal = activeTrip.loaded_quantity + qty
+    const { error } = await supabase
+      .from("Trips")
+      .update({ loaded_quantity: newTotal })
+      .eq("trip_id", activeTrip.trip_id)
+
+    setLoadMoreSubmitting(false)
+    if (error) { setLoadMoreError("Failed to update bags"); return }
+
+    setActiveTrip({ ...activeTrip, loaded_quantity: newTotal })
+    setRemaining(remaining + qty)
+    setShowLoadMoreModal(false)
+    setLoadMoreQty("")
+    setLoadMoreCategory("")
+    setLoadMoreLocationName("")
+    setLoadMoreProduct("")
+    setLoadMoreProductOptions([])
+    setLoadMoreError("")
+  }
+
+  async function handleSubmitComplaint(thenEndTrip = false) {
+    if (!complaintTruck) return setComplaintError("Select a truck")
+    if (!complaintType) return setComplaintError("Select a complaint type")
+    if (!complaintNotes.trim()) return setComplaintError("Please describe the issue")
+
+    setComplaintSubmitting(true)
+
+    const { error } = await supabase.from("driver_complaints").insert([{
+      driver_id: driver?.driver_id,
+      trip_id: activeTrip?.trip_id ?? null,
+      plate_number: complaintTruck,
+      complaint_type: complaintType,
+      notes: complaintNotes.trim(),
+    }])
+
+    setComplaintSubmitting(false)
+    if (error) { setComplaintError("Failed to submit complaint"); return }
+
+    setShowComplaintModal(false)
+    setComplaintType(""); setComplaintTruck(""); setComplaintNotes(""); setComplaintError("")
+    setComplaintPendingEndTrip(false)
+
+    if (thenEndTrip) handleEndTrip()
+  }
+
+  function openComplaintFromEndTrip() {
+    setComplaintPendingEndTrip(true)
+    setShowEndConfirm(false)
+    setShowComplaintModal(true)
   }
 
   function handleStopLogged() {
@@ -270,27 +407,38 @@ export default function DriverDashboard() {
         <div>
           <p style={{ margin: 0, fontSize: 13, color: "#888" }}>Logged in as</p>
           <p style={{ margin: 0, fontWeight: "bold" }}>{driver?.full_name}</p>
-          <p style={{ margin: 0, fontSize: 11, color: "#aaa" }}>{driver?.driver_id}</p>
         </div>
-        <button
-          onClick={async () => { await supabase.auth.signOut(); window.location.href = "/login" }}
-          style={{ padding: "6px 14px", background: "#ff4444", color: "white", border: "none", borderRadius: 6, cursor: "pointer", fontSize: 13 }}
-        >
-          Logout
-        </button>
+        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          <button
+            onClick={() => { setComplaintPendingEndTrip(false); setShowComplaintModal(true) }}
+            style={{ padding: "6px 14px", background: "white", color: "#f5a623", border: "1px solid #f5a623", borderRadius: 6, cursor: "pointer", fontSize: 13 }}
+          >
+            Report Issue
+          </button>
+          <button
+            onClick={async () => { await supabase.auth.signOut(); window.location.href = "/login" }}
+            style={{ padding: "6px 14px", background: "#ff4444", color: "white", border: "none", borderRadius: 6, cursor: "pointer", fontSize: 13 }}
+          >
+            Logout
+          </button>
+        </div>
       </div>
 
       {/* Dashboard View */}
       {view === "dashboard" && (
         <div style={{ textAlign: "center", paddingTop: 60 }}>
-          <h2 style={{ marginBottom: 8 }}>Ready to go?</h2>
-          <p style={{ color: "#888", marginBottom: 40 }}>No active trip. What would you like to do?</p>
+          <h2 style={{ marginBottom: 8 }}>
+            {activeTrip ? `Welcome back, ${driver?.full_name?.split(" ")[0]}` : "Ready to go?"}
+          </h2>
+          <p style={{ color: "#888", marginBottom: 40 }}>
+            {activeTrip ? `Trip in progress · ${activeTrip.plate_number}` : "No active trip. What would you like to do?"}
+          </p>
           <div style={{ display: "flex", flexDirection: "column", gap: 12, maxWidth: 320, margin: "0 auto" }}>
             <button
-              onClick={() => setView("start-trip")}
+              onClick={() => setView(activeTrip ? "active-trip" : "start-trip")}
               style={{ padding: "16px 48px", background: "#0070f3", color: "white", border: "none", borderRadius: 8, fontSize: 18, cursor: "pointer", fontWeight: "bold" }}
             >
-              Start a Trip
+              {activeTrip ? "Continue Trip" : "Start a Trip"}
             </button>
             <button
               onClick={() => setView("buy-diesel")}
@@ -310,45 +458,97 @@ export default function DriverDashboard() {
           </button>
           <h2 style={{ marginBottom: 24 }}>Start a Trip</h2>
 
+          {/* Plate Number */}
           <div style={{ marginBottom: 16 }}>
             <label style={{ fontWeight: "bold", display: "block", marginBottom: 6 }}>Plate Number *</label>
             <select value={plateNumber} onChange={(e) => { setPlateNumber(e.target.value); setMessage("") }} style={{ width: "100%", padding: 10, boxSizing: "border-box" }}>
               <option value="">Select plate number</option>
-              {trucks.map((t) => (<option key={t.plate_number} value={t.plate_number}>{t.plate_number}</option>))}
+              {trucks.map((t) => (
+                <option key={t.plate_number} value={t.plate_number}>
+                  {t.plate_number}{t.kbnl_truck_no ? ` · #${t.kbnl_truck_no}` : ""}
+                </option>
+              ))}
             </select>
           </div>
 
+          {/* Loading Point Category */}
           <div style={{ marginBottom: 16 }}>
-            <label style={{ fontWeight: "bold", display: "block", marginBottom: 6 }}>Product *</label>
-            <select value={product} onChange={(e) => { setProduct(e.target.value); setMessage("") }} style={{ width: "100%", padding: 10, boxSizing: "border-box" }}>
-              <option value="">Select product</option>
-              {productOptions.map((p) => (<option key={p} value={p}>{p}</option>))}
+            <label style={{ fontWeight: "bold", display: "block", marginBottom: 6 }}>Loading Point *</label>
+            <select value={loadingPointCategory} onChange={(e) => handleCategoryChange(e.target.value)} style={{ width: "100%", padding: 10, boxSizing: "border-box" }}>
+              <option value="">Select loading point</option>
+              {Object.keys(LOADING_POINT_MAP).map((cat) => (
+                <option key={cat} value={cat}>{cat}</option>
+              ))}
             </select>
           </div>
 
-          <div style={{ marginBottom: 16 }}>
-            <label style={{ fontWeight: "bold", display: "block", marginBottom: 6 }}>Material Centre *</label>
-            <select value={materialCentre} onChange={(e) => { setMaterialCentre(e.target.value); setMessage(""); setAtc("") }} style={{ width: "100%", padding: 10, boxSizing: "border-box" }}>
-              <option value="">Select material centre</option>
-              {materialCentres.map((m) => (<option key={m} value={m}>{m}</option>))}
-            </select>
-          </div>
-
-          {materialCentre === "Main store (ATCs)" && (
+          {/* Loading Point Name */}
+          {loadingPointCategory && (
             <div style={{ marginBottom: 16 }}>
-              <label style={{ fontWeight: "bold", display: "block", marginBottom: 6 }}>ATC Number *</label>
-              <input ref={atcRef} type="text" placeholder="Enter ATC number" value={atc} onChange={(e) => { setAtc(e.target.value); setMessage("") }} onKeyDown={(e) => { if (e.key === "Enter") loadedQtyRef.current?.focus() }} style={{ width: "100%", padding: 10, boxSizing: "border-box" }} />
+              <label style={{ fontWeight: "bold", display: "block", marginBottom: 6 }}>
+                {loadingPointCategory === "Factory" ? "Factory" : loadingPointCategory === "Depot" ? "Depot" : "Outlet"} *
+              </label>
+              <select value={loadingPointName} onChange={(e) => handleLoadingPointNameChange(e.target.value)} style={{ width: "100%", padding: 10, boxSizing: "border-box" }}>
+                <option value="">Select {loadingPointCategory.toLowerCase()}</option>
+                {availableLocations.map((loc) => (
+                  <option key={loc} value={loc}>{loc}</option>
+                ))}
+              </select>
             </div>
           )}
 
-          <div style={{ marginBottom: 24 }}>
-            <label style={{ fontWeight: "bold", display: "block", marginBottom: 6 }}>Loaded Quantity (bags) *</label>
-            <input ref={loadedQtyRef} type="number" placeholder="e.g. 600" value={loadedQuantity} onChange={(e) => { setLoadedQuantity(e.target.value); setMessage("") }} onKeyDown={(e) => { if (e.key === "Enter") handleStartTrip() }} style={{ width: "100%", padding: 10, boxSizing: "border-box" }} />
-          </div>
+          {/* ATC — factories only */}
+          {showATC && loadingPointName && (
+            <div style={{ marginBottom: 16 }}>
+              <label style={{ fontWeight: "bold", display: "block", marginBottom: 6 }}>ATC Number *</label>
+              <input
+                ref={atcRef}
+                type="text"
+                placeholder="Enter ATC number"
+                value={atc}
+                onChange={(e) => { setAtc(e.target.value); setMessage("") }}
+                onKeyDown={(e) => { if (e.key === "Enter") loadedQtyRef.current?.focus() }}
+                style={{ width: "100%", padding: 10, boxSizing: "border-box" }}
+              />
+            </div>
+          )}
+
+          {/* Product */}
+          {loadingPointName && (
+            <div style={{ marginBottom: 16 }}>
+              <label style={{ fontWeight: "bold", display: "block", marginBottom: 6 }}>Product *</label>
+              <select value={product} onChange={(e) => { setProduct(e.target.value); setMessage("") }} style={{ width: "100%", padding: 10, boxSizing: "border-box" }}>
+                <option value="">Select product</option>
+                {productOptions.map((p) => (
+                  <option key={p} value={p}>{p}</option>
+                ))}
+              </select>
+            </div>
+          )}
+
+          {/* No. of bags */}
+          {product && (
+            <div style={{ marginBottom: 24 }}>
+              <label style={{ fontWeight: "bold", display: "block", marginBottom: 6 }}>No. of Bags *</label>
+              <input
+                ref={loadedQtyRef}
+                type="number"
+                placeholder="e.g. 600"
+                value={loadedQuantity}
+                onChange={(e) => { setLoadedQuantity(e.target.value); setMessage("") }}
+                onKeyDown={(e) => { if (e.key === "Enter") handleStartTrip() }}
+                style={{ width: "100%", padding: 10, boxSizing: "border-box" }}
+              />
+            </div>
+          )}
 
           {message && <p style={{ color: "red", marginBottom: 16, fontWeight: "bold" }}>{message}</p>}
 
-          <button onClick={handleStartTrip} disabled={submitting} style={{ width: "100%", padding: "14px 0", background: "#0070f3", color: "white", border: "none", borderRadius: 8, fontSize: 16, cursor: submitting ? "not-allowed" : "pointer", fontWeight: "bold" }}>
+          <button
+            onClick={handleStartTrip}
+            disabled={submitting}
+            style={{ width: "100%", padding: "14px 0", background: "#0070f3", color: "white", border: "none", borderRadius: 8, fontSize: 16, cursor: submitting ? "not-allowed" : "pointer", fontWeight: "bold" }}
+          >
             {submitting ? "Starting..." : "Start Trip"}
           </button>
         </div>
@@ -357,15 +557,14 @@ export default function DriverDashboard() {
       {/* Active Trip View */}
       {view === "active-trip" && activeTrip && (
         <div>
+          <button onClick={() => setView("dashboard")} style={{ background: "none", border: "none", color: "#0070f3", cursor: "pointer", marginBottom: 16, padding: 0 }}>
+            ← Dashboard
+          </button>
           <h2 style={{ marginBottom: 20 }}>Active Trip</h2>
 
           {/* Trip Info Card */}
           <div style={{ background: "white", border: "1px solid #eee", borderRadius: 12, padding: 20, marginBottom: 24, boxShadow: "0 2px 8px rgba(0,0,0,0.06)" }}>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-              <div>
-                <p style={{ margin: 0, fontSize: 12, color: "#888" }}>Trip ID</p>
-                <p style={{ margin: "2px 0 0", fontWeight: "bold", fontSize: 12 }}>{activeTrip.trip_id}</p>
-              </div>
               <div>
                 <p style={{ margin: 0, fontSize: 12, color: "#888" }}>Plate Number</p>
                 <p style={{ margin: "2px 0 0", fontWeight: "bold" }}>{activeTrip.plate_number}</p>
@@ -375,7 +574,7 @@ export default function DriverDashboard() {
                 <p style={{ margin: "2px 0 0", fontWeight: "bold" }}>{activeTrip.product}</p>
               </div>
               <div>
-                <p style={{ margin: 0, fontSize: 12, color: "#888" }}>Material Centre</p>
+                <p style={{ margin: 0, fontSize: 12, color: "#888" }}>Loading Point</p>
                 <p style={{ margin: "2px 0 0", fontWeight: "bold" }}>{activeTrip.material_centre}</p>
               </div>
               <div>
@@ -388,15 +587,17 @@ export default function DriverDashboard() {
                   {remaining} bags
                 </p>
               </div>
-            </div>
-            <div style={{ marginTop: 16, textAlign: "center" }}>
-              <span style={{
-                padding: "4px 14px", borderRadius: 12, fontSize: 12, fontWeight: "bold",
-                background: activeTrip.trip_status === "On hold" ? "#f5a62322" : "#0070f322",
-                color: activeTrip.trip_status === "On hold" ? "#f5a623" : "#0070f3"
-              }}>
-                {activeTrip.trip_status}
-              </span>
+              <div>
+                <p style={{ margin: 0, fontSize: 12, color: "#888" }}>Status</p>
+                <span style={{
+                  display: "inline-block", marginTop: 2,
+                  padding: "2px 10px", borderRadius: 12, fontSize: 12, fontWeight: "bold",
+                  background: activeTrip.trip_status === "On hold" ? "#f5a62322" : "#0070f322",
+                  color: activeTrip.trip_status === "On hold" ? "#f5a623" : "#0070f3"
+                }}>
+                  {activeTrip.trip_status}
+                </span>
+              </div>
             </div>
           </div>
 
@@ -408,7 +609,7 @@ export default function DriverDashboard() {
                 <div key={stop.stop_id} style={{ padding: 12, border: "1px solid #eee", borderRadius: 8, marginBottom: 8, background: "white", fontSize: 13 }}>
                   <p style={{ margin: 0, fontWeight: "bold" }}>Stop {stops.length - index}</p>
                   <p style={{ margin: "4px 0 0", color: "#555" }}>{stop.stop_location}</p>
-                  <p style={{ margin: "4px 0 0", color: "#888" }}>{stop.quantity_offloaded} bags • {new Date(stop.stop_time).toLocaleTimeString()}</p>
+                  <p style={{ margin: "4px 0 0", color: "#888" }}>{stop.quantity_offloaded} bags · {new Date(stop.stop_time).toLocaleTimeString()}</p>
                 </div>
               ))}
             </div>
@@ -417,21 +618,22 @@ export default function DriverDashboard() {
           {/* Action Buttons */}
           <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
             {remaining > 0 && (
-              <button
-                onClick={() => setView("log-stop")}
-                style={{ width: "100%", padding: "14px 0", background: "#0070f3", color: "white", border: "none", borderRadius: 8, fontSize: 16, cursor: "pointer", fontWeight: "bold" }}
-              >
+              <button onClick={() => setView("log-stop")} style={{ width: "100%", padding: "14px 0", background: "#0070f3", color: "white", border: "none", borderRadius: 8, fontSize: 16, cursor: "pointer", fontWeight: "bold" }}>
                 Make a Stop
               </button>
             )}
-
+            <button
+              onClick={() => { setShowLoadMoreModal(true); setLoadMoreError("") }}
+              style={{ width: "100%", padding: "12px 0", background: "white", color: "#0070f3", border: "1px solid #0070f3", borderRadius: 8, fontSize: 16, cursor: "pointer" }}
+            >
+              Load More Bags
+            </button>
             <button
               onClick={() => { setShowDiscrepancyModal(true); setDiscError("") }}
               style={{ width: "100%", padding: "12px 0", background: "white", color: "#f5a623", border: "1px solid #f5a623", borderRadius: 8, fontSize: 16, cursor: "pointer" }}
             >
               Report Shortage / Caked Bags
             </button>
-
             <button
               onClick={() => setShowHoldConfirm(true)}
               style={{
@@ -462,56 +664,62 @@ export default function DriverDashboard() {
         <BuyDiesel driverId={driver?.driver_id ?? ""} onBack={() => setView("dashboard")} />
       )}
 
-      {/* Discrepancy Modal */}
-      {showDiscrepancyModal && (
-        <div onClick={closeDiscrepancyModal} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 100 }}>
-          <div onClick={(e) => e.stopPropagation()} style={{ background: "white", borderRadius: 12, padding: 32, width: 340, maxWidth: "90vw", boxShadow: "0 8px 32px rgba(0,0,0,0.2)" }}>
-            <h3 style={{ marginBottom: 8 }}>Report Shortage / Caked Bags</h3>
-            <p style={{ color: "#888", fontSize: 13, marginBottom: 20 }}>Remaining bags: <strong>{remaining}</strong></p>
+      {/* ── MODALS ── */}
+
+      {/* Complaint Modal */}
+      {showComplaintModal && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 200 }}>
+          <div onClick={(e) => e.stopPropagation()} style={{ background: "white", borderRadius: 12, padding: 32, width: 360, maxWidth: "90vw", boxShadow: "0 8px 32px rgba(0,0,0,0.2)" }}>
+            <h3 style={{ marginBottom: 20 }}>Report an Issue</h3>
 
             <div style={{ marginBottom: 16 }}>
-              <label style={{ fontWeight: "bold", display: "block", marginBottom: 6, fontSize: 14 }}>Shortage (bags)</label>
-              <p style={{ margin: "0 0 6px", fontSize: 12, color: "#888" }}>Will be deducted from remaining</p>
-              <input
-                type="number"
-                placeholder="0"
-                value={discShortage}
-                onChange={(e) => { setDiscShortage(e.target.value); setDiscError("") }}
-                style={{ width: "100%", padding: 10, boxSizing: "border-box", borderRadius: 6, border: "1px solid #ddd", fontSize: 14 }}
-              />
+              <label style={{ fontWeight: "bold", display: "block", marginBottom: 6, fontSize: 14 }}>Truck *</label>
+              <select value={complaintTruck} onChange={(e) => { setComplaintTruck(e.target.value); setComplaintError("") }} style={{ width: "100%", padding: 10, boxSizing: "border-box", borderRadius: 6, border: "1px solid #ddd" }}>
+                <option value="">Select truck</option>
+                {allTrucks.map((t) => (
+                  <option key={t.plate_number} value={t.plate_number}>
+                    {t.plate_number}{t.kbnl_truck_no ? ` · #${t.kbnl_truck_no}` : ""}
+                  </option>
+                ))}
+              </select>
             </div>
 
             <div style={{ marginBottom: 16 }}>
-              <label style={{ fontWeight: "bold", display: "block", marginBottom: 6, fontSize: 14 }}>Caked Bags</label>
-              <p style={{ margin: "0 0 6px", fontSize: 12, color: "#888" }}>Logged for record only — returned to plant</p>
-              <input
-                type="number"
-                placeholder="0"
-                value={discCaked}
-                onChange={(e) => { setDiscCaked(e.target.value); setDiscError("") }}
-                style={{ width: "100%", padding: 10, boxSizing: "border-box", borderRadius: 6, border: "1px solid #ddd", fontSize: 14 }}
-              />
+              <label style={{ fontWeight: "bold", display: "block", marginBottom: 6, fontSize: 14 }}>Issue Type *</label>
+              <select value={complaintType} onChange={(e) => { setComplaintType(e.target.value); setComplaintError("") }} style={{ width: "100%", padding: 10, boxSizing: "border-box", borderRadius: 6, border: "1px solid #ddd" }}>
+                <option value="">Select type</option>
+                {COMPLAINT_TYPES.map((t) => (<option key={t} value={t}>{t}</option>))}
+              </select>
             </div>
 
             <div style={{ marginBottom: 24 }}>
-              <label style={{ fontWeight: "bold", display: "block", marginBottom: 6, fontSize: 14 }}>Notes (optional)</label>
+              <label style={{ fontWeight: "bold", display: "block", marginBottom: 6, fontSize: 14 }}>Description *</label>
               <textarea
-                placeholder="Any additional context..."
-                value={discNotes}
-                onChange={(e) => setDiscNotes(e.target.value)}
-                rows={3}
+                placeholder="Describe the issue..."
+                value={complaintNotes}
+                onChange={(e) => { setComplaintNotes(e.target.value); setComplaintError("") }}
+                rows={4}
                 style={{ width: "100%", padding: 10, boxSizing: "border-box", borderRadius: 6, border: "1px solid #ddd", fontSize: 14, resize: "none" }}
               />
             </div>
 
-            {discError && <p style={{ color: "red", fontSize: 13, marginBottom: 12 }}>{discError}</p>}
+            {complaintError && <p style={{ color: "red", fontSize: 13, marginBottom: 12 }}>{complaintError}</p>}
 
             <div style={{ display: "flex", gap: 8 }}>
-              <button onClick={closeDiscrepancyModal} style={{ flex: 1, padding: "10px 0", background: "white", border: "1px solid #ddd", borderRadius: 6, cursor: "pointer" }}>
-                Cancel
-              </button>
-              <button onClick={handleReportDiscrepancy} disabled={discSubmitting} style={{ flex: 1, padding: "10px 0", background: "#f5a623", color: "white", border: "none", borderRadius: 6, cursor: discSubmitting ? "not-allowed" : "pointer", fontWeight: "bold" }}>
-                {discSubmitting ? "Submitting..." : "Submit Report"}
+              {!complaintPendingEndTrip && (
+                <button
+                  onClick={() => { setShowComplaintModal(false); setComplaintType(""); setComplaintTruck(""); setComplaintNotes(""); setComplaintError("") }}
+                  style={{ flex: 1, padding: "10px 0", background: "white", border: "1px solid #ddd", borderRadius: 6, cursor: "pointer" }}
+                >
+                  Cancel
+                </button>
+              )}
+              <button
+                onClick={() => handleSubmitComplaint(complaintPendingEndTrip)}
+                disabled={complaintSubmitting}
+                style={{ flex: 1, padding: "10px 0", background: "#f5a623", color: "white", border: "none", borderRadius: 6, cursor: complaintSubmitting ? "not-allowed" : "pointer", fontWeight: "bold" }}
+              >
+                {complaintSubmitting ? "Submitting..." : complaintPendingEndTrip ? "Submit & End Trip" : "Submit"}
               </button>
             </div>
           </div>
@@ -520,20 +728,23 @@ export default function DriverDashboard() {
 
       {/* End Trip Confirmation Modal */}
       {showEndConfirm && (
-        <div onClick={() => setShowEndConfirm(false)} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 100 }}>
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 100 }}>
           <div onClick={(e) => e.stopPropagation()} style={{ background: "white", borderRadius: 12, padding: 32, width: 320, maxWidth: "90vw", boxShadow: "0 8px 32px rgba(0,0,0,0.2)" }}>
-            <h3 style={{ marginBottom: 12 }}>{remaining === 0 ? "All bags offloaded!" : "End Trip Early?"}</h3>
-            <p style={{ marginBottom: 24, color: "#555" }}>
-              {remaining === 0
-                ? "All bags have been offloaded. Ready to end this trip?"
-                : `You still have ${remaining} bags remaining. Are you sure you want to end the trip?`}
-            </p>
+            <h3 style={{ marginBottom: 12 }}>All bags offloaded!</h3>
+            <p style={{ marginBottom: 24, color: "#555" }}>All bags have been offloaded. Ready to end this trip?</p>
             <div style={{ display: "flex", gap: 8 }}>
-              <button onClick={handleEndTrip} disabled={submitting} style={{ flex: 1, padding: "10px 0", background: "#0070f3", color: "white", border: "none", borderRadius: 6, cursor: "pointer" }}>
-                {submitting ? "Ending..." : "Yes, End Trip"}
+              <button
+                onClick={handleEndTrip}
+                disabled={submitting}
+                style={{ flex: 1, padding: "10px 0", background: "#0070f3", color: "white", border: "none", borderRadius: 6, cursor: "pointer" }}
+              >
+                {submitting ? "Ending..." : "End Trip"}
               </button>
-              <button onClick={() => setShowEndConfirm(false)} style={{ flex: 1, padding: "10px 0", background: "white", color: "#333", border: "1px solid #ddd", borderRadius: 6, cursor: "pointer" }}>
-                Cancel
+              <button
+                onClick={openComplaintFromEndTrip}
+                style={{ flex: 1, padding: "10px 0", background: "white", color: "#f5a623", border: "1px solid #f5a623", borderRadius: 6, cursor: "pointer" }}
+              >
+                Lodge a Complaint
               </button>
             </div>
           </div>
@@ -546,9 +757,7 @@ export default function DriverDashboard() {
           <div onClick={(e) => e.stopPropagation()} style={{ background: "white", borderRadius: 12, padding: 32, width: 320, maxWidth: "90vw", boxShadow: "0 8px 32px rgba(0,0,0,0.2)" }}>
             <h3 style={{ marginBottom: 12 }}>{activeTrip?.trip_status === "On hold" ? "Resume Trip?" : "Put Trip On Hold?"}</h3>
             <p style={{ marginBottom: 24, color: "#555" }}>
-              {activeTrip?.trip_status === "On hold"
-                ? "This will set your trip back to In Transit."
-                : "This will pause your trip. You can resume it later."}
+              {activeTrip?.trip_status === "On hold" ? "This will set your trip back to In Transit." : "This will pause your trip. You can resume it later."}
             </p>
             <div style={{ display: "flex", gap: 8 }}>
               <button onClick={handleHoldTrip} disabled={submitting} style={{ flex: 1, padding: "10px 0", background: "#f5a623", color: "white", border: "none", borderRadius: 6, cursor: "pointer" }}>
@@ -561,6 +770,118 @@ export default function DriverDashboard() {
           </div>
         </div>
       )}
+
+      {/* Discrepancy Modal */}
+      {showDiscrepancyModal && (
+        <div onClick={() => { setShowDiscrepancyModal(false); setDiscShortage(""); setDiscCaked(""); setDiscNotes(""); setDiscDropLocation(""); setDiscError("") }} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 100 }}>
+          <div onClick={(e) => e.stopPropagation()} style={{ background: "white", borderRadius: 12, padding: 32, width: 340, maxWidth: "90vw", boxShadow: "0 8px 32px rgba(0,0,0,0.2)" }}>
+            <h3 style={{ marginBottom: 8 }}>Report Shortage / Caked Bags</h3>
+            <p style={{ color: "#888", fontSize: 13, marginBottom: 20 }}>Remaining bags: <strong>{remaining}</strong></p>
+
+            <div style={{ marginBottom: 16 }}>
+              <label style={{ fontWeight: "bold", display: "block", marginBottom: 6, fontSize: 14 }}>Drop Location *</label>
+              <select value={discDropLocation} onChange={(e) => { setDiscDropLocation(e.target.value); setDiscError("") }} style={{ width: "100%", padding: 10, boxSizing: "border-box", borderRadius: 6, border: "1px solid #ddd", fontSize: 14 }}>
+                <option value="">Select location</option>
+                {allStoreLocations.map((loc) => (<option key={loc} value={loc}>{loc}</option>))}
+              </select>
+            </div>
+
+            <div style={{ marginBottom: 16 }}>
+              <label style={{ fontWeight: "bold", display: "block", marginBottom: 6, fontSize: 14 }}>Shortage (bags)</label>
+              <p style={{ margin: "0 0 6px", fontSize: 12, color: "#888" }}>Will be deducted from remaining</p>
+              <input type="number" placeholder="0" value={discShortage} onChange={(e) => { setDiscShortage(e.target.value); setDiscError("") }} style={{ width: "100%", padding: 10, boxSizing: "border-box", borderRadius: 6, border: "1px solid #ddd", fontSize: 14 }} />
+            </div>
+
+            <div style={{ marginBottom: 16 }}>
+              <label style={{ fontWeight: "bold", display: "block", marginBottom: 6, fontSize: 14 }}>Caked Bags</label>
+              <p style={{ margin: "0 0 6px", fontSize: 12, color: "#888" }}>Logged for record only — returned to plant</p>
+              <input type="number" placeholder="0" value={discCaked} onChange={(e) => { setDiscCaked(e.target.value); setDiscError("") }} style={{ width: "100%", padding: 10, boxSizing: "border-box", borderRadius: 6, border: "1px solid #ddd", fontSize: 14 }} />
+            </div>
+
+            <div style={{ marginBottom: 24 }}>
+              <label style={{ fontWeight: "bold", display: "block", marginBottom: 6, fontSize: 14 }}>Notes (optional)</label>
+              <textarea placeholder="Any additional context..." value={discNotes} onChange={(e) => setDiscNotes(e.target.value)} rows={3} style={{ width: "100%", padding: 10, boxSizing: "border-box", borderRadius: 6, border: "1px solid #ddd", fontSize: 14, resize: "none" }} />
+            </div>
+
+            {discError && <p style={{ color: "red", fontSize: 13, marginBottom: 12 }}>{discError}</p>}
+
+            <div style={{ display: "flex", gap: 8 }}>
+              <button onClick={() => { setShowDiscrepancyModal(false); setDiscShortage(""); setDiscCaked(""); setDiscNotes(""); setDiscDropLocation(""); setDiscError("") }} style={{ flex: 1, padding: "10px 0", background: "white", border: "1px solid #ddd", borderRadius: 6, cursor: "pointer" }}>
+                Cancel
+              </button>
+              <button onClick={handleReportDiscrepancy} disabled={discSubmitting} style={{ flex: 1, padding: "10px 0", background: "#f5a623", color: "white", border: "none", borderRadius: 6, cursor: discSubmitting ? "not-allowed" : "pointer", fontWeight: "bold" }}>
+                {discSubmitting ? "Submitting..." : "Submit Report"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Load More Bags Modal */}
+      {showLoadMoreModal && (
+        <div onClick={() => { setShowLoadMoreModal(false); setLoadMoreQty(""); setLoadMoreCategory(""); setLoadMoreLocationName(""); setLoadMoreProduct(""); setLoadMoreProductOptions([]); setLoadMoreError("") }} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 100 }}>
+          <div onClick={(e) => e.stopPropagation()} style={{ background: "white", borderRadius: 12, padding: 32, width: 340, maxWidth: "90vw", boxShadow: "0 8px 32px rgba(0,0,0,0.2)" }}>
+            <h3 style={{ marginBottom: 8 }}>Load More Bags</h3>
+            <p style={{ color: "#888", fontSize: 13, marginBottom: 20 }}>Current total: <strong>{activeTrip?.loaded_quantity} bags</strong></p>
+
+            <div style={{ marginBottom: 16 }}>
+              <label style={{ fontWeight: "bold", display: "block", marginBottom: 6, fontSize: 14 }}>Loading Point *</label>
+              <select value={loadMoreCategory} onChange={(e) => handleLoadMoreCategoryChange(e.target.value)} style={{ width: "100%", padding: 10, boxSizing: "border-box", borderRadius: 6, border: "1px solid #ddd", fontSize: 14 }}>
+                <option value="">Select loading point</option>
+                <option value="Depot">Depot</option>
+                <option value="Outlet">Outlet</option>
+              </select>
+            </div>
+
+            {loadMoreCategory && (
+              <div style={{ marginBottom: 16 }}>
+                <label style={{ fontWeight: "bold", display: "block", marginBottom: 6, fontSize: 14 }}>{loadMoreCategory} *</label>
+                <select value={loadMoreLocationName} onChange={(e) => handleLoadMoreLocationChange(e.target.value)} style={{ width: "100%", padding: 10, boxSizing: "border-box", borderRadius: 6, border: "1px solid #ddd", fontSize: 14 }}>
+                  <option value="">Select {loadMoreCategory.toLowerCase()}</option>
+                  {LOADING_POINT_MAP[loadMoreCategory].map((loc) => (<option key={loc} value={loc}>{loc}</option>))}
+                </select>
+              </div>
+            )}
+
+            {loadMoreLocationName && (
+              <div style={{ marginBottom: 16 }}>
+                <label style={{ fontWeight: "bold", display: "block", marginBottom: 6, fontSize: 14 }}>Product *</label>
+                <select value={loadMoreProduct} onChange={(e) => { setLoadMoreProduct(e.target.value); setLoadMoreError("") }} style={{ width: "100%", padding: 10, boxSizing: "border-box", borderRadius: 6, border: "1px solid #ddd", fontSize: 14 }}>
+                  <option value="">Select product</option>
+                  {loadMoreProductOptions.map((p) => (<option key={p} value={p}>{p}</option>))}
+                </select>
+              </div>
+            )}
+
+            {loadMoreProduct && (
+              <div style={{ marginBottom: 24 }}>
+                <label style={{ fontWeight: "bold", display: "block", marginBottom: 6, fontSize: 14 }}>No. of Bags to Add *</label>
+                <input
+                  ref={loadMoreRef}
+                  type="number"
+                  placeholder="e.g. 100"
+                  value={loadMoreQty}
+                  onChange={(e) => { setLoadMoreQty(e.target.value); setLoadMoreError("") }}
+                  onKeyDown={(e) => { if (e.key === "Enter") handleLoadMore() }}
+                  style={{ width: "100%", padding: 10, boxSizing: "border-box", borderRadius: 6, border: "1px solid #ddd", fontSize: 14 }}
+                />
+              </div>
+            )}
+
+            {loadMoreError && <p style={{ color: "red", fontSize: 13, marginBottom: 12 }}>{loadMoreError}</p>}
+
+            <div style={{ display: "flex", gap: 8 }}>
+              <button onClick={() => { setShowLoadMoreModal(false); setLoadMoreQty(""); setLoadMoreCategory(""); setLoadMoreLocationName(""); setLoadMoreProduct(""); setLoadMoreProductOptions([]); setLoadMoreError("") }} style={{ flex: 1, padding: "10px 0", background: "white", border: "1px solid #ddd", borderRadius: 6, cursor: "pointer" }}>
+                Cancel
+              </button>
+              <button onClick={handleLoadMore} disabled={loadMoreSubmitting} style={{ flex: 1, padding: "10px 0", background: "#0070f3", color: "white", border: "none", borderRadius: 6, cursor: loadMoreSubmitting ? "not-allowed" : "pointer", fontWeight: "bold" }}>
+                {loadMoreSubmitting ? "Saving..." : "Confirm"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   )
 }

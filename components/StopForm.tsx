@@ -5,25 +5,25 @@ import { supabase } from "@/lib/supabase"
 import BrokerDropdown from "./BrokerDropdown"
 import CustomerSelector from "./CustomerSelector"
 
-type Broker = {
-  broker_id: string
-  broker_name: string
-}
+type Broker = { broker_id: string; broker_name: string }
+type Customer = { customer_id: string; full_name: string; phone_number: string }
+type Props = { tripId: string; onStopLogged: () => void }
 
-type Customer = {
-  customer_id: string
-  full_name: string
-  phone_number: string
-}
-
-type Props = {
-  tripId: string
-  onStopLogged: () => void
-}
+const STORE_LOCATIONS = [
+  "Calabar Mini Depot", "Ikom Mini Depot", "Ogoja Depot", "Uyo Depot",
+  "Brooks", "Urua Ekpa", "Urua Nyemeiko", "Reserve Store", "E1 Outlet", "Ogoja Outlet",
+]
 
 export default function StopForm({ tripId, onStopLogged }: Props) {
+  const [stopType, setStopType] = useState<"customer" | "store">("customer")
+
+  // Customer stop
   const [selectedBroker, setSelectedBroker] = useState<Broker | null>(null)
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null)
+
+  // Store stop
+  const [selectedStore, setSelectedStore] = useState("")
+
   const [quantityOffloaded, setQuantityOffloaded] = useState("")
   const [stopLocation, setStopLocation] = useState("")
   const [latitude, setLatitude] = useState<number | null>(null)
@@ -32,82 +32,81 @@ export default function StopForm({ tripId, onStopLogged }: Props) {
   const [message, setMessage] = useState("")
   const [submitting, setSubmitting] = useState(false)
 
-  const [loadedQuantity, setLoadedQuantity] = useState<number>(0)
-  const [offloadedSoFar, setOffloadedSoFar] = useState<number>(0)
+  const [loadedQuantity, setLoadedQuantity] = useState(0)
+  const [offloadedSoFar, setOffloadedSoFar] = useState(0)
 
   const remaining = loadedQuantity - offloadedSoFar
   const inputQty = parseInt(quantityOffloaded) || 0
   const displayRemaining = remaining - inputQty
 
-  useEffect(() => {
-    fetchTripData()
-  }, [tripId])
+  useEffect(() => { fetchTripData() }, [tripId])
 
   async function fetchTripData() {
-    const { data: tripData, error: tripError } = await supabase
-      .from("Trips")
-      .select("loaded_quantity")
-      .eq("trip_id", tripId)
-      .single()
-
-    if (tripError || !tripData) return
+    const { data: tripData } = await supabase
+      .from("Trips").select("loaded_quantity").eq("trip_id", tripId).single()
+    if (!tripData) return
     setLoadedQuantity(tripData.loaded_quantity)
 
-    const { data: stopsData, error: stopsError } = await supabase
-      .from("Stops")
-      .select("quantity_offloaded")
-      .eq("trip_id", tripId)
-
+    const { data: stopsData } = await supabase
+      .from("Stops").select("quantity_offloaded").eq("trip_id", tripId)
     const { data: discData } = await supabase
-      .from("trip_discrepancies")
-      .select("shortage")
-      .eq("trip_id", tripId)
+      .from("trip_discrepancies").select("shortage").eq("trip_id", tripId)
 
-    if (!stopsError && stopsData) {
-      const totalOffloaded = stopsData.reduce((sum, stop) => sum + (stop.quantity_offloaded || 0), 0)
-      const totalShortage = (discData || []).reduce((sum, d) => sum + (d.shortage || 0), 0)
-      setOffloadedSoFar(totalOffloaded + totalShortage)
-    }
+    const totalOffloaded = (stopsData || []).reduce((sum, s) => sum + (s.quantity_offloaded || 0), 0)
+    const totalShortage = (discData || []).reduce((sum, d) => sum + (d.shortage || 0), 0)
+    setOffloadedSoFar(totalOffloaded + totalShortage)
   }
 
   function captureGPS() {
-    if (!navigator.geolocation) {
-      setGpsStatus("GPS not supported on this device")
-      return
-    }
+    if (!navigator.geolocation) { setGpsStatus("GPS not supported on this device"); return }
     setGpsStatus("Capturing...")
     navigator.geolocation.getCurrentPosition(
-      (position) => {
-        setLatitude(position.coords.latitude)
-        setLongitude(position.coords.longitude)
-        setGpsStatus(`✅ ${position.coords.latitude.toFixed(5)}, ${position.coords.longitude.toFixed(5)}`)
+      (pos) => {
+        setLatitude(pos.coords.latitude)
+        setLongitude(pos.coords.longitude)
+        setGpsStatus(`✅ ${pos.coords.latitude.toFixed(5)}, ${pos.coords.longitude.toFixed(5)}`)
       },
-      () => {
-        setGpsStatus("❌ Failed to capture. Check permissions.")
-      }
+      () => setGpsStatus("❌ Failed to capture. Check permissions.")
     )
   }
 
+  function switchStopType(type: "customer" | "store") {
+    setStopType(type)
+    setSelectedBroker(null)
+    setSelectedCustomer(null)
+    setSelectedStore("")
+    setMessage("")
+  }
+
   async function handleSubmit() {
-    if (!selectedBroker) return setMessage("Select a broker")
+    if (stopType === "customer" && !selectedBroker) return setMessage("Select a broker")
+    if (stopType === "store" && !selectedStore) return setMessage("Select a store")
     if (!quantityOffloaded) return setMessage("Enter quantity offloaded")
     if (inputQty <= 0) return setMessage("Quantity must be greater than 0")
     if (inputQty > remaining) return setMessage(`Only ${remaining} bags remaining`)
-    if (!stopLocation.trim()) return setMessage("Enter stop location")
-    if (!latitude || !longitude) return setMessage("Capture GPS before submitting")
+    if (stopType === "customer" && !stopLocation.trim()) return setMessage("Enter stop location")
 
     setSubmitting(true)
 
-    const { error } = await supabase.from("Stops").insert([{
+    const payload: Record<string, unknown> = {
       trip_id: tripId,
-      broker_id: selectedBroker.broker_id,
-      customer_id: selectedCustomer?.customer_id ?? null,
       quantity_offloaded: inputQty,
-      stop_location: stopLocation,
-      latitude,
-      longitude,
+      stop_location: stopType === "store" ? selectedStore : stopLocation,
+      latitude: latitude ?? null,
+      longitude: longitude ?? null,
       stop_time: new Date().toISOString(),
-    }])
+    }
+
+    if (stopType === "customer") {
+      payload.broker_id = selectedBroker!.broker_id
+      payload.customer_id = selectedCustomer?.customer_id ?? null
+    } else {
+      payload.broker_id = null
+      payload.customer_id = null
+      payload.store_name = selectedStore
+    }
+
+    const { error } = await supabase.from("Stops").insert([payload])
 
     setSubmitting(false)
 
@@ -115,68 +114,77 @@ export default function StopForm({ tripId, onStopLogged }: Props) {
       console.error(error)
       setMessage("Failed to save stop")
     } else {
-      setOffloadedSoFar((prev) => prev + inputQty)
       onStopLogged()
     }
   }
 
-  // Bag counter color logic
-  const counterColor = displayRemaining === 0
-    ? "red"
-    : displayRemaining < loadedQuantity * 0.2
-    ? "orange"
-    : "green"
+  const counterColor = displayRemaining === 0 ? "red" : displayRemaining < loadedQuantity * 0.2 ? "orange" : "green"
 
   return (
-    <div style={{ padding: 40, fontFamily: "Arial", maxWidth: 400 }}>
-
-      {/* Trip ID Banner */}
-      <div style={{
-        background: "#f0f0f0", padding: "10px 16px",
-        borderRadius: 8, marginBottom: 16, fontSize: 13, color: "#555"
-      }}>
-        Trip ID: <strong>{tripId}</strong>
-      </div>
+    <div style={{ fontFamily: "Arial", maxWidth: 400 }}>
 
       {/* Bag Counter */}
-      <div style={{
-        background: "#fafafa", border: "1px solid #ddd",
-        borderRadius: 8, padding: "14px 16px", marginBottom: 24,
-        textAlign: "center"
-      }}>
+      <div style={{ background: "#fafafa", border: "1px solid #ddd", borderRadius: 8, padding: "14px 16px", marginBottom: 24, textAlign: "center" }}>
         <p style={{ margin: 0, fontSize: 13, color: "#888" }}>Bags Available</p>
-        <p style={{
-          margin: "4px 0 0 0", fontSize: 28, fontWeight: "bold", color: counterColor
-        }}>
+        <p style={{ margin: "4px 0 0", fontSize: 28, fontWeight: "bold", color: counterColor }}>
           {displayRemaining < 0 ? 0 : displayRemaining}
-          <span style={{ fontSize: 16, color: "#aaa", fontWeight: "normal" }}>
-            /{loadedQuantity}
-          </span>
+          <span style={{ fontSize: 16, color: "#aaa", fontWeight: "normal" }}>/{loadedQuantity}</span>
         </p>
-        {displayRemaining < 0 && (
-          <p style={{ color: "red", fontSize: 12, margin: "4px 0 0 0" }}>
-            Exceeds available bags
-          </p>
-        )}
+        {displayRemaining < 0 && <p style={{ color: "red", fontSize: 12, margin: "4px 0 0" }}>Exceeds available bags</p>}
       </div>
 
-      <h2 style={{ marginBottom: 24 }}>Log a Stop</h2>
+      <h2 style={{ marginBottom: 20 }}>Log a Stop</h2>
 
-      {/* Broker */}
-      <div style={{ marginBottom: 20 }}>
-        <label style={{ fontWeight: "bold" }}>Broker *</label>
-        <div style={{ marginTop: 6 }}>
-          <BrokerDropdown onSelect={(broker) => setSelectedBroker(broker)} />
+      {/* Stop Type Toggle */}
+      <div style={{ display: "flex", gap: 8, marginBottom: 24 }}>
+        {(["customer", "store"] as const).map((type) => (
+          <button
+            key={type}
+            onClick={() => switchStopType(type)}
+            style={{
+              flex: 1, padding: "10px 0", borderRadius: 8, cursor: "pointer",
+              border: "1px solid #ddd", fontSize: 14, fontWeight: stopType === type ? "bold" : "normal",
+              background: stopType === type ? "#0070f3" : "white",
+              color: stopType === type ? "white" : "#333",
+            }}
+          >
+            {type === "customer" ? "Customer Stop" : "Store Stop"}
+          </button>
+        ))}
+      </div>
+
+      {/* Customer Stop Fields */}
+      {stopType === "customer" && (
+        <>
+          <div style={{ marginBottom: 20 }}>
+            <label style={{ fontWeight: "bold" }}>Broker *</label>
+            <div style={{ marginTop: 6 }}>
+              <BrokerDropdown onSelect={(broker) => setSelectedBroker(broker)} />
+            </div>
+          </div>
+          <div style={{ marginBottom: 20 }}>
+            <label style={{ fontWeight: "bold" }}>Customer</label>
+            <div style={{ marginTop: 6 }}>
+              <CustomerSelector onSelect={(customer) => setSelectedCustomer(customer)} />
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* Store Stop Fields */}
+      {stopType === "store" && (
+        <div style={{ marginBottom: 20 }}>
+          <label style={{ fontWeight: "bold" }}>Store *</label>
+          <select
+            value={selectedStore}
+            onChange={(e) => { setSelectedStore(e.target.value); setMessage("") }}
+            style={{ display: "block", width: "100%", padding: 10, marginTop: 6, boxSizing: "border-box", borderRadius: 4, border: "1px solid #ccc" }}
+          >
+            <option value="">Select store</option>
+            {STORE_LOCATIONS.map((loc) => (<option key={loc} value={loc}>{loc}</option>))}
+          </select>
         </div>
-      </div>
-
-      {/* Customer */}
-      <div style={{ marginBottom: 20 }}>
-        <label style={{ fontWeight: "bold" }}>Customer</label>
-        <div style={{ marginTop: 6 }}>
-          <CustomerSelector onSelect={(customer) => setSelectedCustomer(customer)} />
-        </div>
-      </div>
+      )}
 
       {/* Quantity */}
       <div style={{ marginBottom: 20 }}>
@@ -187,39 +195,33 @@ export default function StopForm({ tripId, onStopLogged }: Props) {
           value={quantityOffloaded}
           min={1}
           max={remaining}
-          onChange={(e) => {
-            setQuantityOffloaded(e.target.value)
-            setMessage("")
-          }}
+          onChange={(e) => { setQuantityOffloaded(e.target.value); setMessage("") }}
           style={{
-            display: "block", width: "100%", padding: 10,
-            marginTop: 6, boxSizing: "border-box",
-            borderColor: displayRemaining < 0 ? "red" : "#ccc",
-            borderWidth: 1, borderStyle: "solid", borderRadius: 4
+            display: "block", width: "100%", padding: 10, marginTop: 6, boxSizing: "border-box",
+            borderColor: displayRemaining < 0 ? "red" : "#ccc", borderWidth: 1, borderStyle: "solid", borderRadius: 4
           }}
         />
       </div>
 
-      {/* Stop Location */}
-      <div style={{ marginBottom: 20 }}>
-        <label style={{ fontWeight: "bold" }}>Stop Location *</label>
-        <input
-          type="text"
-          placeholder="e.g. Aba Road, beside GTBank"
-          value={stopLocation}
-          onChange={(e) => setStopLocation(e.target.value)}
-          style={{ display: "block", width: "100%", padding: 10, marginTop: 6, boxSizing: "border-box" }}
-        />
-      </div>
+      {/* Stop Location — only for customer stops */}
+      {stopType === "customer" && (
+        <div style={{ marginBottom: 20 }}>
+          <label style={{ fontWeight: "bold" }}>Stop Location *</label>
+          <input
+            type="text"
+            placeholder="e.g. Aba Road, beside GTBank"
+            value={stopLocation}
+            onChange={(e) => { setStopLocation(e.target.value); setMessage("") }}
+            style={{ display: "block", width: "100%", padding: 10, marginTop: 6, boxSizing: "border-box" }}
+          />
+        </div>
+      )}
 
-      {/* GPS */}
+      {/* GPS — optional */}
       <div style={{ marginBottom: 24 }}>
-        <label style={{ fontWeight: "bold" }}>GPS Coordinates *</label>
+        <label style={{ fontWeight: "bold" }}>GPS Coordinates <span style={{ fontWeight: "normal", color: "#aaa", fontSize: 13 }}>(optional)</span></label>
         <div style={{ marginTop: 6 }}>
-          <button
-            onClick={captureGPS}
-            style={{ padding: "10px 16px", cursor: "pointer", marginBottom: 8 }}
-          >
+          <button onClick={captureGPS} style={{ padding: "10px 16px", cursor: "pointer", marginBottom: 8 }}>
             📍 Capture My Location
           </button>
           <p style={{ fontSize: 13, color: "#555", margin: 0 }}>{gpsStatus}</p>

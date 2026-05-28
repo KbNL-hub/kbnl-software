@@ -147,7 +147,7 @@ export default function MaintenanceManagerDashboard() {
     const finalType = logType === "__custom__" ? logTypeCustom.trim() : logType
     if (!logPlate) return setLogError("Select a truck")
     if (!finalType) return setLogError("Enter a maintenance type")
-    if (!logAmount || isNaN(Number(logAmount)) || Number(logAmount) <= 0) return setLogError("Enter a valid amount")
+    if (!logAmount || isNaN(parseAmount(logAmount)) || parseAmount(logAmount) <= 0) return setLogError("Enter a valid amount")
 
     setLogLoading(true)
     const { error } = await supabase

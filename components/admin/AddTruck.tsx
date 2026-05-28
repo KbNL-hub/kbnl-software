@@ -7,27 +7,35 @@ const truckStatuses = ["Empty", "Loaded", "Need Repairs", "Decommissioned"]
 
 export default function AddTruck() {
   const [plateNumber, setPlateNumber] = useState("")
+  const [kbnlTruckNo, setKbnlTruckNo] = useState("")
   const [truckModel, setTruckModel] = useState("")
   const [capacity, setCapacity] = useState("")
+  const [tonnage, setTonnage] = useState("")
   const [status, setStatus] = useState("Empty")
   const [message, setMessage] = useState("")
   const [submitting, setSubmitting] = useState(false)
 
+  const kbnlRef = useRef<HTMLInputElement>(null)
   const truckModelRef = useRef<HTMLInputElement>(null)
   const capacityRef = useRef<HTMLInputElement>(null)
+  const tonnageRef = useRef<HTMLInputElement>(null)
   const statusRef = useRef<HTMLSelectElement>(null)
 
   async function handleSubmit() {
     if (!plateNumber.trim()) return setMessage("Plate number is required")
+    if (!kbnlTruckNo.trim()) return setMessage("KbNL truck number is required")
     if (!truckModel.trim()) return setMessage("Truck model is required")
     if (!capacity) return setMessage("Capacity is required")
+    if (!tonnage) return setMessage("Tonnage is required")
 
     setSubmitting(true)
 
     const { error } = await supabase.from("Trucks").insert([{
       plate_number: plateNumber.toUpperCase(),
+      kbnl_truck_no: kbnlTruckNo.trim(),
       truck_model: truckModel,
       capacity: parseInt(capacity),
+      tonnage: parseFloat(tonnage),
       status,
     }])
 
@@ -39,8 +47,10 @@ export default function AddTruck() {
     } else {
       setMessage("✅ Truck added successfully")
       setPlateNumber("")
+      setKbnlTruckNo("")
       setTruckModel("")
       setCapacity("")
+      setTonnage("")
       setStatus("Empty")
     }
   }
@@ -58,6 +68,21 @@ export default function AddTruck() {
           placeholder="e.g. ABC-123-XY"
           value={plateNumber}
           onChange={(e) => { setPlateNumber(e.target.value); setMessage("") }}
+          onKeyDown={(e) => { if (e.key === "Enter") kbnlRef.current?.focus() }}
+          style={{ width: "100%", padding: 10, boxSizing: "border-box" }}
+        />
+      </div>
+
+      <div style={{ marginBottom: 16 }}>
+        <label style={{ fontWeight: "bold", display: "block", marginBottom: 6 }}>
+          KbNL Truck No. *
+        </label>
+        <input
+          ref={kbnlRef}
+          type="text"
+          placeholder="e.g. 007"
+          value={kbnlTruckNo}
+          onChange={(e) => { setKbnlTruckNo(e.target.value); setMessage("") }}
           onKeyDown={(e) => { if (e.key === "Enter") truckModelRef.current?.focus() }}
           style={{ width: "100%", padding: 10, boxSizing: "border-box" }}
         />
@@ -88,6 +113,22 @@ export default function AddTruck() {
           placeholder="e.g. 600"
           value={capacity}
           onChange={(e) => { setCapacity(e.target.value); setMessage("") }}
+          onKeyDown={(e) => { if (e.key === "Enter") tonnageRef.current?.focus() }}
+          style={{ width: "100%", padding: 10, boxSizing: "border-box" }}
+        />
+      </div>
+
+      <div style={{ marginBottom: 16 }}>
+        <label style={{ fontWeight: "bold", display: "block", marginBottom: 6 }}>
+          Tonnage *
+        </label>
+        <input
+          ref={tonnageRef}
+          type="number"
+          step="0.1"
+          placeholder="e.g. 30.5"
+          value={tonnage}
+          onChange={(e) => { setTonnage(e.target.value); setMessage("") }}
           onKeyDown={(e) => { if (e.key === "Enter") statusRef.current?.focus() }}
           style={{ width: "100%", padding: 10, boxSizing: "border-box" }}
         />

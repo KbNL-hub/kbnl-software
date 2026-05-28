@@ -5,8 +5,10 @@ import { supabase } from "@/lib/supabase"
 
 type Truck = {
   plate_number: string
+  kbnl_truck_no: string
   truck_model: string
   capacity: number
+  tonnage: number
   status: string
 }
 
@@ -16,8 +18,10 @@ export default function ManageTrucks() {
   const [trucks, setTrucks] = useState<Truck[]>([])
   const [loading, setLoading] = useState(true)
   const [editingTruck, setEditingTruck] = useState<Truck | null>(null)
+  const [editKbnlNo, setEditKbnlNo] = useState("")
   const [editModel, setEditModel] = useState("")
   const [editCapacity, setEditCapacity] = useState("")
+  const [editTonnage, setEditTonnage] = useState("")
   const [editStatus, setEditStatus] = useState("")
   const [deletingPlate, setDeletingPlate] = useState<string | null>(null)
   const [message, setMessage] = useState("")
@@ -25,6 +29,7 @@ export default function ManageTrucks() {
   const [filterStatus, setFilterStatus] = useState("All")
 
   const capacityRef = useRef<HTMLInputElement>(null)
+  const tonnageRef = useRef<HTMLInputElement>(null)
 
   async function fetchTrucks() {
     const { data, error } = await supabase
@@ -46,8 +51,10 @@ export default function ManageTrucks() {
 
   function startEdit(truck: Truck) {
     setEditingTruck(truck)
+    setEditKbnlNo(truck.kbnl_truck_no)
     setEditModel(truck.truck_model)
     setEditCapacity(truck.capacity.toString())
+    setEditTonnage(truck.tonnage?.toString() ?? "")
     setEditStatus(truck.status)
     setMessage("")
   }
@@ -60,16 +67,20 @@ export default function ManageTrucks() {
 
   async function handleUpdate() {
     if (!editingTruck) return
+    if (!editKbnlNo.trim()) return setMessage("KbNL truck number is required")
     if (!editModel.trim()) return setMessage("Truck model is required")
     if (!editCapacity) return setMessage("Capacity is required")
+    if (!editTonnage) return setMessage("Tonnage is required")
 
     setSubmitting(true)
 
     const { error } = await supabase
       .from("Trucks")
       .update({
+        kbnl_truck_no: editKbnlNo.trim(),
         truck_model: editModel,
         capacity: parseInt(editCapacity),
+        tonnage: parseFloat(editTonnage),
         status: editStatus,
       })
       .eq("plate_number", editingTruck.plate_number)
@@ -145,9 +156,10 @@ export default function ManageTrucks() {
           <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 14 }}>
             <thead>
               <tr style={{ background: "#f0f0f0", textAlign: "left" }}>
-                <th style={th}>Plate Number</th>
+                <th style={th}>Truck</th>
                 <th style={th}>Model</th>
                 <th style={th}>Capacity</th>
+                <th style={th}>Tonnage</th>
                 <th style={th}>Status</th>
                 <th style={th}>Actions</th>
               </tr>
@@ -157,9 +169,17 @@ export default function ManageTrucks() {
                 const { bg, color } = statusColor(truck.status)
                 return (
                   <tr key={truck.plate_number} style={{ borderBottom: "1px solid #eee" }}>
-                    <td style={td}><strong>{truck.plate_number}</strong></td>
+                    <td style={td}>
+                      <strong>{truck.plate_number}</strong>
+                      {truck.kbnl_truck_no && (
+                        <span style={{ marginLeft: 6, fontSize: 12, color: "#888" }}>
+                          · #{truck.kbnl_truck_no}
+                        </span>
+                      )}
+                    </td>
                     <td style={td}>{truck.truck_model}</td>
                     <td style={td}>{truck.capacity} bags</td>
+                    <td style={td}>{truck.tonnage ?? "—"} T</td>
                     <td style={td}>
                       <span style={{
                         padding: "4px 10px", borderRadius: 12, fontSize: 12,
@@ -223,6 +243,19 @@ export default function ManageTrucks() {
 
                 <div style={{ marginBottom: 16 }}>
                   <label style={{ fontWeight: "bold", display: "block", marginBottom: 6 }}>
+                    KbNL Truck No. *
+                  </label>
+                  <input
+                    type="text"
+                    value={editKbnlNo}
+                    onChange={(e) => { setEditKbnlNo(e.target.value); setMessage("") }}
+                    onKeyDown={(e) => { if (e.key === "Enter") capacityRef.current?.focus() }}
+                    style={{ width: "100%", padding: 10, boxSizing: "border-box" }}
+                  />
+                </div>
+
+                <div style={{ marginBottom: 16 }}>
+                  <label style={{ fontWeight: "bold", display: "block", marginBottom: 6 }}>
                     Truck Model *
                   </label>
                   <input
@@ -243,6 +276,21 @@ export default function ManageTrucks() {
                     type="number"
                     value={editCapacity}
                     onChange={(e) => { setEditCapacity(e.target.value); setMessage("") }}
+                    onKeyDown={(e) => { if (e.key === "Enter") tonnageRef.current?.focus() }}
+                    style={{ width: "100%", padding: 10, boxSizing: "border-box" }}
+                  />
+                </div>
+
+                <div style={{ marginBottom: 24 }}>
+                  <label style={{ fontWeight: "bold", display: "block", marginBottom: 6 }}>
+                    Tonnage *
+                  </label>
+                  <input
+                    ref={tonnageRef}
+                    type="number"
+                    step="0.1"
+                    value={editTonnage}
+                    onChange={(e) => { setEditTonnage(e.target.value); setMessage("") }}
                     style={{ width: "100%", padding: 10, boxSizing: "border-box" }}
                   />
                 </div>
