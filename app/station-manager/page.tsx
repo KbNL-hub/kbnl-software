@@ -7,6 +7,8 @@ import { supabase } from "@/lib/supabase"
 type FuelRequest = {
   request_id: string
   driver_name: string
+  plate_number: string | null
+  kbnl_truck_no: string | null
   litres: number
   rate_per_litre: number
   total_amount: number
@@ -36,17 +38,13 @@ export default function StationManagerDashboard() {
   const [rejectError, setRejectError] = useState("")
   const [rejectLoading, setRejectLoading] = useState(false)
 
-  // Auth state listener — top level, NOT inside init
   useEffect(() => {
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
-      if (event === "SIGNED_OUT") {
-        router.push("/login")
-      }
+      if (event === "SIGNED_OUT") router.push("/login")
     })
     return () => subscription.unsubscribe()
   }, [])
 
-  // Init
   useEffect(() => {
     async function init() {
       const { data: { session } } = await supabase.auth.getSession()
@@ -54,33 +52,22 @@ export default function StationManagerDashboard() {
       const user = session.user
 
       const { data: profile } = await supabase
-        .from("Profiles")
-        .select("role")
-        .eq("user_id", user.id)
-        .single()
-
+        .from("Profiles").select("role").eq("user_id", user.id).single()
       if (profile?.role !== "StationManager") { router.push("/login"); return }
 
       const { data: manager } = await supabase
-        .from("station_managers")
-        .select("manager_id, company_id")
-        .eq("manager_id", user.id)
-        .single()
-
+        .from("station_managers").select("manager_id, company_id").eq("manager_id", user.id).single()
       if (!manager) { router.push("/login"); return }
 
       setManagerId(manager.manager_id)
       setCompanyId(manager.company_id)
-
       await fetchCompanyData(manager.company_id)
       await fetchRequests(manager.company_id)
       setLoading(false)
     }
-
     init()
   }, [])
 
-  // Auto-refresh
   useEffect(() => {
     if (!companyId) return
     const interval = setInterval(() => {
@@ -107,7 +94,7 @@ export default function StationManagerDashboard() {
   async function fetchRequests(cId: string) {
     const { data: requestsRaw } = await supabase
       .from("fuel_requests")
-      .select("request_id, driver_id, litres, rate_per_litre, total_amount, status, requested_at")
+      .select("request_id, driver_id, plate_number, litres, rate_per_litre, total_amount, status, requested_at")
       .eq("company_id", cId)
       .order("requested_at", { ascending: false })
 
@@ -116,14 +103,25 @@ export default function StationManagerDashboard() {
     const enriched = await Promise.all(
       requestsRaw.map(async (r) => {
         const { data: driver } = await supabase
-          .from("Drivers")
-          .select("full_name")
-          .eq("driver_id", r.driver_id)
-          .single()
+          .from("Drivers").select("full_name").eq("driver_id", r.driver_id).single()
+
+        let plate_number: string | null = r.plate_number ?? null
+        let kbnl_truck_no: string | null = null
+
+        if (plate_number) {
+          const { data: truck } = await supabase
+            .from("Trucks")
+            .select("plate_number, kbnl_truck_no")
+            .eq("plate_number", plate_number)
+            .single()
+          kbnl_truck_no = truck?.kbnl_truck_no ?? null
+        }
 
         return {
           request_id: r.request_id,
           driver_name: driver?.full_name ?? "Unknown",
+          plate_number,
+          kbnl_truck_no,
           litres: r.litres,
           rate_per_litre: r.rate_per_litre,
           total_amount: r.total_amount,
@@ -148,11 +146,25 @@ export default function StationManagerDashboard() {
 
     const newBalance = Math.max(0, (currentBalance ?? 0) - validating.total_amount)
     await supabase
-      .from("fuel_companies")
-      .update({ current_balance: newBalance })
-      .eq("company_id", companyId)
+      .from("fuel_companies").update({ current_balance: newBalance }).eq("company_id", companyId)
 
     setCurrentBalance(newBalance)
+
+    if (validating.plate_number) {
+      const { data: truck } = await supabase
+        .from("Trucks")
+        .select("fuel_balance")
+        .eq("plate_number", validating.plate_number)
+        .single()
+
+      if (truck) {
+        await supabase
+          .from("Trucks")
+          .update({ fuel_balance: truck.fuel_balance + validating.litres })
+          .eq("plate_number", validating.plate_number)
+      }
+    }
+
     setValidateLoading(false)
     setValidating(null)
     fetchRequests(companyId)
@@ -195,16 +207,15 @@ export default function StationManagerDashboard() {
 
   const isLow = currentBalance !== null && currentBalance < lowThreshold
 
-  if (loading) {
-    return (
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: "100vh", fontFamily: "Arial" }}>
-        <p style={{ color: "#888" }}>Loading...</p>
-      </div>
-    )
-  }
+  if (loading) return (
+    <div style={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: "100vh", fontFamily: "Arial" }}>
+      <p style={{ color: "#888" }}>Loading...</p>
+    </div>
+  )
 
   return (
     <div style={{ minHeight: "100vh", background: "#f9f9f9", fontFamily: "Arial" }}>
+
       {/* Header */}
       <div style={{
         background: "white", borderBottom: "1px solid #eee",
@@ -223,6 +234,7 @@ export default function StationManagerDashboard() {
       </div>
 
       <div style={{ padding: 24, maxWidth: 800, margin: "0 auto" }}>
+
         {/* Balance Card */}
         <div style={{
           background: isLow ? "#fff8e1" : "white",
@@ -286,6 +298,11 @@ export default function StationManagerDashboard() {
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 12 }}>
                   <div>
                     <p style={{ margin: 0, fontWeight: "bold", fontSize: 15 }}>{r.driver_name}</p>
+                    {r.plate_number && (
+                      <p style={{ margin: "2px 0 0", fontSize: 13, color: "#555" }}>
+                        {r.plate_number}{r.kbnl_truck_no ? ` · #${r.kbnl_truck_no}` : ""}
+                      </p>
+                    )}
                     <p style={{ margin: "4px 0 0", fontSize: 12, color: "#aaa" }}>{new Date(r.requested_at).toLocaleString()}</p>
                   </div>
                   <span style={{ padding: "4px 10px", borderRadius: 12, fontSize: 12, background: bg, color, fontWeight: "bold" }}>
@@ -338,6 +355,11 @@ export default function StationManagerDashboard() {
             <p style={{ color: "#555", marginBottom: 16 }}>Confirm that this diesel request is correct:</p>
             <div style={{ background: "#f9f9f9", borderRadius: 8, padding: 16, marginBottom: 16 }}>
               <p style={{ margin: "0 0 8px" }}><strong>Driver:</strong> {validating.driver_name}</p>
+              {validating.plate_number && (
+                <p style={{ margin: "0 0 8px" }}>
+                  <strong>Truck:</strong> {validating.plate_number}{validating.kbnl_truck_no ? ` · #${validating.kbnl_truck_no}` : ""}
+                </p>
+              )}
               <p style={{ margin: "0 0 8px" }}><strong>Litres:</strong> {validating.litres.toLocaleString()}L</p>
               <p style={{ margin: "0 0 8px" }}><strong>Rate/Litre:</strong> ₦{validating.rate_per_litre.toLocaleString()}</p>
               <p style={{ margin: 0 }}><strong>Total:</strong> <span style={{ color: "#0070f3", fontWeight: "bold" }}>₦{validating.total_amount.toLocaleString()}</span></p>

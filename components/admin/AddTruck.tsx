@@ -3,7 +3,7 @@
 import { useState, useRef } from "react"
 import { supabase } from "@/lib/supabase"
 
-const truckStatuses = ["Empty", "Loaded", "Need Repairs", "Decommissioned"]
+const truckStatuses = ["Empty", "Loaded", "Undergoing Repairs", "Decommissioned"]
 
 export default function AddTruck() {
   const [plateNumber, setPlateNumber] = useState("")

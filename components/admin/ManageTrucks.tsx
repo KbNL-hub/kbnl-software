@@ -12,7 +12,7 @@ type Truck = {
   status: string
 }
 
-const truckStatuses = ["Empty", "Loaded", "Need Repairs", "Decommissioned"]
+const truckStatuses = ["Empty", "Loaded", "Undergoing Repairs", "Decommissioned"]
 
 export default function ManageTrucks() {
   const [trucks, setTrucks] = useState<Truck[]>([])
@@ -43,7 +43,7 @@ export default function ManageTrucks() {
 
   useEffect(() => { fetchTrucks() }, [])
 
-  const filterOptions = ["All", "Empty", "Loaded", "Need Repairs", "Decommissioned"]
+  const filterOptions = ["All", "Empty", "Loaded", "Undergoing Repairs", "Decommissioned"]
 
   const filteredTrucks = filterStatus === "All"
     ? trucks
@@ -119,7 +119,7 @@ export default function ManageTrucks() {
     switch (status) {
       case "Loaded": return { bg: "#0070f322", color: "#0070f3" }
       case "Empty": return { bg: "#00aa0022", color: "#00aa00" }
-      case "Need Repairs": return { bg: "#f5a62322", color: "#f5a623" }
+      case "Undergoing Repairs": return { bg: "#f5a62322", color: "#f5a623" }
       case "Decommissioned": return { bg: "#ff444422", color: "#ff4444" }
       default: return { bg: "#eee", color: "#888" }
     }
