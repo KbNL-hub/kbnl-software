@@ -109,10 +109,10 @@ export default function MaintenanceManagerDashboard() {
 
       const { data: profile } = await supabase
         .from("Profiles").select("role, full_name").eq("user_id", user.id).single()
-      if (profile?.role !== "MaintenanceManager") { router.push("/login"); return }
+      if (profile?.role !== "TruckOfficer") { router.push("/login"); return }
 
       const { data: manager } = await supabase
-        .from("maintenance_managers").select("manager_id, full_name").eq("manager_id", user.id).single()
+        .from("truck_officers").select("manager_id, full_name").eq("manager_id", user.id).single()
       if (!manager) { router.push("/login"); return }
 
       setManagerId(manager.manager_id)

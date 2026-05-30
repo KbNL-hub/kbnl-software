@@ -65,9 +65,9 @@ export default function SetPassword() {
         .eq("manager_id", userId)
     }
 
-    if (profile?.role === "MaintenanceManager") {
+    if (profile?.role === "TruckOfficer") {
       await supabase
-        .from("maintenance_managers")
+        .from("truck_officers")
         .update({ status: "Active" })
         .eq("manager_id", userId)
     }
@@ -77,6 +77,13 @@ export default function SetPassword() {
         .from("truck_admins")
         .update({ status: "Active" })
         .eq("admin_id", userId)
+    }
+
+    if (profile?.role === "StoreOfficer") {
+      await supabase
+        .from("store_officers")
+        .update({ status: "Active" })
+        .eq("officer_id", userId)
     }
 
     setMessage("✅ Password set! Redirecting...")

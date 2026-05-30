@@ -31,7 +31,7 @@ type FeedItem =
   | { kind: "report"; data: MaintenanceReport; date: string }
   | { kind: "procurement"; data: BulkProcurement; date: string }
 
-type Truck = { plate_number: string; kbnl_truck_no: string | null; truck_model: string }
+
 
 const statusColor = (status: string) => {
   switch (status) {
@@ -48,7 +48,6 @@ export default function TruckAdminDashboard() {
   const [adminName, setAdminName] = useState("")
   const [reports, setReports] = useState<MaintenanceReport[]>([])
   const [procurements, setProcurements] = useState<BulkProcurement[]>([])
-  const [allTrucks, setAllTrucks] = useState<Truck[]>([])
   const [maintenanceBalance, setMaintenanceBalance] = useState<number | null>(null)
   const [loading, setLoading] = useState(true)
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null)
@@ -102,7 +101,7 @@ export default function TruckAdminDashboard() {
       setAdminId(admin.admin_id)
       setAdminName(admin.full_name)
 
-      await Promise.all([fetchReports(), fetchProcurements(), fetchTrucks(), fetchMaintenanceBalance()])
+      await Promise.all([fetchReports(), fetchProcurements(), fetchMaintenanceBalance()])
       setLoading(false)
     }
     init()
@@ -124,6 +123,26 @@ export default function TruckAdminDashboard() {
     if (data) setMaintenanceBalance(data.current_balance)
   }
 
+  async function fetchManagerName(managerId: string | null | undefined) {
+    if (!managerId) return "Unknown"
+
+    const { data: manager } = await supabase
+      .from("truck_officers")
+      .select("full_name")
+      .eq("manager_id", managerId)
+      .single()
+
+    if (manager?.full_name) return manager.full_name
+
+    const { data: managerByUser } = await supabase
+      .from("truck_officers")
+      .select("full_name")
+      .eq("user_id", managerId)
+      .single()
+
+    return managerByUser?.full_name ?? "Unknown"
+  }
+
   async function fetchReports() {
     const { data: reportsRaw } = await supabase
       .from("maintenance_reports")
@@ -134,12 +153,11 @@ export default function TruckAdminDashboard() {
 
     const enriched = await Promise.all(
       reportsRaw.map(async (r) => {
-        const { data: manager } = await supabase
-          .from("maintenance_managers").select("full_name").eq("manager_id", r.manager_id).single()
+        const managerName = await fetchManagerName(r.manager_id)
         return {
           report_id: r.report_id,
           plate_number: r.plate_number,
-          manager_name: manager?.full_name ?? "Unknown",
+          manager_name: managerName,
           maintenance_type: r.maintenance_type,
           maintenance_location: r.maintenance_location ?? null,
           amount: r.amount,
@@ -173,11 +191,6 @@ export default function TruckAdminDashboard() {
     setProcurements(enriched)
   }
 
-  async function fetchTrucks() {
-    const { data } = await supabase
-      .from("Trucks").select("plate_number, kbnl_truck_no, truck_model").order("plate_number", { ascending: true })
-    setAllTrucks(data || [])
-  }
 
   async function handleValidate() {
     if (!validating) return

@@ -16,6 +16,7 @@ type Stop = {
   confirmed: boolean
   disputed: boolean
   dispute_reason: string | null
+  price_per_bag: number | null
 }
 
 type Discrepancy = {
@@ -102,6 +103,12 @@ export default function MonitorTrips() {
               customer = customerData
             }
 
+            const { data: confirmation } = await supabase
+              .from("Stop_Confirmations")
+              .select("price_per_bag")
+              .eq("stop_id", stop.stop_id)
+              .single()
+
             return {
               stop_id: stop.stop_id,
               broker_name: broker?.broker_name ?? "Unknown",
@@ -113,7 +120,8 @@ export default function MonitorTrips() {
               stop_location: stop.stop_location,
               confirmed: stop.confirmed,
               disputed: stop.disputed,
-              dispute_reason: stop.dispute_reason
+              dispute_reason: stop.dispute_reason,
+              price_per_bag: confirmation?.price_per_bag ?? null,
             }
           })
         )
@@ -300,9 +308,21 @@ export default function MonitorTrips() {
                           setSelectedTrip({ trip_id: trip.trip_id, plate_number: trip.plate_number, atc: trip.atc, trip_status: trip.trip_status })
                           setEndTripError(null)
                         }}
-                        style={{ color: "#0070f3", cursor: "pointer", textDecoration: "underline" }}
+                        style={{ cursor: "pointer" }}
                       >
-                        {trip.stop_count} {trip.stop_count === 1 ? "stop" : "stops"}
+                        <span style={{ color: "#0070f3", textDecoration: "underline" }}>
+                          {trip.stop_count} {trip.stop_count === 1 ? "stop" : "stops"}
+                        </span>
+                        {(() => {
+                          const pending = trip.stops.filter(s => !s.confirmed && !s.disputed).length
+                          const confirmed = trip.stops.filter(s => s.confirmed).length
+                          return trip.stop_count > 0 ? (
+                            <span style={{ marginLeft: 6, fontSize: 11 }}>
+                              {confirmed > 0 && <span style={{ color: "#00aa00", fontWeight: "bold" }}>✓{confirmed}</span>}
+                              {pending > 0 && <span style={{ color: "#f5a623", fontWeight: "bold", marginLeft: 4 }}>⏳{pending}</span>}
+                            </span>
+                          ) : null
+                        })()}
                       </span>
                     </td>
                     <td style={td}>
@@ -381,6 +401,12 @@ export default function MonitorTrips() {
                     <p style={{ marginBottom: 6 }}><strong>Broker:</strong> {stop.broker_name}</p>
                     <p style={{ marginBottom: 6 }}><strong>Customer:</strong> {stop.customer_name}</p>
                     <p style={{ marginBottom: 6 }}><strong>Bags Offloaded:</strong> {stop.quantity_offloaded}</p>
+                    {stop.confirmed && stop.price_per_bag !== null && (
+                      <p style={{ marginBottom: 6 }}>
+                        <strong>Price per Bag:</strong> ₦{stop.price_per_bag.toLocaleString()}
+                      </p>
+                    )}
+                    
                     <p style={{ marginBottom: 6 }}><strong>Location:</strong> {stop.stop_location}</p>
                     <p style={{ marginBottom: 6 }}>
                       <strong>GPS: </strong>

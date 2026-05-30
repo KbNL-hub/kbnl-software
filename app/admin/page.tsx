@@ -12,9 +12,12 @@ import ManageDrivers from "@/components/admin/ManageDrivers"
 import MonitorTrips from "@/components/admin/MonitorTrips"
 import DieselManager from "@/components/admin/DieselManager"
 import StationManagers from "@/components/admin/StationManagers"
-import MaintenanceManagers from "@/components/admin/MaintenanceManagers"
+import TruckOfficers from "@/components/admin/TruckOfficers"
 import TruckAdmins from "@/components/admin/TruckAdmins"
 import Reports from "@/components/admin/Reports"
+import Complaints from "@/components/admin/Complaints"
+import StoreOfficers from "@/components/admin/StoreOfficers"
+import { Icon } from "@iconify/react"
 
 const navItems = [
   { label: "Add New Truck", key: "add-truck" },
@@ -24,10 +27,12 @@ const navItems = [
   { label: "Manage Trucks", key: "manage-trucks" },
   { label: "Manage Drivers", key: "manage-drivers" },
   { label: "Monitor Trips", key: "monitor-trips" },
+  { label: "Complaints", key: "complaints" },
   { label: "Diesel Manager", key: "diesel-manager" },
   { label: "Station Managers", key: "station-managers" },
-  { label: "Maintenance Managers", key: "maintenance-managers" },
+  { label: "Truck Officers", key: "truck-officers" },
   { label: "Truck Admins", key: "truck-admins" },
+  { label: "Store Officers", key: "store-officers" },
   { label: "Reports", key: "reports" },
 ]
 
@@ -39,8 +44,10 @@ type LowBalanceCompany = {
 
 export default function AdminDashboard() {
   const [active, setActive] = useState("")
+  const [sidebarOpen, setSidebarOpen] = useState(true)
   const router = useRouter()
   const [disputedCount, setDisputedCount] = useState(0)
+  const [unresolvedComplaints, setUnresolvedComplaints] = useState(0)
   const [lowBalanceCompanies, setLowBalanceCompanies] = useState<LowBalanceCompany[]>([])
   const [dismissedAlerts, setDismissedAlerts] = useState<Set<string>>(new Set())
 
@@ -50,29 +57,27 @@ export default function AdminDashboard() {
   }, [])
 
   useEffect(() => {
-    async function checkDisputed() {
-      const { count } = await supabase
+    async function checkAlerts() {
+      const { count: disputed } = await supabase
         .from("Stops")
         .select("*", { count: "exact", head: true })
         .eq("disputed", true)
-      setDisputedCount(count || 0)
-    }
+      setDisputedCount(disputed || 0)
 
-    async function checkLowBalances() {
+      const { count: complaints } = await supabase
+        .from("driver_complaints")
+        .select("*", { count: "exact", head: true })
+        .eq("resolved", false)
+      setUnresolvedComplaints(complaints || 0)
+
       const { data } = await supabase
         .from("fuel_companies")
         .select("company_id, company_name, current_balance, low_balance_threshold")
-      if (!data) return
-      const low = data.filter((c) => c.current_balance < c.low_balance_threshold)
-      setLowBalanceCompanies(low)
+      if (data) setLowBalanceCompanies(data.filter(c => c.current_balance < c.low_balance_threshold))
     }
 
-    checkDisputed()
-    checkLowBalances()
-    const interval = setInterval(() => {
-      checkDisputed()
-      checkLowBalances()
-    }, 30000)
+    checkAlerts()
+    const interval = setInterval(checkAlerts, 30000)
     return () => clearInterval(interval)
   }, [])
 
@@ -82,7 +87,7 @@ export default function AdminDashboard() {
     sessionStorage.setItem("dismissedFuelAlerts", JSON.stringify([...updated]))
   }
 
-  const visibleAlerts = lowBalanceCompanies.filter((c) => !dismissedAlerts.has(c.company_id))
+  const visibleAlerts = lowBalanceCompanies.filter(c => !dismissedAlerts.has(c.company_id))
 
   async function handleLogout() {
     await supabase.auth.signOut()
@@ -98,10 +103,12 @@ export default function AdminDashboard() {
       case "manage-trucks": return <ManageTrucks />
       case "manage-drivers": return <ManageDrivers />
       case "monitor-trips": return <MonitorTrips />
+      case "complaints": return <Complaints />
       case "diesel-manager": return <DieselManager />
       case "station-managers": return <StationManagers />
-      case "maintenance-managers": return <MaintenanceManagers />
+      case "truck-officers": return <TruckOfficers />
       case "truck-admins": return <TruckAdmins />
+      case "store-officers": return <StoreOfficers />
       case "reports": return <Reports />
       default: return (
         <div>
@@ -114,59 +121,115 @@ export default function AdminDashboard() {
 
   return (
     <div style={{ display: "flex", minHeight: "100vh", fontFamily: "Arial" }}>
+
       {/* Sidebar */}
       <div style={{
-        width: 240, background: "#1a1a2e", color: "white",
-        display: "flex", flexDirection: "column", padding: "24px 0"
+        width: sidebarOpen ? 240 : 56, background: "#1a1a2e", color: "white",
+        display: "flex", flexDirection: "column", padding: "24px 0",
+        transition: "width 0.2s ease", overflow: "hidden", flexShrink: 0
       }}>
-        <h2 style={{ padding: "0 24px", marginBottom: 32, fontSize: 16, color: "#aaa" }}>
-          Admin Panel
-        </h2>
-        {navItems.map((item) => (
+        {/* Toggle + Title */}
+        <div style={{ display: "flex", alignItems: "center", padding: "0 16px", marginBottom: 32, gap: 10 }}>
+          <button
+            onClick={() => setSidebarOpen(!sidebarOpen)}
+            style={{
+              background: "none", border: "none", color: "#aaa", cursor: "pointer",
+              fontSize: 18, lineHeight: 1, padding: 0, flexShrink: 0
+            }}
+          >
+            {sidebarOpen ? "✕" : "☰"}
+          </button>
+          {sidebarOpen && (
+            <h2 style={{ margin: 0, fontSize: 16, color: "#aaa", whiteSpace: "nowrap" }}>
+              Admin Panel
+            </h2>
+          )}
+        </div>
+
+        {/* Nav Items */}
+        {navItems.map(item => (
           <button
             key={item.key}
             onClick={() => setActive(item.key)}
+            title={!sidebarOpen ? item.label : undefined}
             style={{
               background: active === item.key ? "#0070f3" : "transparent",
               color: "white", border: "none", textAlign: "left",
-              padding: "12px 24px", cursor: "pointer", fontSize: 14,
+              padding: sidebarOpen ? "12px 24px" : "12px 0",
+              justifyContent: sidebarOpen ? "space-between" : "center",
+              cursor: "pointer", fontSize: 14,
               borderLeft: active === item.key ? "3px solid white" : "3px solid transparent",
-              display: "flex", alignItems: "center", justifyContent: "space-between",
-              width: "100%"
+              display: "flex", alignItems: "center",
+              width: "100%", whiteSpace: "nowrap", overflow: "hidden"
             }}
           >
-            {item.label}
-            {item.key === "monitor-trips" && disputedCount > 0 && (
-              <span style={{
-                background: "#ff4444", color: "white", borderRadius: "50%",
-                width: 18, height: 18, fontSize: 11, fontWeight: "bold",
-                display: "flex", alignItems: "center", justifyContent: "center"
-              }}>
-                {disputedCount}
+            {sidebarOpen ? (
+              <>
+                <span>{item.label}</span>
+                <span style={{ display: "flex", gap: 4 }}>
+                  {item.key === "monitor-trips" && disputedCount > 0 && (
+                    <span style={{
+                      background: "#ff4444", color: "white", borderRadius: "50%",
+                      width: 18, height: 18, fontSize: 11, fontWeight: "bold",
+                      display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0
+                    }}>
+                      {disputedCount}
+                    </span>
+                  )}
+                  {item.key === "complaints" && unresolvedComplaints > 0 && (
+                    <span style={{
+                      background: "#f5a623", color: "white", borderRadius: "50%",
+                      width: 18, height: 18, fontSize: 11, fontWeight: "bold",
+                      display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0
+                    }}>
+                      {unresolvedComplaints}
+                    </span>
+                  )}
+                </span>
+              </>
+            ) : (
+              <span style={{ fontSize: 16 }}>
+                <Icon icon={
+                  item.key === "add-truck" ? "mdi:truck-plus" :
+                  item.key === "add-driver" ? "mdi:account-plus" :
+                  item.key === "manage-brokers" ? "mdi:handshake" :
+                  item.key === "monitor-trucks" ? "mdi:dump-truck" :
+                  item.key === "manage-trucks" ? "mdi:bus-wrench" :
+                  item.key === "manage-drivers" ? "mdi:account-group" :
+                  item.key === "monitor-trips" ? "streamline-ultimate:trip-road-bold" :
+                  item.key === "complaints" ? "mdi:alert-circle" :
+                  item.key === "diesel-manager" ? "mdi:gas-station" :
+                  item.key === "station-managers" ? "mdi:person-tie" :
+                  item.key === "truck-officers" ? "wpf:maintenance" :
+                  item.key === "truck-admins" ? "mdi:person-star" :
+                  item.key === "store-officers" ? "mdi:storefront" :
+                  item.key === "reports" ? "mdi:chart-bar" : "mdi:circle"
+                } width={20} height={20} />
               </span>
             )}
           </button>
         ))}
-        <div style={{ marginTop: "auto", padding: "0 24px" }}>
+
+        <div style={{ marginTop: "auto", padding: sidebarOpen ? "0 24px" : "0 8px" }}>
           <button
             onClick={handleLogout}
             style={{
               width: "100%", padding: "10px 0", background: "#ff4444",
               color: "white", border: "none", borderRadius: 6,
-              cursor: "pointer", fontSize: 14
+              cursor: "pointer", fontSize: sidebarOpen ? 14 : 18
             }}
           >
-            Logout
+            {sidebarOpen ? "Logout" : "↩"}
           </button>
         </div>
       </div>
 
       {/* Main Content */}
-      <div style={{ flex: 1, background: "#f9f9f9", display: "flex", flexDirection: "column" }}>
-        {/* Low Balance Notification Banner */}
+      <div style={{ flex: 1, background: "#f9f9f9", display: "flex", flexDirection: "column", minWidth: 0 }}>
+        {/* Low Balance Banners */}
         {visibleAlerts.length > 0 && (
           <div style={{ padding: "12px 40px 0", display: "flex", flexDirection: "column", gap: 8 }}>
-            {visibleAlerts.map((company) => (
+            {visibleAlerts.map(company => (
               <div
                 key={company.company_id}
                 style={{
@@ -181,10 +244,7 @@ export default function AdminDashboard() {
                 </p>
                 <button
                   onClick={() => dismissAlert(company.company_id)}
-                  style={{
-                    background: "transparent", border: "none", cursor: "pointer",
-                    fontSize: 16, color: "#7a5c00", marginLeft: 16, lineHeight: 1
-                  }}
+                  style={{ background: "transparent", border: "none", cursor: "pointer", fontSize: 16, color: "#7a5c00", marginLeft: 16 }}
                 >
                   ✕
                 </button>
@@ -193,7 +253,6 @@ export default function AdminDashboard() {
           </div>
         )}
 
-        {/* Page Content */}
         <div style={{ flex: 1, padding: 40 }}>
           {renderContent()}
         </div>

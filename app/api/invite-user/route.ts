@@ -7,7 +7,7 @@ const supabaseAdmin = createClient(
 )
 
 export async function POST(req: Request) {
-  const { email, fullName, phoneNumber, role, companyId } = await req.json()
+  const { email, fullName, phoneNumber, role, companyId, storeName } = await req.json()
 
   if (!email || !fullName || !role) {
     return NextResponse.json({ error: "Email, full name and role are required" }, { status: 400 })
@@ -15,6 +15,10 @@ export async function POST(req: Request) {
 
   if (role === "StationManager" && !companyId) {
     return NextResponse.json({ error: "Company is required for Station Manager" }, { status: 400 })
+  }
+
+  if (role === "StoreOfficer" && !storeName) {
+    return NextResponse.json({ error: "Store is required for Store Officer" }, { status: 400 })
   }
 
   const { data, error: inviteError } = await supabaseAdmin.auth.admin.inviteUserByEmail(email, {
@@ -82,14 +86,14 @@ export async function POST(req: Request) {
     }
   }
 
-  if (role === "MaintenanceManager") {
-    const { error: mmError } = await supabaseAdmin.from("maintenance_managers").insert([{
+  if (role === "TruckOfficer") {
+    const { error: mmError } = await supabaseAdmin.from("truck_officers").insert([{
       manager_id: userId,
       full_name: fullName,
       phone_number: phoneNumber || null,
     }])
     if (mmError) {
-      return NextResponse.json({ error: "Invite sent but maintenance manager record failed" }, { status: 500 })
+      return NextResponse.json({ error: "Invite sent but truck officer record failed" }, { status: 500 })
     }
   }
 
@@ -104,5 +108,19 @@ export async function POST(req: Request) {
     }
   }
 
+  if (role === "StoreOfficer") {
+    if (!storeName) {
+      return NextResponse.json({ error: "Store name is required for Store Officer" }, { status: 400 })
+    }
+    const { error: soError } = await supabaseAdmin.from("store_officers").insert([{
+      officer_id: userId,
+      full_name: fullName,
+      phone_number: phoneNumber || null,
+      store_name: storeName,
+    }])
+    if (soError) {
+      return NextResponse.json({ error: "Invite sent but store officer record failed" }, { status: 500 })
+    }
+  }
   return NextResponse.json({ success: true })
 }

@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from "react"
 import { supabase } from "@/lib/supabase"
 
-type MaintenanceManager = {
+type TruckOfficer = {
   manager_id: string
   full_name: string
   phone_number: string | null
@@ -19,8 +19,8 @@ type Truck = {
   assigned_manager_name: string | null
 }
 
-export default function MaintenanceManagers() {
-  const [managers, setManagers] = useState<MaintenanceManager[]>([])
+export default function TruckOfficers() {
+  const [managers, setManagers] = useState<TruckOfficer[]>([])
   const [loading, setLoading] = useState(true)
 
   // Invite
@@ -32,7 +32,7 @@ export default function MaintenanceManagers() {
   const [inviteLoading, setInviteLoading] = useState(false)
 
   // Edit
-  const [editingManager, setEditingManager] = useState<MaintenanceManager | null>(null)
+  const [editingManager, setEditingManager] = useState<TruckOfficer | null>(null)
   const [editName, setEditName] = useState("")
   const [editPhone, setEditPhone] = useState("")
   const [editError, setEditError] = useState("")
@@ -43,7 +43,7 @@ export default function MaintenanceManagers() {
   const [deleteLoading, setDeleteLoading] = useState(false)
 
   // Assign trucks
-  const [assigningManager, setAssigningManager] = useState<MaintenanceManager | null>(null)
+  const [assigningManager, setAssigningManager] = useState<TruckOfficer | null>(null)
   const [allTrucks, setAllTrucks] = useState<Truck[]>([])
   const [assignedTrucks, setAssignedTrucks] = useState<Truck[]>([])
   const [trucksLoading, setTrucksLoading] = useState(false)
@@ -60,7 +60,7 @@ export default function MaintenanceManagers() {
   async function fetchManagers() {
     setLoading(true)
     const { data } = await supabase
-      .from("maintenance_managers")
+      .from("truck_officers")
       .select("manager_id, full_name, phone_number, status")
       .order("full_name", { ascending: true })
 
@@ -93,7 +93,7 @@ export default function MaintenanceManagers() {
       .select("plate_number, manager_id")
 
     const { data: allManagersRaw } = await supabase
-      .from("maintenance_managers")
+      .from("truck_officers")
       .select("manager_id, full_name")
 
     const assignmentMap = new Map(assignments?.map(a => [a.plate_number, a.manager_id]) || [])
@@ -135,7 +135,7 @@ export default function MaintenanceManagers() {
     const res = await fetch("/api/invite-user", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email, fullName, phoneNumber, role: "MaintenanceManager" }),
+      body: JSON.stringify({ email, fullName, phoneNumber, role: "TruckOfficer" }),
     })
     const result = await res.json()
     setInviteLoading(false)
@@ -149,7 +149,7 @@ export default function MaintenanceManagers() {
     if (!editName.trim()) return setEditError("Name is required")
     setEditLoading(true)
     const { error } = await supabase
-      .from("maintenance_managers")
+      .from("truck_officers")
       .update({ full_name: editName, phone_number: editPhone || null })
       .eq("manager_id", editingManager.manager_id)
     setEditLoading(false)
@@ -161,7 +161,7 @@ export default function MaintenanceManagers() {
   async function handleDelete() {
     if (!deletingId) return
     setDeleteLoading(true)
-    await supabase.from("maintenance_managers").delete().eq("manager_id", deletingId)
+    await supabase.from("truck_officers").delete().eq("manager_id", deletingId)
     setDeleteLoading(false)
     closeModals()
     fetchManagers()
@@ -230,12 +230,12 @@ export default function MaintenanceManagers() {
   return (
     <div>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24 }}>
-        <h2 style={{ margin: 0 }}>Maintenance Managers</h2>
+        <h2 style={{ margin: 0 }}>Truck Officers</h2>
         <button
           onClick={() => { setShowInviteModal(true); setInviteError("") }}
           style={{ padding: "10px 20px", background: "#0070f3", color: "white", border: "none", borderRadius: 6, cursor: "pointer", fontWeight: "bold" }}
         >
-          + Add Maintenance Manager
+          + Add Truck Officer
         </button>
       </div>
 
@@ -326,7 +326,7 @@ export default function MaintenanceManagers() {
             {/* Invite Modal */}
             {showInviteModal && (
               <>
-                <h3 style={{ marginBottom: 20 }}>Add Maintenance Manager</h3>
+                <h3 style={{ marginBottom: 20 }}>Add Truck Officer</h3>
                 <div style={{ marginBottom: 16 }}>
                   <label style={label}>Full Name *</label>
                   <input type="text" placeholder="e.g. John Doe" value={fullName} onChange={(e) => { setFullName(e.target.value); setInviteError("") }} onKeyDown={(e) => { if (e.key === "Enter") phoneRef.current?.focus() }} style={inputStyle} autoFocus />
