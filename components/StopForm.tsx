@@ -10,8 +10,8 @@ type Customer = { customer_id: string; full_name: string; phone_number: string }
 type Props = { tripId: string; onStopLogged: () => void }
 
 const STORE_LOCATIONS = [
-  "Calabar Mini Depot", "Ikom Mini Depot", "Ogoja Depot", "Uyo Depot",
-  "Brooks", "Urua Ekpa", "Urua Nyemeiko", "Reserve Store", "E1 Outlet", "Ogoja Outlet",
+  "Calabar Mini Depot", "Ikom Mini Depot", "Ogoja Warehouse", "Uyo Warehouse",
+  "Brooks Outlet", "Urua Ekpa Outlet", "Urua Nyemeiko Outlet", "Reserve Store", "E1 Outlet", "Ogoja Outlet",
 ]
 
 export default function StopForm({ tripId, onStopLogged }: Props) {
@@ -157,13 +157,13 @@ export default function StopForm({ tripId, onStopLogged }: Props) {
       {stopType === "customer" && (
         <>
           <div style={{ marginBottom: 20 }}>
-            <label style={{ fontWeight: "bold" }}>Broker *</label>
+            <label style={{ fontWeight: "bold", fontSize: 15, color: "#171717" }}>Select Broker *</label>
             <div style={{ marginTop: 6 }}>
               <BrokerDropdown onSelect={(broker) => setSelectedBroker(broker)} />
             </div>
           </div>
           <div style={{ marginBottom: 20 }}>
-            <label style={{ fontWeight: "bold" }}>Customer</label>
+            <label style={{ fontWeight: "bold", fontSize: 15, color: "#171717" }}>Customer</label>
             <div style={{ marginTop: 6 }}>
               <CustomerSelector onSelect={(customer) => setSelectedCustomer(customer)} />
             </div>
@@ -174,11 +174,11 @@ export default function StopForm({ tripId, onStopLogged }: Props) {
       {/* Store Stop Fields */}
       {stopType === "store" && (
         <div style={{ marginBottom: 20 }}>
-          <label style={{ fontWeight: "bold" }}>Store *</label>
+          <label style={{ fontWeight: "bold", fontSize: 15, color: "#171717" }}>Store *</label>
           <select
             value={selectedStore}
             onChange={(e) => { setSelectedStore(e.target.value); setMessage("") }}
-            style={{ display: "block", width: "100%", padding: 10, marginTop: 6, boxSizing: "border-box", borderRadius: 4, border: "1px solid #ccc" }}
+            style={{ display: "block", width: "100%", padding: "12px 14px", marginTop: 6, boxSizing: "border-box", borderRadius: 8, border: "1.5px solid #ccc", background: "white", color: "#171717", fontSize: 15, minHeight: 48 }}
           >
             <option value="">Select store</option>
             {STORE_LOCATIONS.map((loc) => (<option key={loc} value={loc}>{loc}</option>))}
@@ -188,7 +188,7 @@ export default function StopForm({ tripId, onStopLogged }: Props) {
 
       {/* Quantity */}
       <div style={{ marginBottom: 20 }}>
-        <label style={{ fontWeight: "bold" }}>Quantity Offloaded (bags) *</label>
+        <label style={{ fontWeight: "bold", fontSize: 15, color: "#171717" }}>Quantity Offloaded (bags) *</label>
         <input
           type="number"
           placeholder="e.g. 50"
@@ -197,8 +197,9 @@ export default function StopForm({ tripId, onStopLogged }: Props) {
           max={remaining}
           onChange={(e) => { setQuantityOffloaded(e.target.value); setMessage("") }}
           style={{
-            display: "block", width: "100%", padding: 10, marginTop: 6, boxSizing: "border-box",
-            borderColor: displayRemaining < 0 ? "red" : "#ccc", borderWidth: 1, borderStyle: "solid", borderRadius: 4
+            display: "block", width: "100%", padding: "12px 14px", marginTop: 6, boxSizing: "border-box",
+            border: `1.5px solid ${displayRemaining < 0 ? "#ff4444" : "#ccc"}`,
+            borderRadius: 8, background: "white", color: "#171717", fontSize: 15, minHeight: 48
           }}
         />
       </div>
@@ -206,22 +207,22 @@ export default function StopForm({ tripId, onStopLogged }: Props) {
       {/* Stop Location — only for customer stops */}
       {stopType === "customer" && (
         <div style={{ marginBottom: 20 }}>
-          <label style={{ fontWeight: "bold" }}>Stop Location *</label>
+          <label style={{ fontWeight: "bold", fontSize: 15, color: "#171717" }}>Stop Location *</label>
           <input
             type="text"
             placeholder="e.g. Aba Road, beside GTBank"
             value={stopLocation}
             onChange={(e) => { setStopLocation(e.target.value); setMessage("") }}
-            style={{ display: "block", width: "100%", padding: 10, marginTop: 6, boxSizing: "border-box" }}
+            style={{ display: "block", width: "100%", padding: "12px 14px", marginTop: 6, boxSizing: "border-box", borderRadius: 8, border: "1.5px solid #ccc", background: "white", color: "#171717", fontSize: 15, minHeight: 48 }}
           />
         </div>
       )}
 
       {/* GPS — optional */}
       <div style={{ marginBottom: 24 }}>
-        <label style={{ fontWeight: "bold" }}>GPS Coordinates <span style={{ fontWeight: "normal", color: "#aaa", fontSize: 13 }}>(optional)</span></label>
+        <label style={{ fontWeight: "bold", fontSize: 15, color: "#171717" }}>GPS Coordinates <span style={{ fontWeight: "normal", color: "#aaa", fontSize: 13 }}>(optional)</span></label>
         <div style={{ marginTop: 6 }}>
-          <button onClick={captureGPS} style={{ padding: "10px 16px", cursor: "pointer", marginBottom: 8 }}>
+          <button onClick={captureGPS} style={{ padding: "12px 16px", cursor: "pointer", marginBottom: 8, borderRadius: 8, border: "1.5px solid #ddd", background: "white", color: "#171717", fontSize: 14, minHeight: 48 }}>
             📍 Capture My Location
           </button>
           <p style={{ fontSize: 13, color: "#555", margin: 0 }}>{gpsStatus}</p>

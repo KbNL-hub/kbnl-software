@@ -12,8 +12,8 @@ type StoreOfficer = {
 }
 
 const STORE_LOCATIONS = [
-  "Calabar Mini Depot", "Ikom Mini Depot", "Ogoja Depot", "Uyo Depot",
-  "Brooks", "Urua Ekpa", "Urua Nyemeiko", "Reserve Store", "E1 Outlet", "Ogoja Outlet",
+  "Calabar Mini Depot", "Ikom Mini Depot", "Ogoja Warehouse", "Uyo Warehouse",
+  "Brooks Outlet", "Urua Ekpa Outlet", "Urua Nyemeiko Outlet", "Reserve Store", "E1 Outlet", "Ogoja Outlet",
 ]
 
 export default function StoreOfficers() {
