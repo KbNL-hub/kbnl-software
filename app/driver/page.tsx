@@ -26,7 +26,7 @@ type Truck = { plate_number: string; kbnl_truck_no: string }
 
 const LOADING_POINT_MAP: Record<string, string[]> = {
   Factory: ["Lafarge (Unicem)", "Dangote BOCO"],
-  Depot: ["Calabar Mini Depot", "Ikom Mini Depot", "Ogoja Warehouse", "Uyo Warehouse"],
+  Depot: ["Calabar Mini Depot", "Ikom Mini Depot", "Ogoja Warehouse", "Uyo Depot"],
   Outlet: ["Brooks Outlet", "Urua Ekpa Outlet", "Urua Nyemeiko Outlet", "Reserve Store", "E1 Outlet", "Ogoja Outlet"],
 }
 

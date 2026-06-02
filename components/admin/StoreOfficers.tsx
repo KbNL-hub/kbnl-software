@@ -12,7 +12,7 @@ type StoreOfficer = {
 }
 
 const STORE_LOCATIONS = [
-  "Calabar Mini Depot", "Ikom Mini Depot", "Ogoja Warehouse", "Uyo Warehouse",
+  "Calabar Mini Depot", "Ikom Mini Depot", "Ogoja Warehouse", "Uyo Depot",
   "Brooks Outlet", "Urua Ekpa Outlet", "Urua Nyemeiko Outlet", "Reserve Store", "E1 Outlet", "Ogoja Outlet",
 ]
 

@@ -10,7 +10,7 @@ type Customer = { customer_id: string; full_name: string; phone_number: string }
 type Props = { tripId: string; onStopLogged: () => void }
 
 const STORE_LOCATIONS = [
-  "Calabar Mini Depot", "Ikom Mini Depot", "Ogoja Warehouse", "Uyo Warehouse",
+  "Calabar Mini Depot", "Ikom Mini Depot", "Ogoja Warehouse", "Uyo Depot",
   "Brooks Outlet", "Urua Ekpa Outlet", "Urua Nyemeiko Outlet", "Reserve Store", "E1 Outlet", "Ogoja Outlet",
 ]
 
