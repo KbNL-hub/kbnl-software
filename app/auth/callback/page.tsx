@@ -86,6 +86,13 @@ export default function SetPassword() {
         .eq("officer_id", userId)
     }
 
+    if (profile?.role === "OfficeClerk") {
+      await supabase
+        .from("office_clerks")
+        .update({ status: "Active" })
+        .eq("clerk_id", userId)
+    }
+
     setMessage("✅ Password set! Redirecting...")
     setTimeout(() => router.push("/login"), 2000)
   }

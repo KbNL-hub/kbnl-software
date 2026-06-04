@@ -35,19 +35,20 @@ auth/callback/page.tsx
 hooks/useBreakpoint.ts
 page.tsx (redirects to /login)
 components/
-admin/
-AddTruck.tsx, AddDriver.tsx, ManageBrokers.tsx
-MonitorTrucks.tsx, ManageTrucks.tsx, ManageDrivers.tsx
-MonitorTrips.tsx, DieselManager.tsx, StationManagers.tsx
-TruckOfficers.tsx, TruckAdmins.tsx, StoreOfficers.tsx
-Reports.tsx, Complaints.tsx
-BrokerDropdown.tsx
-BuyDiesel.tsx  ← BEING REPLACED by ATF flow
-CustomerSelector.tsx
-StopForm.tsx
+  admin/
+    AddTruck.tsx, AddDriver.tsx, ManageBrokers.tsx
+    MonitorTrucks.tsx, ManageTrucks.tsx, ManageDrivers.tsx
+    MonitorTrips.tsx, DieselManager.tsx, StationManagers.tsx
+    TruckOfficers.tsx, TruckAdmins.tsx, StoreOfficers.tsx
+    Reports.tsx, Complaints.tsx
+  BrokerDropdown.tsx
+  BuyDiesel.tsx  ← BEING REPLACED by ATF flow
+  CustomerSelector.tsx
+  OfficeClerkPanel.tsx  ← Reusable cash expenses panel (used by /office-clerk and /broker dual-role)
+  StopForm.tsx
 lib/
-supabase.ts
-formatAmount.ts
+  supabase.ts
+  formatAmount.ts
 
 ---
 
@@ -141,7 +142,7 @@ Depot/Outlet → all products available.
 
 ---
 
-## ATF Flow (NEW — Now Completed but needs minor fixes on the driver's end)
+## ATF Flow (NEW — Now Completed)
 1. TruckOfficer initiates → selects truck, driver, litres needed
 2. TruckAdmin authorises → generates short ATF code (e.g. ATF-4K9X)
 3. Driver sees modal teller with code (read-only, waiting)
@@ -154,13 +155,27 @@ One ATF per truck at a time (blocked if open ATF exists for that truck)
 
 ---
 
-## Cash Transactions (NEW — IN PROGRESS)
+## Cash Transactions (NEW — COMPLETED)
 - 4 offices: Uyo, Ikom, Calabar, Ogoja
-- Each has own balance
-- OfficeClerk role logs pending expenses (title + line items)
-- Admin authorises/rejects (assigned to one office, can view others)
-- Balance decreases on authorisation
-- admin_office_assignments maps admin → office
+- Each has own balance (seeded to DB)
+- OfficeClerk role logs pending expenses with breakdown of items/amounts and running total
+- OfficeClerk dashboard supports logging, details view, and cancellation of pending expenses
+- Admin dashboard features Cash Transactions management, office selector, and read-only vs admin assignment controls
+- Admin can deposit cash (add balance) and authorise/reject pending expenses for their assigned office
+- Authorisation decreases office cash balance; rejection requires reason logging
+- Clerk invite flow and status activation completed
+
+---
+
+## Dual Broker/OfficeClerk Role (NEW — COMPLETED)
+- A single user can be both a Broker and an Office Clerk without needing two accounts
+- Primary role stays `Broker` in Profiles table; a matching record in `office_clerks` enables the dual role
+- Admin invite flow: inviting an OfficeClerk with an existing Broker's email inserts an `office_clerks` record with `status: Active` (no duplicate auth invite)
+- Cash Expenses UI extracted into reusable `components/OfficeClerkPanel.tsx` (accepts clerkId, officeName, fullName props)
+- `/office-clerk` page imports OfficeClerkPanel (standalone clerks)
+- `/broker` page checks `office_clerks` on init; if record found, shows a toggle button in the header: "💼 Cash Expenses" / "📦 My Stops"
+- Toggling switches between the Broker stops view and the full OfficeClerkPanel (log expenses, view history, cancel pending)
+- Container width adapts: 520px for stops, 1000px for expenses table
 
 ---
 
@@ -173,9 +188,8 @@ One ATF per truck at a time (blocked if open ATF exists for that truck)
 ---
 
 ## Pending Work
-1. **Cash Transactions** — DB migration + OfficeClerk dashboard + admin Cash Transactions section + clerk invite flow
-2. **Tricycles** — DB migration + tricycle management in admin + store officer sale modal update
-3. **UI pass (partially done)**
+1. **Tricycles** — DB migration + tricycle management in admin + store officer sale modal update
+2. **UI pass (partially done)**
    - Driver header buttons (replace emoji with Iconify, move to bottom)
    - Broker confirmation modal price input border
    - Store Officer: tab labels, stock card grid, header style, payment color coding
@@ -184,8 +198,8 @@ One ATF per truck at a time (blocked if open ATF exists for that truck)
    - Truck Officer: same tab/filter issue, button overflow
    - Global: select caret breathing room
    - Admin dashboard full responsive pass (after above)
-4. **Super Admin (MD) role** — read-only, mobile/tablet-first dashboard
-5. **Reports** — store sales, cash transactions, ATF fuel costs once new features land
+3. **Super Admin (MD) role** — read-only, mobile/tablet-first dashboard
+4. **Reports** — store sales, cash transactions, ATF fuel costs once new features land
 
 ---
 

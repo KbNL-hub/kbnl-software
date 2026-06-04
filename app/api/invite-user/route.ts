@@ -7,7 +7,7 @@ const supabaseAdmin = createClient(
 )
 
 export async function POST(req: Request) {
-  const { email, fullName, phoneNumber, role, companyId, storeName } = await req.json()
+  const { email, fullName, phoneNumber, role, companyId, storeName, officeName } = await req.json()
 
   if (!email || !fullName || !role) {
     return NextResponse.json({ error: "Email, full name and role are required" }, { status: 400 })
@@ -21,30 +21,49 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Store is required for Store Officer" }, { status: 400 })
   }
 
-  const { data, error: inviteError } = await supabaseAdmin.auth.admin.inviteUserByEmail(email, {
-    redirectTo: `${process.env.NEXT_PUBLIC_APP_URL}/auth/callback`
-  })
-
-  if (inviteError) {
-    return NextResponse.json({ error: inviteError.message }, { status: 500 })
+  if (role === "OfficeClerk" && !officeName) {
+    return NextResponse.json({ error: "Office is required for Office Clerk" }, { status: 400 })
   }
 
-  const userId = data.user.id
+  const { data: userList, error: listError } = await supabaseAdmin.auth.admin.listUsers()
+  if (listError) {
+    return NextResponse.json({ error: "Failed to check existing users: " + listError.message }, { status: 500 })
+  }
 
-  console.log("Inserting profile:", { userId, role, fullName, phoneNumber })
+  const existingUser = userList.users.find(u => u.email?.toLowerCase() === email.toLowerCase())
+  let userId = ""
+  let isNewUser = false
 
-  // Insert into Profiles
-  const { error: profileError } = await supabaseAdmin.from("Profiles").insert([{
-    user_id: userId,
-    role,
-    full_name: fullName,
-    phone_number: phoneNumber || null,
-  }])
+  if (existingUser) {
+    userId = existingUser.id
+  } else {
+    isNewUser = true
+    const { data, error: inviteError } = await supabaseAdmin.auth.admin.inviteUserByEmail(email, {
+      redirectTo: `${process.env.NEXT_PUBLIC_APP_URL}/auth/callback`
+    })
 
-  console.log("Profile error:", profileError)
+    if (inviteError) {
+      return NextResponse.json({ error: inviteError.message }, { status: 500 })
+    }
+    userId = data.user.id
+  }
 
-  if (profileError) {
-    return NextResponse.json({ error: "Invite sent but profile failed" }, { status: 500 })
+  console.log("Processing profile:", { userId, role, fullName, phoneNumber, isNewUser })
+
+  if (isNewUser) {
+    // Insert into Profiles
+    const { error: profileError } = await supabaseAdmin.from("Profiles").insert([{
+      user_id: userId,
+      role,
+      full_name: fullName,
+      phone_number: phoneNumber || null,
+    }])
+
+    console.log("Profile error:", profileError)
+
+    if (profileError) {
+      return NextResponse.json({ error: "Invite sent but profile failed" }, { status: 500 })
+    }
   }
 
   // If Driver, also insert into Drivers table
@@ -122,5 +141,22 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Invite sent but store officer record failed" }, { status: 500 })
     }
   }
+
+  if (role === "OfficeClerk") {
+    if (!officeName) {
+      return NextResponse.json({ error: "Office name is required for Office Clerk" }, { status: 400 })
+    }
+    const { error: ocError } = await supabaseAdmin.from("office_clerks").insert([{
+      clerk_id: userId,
+      full_name: fullName,
+      phone_number: phoneNumber || null,
+      office_name: officeName,
+      status: existingUser ? "Active" : "Invited"
+    }])
+    if (ocError) {
+      return NextResponse.json({ error: "Invite sent but office clerk record failed" }, { status: 500 })
+    }
+  }
+
   return NextResponse.json({ success: true })
 }

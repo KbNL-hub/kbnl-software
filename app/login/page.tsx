@@ -72,6 +72,8 @@ export default function LoginPage() {
       router.push("/truck-admin")
     } else if (profile.role === "StoreOfficer") {
       router.push("/store-officer")
+    } else if (profile.role === "OfficeClerk") {
+      router.push("/office-clerk")
     } else {
       setMessage("Unknown role. Contact admin.")
     }

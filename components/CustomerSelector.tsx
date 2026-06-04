@@ -3,12 +3,12 @@
 import { useEffect, useState } from "react"
 import { supabase } from "@/lib/supabase"
 
-type Customer = { customer_id: string; full_name: string; phone_number: string }
-type Props = { onSelect: (customer: Customer) => void }
+type Customer = { customer_id: string; full_name: string; phone_number: string; isNew?: boolean }
+type Props = { onSelect: (customer: Customer) => void; allowUnsavedNew?: boolean; initialValue?: string }
 
-export default function CustomerSelector({ onSelect }: Props) {
+export default function CustomerSelector({ onSelect, allowUnsavedNew, initialValue }: Props) {
   const [customers, setCustomers] = useState<Customer[]>([])
-  const [search, setSearch] = useState("")
+  const [search, setSearch] = useState(initialValue || "")
   const [selected, setSelected] = useState<Customer | null>(null)
   const [open, setOpen] = useState(false)
   const [creating, setCreating] = useState(false)
@@ -33,6 +33,13 @@ export default function CustomerSelector({ onSelect }: Props) {
 
   async function handleCreate() {
     if (!newName.trim()) { setMessage("Customer name is required"); return }
+
+    if (allowUnsavedNew) {
+      const tempCustomer = { customer_id: "", full_name: newName, phone_number: newPhone || "", isNew: true }
+      handleSelect(tempCustomer)
+      setNewName(""); setNewPhone(""); setCreating(false); setMessage("")
+      return
+    }
 
     const { data, error } = await supabase
       .from("Customers").insert([{ full_name: newName, phone_number: newPhone || null }]).select().single()

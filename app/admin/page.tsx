@@ -17,6 +17,8 @@ import TruckAdmins from "@/components/admin/TruckAdmins"
 import Reports from "@/components/admin/Reports"
 import Complaints from "@/components/admin/Complaints"
 import StoreOfficers from "@/components/admin/StoreOfficers"
+import CashTransactions from "@/components/admin/CashTransactions"
+import CustomerPaymentsAdmin from "@/components/admin/CustomerPaymentsAdmin"
 import { Icon } from "@iconify/react"
 
 const navItems = [
@@ -33,6 +35,9 @@ const navItems = [
   { label: "Truck Officers", key: "truck-officers" },
   { label: "Truck Admins", key: "truck-admins" },
   { label: "Store Officers", key: "store-officers" },
+  { label: "Office Clerks", key: "office-clerks" },
+  { label: "Cash Transactions", key: "cash-transactions" },
+  { label: "Customer Payments", key: "customer-payments" },
   { label: "Reports", key: "reports" },
 ]
 
@@ -109,6 +114,9 @@ export default function AdminDashboard() {
       case "truck-officers": return <TruckOfficers />
       case "truck-admins": return <TruckAdmins />
       case "store-officers": return <StoreOfficers />
+      case "office-clerks": return <OfficeClerks />
+      case "cash-transactions": return <CashTransactions />
+      case "customer-payments": return <CustomerPaymentsAdmin />
       case "reports": return <Reports />
       default: return (
         <div>
@@ -203,6 +211,9 @@ export default function AdminDashboard() {
                   item.key === "truck-officers" ? "wpf:maintenance" :
                   item.key === "truck-admins" ? "mdi:person-star" :
                   item.key === "store-officers" ? "mdi:storefront" :
+                  item.key === "office-clerks" ? "mdi:account-tie" :
+                  item.key === "cash-transactions" ? "mdi:cash-multiple" :
+                  item.key === "customer-payments" ? "mdi:cash-register" :
                   item.key === "reports" ? "mdi:chart-bar" : "mdi:circle"
                 } width={20} height={20} />
               </span>
