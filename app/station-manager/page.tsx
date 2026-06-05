@@ -4,6 +4,7 @@ import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import { supabase } from "@/lib/supabase"
 import { formatAmount, parseAmount } from "@/lib/formatAmount"
+import ModernInput from "@/components/ModernInput"
 import { useBreakpoint } from "@/app/hooks/useBreakpoint"
 
 type ATF = {
@@ -326,7 +327,7 @@ export default function StationManagerDashboard() {
 
             <div style={{ marginBottom: 16 }}>
               <label style={label}>Rate per Litre (₦) *</label>
-              <input type="text" inputMode="numeric" placeholder="e.g. 1,200" value={ratePerLitre} onChange={e => { setRatePerLitre(formatAmount(e.target.value)); setDispenseError("") }} style={inputStyle} />
+              <ModernInput type="text" inputMode="numeric" placeholder="e.g. 1,200" value={ratePerLitre} onChange={e => { setRatePerLitre(formatAmount(e.target.value)); setDispenseError("") }} style={inputStyle} />
             </div>
 
             {ratePerLitre && parseAmount(ratePerLitre) > 0 && (
@@ -359,7 +360,7 @@ export default function StationManagerDashboard() {
             </p>
             <div style={{ marginBottom: 24 }}>
               <label style={label}>Reason *</label>
-              <textarea value={invalidateReason} onChange={e => { setInvalidateReason(e.target.value); setInvalidateError("") }} placeholder="e.g. Only 100L available, requested 200L" rows={4} style={{ width: "100%", padding: "12px 14px", boxSizing: "border-box", borderRadius: 8, border: "1.5px solid #ccc", fontSize: 14, resize: "none", background: "white", color: "#171717" }} />
+              <ModernInput as="textarea" value={invalidateReason} onChange={e => { setInvalidateReason(e.target.value); setInvalidateError("") }} placeholder="e.g. Only 100L available, requested 200L" rows={4} style={{ width: "100%", padding: "12px 14px", boxSizing: "border-box", borderRadius: 8, border: "1.5px solid #ccc", fontSize: 14, resize: "none", background: "white", color: "#171717" }} />
             </div>
             {invalidateError && <p style={err}>{invalidateError}</p>}
             <div style={{ display: "flex", gap: 8 }}>

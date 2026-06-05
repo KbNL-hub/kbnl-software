@@ -4,6 +4,7 @@ import { useState, useEffect } from "react"
 import { Icon } from "@iconify/react"
 import { supabase } from "@/lib/supabase"
 import { formatAmount, parseAmount } from "@/lib/formatAmount"
+import ModernInput from "@/components/ModernInput"
 import CustomerSelector from "@/components/CustomerSelector"
 import OfficeClerkPanel from "@/components/OfficeClerkPanel"
 import CustomerPayments from "@/components/CustomerPayments"
@@ -551,8 +552,10 @@ export default function BrokerDashboard() {
 
             <div style={{ marginBottom: 24 }}>
               <label style={labelStyle}>Price Per Bag (₦) *</label>
-              <input
-                type="text" inputMode="numeric" placeholder="e.g. 10,500"
+              <ModernInput
+                type="text"
+                inputMode="numeric"
+                placeholder="e.g. 10,500"
                 value={pricePerBag}
                 onChange={(e) => { setPricePerBag(formatAmount(e.target.value)); setMessage("") }}
                 style={inputStyle}
@@ -597,7 +600,8 @@ export default function BrokerDashboard() {
 
             <div style={{ marginBottom: 24 }}>
               <label style={labelStyle}>Reason for Dispute *</label>
-              <textarea
+              <ModernInput
+                as="textarea"
                 placeholder="e.g. This stop does not belong to me…"
                 value={disputeReason}
                 onChange={e => { setDisputeReason(e.target.value); setMessage("") }}

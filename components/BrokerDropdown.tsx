@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect, useState } from "react"
+import ModernInput from "@/components/ModernInput"
 import { supabase } from "@/lib/supabase"
 
 type Broker = { broker_id: string; broker_name: string }
@@ -30,7 +31,7 @@ export default function BrokerDropdown({ onSelect }: Props) {
   return (
     <div style={{ fontFamily: "Arial" }}>
       <div style={{ position: "relative", width: "100%" }}>
-        <input
+        <ModernInput
           type="text"
           placeholder="Search broker..."
           value={search}
@@ -39,7 +40,7 @@ export default function BrokerDropdown({ onSelect }: Props) {
           style={{
             width: "100%", padding: "12px 14px", fontSize: 15,
             boxSizing: "border-box", borderRadius: 8,
-            border: selected ? "1.5px solid #0070f3" : "1.5px solid #ccc",
+            border: "1.5px solid #ccc",
             background: "white", color: "#171717",
             outline: "none", minHeight: 48,
           }}

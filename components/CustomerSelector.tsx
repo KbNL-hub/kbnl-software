@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect, useState } from "react"
+import ModernInput from "@/components/ModernInput"
 import { supabase } from "@/lib/supabase"
 
 type Customer = { customer_id: string; full_name: string; phone_number: string; isNew?: boolean }
@@ -61,16 +62,13 @@ export default function CustomerSelector({ onSelect, allowUnsavedNew, initialVal
   return (
     <div style={{ fontFamily: "Arial" }}>
       <div style={{ position: "relative", width: "100%" }}>
-        <input
+        <ModernInput
           type="text"
           placeholder="Search customer..."
           value={search}
           onChange={(e) => { setSearch(e.target.value); setSelected(null); setOpen(true); setCreating(false) }}
           onFocus={() => setOpen(true)}
-          style={{
-            ...fieldStyle,
-            border: selected ? "1.5px solid #0070f3" : "1.5px solid #ccc",
-          }}
+          style={fieldStyle}
         />
 
         {open && search && (
@@ -107,14 +105,14 @@ export default function CustomerSelector({ onSelect, allowUnsavedNew, initialVal
       {creating && (
         <div style={{ marginTop: 12, padding: 16, border: "1.5px solid #ddd", borderRadius: 8, background: "#fafafa" }}>
           <p style={{ fontWeight: "bold", marginBottom: 12, fontSize: 14, color: "#171717" }}>New Customer</p>
-          <input
+          <ModernInput
             type="text"
             placeholder="Full name *"
             value={newName}
             onChange={e => setNewName(e.target.value)}
             style={{ ...fieldStyle, marginBottom: 10 }}
           />
-          <input
+          <ModernInput
             type="text"
             placeholder="Phone number (optional)"
             value={newPhone}

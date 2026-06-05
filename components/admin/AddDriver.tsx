@@ -1,4 +1,5 @@
 "use client"
+import ModernInput from "@/components/ModernInput";
 
 import { useState, useRef } from "react"
 
@@ -41,26 +42,24 @@ export default function AddDriver() {
   return (
     <div style={{ maxWidth: 400 }}>
       <h2 style={{ marginBottom: 24 }}>Add New Driver</h2>
-
       <div style={{ marginBottom: 16 }}>
         <label style={{ fontWeight: "bold", display: "block", marginBottom: 6 }}>
           Full Name *
         </label>
-        <input
+        <ModernInput
           type="text"
           placeholder="e.g. John Doe"
           value={fullName}
           onChange={(e) => { setFullName(e.target.value); setMessage("") }}
           onKeyDown={(e) => { if (e.key === "Enter") phoneRef.current?.focus() }}
           style={{ width: "100%", padding: 10, boxSizing: "border-box" }}
-        />
+          data-modern-input="migrated" />
       </div>
-
       <div style={{ marginBottom: 16 }}>
         <label style={{ fontWeight: "bold", display: "block", marginBottom: 6 }}>
           Phone Number
         </label>
-        <input
+        <ModernInput
           ref={phoneRef}
           type="text"
           placeholder="e.g. 08012345678"
@@ -68,14 +67,13 @@ export default function AddDriver() {
           onChange={(e) => { setPhoneNumber(e.target.value); setMessage("") }}
           onKeyDown={(e) => { if (e.key === "Enter") emailRef.current?.focus() }}
           style={{ width: "100%", padding: 10, boxSizing: "border-box" }}
-        />
+          data-modern-input="migrated" />
       </div>
-
       <div style={{ marginBottom: 24 }}>
         <label style={{ fontWeight: "bold", display: "block", marginBottom: 6 }}>
           Email Address *
         </label>
-        <input
+        <ModernInput
           ref={emailRef}
           type="email"
           placeholder="e.g. driver@example.com"
@@ -83,9 +81,8 @@ export default function AddDriver() {
           onChange={(e) => { setEmail(e.target.value); setMessage("") }}
           onKeyDown={(e) => { if (e.key === "Enter") handleSubmit() }}
           style={{ width: "100%", padding: 10, boxSizing: "border-box" }}
-        />
+          data-modern-input="migrated" />
       </div>
-
       <button
         onClick={handleSubmit}
         disabled={submitting}
@@ -97,7 +94,6 @@ export default function AddDriver() {
       >
         {submitting ? "Sending Invite..." : "Add Driver"}
       </button>
-
       {message && (
         <p style={{
           marginTop: 16, fontWeight: "bold",
@@ -107,5 +103,5 @@ export default function AddDriver() {
         </p>
       )}
     </div>
-  )
+  );
 }

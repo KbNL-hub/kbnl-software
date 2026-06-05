@@ -4,6 +4,7 @@ import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import { supabase } from "@/lib/supabase"
 import { formatAmount, parseAmount } from "@/lib/formatAmount"
+import CustomerSelector from "@/components/CustomerSelector"
 
 type Officer = { officer_id: string; full_name: string; store_name: string }
 
@@ -29,6 +30,8 @@ type Sale = {
   total_amount: number
   customer_name: string | null
   payment_mode: string
+  sale_type: string
+  tricycle_number: string | null
   sold_at: string
 }
 
@@ -58,10 +61,15 @@ export default function StoreOfficerDashboard() {
   const [saleProduct, setSaleProduct] = useState("")
   const [saleQty, setSaleQty] = useState("")
   const [salePrice, setSalePrice] = useState("")
-  const [saleCustomer, setSaleCustomer] = useState("")
+  const [saleCustomer, setSaleCustomer] = useState<{ full_name: string } | null>(null)
   const [salePayment, setSalePayment] = useState("")
   const [saleError, setSaleError] = useState("")
   const [saleLoading, setSaleLoading] = useState(false)
+  const [saleType, setSaleType] = useState<"direct" | "tricycle">("direct")
+  const [tricycles, setTricycles] = useState<{ tricycle_id: string; tricycle_number: string }[]>([])
+  const [saleTricycleId, setSaleTricycleId] = useState("")
+  const [tricycleSearch, setTricycleSearch] = useState("")
+  const [tricycleDropOpen, setTricycleDropOpen] = useState(false)
 
   // Sales filter
   const [salesFilter, setSalesFilter] = useState("All")
@@ -99,6 +107,7 @@ export default function StoreOfficerDashboard() {
       fetchPendingStops(officerData.store_name),
       fetchStock(officerData.store_name),
       fetchSales(officerData.officer_id),
+      fetchTricycles(),
     ])
     setLoading(false)
   }
@@ -157,10 +166,31 @@ export default function StoreOfficerDashboard() {
   async function fetchSales(officerId: string) {
     const { data } = await supabase
       .from("store_sales")
-      .select("sale_id, product, quantity, price_per_bag, total_amount, customer_name, payment_mode, sold_at")
+      .select("sale_id, product, quantity, price_per_bag, total_amount, customer_name, payment_mode, sale_type, tricycle_id, sold_at")
       .eq("officer_id", officerId)
       .order("sold_at", { ascending: false })
-    setSales(data || [])
+
+    if (!data) return
+
+    const enriched = await Promise.all(data.map(async s => {
+      let tricycle_number: string | null = null
+      if (s.tricycle_id) {
+        const { data: t } = await supabase
+          .from("tricycles").select("tricycle_number").eq("tricycle_id", s.tricycle_id).single()
+        tricycle_number = t?.tricycle_number ?? null
+      }
+      return { ...s, tricycle_number }
+    }))
+
+    setSales(enriched)
+  }
+
+  async function fetchTricycles() {
+    const { data } = await supabase
+      .from("tricycles")
+      .select("tricycle_id, tricycle_number")
+      .order("tricycle_number", { ascending: true })
+    setTricycles(data || [])
   }
 
   // Supply line helpers
@@ -261,6 +291,8 @@ export default function StoreOfficerDashboard() {
     const price = parseAmount(salePrice)
     if (!salePrice || price <= 0) return setSaleError("Enter a valid price per bag")
     if (!salePayment) return setSaleError("Select a payment mode")
+    if (saleType === "tricycle" && !saleTricycleId) return setSaleError("Select a tricycle")
+    if (!saleCustomer || !saleCustomer.full_name.trim()) return setSaleError("Customer name is required")
 
     // Check stock
     const stockItem = stock.find(s => s.product === saleProduct)
@@ -274,8 +306,10 @@ export default function StoreOfficerDashboard() {
       product: saleProduct,
       quantity: qty,
       price_per_bag: price,
-      customer_name: saleCustomer.trim() || null,
+      customer_name: saleCustomer.full_name.trim(),
       payment_mode: salePayment,
+      sale_type: saleType,
+      tricycle_id: saleType === "tricycle" ? saleTricycleId : null,
     }])
 
     if (saleErr) { setSaleError("Failed to log sale"); setSaleLoading(false); return }
@@ -289,7 +323,7 @@ export default function StoreOfficerDashboard() {
 
     setSaleLoading(false)
     setShowSaleModal(false)
-    setSaleProduct(""); setSaleQty(""); setSalePrice(""); setSaleCustomer(""); setSalePayment(""); setSaleError("")
+    setSaleProduct(""); setSaleQty(""); setSalePrice(""); setSaleCustomer(null); setSalePayment(""); setSaleError(""); setSaleType("direct"); setSaleTricycleId(""); setTricycleSearch("")
     await Promise.all([fetchSales(officer.officer_id), fetchStock(officer.store_name)])
   }
 
@@ -330,11 +364,11 @@ export default function StoreOfficerDashboard() {
           {stock.length === 0
             ? <p style={{ color: "#888", fontSize: 13, margin: 0 }}>No stock recorded yet.</p>
             : (
-              <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 12 }}>
                 {stock.map(s => (
-                  <div key={s.product} style={{ background: "#f0f7ff", border: "1px solid #0070f322", borderRadius: 8, padding: "10px 16px", minWidth: 120 }}>
+                  <div key={s.product} style={{ background: "#f0f7ff", border: "1px solid #0070f322", borderRadius: 8, padding: "12px 16px" }}>
                     <p style={{ margin: 0, fontSize: 12, color: "#888" }}>{s.product}</p>
-                    <p style={{ margin: "4px 0 0", fontWeight: "bold", fontSize: 20, color: s.balance === 0 ? "#ff4444" : s.balance < 50 ? "#f5a623" : "#0070f3" }}>
+                    <p style={{ margin: "4px 0 0", fontWeight: "bold", fontSize: 22, color: s.balance === 0 ? "#ff4444" : s.balance < 50 ? "#f5a623" : "#0070f3" }}>
                       {s.balance}
                       <span style={{ fontSize: 12, fontWeight: "normal", color: "#888" }}> bags</span>
                     </p>
@@ -354,13 +388,13 @@ export default function StoreOfficerDashboard() {
               style={{
                 padding: "8px 20px", borderRadius: 20, fontSize: 13, cursor: "pointer",
                 border: "1px solid #ddd",
-                background: tab === t ? "#0070f3" : "white",
+                background: tab === t ? "#171717" : "white",
                 color: tab === t ? "white" : "#333",
                 fontWeight: tab === t ? "bold" : "normal",
                 position: "relative"
               }}
             >
-              {t === "supply" ? "Incoming Supplies" : t === "sales" ? "Sales" : "Stock History"}
+              {t === "supply" ? "Supplies" : t === "sales" ? "Sales" : "Stock"}
               {t === "supply" && pendingStops.length > 0 && (
                 <span style={{
                   position: "absolute", top: -6, right: -6,
@@ -461,6 +495,15 @@ export default function StoreOfficerDashboard() {
                       <span style={{ fontSize: 12, padding: "2px 8px", borderRadius: 10, background: "#f0f0f0", color: "#555" }}>{sale.payment_mode}</span>
                     </div>
                   </div>
+                  {/* Sale Type */}
+                  <div style={{ background: sale.sale_type === "tricycle" ? "#f0f7ff" : "#f9f9f9", borderRadius: 6, padding: "8px 12px", marginBottom: 8 }}>
+                    <p style={{ margin: 0, fontSize: 11, color: "#888" }}>Sale Type</p>
+                    <p style={{ margin: 0, fontWeight: "bold", fontSize: 13, color: sale.sale_type === "tricycle" ? "#0070f3" : "#333" }}>
+                      {sale.sale_type === "tricycle" && sale.tricycle_number
+                        ? `🛺 ${sale.tricycle_number}`
+                        : "Direct to customer"}
+                    </p>
+                  </div>
                   <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
                     <div style={{ background: "#f9f9f9", borderRadius: 6, padding: "8px 12px" }}>
                       <p style={{ margin: 0, fontSize: 11, color: "#888" }}>Bags Sold</p>
@@ -514,15 +557,16 @@ export default function StoreOfficerDashboard() {
             <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 16 }}>
               {supplyLines.map((line, i) => (
                 <div key={i} style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                  <select
+                  <ModernInput
+                    as="select"
                     value={line.product}
                     onChange={e => updateSupplyLine(i, "product", e.target.value)}
                     style={{ flex: 2, padding: 10, borderRadius: 6, border: "1px solid #ddd", fontSize: 14 }}
                   >
                     <option value="">Select product</option>
                     {allProducts.map(p => (<option key={p} value={p}>{p}</option>))}
-                  </select>
-                  <input
+                  </ModernInput>
+                  <ModernInput
                     type="number"
                     placeholder="Qty"
                     value={line.quantity}
@@ -568,47 +612,156 @@ export default function StoreOfficerDashboard() {
 
       {/* Log Sale Modal */}
       {showSaleModal && (
-        <div onClick={() => { setShowSaleModal(false); setSaleProduct(""); setSaleQty(""); setSalePrice(""); setSaleCustomer(""); setSalePayment(""); setSaleError("") }} style={overlay}>
+        <div onClick={() => { setShowSaleModal(false); setSaleProduct(""); setSaleQty(""); setSalePrice(""); setSaleCustomer(null); setSalePayment(""); setSaleType("direct"); setSaleTricycleId(""); setTricycleSearch(""); setSaleError("") }} style={overlay}>
           <div onClick={e => e.stopPropagation()} style={modal}>
             <h3 style={{ marginBottom: 20 }}>Log Sale</h3>
 
             <div style={{ marginBottom: 16 }}>
               <label style={labelStyle}>Product *</label>
-              <select value={saleProduct} onChange={e => { setSaleProduct(e.target.value); setSaleError("") }} style={inputStyle}>
+              <ModernInput
+                as="select"
+                value={saleProduct}
+                onChange={e => { setSaleProduct(e.target.value); setSaleError("") }}
+                style={inputStyle}
+              >
                 <option value="">Select product</option>
                 {stock.filter(s => s.balance > 0).map(s => (
                   <option key={s.product} value={s.product}>{s.product} ({s.balance} bags available)</option>
                 ))}
-              </select>
+              </ModernInput>
             </div>
+
+            {/* Sale Type Toggle */}
+            <div style={{ marginBottom: 16 }}>
+              <label style={labelStyle}>Sale Type *</label>
+              <div style={{ display: "flex", gap: 8 }}>
+                {(["direct", "tricycle"] as const).map(type => (
+                  <button
+                    key={type}
+                    onClick={() => { setSaleType(type); setSaleTricycleId(""); setSaleError("") }}
+                    style={{
+                      flex: 1, padding: "10px 0", borderRadius: 8, cursor: "pointer",
+                      border: `1.5px solid ${saleType === type ? "#0070f3" : "#ddd"}`,
+                      background: saleType === type ? "#0070f3" : "white",
+                      color: saleType === type ? "white" : "#555",
+                      fontWeight: saleType === type ? "bold" : "normal",
+                      fontSize: 14, minHeight: 44,
+                    }}
+                  >
+                    {type === "direct" ? "Direct Sale" : "Tricycle"}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Tricycle selector — only when tricycle selected */}
+            {saleType === "tricycle" && (
+              <div style={{ marginBottom: 16, position: "relative" }}>
+                <label style={labelStyle}>Tricycle *</label>
+                {tricycles.length === 0
+                  ? <p style={{ fontSize: 13, color: "#888", marginTop: 4 }}>No tricycles available.</p>
+                  : (
+                    <div style={{ position: "relative" }}>
+                      <ModernInput
+                        type="text"
+                        placeholder="Search tricycle…"
+                        value={tricycleSearch}
+                        onChange={e => { setTricycleSearch(e.target.value); setTricycleDropOpen(true) }}
+                        onFocus={() => setTricycleDropOpen(true)}
+                        onBlur={() => setTimeout(() => setTricycleDropOpen(false), 150)}
+                        style={inputStyle}
+                      />
+                      {tricycleDropOpen && (
+                        <ul style={{
+                          position: "absolute", top: "100%", left: 0, right: 0,
+                          background: "white", border: "1px solid #ddd", borderRadius: 6,
+                          listStyle: "none", margin: 0, padding: 0,
+                          maxHeight: 200, overflowY: "auto", zIndex: 10,
+                          boxShadow: "0 4px 12px rgba(0,0,0,0.1)"
+                        }}>
+                          {tricycles
+                            .filter(t => t.tricycle_number.toLowerCase().includes(tricycleSearch.toLowerCase()))
+                            .map(t => (
+                              <li
+                                key={t.tricycle_id}
+                                onMouseDown={() => {
+                                  setSaleTricycleId(t.tricycle_id)
+                                  setTricycleSearch(t.tricycle_number)
+                                  setTricycleDropOpen(false)
+                                  setSaleError("")
+                                }}
+                                style={{
+                                  padding: "10px 12px", cursor: "pointer", fontSize: 14,
+                                  background: saleTricycleId === t.tricycle_id ? "#eff6ff" : "white"
+                                }}
+                                onMouseEnter={e => { if (saleTricycleId !== t.tricycle_id) e.currentTarget.style.background = "#f5f5f5" }}
+                                onMouseLeave={e => { e.currentTarget.style.background = saleTricycleId === t.tricycle_id ? "#eff6ff" : "white" }}
+                              >
+                                {t.tricycle_number}
+                              </li>
+                            ))}
+                        </ul>
+                      )}
+                    </div>
+                  )
+                }
+              </div>
+            )}
 
             <div style={{ marginBottom: 16 }}>
               <label style={labelStyle}>Quantity (bags) *</label>
-              <input type="number" placeholder="e.g. 50" value={saleQty} onChange={e => { setSaleQty(e.target.value); setSaleError("") }} style={inputStyle} />
+              <ModernInput
+                type="number"
+                placeholder="e.g. 50"
+                value={saleQty}
+                onChange={e => { setSaleQty(e.target.value); setSaleError("") }}
+                style={inputStyle}
+              />
             </div>
 
             <div style={{ marginBottom: 16 }}>
               <label style={labelStyle}>Price per Bag (₦) *</label>
-              <input type="text" inputMode="numeric" placeholder="e.g. 12,000" value={salePrice} onChange={e => { setSalePrice(formatAmount(e.target.value)); setSaleError("") }} style={inputStyle} />
+              <ModernInput
+                type="text"
+                inputMode="numeric"
+                placeholder="e.g. 12,000"
+                value={salePrice}
+                onChange={e => { setSalePrice(formatAmount(e.target.value)); setSaleError("") }}
+                style={inputStyle}
+              />
             </div>
 
             <div style={{ marginBottom: 16 }}>
-              <label style={labelStyle}>Customer Name (optional)</label>
-              <input type="text" placeholder="e.g. Emeka Okafor" value={saleCustomer} onChange={e => { setSaleCustomer(e.target.value) }} style={inputStyle} />
+              <label style={labelStyle}>Customer Name *</label>
+              <CustomerSelector 
+                onSelect={(c: any) => { setSaleCustomer(c); setSaleError("") }} 
+                allowUnsavedNew={true}
+                initialValue={saleCustomer?.full_name || ""}
+              />
+              {saleCustomer && (
+                <div style={{ marginTop: 8, padding: "8px 12px", background: "#f0f7ff", borderRadius: 6, fontSize: 13, color: "#0070f3" }}>
+                  Selected: {saleCustomer.full_name}
+                </div>
+              )}
             </div>
 
             <div style={{ marginBottom: 24 }}>
               <label style={labelStyle}>Payment Mode *</label>
-              <select value={salePayment} onChange={e => { setSalePayment(e.target.value); setSaleError("") }} style={inputStyle}>
+              <ModernInput
+                as="select"
+                value={salePayment}
+                onChange={e => { setSalePayment(e.target.value); setSaleError("") }}
+                style={inputStyle}
+              >
                 <option value="">Select payment mode</option>
                 {PAYMENT_MODES.map(m => (<option key={m} value={m}>{m}</option>))}
-              </select>
+              </ModernInput>
             </div>
 
             {saleError && <p style={{ color: "red", fontSize: 13, marginBottom: 12 }}>{saleError}</p>}
 
             <div style={{ display: "flex", gap: 8 }}>
-              <button onClick={() => { setShowSaleModal(false); setSaleProduct(""); setSaleQty(""); setSalePrice(""); setSaleCustomer(""); setSalePayment(""); setSaleError("") }} style={cancelBtn}>Cancel</button>
+              <button onClick={() => { setShowSaleModal(false); setSaleProduct(""); setSaleQty(""); setSalePrice(""); setSaleCustomer(null); setSalePayment(""); setSaleType("direct"); setSaleTricycleId(""); setTricycleSearch(""); setSaleError("") }} style={cancelBtn}>Cancel</button>
               <button onClick={handleLogSale} disabled={saleLoading} style={primaryBtn}>
                 {saleLoading ? "Logging..." : "Log Sale"}
               </button>

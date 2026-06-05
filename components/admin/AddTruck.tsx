@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useRef } from "react"
+import ModernInput from "@/components/ModernInput"
 import { supabase } from "@/lib/supabase"
 
 const truckStatuses = ["Empty", "Loaded", "Undergoing Repairs", "Decommissioned"]
@@ -20,6 +21,18 @@ export default function AddTruck() {
   const capacityRef = useRef<HTMLInputElement>(null)
   const tonnageRef = useRef<HTMLInputElement>(null)
   const statusRef = useRef<HTMLSelectElement>(null)
+
+  const fieldStyle: React.CSSProperties = {
+    width: "100%",
+    padding: 12,
+    boxSizing: "border-box",
+    borderRadius: 6,
+    border: "1px solid #e0e0e0",
+    outline: "none",
+    fontSize: 16,
+    background: "#fff",
+    transition: "border-color 0.2s ease",
+  }
 
   async function handleSubmit() {
     if (!plateNumber.trim()) return setMessage("Plate number is required")
@@ -63,13 +76,13 @@ export default function AddTruck() {
         <label style={{ fontWeight: "bold", display: "block", marginBottom: 6 }}>
           Plate Number *
         </label>
-        <input
+        <ModernInput
           type="text"
           placeholder="e.g. ABC-123-XY"
           value={plateNumber}
           onChange={(e) => { setPlateNumber(e.target.value); setMessage("") }}
           onKeyDown={(e) => { if (e.key === "Enter") kbnlRef.current?.focus() }}
-          style={{ width: "100%", padding: 10, boxSizing: "border-box" }}
+          style={fieldStyle}
         />
       </div>
 
@@ -77,14 +90,14 @@ export default function AddTruck() {
         <label style={{ fontWeight: "bold", display: "block", marginBottom: 6 }}>
           KbNL Truck No. *
         </label>
-        <input
+        <ModernInput
           ref={kbnlRef}
           type="text"
           placeholder="e.g. 007"
           value={kbnlTruckNo}
           onChange={(e) => { setKbnlTruckNo(e.target.value); setMessage("") }}
           onKeyDown={(e) => { if (e.key === "Enter") truckModelRef.current?.focus() }}
-          style={{ width: "100%", padding: 10, boxSizing: "border-box" }}
+          style={fieldStyle}
         />
       </div>
 
@@ -92,14 +105,14 @@ export default function AddTruck() {
         <label style={{ fontWeight: "bold", display: "block", marginBottom: 6 }}>
           Truck Model *
         </label>
-        <input
+        <ModernInput
           ref={truckModelRef}
           type="text"
           placeholder="e.g. Volvo FH16"
           value={truckModel}
           onChange={(e) => { setTruckModel(e.target.value); setMessage("") }}
           onKeyDown={(e) => { if (e.key === "Enter") capacityRef.current?.focus() }}
-          style={{ width: "100%", padding: 10, boxSizing: "border-box" }}
+          style={fieldStyle}
         />
       </div>
 
@@ -107,14 +120,14 @@ export default function AddTruck() {
         <label style={{ fontWeight: "bold", display: "block", marginBottom: 6 }}>
           Capacity (bags) *
         </label>
-        <input
+        <ModernInput
           ref={capacityRef}
           type="number"
           placeholder="e.g. 600"
           value={capacity}
           onChange={(e) => { setCapacity(e.target.value); setMessage("") }}
           onKeyDown={(e) => { if (e.key === "Enter") tonnageRef.current?.focus() }}
-          style={{ width: "100%", padding: 10, boxSizing: "border-box" }}
+          style={fieldStyle}
         />
       </div>
 
@@ -122,7 +135,7 @@ export default function AddTruck() {
         <label style={{ fontWeight: "bold", display: "block", marginBottom: 6 }}>
           Tonnage *
         </label>
-        <input
+        <ModernInput
           ref={tonnageRef}
           type="number"
           step="0.1"
@@ -130,7 +143,7 @@ export default function AddTruck() {
           value={tonnage}
           onChange={(e) => { setTonnage(e.target.value); setMessage("") }}
           onKeyDown={(e) => { if (e.key === "Enter") statusRef.current?.focus() }}
-          style={{ width: "100%", padding: 10, boxSizing: "border-box" }}
+          style={fieldStyle}
         />
       </div>
 
@@ -138,16 +151,17 @@ export default function AddTruck() {
         <label style={{ fontWeight: "bold", display: "block", marginBottom: 6 }}>
           Status
         </label>
-        <select
+        <ModernInput
+          as="select"
           ref={statusRef}
           value={status}
           onChange={(e) => setStatus(e.target.value)}
-          style={{ width: "100%", padding: 10, boxSizing: "border-box" }}
+          style={fieldStyle}
         >
           {truckStatuses.map((s) => (
             <option key={s} value={s}>{s}</option>
           ))}
-        </select>
+        </ModernInput>
       </div>
 
       <button

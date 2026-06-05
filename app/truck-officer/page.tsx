@@ -4,6 +4,7 @@ import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import { supabase } from "@/lib/supabase"
 import { formatAmount, parseAmount } from "@/lib/formatAmount"
+import ModernInput from "@/components/ModernInput"
 import { useBreakpoint } from "@/app/hooks/useBreakpoint"
 
 type AssignedTruck = {
@@ -595,10 +596,10 @@ export default function TruckOfficerDashboard() {
 
             <div style={{ marginBottom: 16 }}>
               <label style={label}>Truck *</label>
-              <select value={logPlate} onChange={e => { setLogPlate(e.target.value); setLogError("") }} style={inputStyle}>
+              <ModernInput as="select" value={logPlate} onChange={e => { setLogPlate(e.target.value); setLogError("") }} style={inputStyle}>
                 <option value="">Select truck</option>
                 {assignedTrucks.map(t => <option key={t.plate_number} value={t.plate_number}>{t.plate_number}{t.kbnl_truck_no ? ` · #${t.kbnl_truck_no}` : ""} — {t.truck_model}</option>)}
-              </select>
+              </ModernInput>
             </div>
 
             <div style={{ marginBottom: 16 }}>
@@ -616,25 +617,22 @@ export default function TruckOfficerDashboard() {
                 </button>
               </div>
               {logType === "__custom__" && (
-                <input type="text" placeholder="Describe the maintenance type" value={logTypeCustom} onChange={e => { setLogTypeCustom(e.target.value); setLogError("") }} style={inputStyle} autoFocus />
+                <ModernInput type="text" placeholder="Describe the maintenance type" value={logTypeCustom} onChange={e => { setLogTypeCustom(e.target.value); setLogError("") }} style={inputStyle} autoFocus />
               )}
             </div>
 
             <div style={{ marginBottom: 16 }}>
               <label style={label}>Maintenance Location *</label>
-              <input type="text" placeholder="e.g. Mechanic village, Aba Road" value={logLocation} onChange={e => { setLogLocation(e.target.value); setLogError("") }} style={inputStyle} />
+              <ModernInput type="text" placeholder="e.g. Mechanic village, Aba Road" value={logLocation} onChange={e => { setLogLocation(e.target.value); setLogError("") }} style={inputStyle} />
             </div>
-
             <div style={{ marginBottom: 16 }}>
               <label style={label}>Amount Spent (₦) *</label>
-              <input type="text" inputMode="numeric" placeholder="e.g. 25,000" value={logAmount} onChange={e => { setLogAmount(formatAmount(e.target.value)); setLogError("") }} style={inputStyle} />
+              <ModernInput type="text" inputMode="numeric" placeholder="e.g. 25,000" value={logAmount} onChange={e => { setLogAmount(formatAmount(e.target.value)); setLogError("") }} style={inputStyle} />
             </div>
-
             <div style={{ marginBottom: 24 }}>
               <label style={label}>Notes (optional)</label>
-              <textarea placeholder="Any additional details..." value={logNotes} onChange={e => setLogNotes(e.target.value)} rows={3} style={{ ...inputStyle, resize: "none" }} />
+              <ModernInput as="textarea" placeholder="Any additional details..." value={logNotes} onChange={e => setLogNotes(e.target.value)} rows={3} style={{ ...inputStyle, resize: "none" }} />
             </div>
-
             {logError && <p style={err}>{logError}</p>}
             <div style={{ display: "flex", gap: 8 }}>
               <button onClick={closeLogModal} style={cancelBtn}>Cancel</button>
@@ -647,47 +645,112 @@ export default function TruckOfficerDashboard() {
       {/* Log Fuel Expense Modal */}
       {showFuelModal && (
         <div onClick={closeFuelModal} style={overlay}>
-          <div onClick={e => e.stopPropagation()} style={{ ...modalBox(isMobile), width: isMobile ? "100%" : 480 }}>
+          <div
+            onClick={e => e.stopPropagation()}
+            style={{ ...modalBox(isMobile), width: isMobile ? "100%" : 480 }}
+          >
             {isMobile && <div style={dragHandle} />}
-            <h3 style={{ marginBottom: 20, color: "#171717" }}>Log Fuel Expense</h3>
 
+            <h3 style={{ marginBottom: 20, color: "#171717" }}>
+              Log Fuel Expense
+            </h3>
+
+            {/* Truck */}
             <div style={{ marginBottom: 16 }}>
               <label style={label}>Truck *</label>
-              <select value={fuelPlate} onChange={e => handleFuelPlateChange(e.target.value)} style={inputStyle}>
+              <ModernInput
+                as="select"
+                value={fuelPlate}
+                onChange={e => handleFuelPlateChange(e.target.value)}
+                style={inputStyle}
+              >
                 <option value="">Select truck</option>
-                {assignedTrucks.map(t => <option key={t.plate_number} value={t.plate_number}>{t.plate_number}{t.kbnl_truck_no ? ` · #${t.kbnl_truck_no}` : ""} — ⛽ {t.fuel_balance}L</option>)}
-              </select>
+                {assignedTrucks.map(t => (
+                  <option key={t.plate_number} value={t.plate_number}>
+                    {t.plate_number}
+                    {t.kbnl_truck_no ? ` · #${t.kbnl_truck_no}` : ""} — ⛽{" "}
+                    {t.fuel_balance}L
+                  </option>
+                ))}
+              </ModernInput>
             </div>
 
+            {/* Trip */}
             {fuelPlate && (
               <div style={{ marginBottom: 16 }}>
                 <label style={label}>Trip *</label>
-                {fuelTrips.length === 0
-                  ? <p style={{ fontSize: 13, color: "#888", marginTop: 4 }}>No completed trips found.</p>
-                  : <select value={fuelTripId} onChange={e => { setFuelTripId(e.target.value); setFuelError("") }} style={inputStyle}>
+
+                {fuelTrips.length === 0 ? (
+                  <p style={{ fontSize: 13, color: "#888", marginTop: 4 }}>
+                    No completed trips found.
+                  </p>
+                ) : (
+                  <ModernInput
+                    as="select"
+                    value={fuelTripId}
+                    onChange={e => {
+                      setFuelTripId(e.target.value)
+                      setFuelError("")
+                    }}
+                    style={inputStyle}
+                  >
                     <option value="">Select trip</option>
-                    {fuelTrips.map(t => <option key={t.trip_id} value={t.trip_id}>{new Date(t.created_at).toLocaleDateString()} — {t.material_centre} · {t.product}</option>)}
-                  </select>
-                }
+                    {fuelTrips.map(t => (
+                      <option key={t.trip_id} value={t.trip_id}>
+                        {new Date(t.created_at).toLocaleDateString()} —{" "}
+                        {t.material_centre} · {t.product}
+                      </option>
+                    ))}
+                  </ModernInput>
+                )}
               </div>
             )}
 
+            {/* Litres */}
             {fuelTripId && (
               <div style={{ marginBottom: 16 }}>
                 <label style={label}>Estimated Litres Consumed *</label>
-                <input type="number" step="0.1" placeholder="e.g. 120" value={fuelLitres} onChange={e => { setFuelLitres(e.target.value); setFuelError("") }} style={inputStyle} />
+                <ModernInput
+                  type="number"
+                  step="0.1"
+                  placeholder="e.g. 120"
+                  value={fuelLitres}
+                  onChange={e => {
+                    setFuelLitres(e.target.value)
+                    setFuelError("")
+                  }}
+                  style={inputStyle}
+                />
               </div>
             )}
 
-            <div style={{ marginBottom: 24 }}>
+            {/* Notes */}
+            <div style={{ marginBottom: 16 }}>
               <label style={label}>Notes (optional)</label>
-              <textarea placeholder="e.g. Long haul — 400km" value={fuelNotes} onChange={e => setFuelNotes(e.target.value)} rows={3} style={{ ...inputStyle, resize: "none" }} />
+              <ModernInput
+                as="textarea"
+                placeholder="e.g. Long haul — 400km"
+                value={fuelNotes}
+                onChange={e => setFuelNotes(e.target.value)}
+                rows={3}
+                style={{ ...inputStyle, resize: "none" }}
+              />
             </div>
 
             {fuelError && <p style={err}>{fuelError}</p>}
+
+            {/* Actions */}
             <div style={{ display: "flex", gap: 8 }}>
-              <button onClick={closeFuelModal} style={cancelBtn}>Cancel</button>
-              <button onClick={handleLogFuelExpense} disabled={fuelLoading} style={primaryBtn}>{fuelLoading ? "Logging..." : "Log Expense"}</button>
+              <button onClick={closeFuelModal} style={cancelBtn}>
+                Cancel
+              </button>
+              <button
+                onClick={handleLogFuelExpense}
+                disabled={fuelLoading}
+                style={primaryBtn}
+              >
+                {fuelLoading ? "Logging..." : "Log Expense"}
+              </button>
             </div>
           </div>
         </div>
@@ -703,31 +766,31 @@ export default function TruckOfficerDashboard() {
 
             <div style={{ marginBottom: 16 }}>
               <label style={label}>Truck *</label>
-              <select value={atfPlate} onChange={e => { setAtfPlate(e.target.value); setAtfError("") }} style={inputStyle}>
+              <ModernInput as="select" value={atfPlate} onChange={e => { setAtfPlate(e.target.value); setAtfError("") }} style={inputStyle}>
                 <option value="">Select truck</option>
                 {assignedTrucks.map(t => <option key={t.plate_number} value={t.plate_number}>{t.plate_number}{t.kbnl_truck_no ? ` · #${t.kbnl_truck_no}` : ""} — ⛽ {t.fuel_balance}L</option>)}
-              </select>
+              </ModernInput>
             </div>
 
             <div style={{ marginBottom: 16 }}>
               <label style={label}>Driver *</label>
-              <select value={atfDriverId} onChange={e => { setAtfDriverId(e.target.value); setAtfError("") }} style={inputStyle}>
+              <ModernInput as="select" value={atfDriverId} onChange={e => { setAtfDriverId(e.target.value); setAtfError("") }} style={inputStyle}>
                 <option value="">Select driver</option>
                 {allDrivers.map(d => <option key={d.driver_id} value={d.driver_id}>{d.full_name}</option>)}
-              </select>
+              </ModernInput>
             </div>
 
             <div style={{ marginBottom: 16 }}>
               <label style={label}>Fuel Station *</label>
-              <select value={atfCompanyId} onChange={e => { setAtfCompanyId(e.target.value); setAtfError("") }} style={inputStyle}>
+              <ModernInput as="select" value={atfCompanyId} onChange={e => { setAtfCompanyId(e.target.value); setAtfError("") }} style={inputStyle}>
                 <option value="">Select station</option>
                 {fuelCompanies.map(c => <option key={c.company_id} value={c.company_id}>{c.company_name}</option>)}
-              </select>
+              </ModernInput>
             </div>
 
             <div style={{ marginBottom: 24 }}>
               <label style={label}>Litres to Fill *</label>
-              <input type="number" step="0.1" placeholder="e.g. 200" value={atfLitres} onChange={e => { setAtfLitres(e.target.value); setAtfError("") }} style={inputStyle} />
+              <ModernInput type="number" step="0.1" placeholder="e.g. 200" value={atfLitres} onChange={e => { setAtfLitres(e.target.value); setAtfError("") }} style={inputStyle} />
             </div>
 
             {atfError && <p style={err}>{atfError}</p>}

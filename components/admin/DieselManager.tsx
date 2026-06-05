@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
+import ModernInput from "@/components/ModernInput"
 import { supabase } from "@/lib/supabase"
 import { formatAmount, parseAmount } from "@/lib/formatAmount"
 
@@ -49,7 +50,6 @@ export default function DieselManager() {
   const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState("All")
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null)
-
   // Deposit modal
   const [depositCompanyId, setDepositCompanyId] = useState("")
   const [depositAmount, setDepositAmount] = useState("")
@@ -57,6 +57,19 @@ export default function DieselManager() {
   const [depositError, setDepositError] = useState("")
   const [depositLoading, setDepositLoading] = useState(false)
   const [showDepositModal, setShowDepositModal] = useState(false)
+
+  const fieldStyle: React.CSSProperties = {
+    width: "100%",
+    padding: "12px 14px",
+    boxSizing: "border-box",
+    borderRadius: 8,
+    border: "1px solid #e0e0e0",
+    fontSize: 14,
+    background: "white",
+    color: "#171717",
+    minHeight: 48,
+    transition: "border-color 0.2s ease",
+  }
 
   useEffect(() => {
     fetchAll()
@@ -131,12 +144,6 @@ export default function DieselManager() {
 
   const filteredATFs = filter === "All" ? atfs : atfs.filter(a => a.atf_status === filter)
 
-  const inputStyle: React.CSSProperties = {
-    width: "100%", padding: "12px 14px", boxSizing: "border-box",
-    borderRadius: 8, border: "1.5px solid #ccc",
-    fontSize: 14, background: "white", color: "#171717", minHeight: 48,
-  }
-
   if (loading) return <p style={{ color: "#888" }}>Loading...</p>
 
   return (
@@ -147,7 +154,7 @@ export default function DieselManager() {
           {lastUpdated && <span style={{ fontSize: 12, color: "#aaa" }}>{lastUpdated.toLocaleTimeString()}</span>}
           <button onClick={fetchAll} style={{ padding: "6px 14px", fontSize: 13, cursor: "pointer", borderRadius: 4, border: "1px solid #ddd", background: "white" }}>Refresh</button>
           <button onClick={() => setShowDepositModal(true)} style={{ padding: "8px 16px", background: "#0070f3", color: "white", border: "none", borderRadius: 6, cursor: "pointer", fontWeight: "bold", fontSize: 13 }}>
-            + Top Up Balance
+            + Add
           </button>
         </div>
       </div>
@@ -247,18 +254,36 @@ export default function DieselManager() {
             <h3 style={{ marginBottom: 20, color: "#171717" }}>Top Up Fuel Balance</h3>
             <div style={{ marginBottom: 16 }}>
               <label style={label}>Fuel Company *</label>
-              <select value={depositCompanyId} onChange={e => { setDepositCompanyId(e.target.value); setDepositError("") }} style={inputStyle}>
+              <ModernInput
+                as="select"
+                value={depositCompanyId}
+                onChange={e => { setDepositCompanyId(e.target.value); setDepositError("") }}
+                style={fieldStyle}
+              >
                 <option value="">Select company</option>
                 {companies.map(c => <option key={c.company_id} value={c.company_id}>{c.company_name} — ₦{c.current_balance.toLocaleString()}</option>)}
-              </select>
+              </ModernInput>
             </div>
             <div style={{ marginBottom: 16 }}>
               <label style={label}>Amount (₦) *</label>
-              <input type="text" inputMode="numeric" placeholder="e.g. 500,000" value={depositAmount} onChange={e => { setDepositAmount(formatAmount(e.target.value)); setDepositError("") }} style={inputStyle} />
+              <ModernInput
+                type="text"
+                inputMode="numeric"
+                placeholder="e.g. 500,000"
+                value={depositAmount}
+                onChange={e => { setDepositAmount(formatAmount(e.target.value)); setDepositError("") }}
+                style={fieldStyle}
+              />
             </div>
             <div style={{ marginBottom: 24 }}>
               <label style={label}>Note (optional)</label>
-              <input type="text" placeholder="e.g. Monthly top-up" value={depositNote} onChange={e => setDepositNote(e.target.value)} style={inputStyle} />
+              <ModernInput
+                type="text"
+                placeholder="e.g. Monthly top-up"
+                value={depositNote}
+                onChange={e => setDepositNote(e.target.value)}
+                style={fieldStyle}
+              />
             </div>
             {depositError && <p style={{ color: "red", fontSize: 13, marginBottom: 12 }}>{depositError}</p>}
             <div style={{ display: "flex", gap: 8 }}>

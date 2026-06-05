@@ -1,5 +1,6 @@
 "use client"
 
+import ModernInput from "@/components/ModernInput";
 import { useState, useRef, useEffect } from "react"
 import { supabase } from "@/lib/supabase"
 import { useRouter } from "next/navigation"
@@ -90,23 +91,23 @@ export default function LoginPage() {
       }}>
         <h2 style={{ marginBottom: 24, textAlign: "center" }}>Sign In</h2>
 
-        <input
+        <ModernInput
           type="email"
           placeholder="Email"
           value={email}
           onChange={(e) => setEmail(e.target.value)}
           onKeyDown={(e) => { if (e.key === "Enter") passwordInputRef.current?.focus() }}
           style={{ width: "100%", padding: 10, marginBottom: 12, boxSizing: "border-box" }}
-        />
+          data-modern-input="migrated" />
 
-        <input
+        <ModernInput
           type="password"
           ref={passwordInputRef}
           placeholder="Password"
           value={password}
           onChange={(e) => setPassword(e.target.value)}
           style={{ width: "100%", padding: 10, marginBottom: 20, boxSizing: "border-box" }}
-        />
+          data-modern-input="migrated" />
 
         <button
           onClick={handleLogin}
@@ -127,5 +128,5 @@ export default function LoginPage() {
         )}
       </div>
     </div>
-  )
+  );
 }

@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from "react"
 import { Icon } from "@iconify/react"
 import { supabase } from "@/lib/supabase"
 import StopForm from "@/components/StopForm"
+import ModernInput from "@/components/ModernInput"
 import { useBreakpoint } from "@/app/hooks/useBreakpoint"
 
 type Driver = { driver_id: string; full_name: string }
@@ -628,10 +629,10 @@ export default function DriverDashboard() {
               <div style={{ marginBottom: 16 }}>
                 <label style={labelStyle}>Plate Number *</label>
                 <div style={{ position: "relative" }}>
-                  <select value={plateNumber} onChange={e => { setPlateNumber(e.target.value); setMessage("") }} style={inputStyle}>
+                  <ModernInput as="select" value={plateNumber} onChange={e => { setPlateNumber(e.target.value); setMessage("") }} style={inputStyle}>
                     <option value="">Select plate number</option>
                     {trucks.map(t => <option key={t.plate_number} value={t.plate_number}>{t.plate_number}{t.kbnl_truck_no ? ` · #${t.kbnl_truck_no}` : ""}</option>)}
-                  </select>
+                  </ModernInput>
                   {chevron}
                 </div>
               </div>
@@ -639,10 +640,10 @@ export default function DriverDashboard() {
               <div style={{ marginBottom: 16 }}>
                 <label style={labelStyle}>Loading Point Type *</label>
                 <div style={{ position: "relative" }}>
-                  <select value={loadingPointCategory} onChange={e => handleCategoryChange(e.target.value)} style={inputStyle}>
+                  <ModernInput as="select" value={loadingPointCategory} onChange={e => handleCategoryChange(e.target.value)} style={inputStyle}>
                     <option value="">Select loading point</option>
                     {Object.keys(LOADING_POINT_MAP).map(cat => <option key={cat} value={cat}>{cat}</option>)}
-                  </select>
+                  </ModernInput>
                   {chevron}
                 </div>
               </div>
@@ -651,10 +652,10 @@ export default function DriverDashboard() {
                 <div style={{ marginBottom: 16 }}>
                   <label style={labelStyle}>{loadingPointCategory} *</label>
                   <div style={{ position: "relative" }}>
-                    <select value={loadingPointName} onChange={e => handleLoadingPointNameChange(e.target.value)} style={inputStyle}>
+                    <ModernInput as="select" value={loadingPointName} onChange={e => handleLoadingPointNameChange(e.target.value)} style={inputStyle}>
                       <option value="">Select {loadingPointCategory.toLowerCase()}</option>
                       {availableLocations.map(loc => <option key={loc} value={loc}>{loc}</option>)}
-                    </select>
+                    </ModernInput>
                     {chevron}
                   </div>
                 </div>
@@ -663,7 +664,7 @@ export default function DriverDashboard() {
               {showATC && loadingPointName && (
                 <div style={{ marginBottom: 16 }}>
                   <label style={labelStyle}>ATC Number *</label>
-                  <input type="text" placeholder="Enter ATC number" value={atc} onChange={e => { setAtc(e.target.value); setMessage("") }} onKeyDown={e => { if (e.key === "Enter") loadedQtyRef.current?.focus() }} style={inputStyle} />
+                  <ModernInput type="text" placeholder="Enter ATC number" value={atc} onChange={e => { setAtc(e.target.value); setMessage("") }} onKeyDown={e => { if (e.key === "Enter") loadedQtyRef.current?.focus() }} style={inputStyle} />
                 </div>
               )}
 
@@ -671,10 +672,10 @@ export default function DriverDashboard() {
                 <div style={{ marginBottom: 16 }}>
                   <label style={labelStyle}>Product *</label>
                   <div style={{ position: "relative" }}>
-                    <select value={product} onChange={e => { setProduct(e.target.value); setMessage("") }} style={inputStyle}>
+                    <ModernInput as="select" value={product} onChange={e => { setProduct(e.target.value); setMessage("") }} style={inputStyle}>
                       <option value="">Select product</option>
                       {productOptions.map(p => <option key={p} value={p}>{p}</option>)}
-                    </select>
+                    </ModernInput>
                     {chevron}
                   </div>
                 </div>
@@ -683,7 +684,7 @@ export default function DriverDashboard() {
               {product && (
                 <div style={{ marginBottom: 24 }}>
                   <label style={labelStyle}>No. of Bags *</label>
-                  <input ref={loadedQtyRef} type="number" placeholder="e.g. 600" value={loadedQuantity} onChange={e => { setLoadedQuantity(e.target.value); setMessage("") }} onKeyDown={e => { if (e.key === "Enter") handleStartTrip() }} style={inputStyle} />
+                  <ModernInput ref={loadedQtyRef} type="number" placeholder="e.g. 600" value={loadedQuantity} onChange={e => { setLoadedQuantity(e.target.value); setMessage("") }} onKeyDown={e => { if (e.key === "Enter") handleStartTrip() }} style={inputStyle} />
                 </div>
               )}
 
@@ -814,10 +815,10 @@ export default function DriverDashboard() {
             <div style={{ marginBottom: 16 }}>
               <label style={labelStyle}>Truck *</label>
               <div style={{ position: "relative" }}>
-                <select value={complaintTruck} onChange={e => { setComplaintTruck(e.target.value); setComplaintError("") }} style={inputStyle}>
+                <ModernInput as="select" value={complaintTruck} onChange={e => { setComplaintTruck(e.target.value); setComplaintError("") }} style={inputStyle}>
                   <option value="">Select truck</option>
                   {allTrucks.map(t => <option key={t.plate_number} value={t.plate_number}>{t.plate_number}{t.kbnl_truck_no ? ` · #${t.kbnl_truck_no}` : ""}</option>)}
-                </select>
+                </ModernInput>
                 {chevron}
               </div>
             </div>
@@ -825,17 +826,17 @@ export default function DriverDashboard() {
             <div style={{ marginBottom: 16 }}>
               <label style={labelStyle}>Issue Type *</label>
               <div style={{ position: "relative" }}>
-                <select value={complaintType} onChange={e => { setComplaintType(e.target.value); setComplaintError("") }} style={inputStyle}>
+                <ModernInput as="select" value={complaintType} onChange={e => { setComplaintType(e.target.value); setComplaintError("") }} style={inputStyle}>
                   <option value="">Select type</option>
                   {COMPLAINT_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
-                </select>
+                </ModernInput>
                 {chevron}
               </div>
             </div>
 
             <div style={{ marginBottom: 20 }}>
               <label style={labelStyle}>Description *</label>
-              <textarea placeholder="Describe the issue…" value={complaintNotes} onChange={e => { setComplaintNotes(e.target.value); setComplaintError("") }} rows={4} style={{ ...inputStyle, resize: "none", minHeight: 100, paddingRight: 12 }} />
+              <ModernInput as="textarea" placeholder="Describe the issue…" value={complaintNotes} onChange={e => { setComplaintNotes(e.target.value); setComplaintError("") }} rows={4} style={{ ...inputStyle, resize: "none", minHeight: 100, paddingRight: 12 }} />
             </div>
 
             {complaintError && (
@@ -918,26 +919,26 @@ export default function DriverDashboard() {
             <div style={{ marginBottom: 16 }}>
               <label style={labelStyle}>Drop Location *</label>
               <div style={{ position: "relative" }}>
-                <select value={discDropLocation} onChange={e => { setDiscDropLocation(e.target.value); setDiscError("") }} style={inputStyle}>
+                <ModernInput as="select" value={discDropLocation} onChange={e => { setDiscDropLocation(e.target.value); setDiscError("") }} style={inputStyle}>
                   <option value="">Select location</option>
                   {allStoreLocations.map(loc => <option key={loc} value={loc}>{loc}</option>)}
-                </select>
+                </ModernInput>
                 {chevron}
               </div>
             </div>
             <div style={{ marginBottom: 16 }}>
               <label style={labelStyle}>Shortage (bags)</label>
               <p style={{ margin: "0 0 6px", fontSize: 12, color: "#aaa" }}>Will be deducted from remaining</p>
-              <input type="number" placeholder="0" value={discShortage} onChange={e => { setDiscShortage(e.target.value); setDiscError("") }} style={inputStyle} />
+              <ModernInput type="number" placeholder="0" value={discShortage} onChange={e => { setDiscShortage(e.target.value); setDiscError("") }} style={inputStyle} />
             </div>
             <div style={{ marginBottom: 16 }}>
               <label style={labelStyle}>Caked Bags</label>
               <p style={{ margin: "0 0 6px", fontSize: 12, color: "#aaa" }}>Logged for record only</p>
-              <input type="number" placeholder="0" value={discCaked} onChange={e => { setDiscCaked(e.target.value); setDiscError("") }} style={inputStyle} />
+              <ModernInput type="number" placeholder="0" value={discCaked} onChange={e => { setDiscCaked(e.target.value); setDiscError("") }} style={inputStyle} />
             </div>
             <div style={{ marginBottom: 20 }}>
               <label style={labelStyle}>Notes (optional)</label>
-              <textarea placeholder="Any additional context…" value={discNotes} onChange={e => setDiscNotes(e.target.value)} rows={3} style={{ ...inputStyle, resize: "none", paddingRight: 12 }} />
+              <ModernInput as="textarea" placeholder="Any additional context…" value={discNotes} onChange={e => setDiscNotes(e.target.value)} rows={3} style={{ ...inputStyle, resize: "none", paddingRight: 12 }} />
             </div>
 
             {discError && <div style={{ display: "flex", alignItems: "center", gap: 6, color: "#ff4444", marginBottom: 12, fontSize: 13 }}><Icon icon="mdi:alert-circle" width={15} />{discError}</div>}
@@ -963,11 +964,11 @@ export default function DriverDashboard() {
             <div style={{ marginBottom: 16 }}>
               <label style={labelStyle}>Loading Point Type *</label>
               <div style={{ position: "relative" }}>
-                <select value={loadMoreCategory} onChange={e => handleLoadMoreCategoryChange(e.target.value)} style={inputStyle}>
+                <ModernInput as="select" value={loadMoreCategory} onChange={e => handleLoadMoreCategoryChange(e.target.value)} style={inputStyle}>
                   <option value="">Select loading point</option>
                   <option value="Depot">Depot</option>
                   <option value="Outlet">Outlet</option>
-                </select>
+                </ModernInput>
                 {chevron}
               </div>
             </div>
@@ -975,10 +976,10 @@ export default function DriverDashboard() {
               <div style={{ marginBottom: 16 }}>
                 <label style={labelStyle}>{loadMoreCategory} *</label>
                 <div style={{ position: "relative" }}>
-                  <select value={loadMoreLocationName} onChange={e => handleLoadMoreLocationChange(e.target.value)} style={inputStyle}>
+                  <ModernInput as="select" value={loadMoreLocationName} onChange={e => handleLoadMoreLocationChange(e.target.value)} style={inputStyle}>
                     <option value="">Select {loadMoreCategory.toLowerCase()}</option>
                     {LOADING_POINT_MAP[loadMoreCategory].map(loc => <option key={loc} value={loc}>{loc}</option>)}
-                  </select>
+                  </ModernInput>
                   {chevron}
                 </div>
               </div>
@@ -987,10 +988,10 @@ export default function DriverDashboard() {
               <div style={{ marginBottom: 16 }}>
                 <label style={labelStyle}>Product *</label>
                 <div style={{ position: "relative" }}>
-                  <select value={loadMoreProduct} onChange={e => { setLoadMoreProduct(e.target.value); setLoadMoreError("") }} style={inputStyle}>
+                  <ModernInput as="select" value={loadMoreProduct} onChange={e => { setLoadMoreProduct(e.target.value); setLoadMoreError("") }} style={inputStyle}>
                     <option value="">Select product</option>
                     {loadMoreProductOptions.map(p => <option key={p} value={p}>{p}</option>)}
-                  </select>
+                  </ModernInput>
                   {chevron}
                 </div>
               </div>
@@ -998,7 +999,7 @@ export default function DriverDashboard() {
             {loadMoreProduct && (
               <div style={{ marginBottom: 20 }}>
                 <label style={labelStyle}>No. of Bags to Add *</label>
-                <input type="number" placeholder="e.g. 100" value={loadMoreQty} onChange={e => { setLoadMoreQty(e.target.value); setLoadMoreError("") }} onKeyDown={e => { if (e.key === "Enter") handleLoadMore() }} style={inputStyle} />
+                <ModernInput type="number" placeholder="e.g. 100" value={loadMoreQty} onChange={e => { setLoadMoreQty(e.target.value); setLoadMoreError("") }} onKeyDown={e => { if (e.key === "Enter") handleLoadMore() }} style={inputStyle} />
               </div>
             )}
 

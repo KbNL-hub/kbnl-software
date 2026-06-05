@@ -1,5 +1,6 @@
 "use client"
 
+import ModernInput from "@/components/ModernInput";
 import { useState, useRef, useEffect } from "react"
 import { supabase } from "@/lib/supabase"
 import { useRouter } from "next/navigation"
@@ -121,16 +122,16 @@ export default function SetPassword() {
 
         {ready && (
           <>
-            <input
+            <ModernInput
               type="password"
               placeholder="New password"
               value={password}
               onChange={(e) => { setPassword(e.target.value); setMessage("") }}
               onKeyDown={(e) => { if (e.key === "Enter") confirmRef.current?.focus() }}
               style={{ width: "100%", padding: 10, marginBottom: 12, boxSizing: "border-box" }}
-            />
+              data-modern-input="migrated" />
 
-            <input
+            <ModernInput
               ref={confirmRef}
               type="password"
               placeholder="Confirm password"
@@ -138,7 +139,7 @@ export default function SetPassword() {
               onChange={(e) => { setConfirm(e.target.value); setMessage("") }}
               onKeyDown={(e) => { if (e.key === "Enter") handleSetPassword() }}
               style={{ width: "100%", padding: 10, marginBottom: 20, boxSizing: "border-box" }}
-            />
+              data-modern-input="migrated" />
 
             <button
               onClick={handleSetPassword}
@@ -164,5 +165,5 @@ export default function SetPassword() {
         )}
       </div>
     </div>
-  )
+  );
 }
