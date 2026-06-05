@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation"
 import { supabase } from "@/lib/supabase"
 import { formatAmount, parseAmount } from "@/lib/formatAmount"
 import CustomerSelector from "@/components/CustomerSelector"
+import ModernInput from "@/components/ModernInput"
 
 type Officer = { officer_id: string; full_name: string; store_name: string }
 
