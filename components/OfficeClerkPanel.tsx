@@ -412,7 +412,7 @@ export default function OfficeClerkPanel({ clerkId, officeName, fullName }: Prop
             {errorMsg && <p style={errorStyle}>{errorMsg}</p>}
 
             <div style={{ display: "flex", gap: 8 }}>
-              <button onClick={() => setShowLogModal(false)} style={cancelBtn}>Cancel</button>
+              <button onClick={() => setShowLogModal(false)} style={{ ...cancelBtn, flex: 1 }}>Cancel</button>
               <button
                 onClick={handleSubmitExpense}
                 disabled={submitLoading}
