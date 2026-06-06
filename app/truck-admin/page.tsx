@@ -271,6 +271,12 @@ export default function TruckAdminDashboard() {
     const { data: procurement, error } = await supabase.from("bulk_procurement").insert([{ item_name: procItem.trim(), total_amount: totalNum, notes: procNotes.trim() || null, logged_by: adminId }]).select().single()
     setProcLoading(false)
     if (error || !procurement) { setProcError("Failed to log procurement"); return }
+    
+    // Deduct from maintenance balance
+    const newBalance = Math.max(0, (maintenanceBalance ?? 0) - totalNum)
+    await supabase.from("maintenance_balance").update({ current_balance: newBalance, updated_at: new Date().toISOString() }).eq("id", 1)
+    setMaintenanceBalance(newBalance)
+    
     setProcItem(""); setProcTotal(""); setProcNotes(""); setProcError("")
     await fetchProcurements()
     setTab("reports"); setFilter("Bulk Procurement")
