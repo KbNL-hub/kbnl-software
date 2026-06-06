@@ -70,7 +70,7 @@ export default function OfficeClerkDashboard() {
         </div>
         <button
           onClick={handleLogout}
-          style={{ padding: "8px 16px", background: "#ff4444", color: "white", border: "none", borderRadius: 6, cursor: "pointer", fontWeight: "bold", fontSize: 13 }}
+          style={{ padding: "8px 20px", background: "rgba(255, 68, 68,0.05)", color: "#ff4444", border: "1px solid #ff4444", borderRadius: 6, cursor: "pointer", fontSize: 14 }}
         >
           Logout
         </button>

@@ -314,7 +314,7 @@ export default function TruckAdminDashboard() {
           <p style={{ margin: 0, fontSize: 12, color: "#888" }}>Truck Admin</p>
           <p style={{ margin: 0, fontWeight: "bold", fontSize: 16, color: "#171717" }}>{adminName}</p>
         </div>
-        <button onClick={async () => { await supabase.auth.signOut(); router.push("/login") }} style={{ padding: "8px 20px", background: "#ff4444", color: "white", border: "none", borderRadius: 6, cursor: "pointer", fontSize: 14 }}>
+        <button onClick={async () => { await supabase.auth.signOut(); router.push("/login") }} style={{ padding: "8px 20px", background: "rgba(255, 68, 68,0.05)", color: "#ff4444", border: "1px solid #ff4444", borderRadius: 6, cursor: "pointer", fontSize: 14 }}>
           Logout
         </button>
       </div>

@@ -301,9 +301,9 @@ export default function BrokerDashboard() {
                   onClick={() => setActiveView(tab.key as "broker" | "expenses" | "payments")}
                     style={{
                       padding: isMobile ? "14px 12px" : "13px 12px",
-                      background: isActive ? "#0070f3" : "white",
-                      color: isActive ? "white" : "#555",
-                      border: isActive ? "none" : "1.5px solid #e5e5e5",
+                      background: isActive ? "rgba(0, 112, 243, 0.1)" : "white",
+                      color: isActive ? "#0070f3" : "#555",
+                      border: isActive ? "1px solid #0070f3" : "1.5px solid #e5e5e5",
                       borderRadius: 10,
                       cursor: "pointer",
                       fontWeight: isActive ? "bold" : "normal",
