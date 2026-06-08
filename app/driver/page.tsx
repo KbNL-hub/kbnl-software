@@ -5,7 +5,11 @@ import { Icon } from "@iconify/react"
 import { supabase } from "@/lib/supabase"
 import StopForm from "@/components/StopForm"
 import ModernInput from "@/components/ModernInput"
+import TripOfflineIndicator from "@/components/TripOfflineIndicator"
 import { useBreakpoint } from "@/app/hooks/useBreakpoint"
+import { useOfflineTripAction } from "@/app/hooks/useOfflineTripAction"
+import { initTripActionAutoSync } from "@/lib/offline/tripActionSync"
+import { clearOfflineTripData } from '@/lib/offline/tripsDb'
 
 type Driver = { driver_id: string; full_name: string }
 type Trip = {
@@ -66,10 +70,14 @@ export default function DriverDashboard() {
   const isMobile = bp === "mobile"
   const isTablet = bp === "tablet"
 
+  // Offline support
+  const { submitAction, isSubmitting: isOfflineSubmitting, isOnline } = useOfflineTripAction()
+
   const [driver, setDriver] = useState<Driver | null>(null)
   const [activeTrip, setActiveTrip] = useState<Trip | null>(null)
   const [stops, setStops] = useState<Stop[]>([])
   const [remaining, setRemaining] = useState(0)
+  const [offloadedSoFar, setOffloadedSoFar] = useState(0)
   const [view, setView] = useState<"dashboard" | "start-trip" | "active-trip" | "log-stop" | "fuel">("dashboard")
   const [loading, setLoading] = useState(true)
   const [submitting, setSubmitting] = useState(false)
@@ -124,8 +132,13 @@ export default function DriverDashboard() {
   const [productOptions, setProductOptions] = useState<string[]>([])
   const [allProducts, setAllProducts] = useState<string[]>([])
 
-  const loadedQtyRef = useRef<HTMLInputElement>(null)
+  const loadedQtyRef = useRef<HTMLInputElement | null>(null)
   const allStoreLocations = [...LOADING_POINT_MAP.Depot, ...LOADING_POINT_MAP.Outlet]
+
+  // Initialize auto-sync on mount
+  useEffect(() => {
+    initTripActionAutoSync()
+  }, [])
 
   useEffect(() => { initDriver() }, [])
 
@@ -198,21 +211,30 @@ export default function DriverDashboard() {
   }
 
   async function fetchStops(tripId: string, loadedQty: number) {
-    const { data: stopsData } = await supabase
-      .from("Stops").select("stop_id, stop_location, quantity_offloaded, stop_time")
-      .eq("trip_id", tripId).order("stop_time", { ascending: false })
+    try {
+      const { data: stopsData } = await supabase
+        .from("Stops").select("stop_id, stop_location, quantity_offloaded, stop_time")
+        .eq("trip_id", tripId).order("stop_time", { ascending: false })
 
-    const { data: discData } = await supabase
-      .from("trip_discrepancies").select("shortage").eq("trip_id", tripId)
+      const { data: discData } = await supabase
+        .from("trip_discrepancies").select("shortage").eq("trip_id", tripId)
 
-    const stopList = stopsData || []
-    setStops(stopList)
+      const stopList = stopsData || []
+      setStops(stopList)
 
-    const totalOffloaded = stopList.reduce((sum, s) => sum + s.quantity_offloaded, 0)
-    const totalShortage = (discData || []).reduce((sum, d) => sum + (d.shortage || 0), 0)
-    const rem = loadedQty - totalOffloaded - totalShortage
-    setRemaining(rem)
-    if (rem <= 0 && tripId) setShowEndConfirm(true)
+      const totalOffloaded = stopList.reduce((sum, s) => sum + s.quantity_offloaded, 0)
+      const totalShortage = (discData || []).reduce((sum, d) => sum + (d.shortage || 0), 0)
+      const total = totalOffloaded + totalShortage
+      
+      setOffloadedSoFar(total)
+      
+      const rem = loadedQty - total
+      setRemaining(rem)
+      if (rem <= 0 && tripId) setShowEndConfirm(true)
+    } catch (error) {
+      console.warn('[fetchStops] Network error, keeping local state', error)
+      // Silently fail - keep existing state
+    }
   }
 
   async function handleConfirmReceipt() {
@@ -263,18 +285,21 @@ export default function DriverDashboard() {
       ATC: showATC ? atc.trim() : null, trip_status: "In transit",
     }]).select().single()
 
+
     if (error || !data) { setMessage("Failed to start trip"); setSubmitting(false); return }
     await supabase.from("Trucks").update({ status: "Loaded" }).eq("plate_number", plateNumber)
-    setActiveTrip(data); setRemaining(parseInt(loadedQuantity)); setStops([])
-    setSubmitting(false); setMessage(""); setView("active-trip")
+    setActiveTrip(data); setRemaining(parseInt(loadedQuantity)); setOffloadedSoFar(0); setStops([])
+    setSubmitting(false); setShowEndConfirm(false); setMessage(""); setView("active-trip")
   }
 
   async function handleEndTrip() {
     if (!activeTrip) return
     setSubmitting(true)
+
+    await clearOfflineTripData(activeTrip.trip_id);
     await supabase.from("Trips").update({ trip_status: "Completed", updated_at: new Date().toISOString() }).eq("trip_id", activeTrip.trip_id)
     await supabase.from("Trucks").update({ status: "Empty" }).eq("plate_number", activeTrip.plate_number)
-    setSubmitting(false); setShowEndConfirm(false); setActiveTrip(null); setStops([]); setRemaining(0); setView("dashboard")
+    setSubmitting(false); setShowEndConfirm(false); setActiveTrip(null); setStops([]); setRemaining(0); setOffloadedSoFar(0); setView("dashboard")
   }
 
   async function handleHoldTrip() {
@@ -294,14 +319,39 @@ export default function DriverDashboard() {
     if (!discDropLocation) return setDiscError("Select a drop location")
 
     setDiscSubmitting(true)
-    const { error } = await supabase.from("trip_discrepancies").insert([{
-      trip_id: activeTrip?.trip_id, driver_id: driver?.driver_id,
-      shortage, caked_bags: caked, notes: discNotes.trim() || null, drop_location: discDropLocation,
-    }])
+    
+    const discrepancyData = {
+      trip_id: activeTrip?.trip_id,
+      driver_id: driver?.driver_id,
+      shortage,
+      caked_bags: caked,
+      notes: discNotes.trim() || null,
+      drop_location: discDropLocation,
+    }
+
+    // Offline-capable: submit conditional on network
+    const result = await submitAction(
+      'discrepancy',
+      activeTrip?.trip_id ?? '',
+      'trip_discrepancies',
+      discrepancyData
+    )
+
     setDiscSubmitting(false)
-    if (error) { setDiscError("Failed to submit report"); return }
+
+    if (!result.success) {
+      setDiscError(result.error || "Failed to submit report")
+      return
+    }
+
     setShowDiscrepancyModal(false)
     setDiscShortage(""); setDiscCaked(""); setDiscNotes(""); setDiscDropLocation(""); setDiscError("")
+    
+    // Show message if offline
+    if (result.offline) {
+      setMessage("✓ Report saved offline. Will sync when connected.")
+    }
+    
     if (activeTrip) fetchStops(activeTrip.trip_id, activeTrip.loaded_quantity)
   }
 
@@ -315,19 +365,49 @@ export default function DriverDashboard() {
 
     setLoadMoreSubmitting(true)
     const newTotal = activeTrip.loaded_quantity + qty
-    const { error } = await supabase.from("Trips").update({ loaded_quantity: newTotal }).eq("trip_id", activeTrip.trip_id)
+
+    const updateData = {
+      trip_id: activeTrip.trip_id,
+      loaded_quantity: newTotal,
+      trip_status: activeTrip.trip_status,
+      updated_at: new Date().toISOString(),
+    }
+
+    // Offline-capable: submit conditional on network
+    const result = await submitAction(
+      'load_more',
+      activeTrip.trip_id,
+      'Trips',
+      updateData
+    )
+
     setLoadMoreSubmitting(false)
-    if (error) { setLoadMoreError("Failed to update bags"); return }
+
+    if (!result.success) {
+      setLoadMoreError(result.error || "Failed to update bags")
+      return
+    }
 
     setActiveTrip({ ...activeTrip, loaded_quantity: newTotal }); setRemaining(remaining + qty)
     setShowLoadMoreModal(false); setLoadMoreQty(""); setLoadMoreCategory("")
     setLoadMoreLocationName(""); setLoadMoreProduct(""); setLoadMoreProductOptions([]); setLoadMoreError("")
+    
+    // Show message if offline
+    if (result.offline) {
+      setMessage("✓ Saved offline. Will update when you are connected.")
+    }
   }
 
   async function handleSubmitComplaint(thenEndTrip = false) {
     if (!complaintTruck) return setComplaintError("Select a truck")
     if (!complaintType) return setComplaintError("Select a complaint type")
     if (!complaintNotes.trim()) return setComplaintError("Please describe the issue")
+
+    // Complaints REQUIRE internet (not cached offline)
+    if (!isOnline) {
+      setComplaintError("⚠️ Internet required to submit complaints")
+      return
+    }
 
     setComplaintSubmitting(true)
     const { error } = await supabase.from("driver_complaints").insert([{
@@ -346,8 +426,16 @@ export default function DriverDashboard() {
     setComplaintPendingEndTrip(true); setShowEndConfirm(false); setShowComplaintModal(true)
   }
 
-  function handleStopLogged() {
-    if (activeTrip) fetchStops(activeTrip.trip_id, activeTrip.loaded_quantity)
+  function handleStopLogged(quantityOffloaded: number) {
+    // Update remaining count immediately (offline or online)
+    setRemaining(remaining - quantityOffloaded);
+    setOffloadedSoFar(offloadedSoFar + quantityOffloaded);
+
+    // Only fetch fresh data from Supabase if online
+    if (navigator.onLine && activeTrip) {
+      fetchStops(activeTrip.trip_id, activeTrip.loaded_quantity)
+    }
+
     setView("active-trip")
   }
 
@@ -426,6 +514,10 @@ export default function DriverDashboard() {
   return (
     <div style={{ fontFamily: "Arial, sans-serif", background: "#f7f7f7", minHeight: "100vh" }}>
       <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
+      
+      {/* Offline indicator for trips */}
+      <TripOfflineIndicator />
+      
       <div style={{ maxWidth: maxW, margin: "0 auto", paddingBottom: 80 }}>
 
         {/* ── Header ── */}
@@ -769,6 +861,12 @@ export default function DriverDashboard() {
                 </div>
               )}
 
+              {message && (
+                <div style={{ padding: 12, background: "#f0fff4", border: "1px solid #86efac", borderRadius: 8, marginBottom: 16, color: "#166534", fontSize: 13 }}>
+                  {message}
+                </div>
+              )}
+
               <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
                 {remaining > 0 && (
                   <button onClick={() => setView("log-stop")} style={fullBtn("#0070f3")}>
@@ -792,10 +890,13 @@ export default function DriverDashboard() {
           {/* ── Log Stop ── */}
           {view === "log-stop" && activeTrip && (
             <div>
-              <button onClick={() => setView("active-trip")} style={{ background: "none", border: "none", color: "#0070f3", cursor: "pointer", marginBottom: 20, padding: 0, fontSize: isMobile ? 15 : 14, display: "flex", alignItems: "center", gap: 4 }}>
-                <Icon icon="mdi:arrow-left" width={18} /> Back
-              </button>
-              <StopForm tripId={activeTrip.trip_id} onStopLogged={handleStopLogged} />
+              <button onClick={() => setView("active-trip")}>Back to Trip</button>
+              <StopForm 
+                tripId={activeTrip.trip_id} 
+                loadedQuantity={activeTrip.loaded_quantity}
+                offloadedSoFar={offloadedSoFar}
+                onStopLogged={handleStopLogged} 
+              />
             </div>
           )}
 
@@ -811,6 +912,12 @@ export default function DriverDashboard() {
             {isMobile && dragHandle}
             <h3 style={{ marginBottom: 6, color: "#171717" }}>Report an Issue</h3>
             <p style={{ margin: "0 0 20px", fontSize: 13, color: "#888" }}>This will be reviewed by management</p>
+
+            {!isOnline && (
+              <div style={{ padding: 12, background: "#fff0f0", border: "1px solid #fca5a5", borderRadius: 8, marginBottom: 16, color: "#991b1b", fontSize: 13 }}>
+                ⚠️ Internet required to submit complaints
+              </div>
+            )}
 
             <div style={{ marginBottom: 16 }}>
               <label style={labelStyle}>Truck *</label>
@@ -851,7 +958,7 @@ export default function DriverDashboard() {
                   Cancel
                 </button>
               )}
-              <button onClick={() => handleSubmitComplaint(complaintPendingEndTrip)} disabled={complaintSubmitting} style={{ ...fullBtn(complaintSubmitting ? "#ccc" : "#f5a623"), flex: 1 }}>
+              <button onClick={() => handleSubmitComplaint(complaintPendingEndTrip)} disabled={complaintSubmitting || !isOnline} style={{ ...fullBtn(complaintSubmitting || !isOnline ? "#ccc" : "#f5a623"), flex: 1 }}>
                 {complaintSubmitting
                   ? <><Icon icon="mdi:loading" width={16} style={{ animation: "spin 1s linear infinite" }} /> Submitting…</>
                   : complaintPendingEndTrip ? "Submit & End Trip" : "Submit"
@@ -916,6 +1023,12 @@ export default function DriverDashboard() {
             <h3 style={{ marginBottom: 4, color: "#171717" }}>Report Shortage / Caked Bags</h3>
             <p style={{ color: "#888", fontSize: 13, marginBottom: 20 }}>Remaining: <strong style={{ color: "#171717" }}>{remaining} bags</strong></p>
 
+            {!isOnline && (
+              <div style={{ padding: 12, background: "#f0f7ff", border: "1px solid #bfdbfe", borderRadius: 8, marginBottom: 16, color: "#1e40af", fontSize: 12 }}>
+                ℹ️ This will be saved and synced when you reconnect
+              </div>
+            )}
+
             <div style={{ marginBottom: 16 }}>
               <label style={labelStyle}>Drop Location *</label>
               <div style={{ position: "relative" }}>
@@ -960,6 +1073,12 @@ export default function DriverDashboard() {
             {isMobile && dragHandle}
             <h3 style={{ marginBottom: 4, color: "#171717" }}>Load More Bags</h3>
             <p style={{ color: "#888", fontSize: 13, marginBottom: 20 }}>Current total: <strong style={{ color: "#171717" }}>{activeTrip?.loaded_quantity} bags</strong></p>
+
+            {!isOnline && (
+              <div style={{ padding: 12, background: "#f0f7ff", border: "1px solid #bfdbfe", borderRadius: 8, marginBottom: 16, color: "#1e40af", fontSize: 12 }}>
+                ℹ️ This will be saved and synced when you reconnect
+              </div>
+            )}
 
             <div style={{ marginBottom: 16 }}>
               <label style={labelStyle}>Loading Point Type *</label>

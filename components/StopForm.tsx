@@ -4,17 +4,21 @@ import { useState, useEffect } from "react"
 import { supabase } from "@/lib/supabase"
 import BrokerDropdown from "./BrokerDropdown"
 import CustomerSelector from "./CustomerSelector"
+import { useOfflineTripAction } from "@/app/hooks/useOfflineTripAction"
 
 type Broker = { broker_id: string; broker_name: string }
 type Customer = { customer_id: string; full_name: string; phone_number: string }
-type Props = { tripId: string; onStopLogged: () => void }
+type Props = { tripId: string; loadedQuantity?: number; offloadedSoFar?: number; onStopLogged: (quantityOffloaded: number) => void }
 
 const STORE_LOCATIONS = [
   "Calabar Mini Depot", "Ikom Mini Depot", "Ogoja Warehouse", "Uyo Depot",
   "Brooks Outlet", "Urua Ekpa Outlet", "Urua Nyemeiko Outlet", "Reserve Store", "E1 Outlet", "Ogoja Outlet",
 ]
 
-export default function StopForm({ tripId, onStopLogged }: Props) {
+export default function StopForm({ tripId, loadedQuantity: initialLoaded = 0, offloadedSoFar: initialOffloaded = 0, onStopLogged }: Props) {
+  const { submitAction, isOnline } = useOfflineTripAction()
+  const [loadedQuantity, setLoadedQuantity] = useState(initialLoaded)
+  const [offloadedSoFar, setOffloadedSoFar] = useState(initialOffloaded)
   const [stopType, setStopType] = useState<"customer" | "store">("customer")
 
   // Customer stop
@@ -32,30 +36,36 @@ export default function StopForm({ tripId, onStopLogged }: Props) {
   const [message, setMessage] = useState("")
   const [submitting, setSubmitting] = useState(false)
 
-  const [loadedQuantity, setLoadedQuantity] = useState(0)
-  const [offloadedSoFar, setOffloadedSoFar] = useState(0)
-
   const remaining = loadedQuantity - offloadedSoFar
   const inputQty = parseInt(quantityOffloaded) || 0
   const displayRemaining = remaining - inputQty
 
-  useEffect(() => { fetchTripData() }, [tripId])
+  useEffect(() => { 
+    // If data provided as props, use it
+    if (initialLoaded > 0) {
+      setLoadedQuantity(initialLoaded);
+      setOffloadedSoFar(initialOffloaded);
+      return; // Don't fetch
+    }
 
-  async function fetchTripData() {
-    const { data: tripData } = await supabase
-      .from("Trips").select("loaded_quantity").eq("trip_id", tripId).single()
-    if (!tripData) return
-    setLoadedQuantity(tripData.loaded_quantity)
+    useEffect(() => { fetchTripData() }, [tripId])
 
-    const { data: stopsData } = await supabase
-      .from("Stops").select("quantity_offloaded").eq("trip_id", tripId)
-    const { data: discData } = await supabase
-      .from("trip_discrepancies").select("shortage").eq("trip_id", tripId)
+    async function fetchTripData() {
+      const { data: tripData } = await supabase
+        .from("Trips").select("loaded_quantity").eq("trip_id", tripId).single()
+      if (!tripData) return
+      setLoadedQuantity(tripData.loaded_quantity)
 
-    const totalOffloaded = (stopsData || []).reduce((sum, s) => sum + (s.quantity_offloaded || 0), 0)
-    const totalShortage = (discData || []).reduce((sum, d) => sum + (d.shortage || 0), 0)
-    setOffloadedSoFar(totalOffloaded + totalShortage)
-  }
+      const { data: stopsData } = await supabase
+        .from("Stops").select("quantity_offloaded").eq("trip_id", tripId)
+      const { data: discData } = await supabase
+        .from("trip_discrepancies").select("shortage").eq("trip_id", tripId)
+
+      const totalOffloaded = (stopsData || []).reduce((sum, s) => sum + (s.quantity_offloaded || 0), 0)
+      const totalShortage = (discData || []).reduce((sum, d) => sum + (d.shortage || 0), 0)
+      setOffloadedSoFar(totalOffloaded + totalShortage)
+    }
+  }, [tripId, initialLoaded, initialOffloaded])
 
   function captureGPS() {
     if (!navigator.geolocation) { setGpsStatus("GPS not supported on this device"); return }
@@ -106,15 +116,30 @@ export default function StopForm({ tripId, onStopLogged }: Props) {
       payload.store_name = selectedStore
     }
 
-    const { error } = await supabase.from("Stops").insert([payload])
+
+    // ← CHANGED: Use submitAction instead of supabase.from()
+    const result = await submitAction(
+      'stop',
+      tripId,
+      'Stops',
+      payload
+    )
 
     setSubmitting(false)
 
-    if (error) {
-      console.error(error)
-      setMessage("Failed to save stop")
+    if (!result.success) {
+      console.error(result.error)
+      setMessage(`Failed to save stop: ${result.error}`)
+      return
+    } 
+
+    // ← ADDED: Show offline message if applicable
+    if (result.offline) {
+      setMessage("✅ Stop saved offline. Will sync when connected.")
+      setTimeout(() => onStopLogged(inputQty), 1500)
     } else {
-      onStopLogged()
+      setMessage("✅ Stop logged successfully")
+      setTimeout(() => onStopLogged(inputQty), 1000)
     }
   }
 

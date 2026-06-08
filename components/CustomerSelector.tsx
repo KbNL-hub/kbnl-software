@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react"
 import ModernInput from "@/components/ModernInput"
 import { supabase } from "@/lib/supabase"
+import { getCachedCustomers, cacheCustomers } from '@/lib/offline/tripsDb'
 
 type Customer = { customer_id: string; full_name: string; phone_number: string; isNew?: boolean }
 type Props = { onSelect: (customer: Customer) => void; allowUnsavedNew?: boolean; initialValue?: string }
@@ -16,20 +17,70 @@ export default function CustomerSelector({ onSelect, allowUnsavedNew, initialVal
   const [newName, setNewName] = useState("")
   const [newPhone, setNewPhone] = useState("")
   const [message, setMessage] = useState("")
+  const [isOnline, setIsOnline] = useState(true)
+  const [loading, setLoading] = useState(true)
 
-  useEffect(() => { fetchCustomers() }, [])
+  useEffect(() => {
+    setIsOnline(navigator.onLine)
+    window.addEventListener('online', () => setIsOnline(true))
+    window.addEventListener('offline', () => setIsOnline(false))
+    return () => {
+      window.removeEventListener('online', () => setIsOnline(true))
+      window.removeEventListener('offline', () => setIsOnline(false))
+    }
+  }, [])
 
-  async function fetchCustomers() {
-    const { data, error } = await supabase
-      .from("Customers").select("customer_id, full_name, phone_number").order("full_name", { ascending: true })
-    if (!error) setCustomers(data || [])
-  }
+  useEffect(() => {
+    async function loadCustomers() {
+      setLoading(true)
+      try {
+        if (isOnline) {
+          // Try online fetch first
+          const { data, error } = await supabase
+            .from("Customers")
+            .select("customer_id, full_name, phone_number")
+            .order("full_name", { ascending: true })
+          
+          if (!error && data) {
+            setCustomers(data)
+            // Cache for offline use
+            await cacheCustomers(data)
+          } else {
+            // Fallback to cache if online fetch fails
+            const cached = await getCachedCustomers()
+            setCustomers(cached)
+          }
+        } else {
+          // Offline: use cache
+          const cached = await getCachedCustomers()
+          setCustomers(cached)
+        }
+      } catch (error) {
+        console.error('[CustomerSelector] Error loading customers:', error)
+        // Try cache as last resort
+        try {
+          const cached = await getCachedCustomers()
+          setCustomers(cached)
+        } catch (cacheError) {
+          console.error('[CustomerSelector] Cache also failed:', cacheError)
+          setCustomers([])
+        }
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    loadCustomers()
+  }, [isOnline])
 
   const filtered = customers.filter(c => c.full_name.toLowerCase().includes(search.toLowerCase()))
 
   function handleSelect(customer: Customer) {
-    setSelected(customer); setSearch(customer.full_name)
-    setOpen(false); setCreating(false); onSelect(customer)
+    setSelected(customer)
+    setSearch(customer.full_name)
+    setOpen(false)
+    setCreating(false)
+    onSelect(customer)
   }
 
   async function handleCreate() {
@@ -38,18 +89,45 @@ export default function CustomerSelector({ onSelect, allowUnsavedNew, initialVal
     if (allowUnsavedNew) {
       const tempCustomer = { customer_id: "", full_name: newName, phone_number: newPhone || "", isNew: true }
       handleSelect(tempCustomer)
-      setNewName(""); setNewPhone(""); setCreating(false); setMessage("")
+      setNewName("")
+      setNewPhone("")
+      setCreating(false)
+      setMessage("")
+      return
+    }
+
+    if (!isOnline) {
+      setMessage("⚠️ Internet required to create new customers")
       return
     }
 
     const { data, error } = await supabase
-      .from("Customers").insert([{ full_name: newName, phone_number: newPhone || null }]).select().single()
+      .from("Customers")
+      .insert([{ full_name: newName, phone_number: newPhone || null }])
+      .select()
+      .single()
 
-    if (error) { setMessage("Failed to create customer"); return }
+    if (error) {
+      setMessage("Failed to create customer")
+      return
+    }
 
-    await fetchCustomers()
+    // Refresh cache after creating
+    const { data: allCustomers, error: fetchError } = await supabase
+      .from("Customers")
+      .select("customer_id, full_name, phone_number")
+      .order("full_name", { ascending: true })
+    
+    if (!fetchError && allCustomers) {
+      setCustomers(allCustomers)
+      await cacheCustomers(allCustomers)
+    }
+
     handleSelect(data)
-    setNewName(""); setNewPhone(""); setCreating(false); setMessage("")
+    setNewName("")
+    setNewPhone("")
+    setCreating(false)
+    setMessage("")
   }
 
   const fieldStyle: React.CSSProperties = {
@@ -64,12 +142,23 @@ export default function CustomerSelector({ onSelect, allowUnsavedNew, initialVal
       <div style={{ position: "relative", width: "100%" }}>
         <ModernInput
           type="text"
-          placeholder="Search customer..."
+          placeholder={loading ? "Loading customers..." : "Search customer..."}
           value={search}
           onChange={(e) => { setSearch(e.target.value); setSelected(null); setOpen(true); setCreating(false) }}
           onFocus={() => setOpen(true)}
-          style={fieldStyle}
+          disabled={loading}
+          style={{ ...fieldStyle, opacity: loading ? 0.6 : 1 }}
         />
+
+        {!isOnline && customers.length > 0 && (
+          <div style={{
+            position: "absolute", top: -28, right: 0,
+            fontSize: 11, color: "#f5a623", fontWeight: "bold",
+            background: "#fff8e1", padding: "4px 8px", borderRadius: 4,
+          }}>
+            📡 Using cached data
+          </div>
+        )}
 
         {open && search && (
           <ul style={{
@@ -90,14 +179,16 @@ export default function CustomerSelector({ onSelect, allowUnsavedNew, initialVal
                 {c.full_name}
               </li>
             ))}
-            <li
-              onClick={() => { setCreating(true); setOpen(false) }}
-              style={{ padding: "12px 14px", cursor: "pointer", color: "#0070f3", fontWeight: "bold", borderTop: "1px solid #eee", fontSize: 14 }}
-              onMouseEnter={e => (e.currentTarget.style.background = "#f0f7ff")}
-              onMouseLeave={e => (e.currentTarget.style.background = "white")}
-            >
-              + Create new customer
-            </li>
+            {isOnline && (
+              <li
+                onClick={() => { setCreating(true); setOpen(false) }}
+                style={{ padding: "12px 14px", cursor: "pointer", color: "#0070f3", fontWeight: "bold", borderTop: "1px solid #eee", fontSize: 14 }}
+                onMouseEnter={e => (e.currentTarget.style.background = "#f0f7ff")}
+                onMouseLeave={e => (e.currentTarget.style.background = "white")}
+              >
+                + Create new customer
+              </li>
+            )}
           </ul>
         )}
       </div>

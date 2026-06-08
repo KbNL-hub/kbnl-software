@@ -444,7 +444,7 @@ export default function MonitorTrips() {
                     )}
                     {d.caked_bags > 0 && (
                       <p style={{ marginBottom: 6, color: "#888" }}>
-                        <strong>Caked Bags:</strong> {d.caked_bags} bags (returned to plant)
+                        <strong>Caked Bags:</strong> {d.caked_bags} bags
                       </p>
                     )}
                     {d.notes && (

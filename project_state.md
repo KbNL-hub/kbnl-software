@@ -179,7 +179,7 @@ One ATF per truck at a time (blocked if open ATF exists for that truck)
 
 ---
 
-## Tricycles (NEW — IN PROGRESS)
+## Tricycles (NEW — COMPLETED)
 - Registered per store (tricycle_number, store_name)
 - Store sales now have sale_type: direct | tricycle
 - Tricycle sales: same visibility as regular sales
@@ -188,16 +188,15 @@ One ATF per truck at a time (blocked if open ATF exists for that truck)
 ---
 
 ## Pending Work
-1. **Tricycles** — DB migration + tricycle management in admin + store officer sale modal update
-2. **UI pass (partially done)**
-   - Driver header buttons (replace emoji with Iconify, move to bottom)
-   - Broker confirmation modal price input border
-   - Store Officer: tab labels, stock card grid, header style, payment color coding
+1. **UI pass (partially done)**
+   - Driver header buttons (replace emoji with Iconify, move to bottom) - DONE
+   - Broker confirmation modal price input border - DONE
+   - Store Officer: tab labels, stock card grid, header style, payment color coding - DONE
    - Station Manager: pill colors, input borders
    - Truck Admin: tab vs filter pill differentiation, bleeding text
    - Truck Officer: same tab/filter issue, button overflow
    - Global: select caret breathing room
-   - Admin dashboard full responsive pass (after above)
+   - Admin dashboard full responsive pass (after above) - DONE
 3. **Super Admin (MD) role** — read-only, mobile/tablet-first dashboard
 4. **Reports** — store sales, cash transactions, ATF fuel costs once new features land
 
@@ -206,6 +205,7 @@ One ATF per truck at a time (blocked if open ATF exists for that truck)
 ## Notes
 - `color-scheme: light only` in globals.css forces light mode regardless of OS
 - All explicit text uses #171717, backgrounds use white — dark mode proof
+- Primary color is #0070f3
 - Modals: sheet (bottom) on mobile, centered on desktop
 - Min touch target: 48px height on all interactive elements
 - Iconify (@iconify/react) installed for admin sidebar icons

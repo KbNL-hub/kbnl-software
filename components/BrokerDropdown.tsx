@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react"
 import ModernInput from "@/components/ModernInput"
 import { supabase } from "@/lib/supabase"
+import { getCachedBrokers, cacheBrokers } from '@/lib/offline/tripsDb'
 
 type Broker = { broker_id: string; broker_name: string }
 type Props = { onSelect: (broker: Broker) => void }
@@ -12,20 +13,69 @@ export default function BrokerDropdown({ onSelect }: Props) {
   const [search, setSearch] = useState("")
   const [selected, setSelected] = useState<Broker | null>(null)
   const [open, setOpen] = useState(false)
+  const [isOnline, setIsOnline] = useState(true)
+  const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    async function fetchBrokers() {
-      const { data, error } = await supabase
-        .from("Brokers").select("broker_id, broker_name").order("broker_name", { ascending: true })
-      if (!error) setBrokers(data || [])
+    setIsOnline(navigator.onLine)
+    window.addEventListener('online', () => setIsOnline(true))
+    window.addEventListener('offline', () => setIsOnline(false))
+    return () => {
+      window.removeEventListener('online', () => setIsOnline(true))
+      window.removeEventListener('offline', () => setIsOnline(false))
     }
-    fetchBrokers()
   }, [])
+
+  useEffect(() => {
+    async function loadBrokers() {
+      setLoading(true)
+      try {
+        if (isOnline) {
+          // Try online fetch first
+          const { data, error } = await supabase
+            .from("Brokers")
+            .select("broker_id, broker_name")
+            .order("broker_name", { ascending: true })
+          
+          if (!error && data) {
+            setBrokers(data)
+            // Cache for offline use
+            await cacheBrokers(data)
+          } else {
+            // Fallback to cache if online fetch fails
+            const cached = await getCachedBrokers()
+            setBrokers(cached)
+          }
+        } else {
+          // Offline: use cache
+          const cached = await getCachedBrokers()
+          setBrokers(cached)
+        }
+      } catch (error) {
+        console.error('[BrokerDropdown] Error loading brokers:', error)
+        // Try cache as last resort
+        try {
+          const cached = await getCachedBrokers()
+          setBrokers(cached)
+        } catch (cacheError) {
+          console.error('[BrokerDropdown] Cache also failed:', cacheError)
+          setBrokers([])
+        }
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    loadBrokers()
+  }, [isOnline])
 
   const filtered = brokers.filter(b => b.broker_name.toLowerCase().includes(search.toLowerCase()))
 
   function handleSelect(broker: Broker) {
-    setSelected(broker); setSearch(broker.broker_name); setOpen(false); onSelect(broker)
+    setSelected(broker)
+    setSearch(broker.broker_name)
+    setOpen(false)
+    onSelect(broker)
   }
 
   return (
@@ -33,18 +83,30 @@ export default function BrokerDropdown({ onSelect }: Props) {
       <div style={{ position: "relative", width: "100%" }}>
         <ModernInput
           type="text"
-          placeholder="Search broker..."
+          placeholder={loading ? "Loading brokers..." : "Search broker..."}
           value={search}
           onChange={(e) => { setSearch(e.target.value); setSelected(null); setOpen(true) }}
           onFocus={() => setOpen(true)}
+          disabled={loading}
           style={{
             width: "100%", padding: "12px 14px", fontSize: 15,
             boxSizing: "border-box", borderRadius: 8,
             border: "1.5px solid #ccc",
             background: "white", color: "#171717",
             outline: "none", minHeight: 48,
+            opacity: loading ? 0.6 : 1,
           }}
         />
+
+        {!isOnline && brokers.length > 0 && (
+          <div style={{
+            position: "absolute", top: -28, right: 0,
+            fontSize: 11, color: "#f5a623", fontWeight: "bold",
+            background: "#fff8e1", padding: "4px 8px", borderRadius: 4,
+          }}>
+            📡 Using cached data
+          </div>
+        )}
 
         {open && search && filtered.length > 0 && (
           <ul style={{
@@ -68,7 +130,7 @@ export default function BrokerDropdown({ onSelect }: Props) {
           </ul>
         )}
 
-        {open && search && filtered.length === 0 && (
+        {open && search && filtered.length === 0 && !loading && (
           <div style={{
             position: "absolute", top: "100%", left: 0, right: 0,
             background: "white", border: "1.5px solid #ccc", borderTop: "none",

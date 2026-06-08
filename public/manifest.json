@@ -1,0 +1,92 @@
+{
+  "name": "KbNL - Kpaksbuddy Nigeria Limited",
+  "short_name": "KbNL",
+  "description": "Advanced logistics management system for Dangote, Lafarge and BUA cement distribution company",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "theme_color": "#0070f3",
+  "background_color": "#ffffff",
+  "icons": [
+    {
+      "src": "/logo-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/logo-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/logo-maskable-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "/logo-maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ],
+  "categories": ["logistics", "business"],
+  "screenshots": [
+    {
+      "src": "/screenshot-mobile-1.png",
+      "sizes": "540x720",
+      "type": "image/png",
+      "form_factor": "narrow"
+    },
+    {
+      "src": "/screenshot-desktop-1.png",
+      "sizes": "1280x720",
+      "type": "image/png",
+      "form_factor": "wide"
+    }
+  ],
+  "splash_screens": [
+    {
+      "src": "/splash-192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/splash-512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Driver Dashboard",
+      "short_name": "Dashboard",
+      "description": "Quick access to your driving dashboard",
+      "url": "/driver",
+      "icons": [
+        {
+          "src": "/icon-driver-96.png",
+          "sizes": "96x96",
+          "type": "image/png"
+        }
+      ]
+    },
+    {
+      "name": "My Trips",
+      "short_name": "Trips",
+      "description": "View and manage your trips",
+      "url": "/driver?tab=trips",
+      "icons": [
+        {
+          "src": "/icon-trips-96.png",
+          "sizes": "96x96",
+          "type": "image/png"
+        }
+      ]
+    }
+  ]
+}
