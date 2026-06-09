@@ -63,7 +63,7 @@ export default function OfficeClerkDashboard() {
         display: "flex", justifyContent: "space-between", alignItems: "center"
       }}>
         <div>
-          <h2 style={{ margin: 0, fontSize: 18 }}>KbNL Office Expenses</h2>
+          <h2 style={{ margin: 0, fontSize: 16 }}> <strong>KbNL Office Expenses</strong></h2>
           <p style={{ margin: "2px 0 0", color: "#aaa", fontSize: 13 }}>
             Welcome, <strong>{clerk.full_name}</strong> ({clerk.office_name} Office Clerk)
           </p>
