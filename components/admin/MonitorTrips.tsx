@@ -1,13 +1,15 @@
 "use client"
 
 import { useState, useEffect } from "react"
+import { Icon } from "@iconify/react"
 import { supabase } from "@/lib/supabase"
 import ReassignBroker from "@/components/admin/ReassignBroker"
 
 type Stop = {
   stop_id: string
-  broker_name: string
-  customer_name: string
+  stop_type: "customer" | "store"
+  broker_name: string | null
+  customer_name: string | null
   quantity_offloaded: number
   latitude: number
   longitude: number
@@ -81,26 +83,34 @@ export default function MonitorTrips() {
 
         const { data: stopsRaw } = await supabase
           .from("Stops")
-          .select("stop_id, quantity_offloaded, latitude, longitude, stop_time, stop_location, broker_id, customer_id, confirmed, disputed, dispute_reason")
+          .select("stop_id, quantity_offloaded, latitude, longitude, stop_time, stop_location, broker_id, customer_id, confirmed, disputed, dispute_reason, stop_type")
           .eq("trip_id", trip.trip_id)
           .order("stop_time", { ascending: true })
 
         const stops: Stop[] = await Promise.all(
           (stopsRaw || []).map(async (stop) => {
-            const { data: broker } = await supabase
-              .from("Brokers")
-              .select("broker_name")
-              .eq("broker_id", stop.broker_id)
-              .single()
+            let broker_name = null
+            let customer_name = null
 
-            let customer = null
-            if (stop.customer_id) {
-              const { data: customerData } = await supabase
-                .from("Customers")
-                .select("full_name")
-                .eq("customer_id", stop.customer_id)
+            if (stop.stop_type === "customer") {
+              const { data: broker } = await supabase
+                .from("Brokers")
+                .select("broker_name")
+                .eq("broker_id", stop.broker_id)
                 .single()
-              customer = customerData
+
+              broker_name = broker?.broker_name ?? "Unknown"
+
+              if (stop.customer_id) {
+                const { data: customerData } = await supabase
+                  .from("Customers")
+                  .select("full_name")
+                  .eq("customer_id", stop.customer_id)
+                  .single()
+                customer_name = customerData?.full_name ?? "Not provided"
+              } else {
+                customer_name = "Not provided"
+              }
             }
 
             const { data: confirmation } = await supabase
@@ -111,8 +121,9 @@ export default function MonitorTrips() {
 
             return {
               stop_id: stop.stop_id,
-              broker_name: broker?.broker_name ?? "Unknown",
-              customer_name: customer?.full_name ?? "Not provided",
+              stop_type: stop.stop_type,
+              broker_name,
+              customer_name,
               quantity_offloaded: stop.quantity_offloaded,
               latitude: stop.latitude,
               longitude: stop.longitude,
@@ -279,6 +290,10 @@ export default function MonitorTrips() {
             <tbody>
               {filteredTrips.map((trip) => {
                 const { bg, color } = statusColor(trip.trip_status)
+                const confirmed = trip.stops.filter(s => s.confirmed).length
+                const pending = trip.stops.filter(s => !s.confirmed && !s.disputed).length
+                const disputed = trip.stops.filter(s => s.disputed).length
+
                 return (
                   <tr key={trip.trip_id} style={{ borderBottom: "1px solid #eee" }}>
                     <td style={td}><strong>{trip.plate_number}</strong></td>
@@ -308,21 +323,31 @@ export default function MonitorTrips() {
                           setSelectedTrip({ trip_id: trip.trip_id, plate_number: trip.plate_number, atc: trip.atc, trip_status: trip.trip_status })
                           setEndTripError(null)
                         }}
-                        style={{ cursor: "pointer" }}
+                        style={{ cursor: "pointer", display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}
                       >
                         <span style={{ color: "#0070f3", textDecoration: "underline" }}>
                           {trip.stop_count} {trip.stop_count === 1 ? "stop" : "stops"}
                         </span>
-                        {(() => {
-                          const pending = trip.stops.filter(s => !s.confirmed && !s.disputed).length
-                          const confirmed = trip.stops.filter(s => s.confirmed).length
-                          return trip.stop_count > 0 ? (
-                            <span style={{ marginLeft: 6, fontSize: 11 }}>
-                              {confirmed > 0 && <span style={{ color: "#00aa00", fontWeight: "bold" }}>✓{confirmed}</span>}
-                              {pending > 0 && <span style={{ color: "#f5a623", fontWeight: "bold", marginLeft: 4 }}>⏳{pending}</span>}
-                            </span>
-                          ) : null
-                        })()}
+                        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                          {confirmed > 0 && (
+                            <div style={{ display: "flex", alignItems: "center", gap: 3, padding: "2px 8px", background: "#f0f8ff", borderRadius: 12 }}>
+                              <Icon icon="mdi:check-circle" width="14" height="14" style={{ color: "#00aa00" }} />
+                              <span style={{ fontSize: 11, color: "#00aa00", fontWeight: "bold" }}>{confirmed}</span>
+                            </div>
+                          )}
+                          {pending > 0 && (
+                            <div style={{ display: "flex", alignItems: "center", gap: 3, padding: "2px 8px", background: "#fffaf0", borderRadius: 12 }}>
+                              <Icon icon="mdi:clock-outline" width="14" height="14" style={{ color: "#f5a623" }} />
+                              <span style={{ fontSize: 11, color: "#f5a623", fontWeight: "bold" }}>{pending}</span>
+                            </div>
+                          )}
+                          {disputed > 0 && (
+                            <div style={{ display: "flex", alignItems: "center", gap: 3, padding: "2px 8px", background: "#fff5f5", borderRadius: 12 }}>
+                              <Icon icon="mdi:alert-circle" width="14" height="14" style={{ color: "#ff4444" }} />
+                              <span style={{ fontSize: 11, color: "#ff4444", fontWeight: "bold" }}>{disputed}</span>
+                            </div>
+                          )}
+                        </div>
                       </span>
                     </td>
                     <td style={td}>
@@ -384,22 +409,52 @@ export default function MonitorTrips() {
                     key={stop.stop_id}
                     style={{
                       marginBottom: 16, padding: 16,
-                      border: `1px solid ${stop.disputed ? "#ff4444" : stop.confirmed ? "#00aa00" : "#eee"}`,
-                      borderRadius: 8, background: stop.disputed ? "#fff5f5" : "white"
+                      border: `1px solid ${stop.disputed ? "#ff4444" : stop.confirmed ? "#00aa00" : "#e0e0e0"}`,
+                      borderRadius: 8, background: stop.disputed ? "#fff5f5" : stop.confirmed ? "#f5fff5" : "#fafafa"
                     }}
                   >
-                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
-                      <p style={{ fontWeight: "bold", margin: 0 }}>Stop {index + 1}</p>
-                      <span style={{
-                        padding: "3px 10px", borderRadius: 12, fontSize: 11, fontWeight: "bold",
-                        background: stop.disputed ? "#ff444422" : stop.confirmed ? "#00aa0022" : "#f0f0f0",
-                        color: stop.disputed ? "#ff4444" : stop.confirmed ? "#00aa00" : "#888"
-                      }}>
-                        {stop.disputed ? "Disputed" : stop.confirmed ? "Confirmed" : "Pending"}
-                      </span>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 12 }}>
+                      <div>
+                        <p style={{ fontWeight: "bold", margin: "0 0 4px 0", fontSize: 15 }}>Stop {index + 1}</p>
+                        <span style={{ fontSize: 12, padding: "3px 8px", borderRadius: 4, background: stop.stop_type === "customer" ? "#e3f2fd" : "#f3e5f5", color: stop.stop_type === "customer" ? "#0070f3" : "#7c3aed" }}>
+                          {stop.stop_type === "customer" ? "Customer" : "Store"}
+                        </span>
+                      </div>
+                      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                        {stop.disputed && (
+                          <div style={{ display: "flex", alignItems: "center", gap: 4, padding: "4px 10px", background: "#fff5f5", borderRadius: 20 }}>
+                            <Icon icon="mdi:alert-circle" width="16" height="16" style={{ color: "#ff4444" }} />
+                            <span style={{ fontSize: 12, fontWeight: "bold", color: "#ff4444" }}>Disputed</span>
+                          </div>
+                        )}
+                        {!stop.disputed && stop.confirmed && (
+                          <div style={{ display: "flex", alignItems: "center", gap: 4, padding: "4px 10px", background: "#f0fdf4", borderRadius: 20 }}>
+                            <Icon icon="mdi:check-circle" width="16" height="16" style={{ color: "#00aa00" }} />
+                            <span style={{ fontSize: 12, fontWeight: "bold", color: "#00aa00" }}>Confirmed</span>
+                          </div>
+                        )}
+                        {!stop.disputed && !stop.confirmed && (
+                          <div style={{ display: "flex", alignItems: "center", gap: 4, padding: "4px 10px", background: "#fef8e7", borderRadius: 20 }}>
+                            <Icon icon="mdi:clock-outline" width="16" height="16" style={{ color: "#f5a623" }} />
+                            <span style={{ fontSize: 12, fontWeight: "bold", color: "#f5a623" }}>Pending</span>
+                          </div>
+                        )}
+                      </div>
                     </div>
-                    <p style={{ marginBottom: 6 }}><strong>Broker:</strong> {stop.broker_name}</p>
-                    <p style={{ marginBottom: 6 }}><strong>Customer:</strong> {stop.customer_name}</p>
+
+                    {/* Customer stop fields */}
+                    {stop.stop_type === "customer" && (
+                      <>
+                        <p style={{ marginBottom: 6 }}><strong>Broker:</strong> {stop.broker_name}</p>
+                        <p style={{ marginBottom: 6 }}><strong>Customer:</strong> {stop.customer_name}</p>
+                      </>
+                    )}
+
+                    {/* Store stop info */}
+                    {stop.stop_type === "store" && (
+                      <p style={{ marginBottom: 6 }}><strong>Store:</strong> {stop.stop_location}</p>
+                    )}
+
                     <p style={{ marginBottom: 6 }}><strong>Bags Offloaded:</strong> {stop.quantity_offloaded}</p>
                     {stop.confirmed && stop.price_per_bag !== null && (
                       <p style={{ marginBottom: 6 }}>
@@ -407,7 +462,10 @@ export default function MonitorTrips() {
                       </p>
                     )}
                     
-                    <p style={{ marginBottom: 6 }}><strong>Location:</strong> {stop.stop_location}</p>
+                    {stop.stop_type === "customer" && (
+                      <p style={{ marginBottom: 6 }}><strong>Location:</strong> {stop.stop_location}</p>
+                    )}
+                    
                     <p style={{ marginBottom: 6 }}>
                       <strong>GPS: </strong>
                       <a href={`https://www.google.com/maps?q=${stop.latitude},${stop.longitude}`} target="_blank" rel="noopener noreferrer" style={{ color: "#0070f3" }}>
@@ -433,13 +491,14 @@ export default function MonitorTrips() {
                   >
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
                       <p style={{ fontWeight: "bold", margin: 0 }}>Discrepancy Report {index + 1}</p>
-                      <span style={{ padding: "3px 10px", borderRadius: 12, fontSize: 11, fontWeight: "bold", background: "#f5a62322", color: "#f5a623" }}>
-                        Reported
-                      </span>
+                      <div style={{ display: "flex", alignItems: "center", gap: 4, padding: "4px 10px", background: "#fef8e7", borderRadius: 20 }}>
+                        <Icon icon="mdi:alert-circle" width="16" height="16" style={{ color: "#f5a623" }} />
+                        <span style={{ fontSize: 12, fontWeight: "bold", color: "#f5a623" }}>Reported</span>
+                      </div>
                     </div>
                     {d.shortage > 0 && (
-                      <p style={{ marginBottom: 6, color: "#ff4444" }}>
-                        <strong>Shortage:</strong> {d.shortage} bags
+                      <p style={{ marginBottom: 6, color: "#ff4444", fontWeight: "bold" }}>
+                        Shortage: {d.shortage} bags
                       </p>
                     )}
                     {d.caked_bags > 0 && (

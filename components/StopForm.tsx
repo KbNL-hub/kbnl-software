@@ -98,16 +98,20 @@ export default function StopForm({ tripId, loadedQuantity: initialLoaded = 0, of
 
     setSubmitting(true)
 
+    // Derive stop_type from actual form data: if broker exists → customer, else → store
+    const derivedStopType = selectedBroker ? "customer" : "store"
+
     const payload: Record<string, unknown> = {
       trip_id: tripId,
+      stop_type: derivedStopType,
       quantity_offloaded: inputQty,
-      stop_location: stopType === "store" ? selectedStore : stopLocation,
+      stop_location: derivedStopType === "store" ? selectedStore : stopLocation,
       latitude: latitude ?? null,
       longitude: longitude ?? null,
       stop_time: new Date().toISOString(),
     }
 
-    if (stopType === "customer") {
+    if (derivedStopType === "customer") {
       payload.broker_id = selectedBroker!.broker_id
       payload.customer_id = selectedCustomer?.customer_id ?? null
     } else {
@@ -115,7 +119,6 @@ export default function StopForm({ tripId, loadedQuantity: initialLoaded = 0, of
       payload.customer_id = null
       payload.store_name = selectedStore
     }
-
 
     // ← CHANGED: Use submitAction instead of supabase.from()
     const result = await submitAction(
