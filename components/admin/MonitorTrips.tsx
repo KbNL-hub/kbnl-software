@@ -15,6 +15,7 @@ type Stop = {
   longitude: number
   stop_time: string
   stop_location: string
+  store_name: string | null
   confirmed: boolean
   disputed: boolean
   dispute_reason: string | null
@@ -83,7 +84,7 @@ export default function MonitorTrips() {
 
         const { data: stopsRaw } = await supabase
           .from("Stops")
-          .select("stop_id, quantity_offloaded, latitude, longitude, stop_time, stop_location, broker_id, customer_id, confirmed, disputed, dispute_reason, stop_type")
+          .select("stop_id, quantity_offloaded, latitude, longitude, stop_time, stop_location, broker_id, customer_id, confirmed, disputed, dispute_reason, store_name,  stop_type")
           .eq("trip_id", trip.trip_id)
           .order("stop_time", { ascending: true })
 
@@ -91,6 +92,7 @@ export default function MonitorTrips() {
           (stopsRaw || []).map(async (stop) => {
             let broker_name = null
             let customer_name = null
+            
 
             if (stop.stop_type === "customer") {
               const { data: broker } = await supabase
@@ -129,6 +131,7 @@ export default function MonitorTrips() {
               longitude: stop.longitude,
               stop_time: stop.stop_time,
               stop_location: stop.stop_location,
+              store_name: stop.store_name ?? null,
               confirmed: stop.confirmed,
               disputed: stop.disputed,
               dispute_reason: stop.dispute_reason,
