@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect, useRef } from "react"
+import { useRouter, useSearchParams } from "next/navigation"
 import { Icon } from "@iconify/react"
 import { supabase } from "@/lib/supabase"
 import StopForm from "@/components/StopForm"
@@ -41,6 +42,8 @@ type ATF = {
   invalidation_reason: string | null
 }
 
+type ViewType = "dashboard" | "start-trip" | "active-trip" | "log-stop" | "fuel"
+
 const LOADING_POINT_MAP: Record<string, string[]> = {
   Factory: ["Lafarge (Unicem)", "Dangote BOCO"],
   Depot: ["Calabar Mini Depot", "Ikom Mini Depot", "Ogoja Warehouse", "Uyo Depot"],
@@ -66,6 +69,11 @@ const ATF_STATUS_CONFIG = {
 }
 
 export default function DriverDashboard() {
+  const router = useRouter()  // ← ADD THIS
+  const searchParams = useSearchParams()  // ← ADD THIS
+  const initialView = searchParams.get('view') as ViewType | null || 'active-trip'
+  const [view, setView] = useState<ViewType>(initialView)
+  
   const bp = useBreakpoint()
   const isMobile = bp === "mobile"
   const isTablet = bp === "tablet"
@@ -78,7 +86,7 @@ export default function DriverDashboard() {
   const [stops, setStops] = useState<Stop[]>([])
   const [remaining, setRemaining] = useState(0)
   const [offloadedSoFar, setOffloadedSoFar] = useState(0)
-  const [view, setView] = useState<"dashboard" | "start-trip" | "active-trip" | "log-stop" | "fuel">("dashboard")
+  // const [view, setView] = useState<"dashboard" | "start-trip" | "active-trip" | "log-stop" | "fuel">("dashboard")
   const [loading, setLoading] = useState(true)
   const [submitting, setSubmitting] = useState(false)
   const [message, setMessage] = useState("")
@@ -148,6 +156,11 @@ export default function DriverDashboard() {
     })
     return () => subscription.unsubscribe()
   }, [])
+
+  function navigateTo(newView: ViewType) {
+    setView(newView)
+    router.push(`/driver?view=${newView}`, { scroll: false })
+  }
 
   async function initDriver() {
     const { data: { session } } = await supabase.auth.getSession()
@@ -289,7 +302,7 @@ export default function DriverDashboard() {
     if (error || !data) { setMessage("Failed to start trip"); setSubmitting(false); return }
     await supabase.from("Trucks").update({ status: "Loaded" }).eq("plate_number", plateNumber)
     setActiveTrip(data); setRemaining(parseInt(loadedQuantity)); setOffloadedSoFar(0); setStops([])
-    setSubmitting(false); setShowEndConfirm(false); setMessage(""); setView("active-trip")
+    setSubmitting(false); setShowEndConfirm(false); setMessage(""); navigateTo("active-trip")
   }
 
   async function handleEndTrip() {
@@ -299,7 +312,7 @@ export default function DriverDashboard() {
     await clearOfflineTripData(activeTrip.trip_id);
     await supabase.from("Trips").update({ trip_status: "Completed", updated_at: new Date().toISOString() }).eq("trip_id", activeTrip.trip_id)
     await supabase.from("Trucks").update({ status: "Empty" }).eq("plate_number", activeTrip.plate_number)
-    setSubmitting(false); setShowEndConfirm(false); setActiveTrip(null); setStops([]); setRemaining(0); setOffloadedSoFar(0); setView("dashboard")
+    setSubmitting(false); setShowEndConfirm(false); setActiveTrip(null); setStops([]); setRemaining(0); setOffloadedSoFar(0); navigateTo("dashboard")
   }
 
   async function handleHoldTrip() {
@@ -436,7 +449,7 @@ export default function DriverDashboard() {
       fetchStops(activeTrip.trip_id, activeTrip.loaded_quantity)
     }
 
-    setView("active-trip")
+    navigateTo("active-trip")
   }
 
   // ── Styles ──────────────────────────────────────────────────────────────
@@ -564,13 +577,13 @@ export default function DriverDashboard() {
               </div>
 
               <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-                <button onClick={() => setView(activeTrip ? "active-trip" : "start-trip")} style={fullBtn("#0070f3")}>
+                <button onClick={() => navigateTo(activeTrip ? "active-trip" : "start-trip")} style={fullBtn("#0070f3")}>
                   <Icon icon={activeTrip ? "mdi:truck-fast" : "mdi:truck-outline"} width={20} />
                   {activeTrip ? "Continue Trip" : "Start a Trip"}
                 </button>
 
                 {/* Fuel button */}
-                <button onClick={() => setView("fuel")} style={{ ...outlineBtn("#0070f3"), position: "relative" }}>
+                <button onClick={() => navigateTo("fuel")} style={{ ...outlineBtn("#0070f3"), position: "relative" }}>
                   <Icon icon="mdi:gas-station" width={18} />
                   Fuel
                   {hasPendingATF && (
@@ -584,7 +597,7 @@ export default function DriverDashboard() {
           {/* ── Fuel View (ATF Teller) ── */}
           {view === "fuel" && (
             <div>
-              <button onClick={() => setView("dashboard")} style={{ background: "none", border: "none", color: "#0070f3", cursor: "pointer", marginBottom: 20, padding: 0, fontSize: isMobile ? 15 : 14, display: "flex", alignItems: "center", gap: 4 }}>
+              <button onClick={() => navigateTo("dashboard")} style={{ background: "none", border: "none", color: "#0070f3", cursor: "pointer", marginBottom: 20, padding: 0, fontSize: isMobile ? 15 : 14, display: "flex", alignItems: "center", gap: 4 }}>
                 <Icon icon="mdi:arrow-left" width={18} /> Back
               </button>
               <h2 style={{ marginBottom: 6, color: "#171717", fontSize: isMobile ? 22 : 20 }}>Fuel</h2>
@@ -713,7 +726,7 @@ export default function DriverDashboard() {
           {/* ── Start Trip ── */}
           {view === "start-trip" && (
             <div>
-              <button onClick={() => { setView("dashboard"); setMessage("") }} style={{ background: "none", border: "none", color: "#0070f3", cursor: "pointer", marginBottom: 20, padding: 0, fontSize: isMobile ? 15 : 14, display: "flex", alignItems: "center", gap: 4 }}>
+              <button onClick={() => { navigateTo("dashboard"); setMessage("") }} style={{ background: "none", border: "none", color: "#0070f3", cursor: "pointer", marginBottom: 20, padding: 0, fontSize: isMobile ? 15 : 14, display: "flex", alignItems: "center", gap: 4 }}>
                 <Icon icon="mdi:arrow-left" width={18} /> Back
               </button>
               <h2 style={{ marginBottom: 24, color: "#0070f3", fontSize: isMobile ? 22 : 20 }}>Start a Trip</h2>
@@ -798,7 +811,7 @@ export default function DriverDashboard() {
           {/* ── Active Trip ── */}
           {view === "active-trip" && activeTrip && (
             <div>
-              <button onClick={() => setView("dashboard")} style={{ background: "none", border: "none", color: "#0070f3", cursor: "pointer", marginBottom: 20, padding: 0, fontSize: isMobile ? 15 : 14, display: "flex", alignItems: "center", gap: 4 }}>
+              <button onClick={() => navigateTo("dashboard")} style={{ background: "none", border: "none", color: "#0070f3", cursor: "pointer", marginBottom: 20, padding: 0, fontSize: isMobile ? 15 : 14, display: "flex", alignItems: "center", gap: 4 }}>
                 <Icon icon="mdi:arrow-left" width={18} /> Dashboard
               </button>
               <h2 style={{ marginBottom: 20, color: "#171717", fontSize: isMobile ? 22 : 20 }}>Active Trip</h2>
@@ -869,7 +882,7 @@ export default function DriverDashboard() {
 
               <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
                 {remaining > 0 && (
-                  <button onClick={() => setView("log-stop")} style={fullBtn("#0070f3")}>
+                  <button onClick={() => navigateTo("log-stop")} style={fullBtn("#0070f3")}>
                     <Icon icon="mdi:map-marker-plus" width={18} /> Make a Stop
                   </button>
                 )}
@@ -890,7 +903,7 @@ export default function DriverDashboard() {
           {/* ── Log Stop ── */}
           {view === "log-stop" && activeTrip && (
             <div>
-              <button onClick={() => setView("active-trip")}>Back to Trip</button>
+              <button onClick={() => navigateTo("active-trip")}>Back to Trip</button>
               <StopForm 
                 tripId={activeTrip.trip_id} 
                 loadedQuantity={activeTrip.loaded_quantity}
