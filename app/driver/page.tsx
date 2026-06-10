@@ -525,11 +525,10 @@ export default function DriverDashboard() {
   const hasPendingATF = !!activeATF
 
   return (
+      
     <div style={{ fontFamily: "Arial, sans-serif", background: "#f7f7f7", minHeight: "100vh" }}>
       <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
-      
-      {/* Offline indicator for trips */}
-      <TripOfflineIndicator />
+
       
       <div style={{ maxWidth: maxW, margin: "0 auto", paddingBottom: 80 }}>
 
@@ -559,6 +558,9 @@ export default function DriverDashboard() {
               <Icon icon="mdi:logout" width={15} />
               {!isMobile && "Logout"}
             </button>
+          </div>
+          <div style={{ padding: isMobile ? "0 16px" : "0 24px" }}>
+            <TripOfflineIndicator />
           </div>
         </div>
 
