@@ -1,7 +1,15 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { supabase } from "@/lib/supabase"
+import { DataTable } from "./DataTable"
+import { ExportActions } from "./ExportActions"
+import { EmptyState } from "./EmptyState"
+import { LoadingState } from "./LoadingState"
+import { ReportModal } from "./ReportModal"
+import { ReportCard, ReportCardField, ReportCardSection } from "./ReportCard"
+import { QuickFilterPills } from "./QuickFilterPills"
+import { DateRangeSelector } from "./DateRangeSelector"
 
 // ── Types ──────────────────────────────────────────────────────────────────
 type DriverSummary = {
@@ -54,12 +62,26 @@ type TruckFuel = {
   driver_name: string
   litres: number
   total_amount: number
-  validated_at: string
+  confirmed_at: string
 }
 
 type DrillDown =
   | { kind: "driver"; driver: DriverSummary; trips: DriverTrip[] }
   | { kind: "truck"; truck: TruckSummary; maintenance: TruckMaintenance[]; fuel: TruckFuel[] }
+
+type ViewMode = "card" | "table"
+
+// ── Constants ──────────────────────────────────────────────────────────────
+const fontSize = {
+  xs: 12,
+  sm: 13,
+  base: 14,
+  md: 15,
+  lg: 16,
+  xl: 20,
+  "2xl": 24,
+  "3xl": 28,
+}
 
 // ── Date helpers ───────────────────────────────────────────────────────────
 function thisMonthRange() {
@@ -82,7 +104,7 @@ function toEndOfDay(dateStr: string) {
   return d.toISOString()
 }
 
-// ── CSV / XLSX export helpers ──────────────────────────────────────────────
+// ── Export helpers ────────────────────────────────────────────────────────
 function downloadCSV(filename: string, rows: Record<string, unknown>[]) {
   if (!rows.length) return
   const headers = Object.keys(rows[0])
@@ -92,13 +114,16 @@ function downloadCSV(filename: string, rows: Record<string, unknown>[]) {
   ].join("\n")
   const blob = new Blob([csv], { type: "text/csv" })
   const url = URL.createObjectURL(blob)
-  const a = document.createElement("a"); a.href = url; a.download = filename; a.click()
+  const a = document.createElement("a")
+  a.href = url
+  a.download = filename
+  a.click()
   URL.revokeObjectURL(url)
 }
 
 function downloadXLSX(filename: string, rows: Record<string, unknown>[], sheetName: string) {
   if (!rows.length) return
-  import("xlsx").then(XLSX => {
+  import("xlsx").then((XLSX) => {
     const ws = XLSX.utils.json_to_sheet(rows)
     const wb = XLSX.utils.book_new()
     XLSX.utils.book_append_sheet(wb, ws, sheetName)
@@ -108,18 +133,40 @@ function downloadXLSX(filename: string, rows: Record<string, unknown>[], sheetNa
 
 // ── Component ──────────────────────────────────────────────────────────────
 export default function Reports() {
+  const [isMobile, setIsMobile] = useState(false)
+  const [isDesktop, setIsDesktop] = useState(true)
   const [section, setSection] = useState<"drivers" | "trucks">("drivers")
   const [fromDate, setFromDate] = useState("")
   const [toDate, setToDate] = useState("")
   const [dateError, setDateError] = useState("")
   const [loading, setLoading] = useState(false)
   const [hasLoaded, setHasLoaded] = useState(false)
-  const [quickFilter, setQuickFilter] = useState<"custom" | "month" | "year">("custom")
+  const [quickFilter, setQuickFilter] = useState<"month" | "year" | "custom">("month")
+  const [viewMode, setViewMode] = useState<ViewMode>("table")
 
   const [driverSummaries, setDriverSummaries] = useState<DriverSummary[]>([])
   const [truckSummaries, setTruckSummaries] = useState<TruckSummary[]>([])
   const [drillDown, setDrillDown] = useState<DrillDown | null>(null)
   const [drillLoading, setDrillLoading] = useState(false)
+
+  // Responsive hook
+  useEffect(() => {
+    const handleResize = () => {
+      const mobile = window.innerWidth < 640
+      setIsMobile(mobile)
+      setIsDesktop(!mobile)
+      if (!hasLoaded) setViewMode(mobile ? "card" : "table")
+    }
+
+    handleResize()
+    window.addEventListener("resize", handleResize)
+    return () => window.removeEventListener("resize", handleResize)
+  }, [hasLoaded])
+
+  // Initialize with default filter
+  useEffect(() => {
+    applyQuickFilter("month")
+  }, [])
 
   function applyQuickFilter(filter: "month" | "year") {
     setQuickFilter(filter)
@@ -276,9 +323,9 @@ export default function Reports() {
         .from("fuel_requests")
         .select("litres, total_amount")
         .eq("plate_number", t.plate_number)
-        .eq("status", "Validated")
-        .gte("validated_at", from)
-        .lte("validated_at", to)
+        .eq("atf_status", "Confirmed")
+        .gte("confirmed_at", from)
+        .lte("confirmed_at", to)
 
       const fuel_count = (fuel || []).length
       const total_litres = (fuel || []).reduce((sum, f) => sum + f.litres, 0)
@@ -346,12 +393,12 @@ export default function Reports() {
 
     const { data: fuelRaw } = await supabase
       .from("fuel_requests")
-      .select("request_id, driver_id, litres, total_amount, validated_at")
+      .select("request_id, driver_id, litres, total_amount, confirmed_at")
       .eq("plate_number", truck.plate_number)
-      .eq("status", "Validated")
-      .gte("validated_at", from)
-      .lte("validated_at", to)
-      .order("validated_at", { ascending: false })
+      .eq("atf_status", "Confirmed")
+      .gte("confirmed_at", from)
+      .lte("confirmed_at", to)
+      .order("confirmed_at", { ascending: false })
 
     const fuel: TruckFuel[] = await Promise.all((fuelRaw || []).map(async (f) => {
       const { data: driver } = await supabase
@@ -361,7 +408,7 @@ export default function Reports() {
         driver_name: driver?.full_name ?? "Unknown",
         litres: f.litres,
         total_amount: f.total_amount,
-        validated_at: f.validated_at,
+        confirmed_at: f.confirmed_at,
       }
     }))
 
@@ -371,30 +418,28 @@ export default function Reports() {
 
   // ── Export helpers ────────────────────────────────────────────────────────
   function exportDriverSummary(format: "csv" | "xlsx") {
-    const rows = driverSummaries.map(d => ({
-      "Driver": d.driver_name,
-      "Trips": d.trips_count,
-      "Stops": d.stops_count,
+    const rows = driverSummaries.map((d) => ({
+      Driver: d.driver_name,
+      Trips: d.trips_count,
+      Stops: d.stops_count,
       "Total Bags Delivered": d.total_bags,
       "Avg Bags per Trip": d.avg_bags_per_trip,
     }))
-    format === "csv"
-      ? downloadCSV("driver_summary.csv", rows)
-      : downloadXLSX("driver_summary.xlsx", rows, "Driver Summary")
+    format === "csv" ? downloadCSV("driver_summary.csv", rows) : downloadXLSX("driver_summary.xlsx", rows, "Driver Summary")
   }
 
   function exportDriverDetail(format: "csv" | "xlsx") {
     if (drillDown?.kind !== "driver") return
-    const rows = drillDown.trips.map(t => ({
+    const rows = drillDown.trips.map((t) => ({
       "Trip ID": t.trip_id,
-      "Plate": t.plate_number,
-      "Product": t.product,
+      Plate: t.plate_number,
+      Product: t.product,
       "Loading Point": t.material_centre,
       "Loaded (bags)": t.loaded_quantity,
-      "Stops": t.stops_count,
+      Stops: t.stops_count,
       "Bags Offloaded": t.total_bags_offloaded,
-      "Status": t.trip_status,
-      "Date": new Date(t.created_at).toLocaleDateString(),
+      Status: t.trip_status,
+      Date: new Date(t.created_at).toLocaleDateString(),
     }))
     format === "csv"
       ? downloadCSV(`${drillDown.driver.driver_name}_trips.csv`, rows)
@@ -402,10 +447,10 @@ export default function Reports() {
   }
 
   function exportTruckSummary(format: "csv" | "xlsx") {
-    const rows = truckSummaries.map(t => ({
-      "Plate": t.plate_number,
+    const rows = truckSummaries.map((t) => ({
+      Plate: t.plate_number,
       "KbNL No.": t.kbnl_truck_no ?? "—",
-      "Model": t.truck_model,
+      Model: t.truck_model,
       "Completed Trips": t.completed_trips,
       "Maintenance Count": t.maintenance_count,
       "Total Maintenance (₦)": t.total_maintenance_amount,
@@ -414,31 +459,29 @@ export default function Reports() {
       "Total Fuel (₦)": t.total_fuel_amount,
       "Avg Litres/Trip": t.avg_litres_per_trip,
     }))
-    format === "csv"
-      ? downloadCSV("truck_summary.csv", rows)
-      : downloadXLSX("truck_summary.xlsx", rows, "Truck Summary")
+    format === "csv" ? downloadCSV("truck_summary.csv", rows) : downloadXLSX("truck_summary.xlsx", rows, "Truck Summary")
   }
 
   function exportTruckDetail(format: "csv" | "xlsx") {
     if (drillDown?.kind !== "truck") return
-    const maintRows = drillDown.maintenance.map(m => ({
-      "Type": m.maintenance_type,
-      "Location": m.maintenance_location ?? "—",
+    const maintRows = drillDown.maintenance.map((m) => ({
+      Type: m.maintenance_type,
+      Location: m.maintenance_location ?? "—",
       "Amount (₦)": m.amount,
-      "Officer": m.officer_name,
-      "Date": new Date(m.reported_at).toLocaleDateString(),
+      Officer: m.officer_name,
+      Date: new Date(m.reported_at).toLocaleDateString(),
     }))
-    const fuelRows = drillDown.fuel.map(f => ({
-      "Driver": f.driver_name,
-      "Litres": f.litres,
+    const fuelRows = drillDown.fuel.map((f) => ({
+      Driver: f.driver_name,
+      Litres: f.litres,
       "Amount (₦)": f.total_amount,
-      "Date": new Date(f.validated_at).toLocaleDateString(),
+      Date: new Date(f.confirmed_at).toLocaleDateString(),
     }))
     if (format === "csv") {
       downloadCSV(`${drillDown.truck.plate_number}_maintenance.csv`, maintRows)
       downloadCSV(`${drillDown.truck.plate_number}_fuel.csv`, fuelRows)
     } else {
-      import("xlsx").then(XLSX => {
+      import("xlsx").then((XLSX) => {
         const wb = XLSX.utils.book_new()
         XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(maintRows), "Maintenance")
         XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(fuelRows), "Fuel")
@@ -449,21 +492,49 @@ export default function Reports() {
 
   // ── Render ────────────────────────────────────────────────────────────────
   return (
-    <div>
-      <h2 style={{ marginBottom: 24 }}>Reports</h2>
+    <div style={{ minHeight: "100vh", background: "#f8fafc", padding: isMobile ? "16px" : "32px", fontFamily: "'Inter', sans-serif" }}>
+      {/* Header */}
+      <div style={{ marginBottom: 24 }}>
+        <h1 style={{ margin: 0, color: "#0f172a", fontSize: isMobile ? fontSize["2xl"] : fontSize["3xl"], fontWeight: 700, letterSpacing: "-0.5px" }}>
+          Reports
+        </h1>
+        <p style={{ margin: "8px 0 0", color: "#64748b", fontSize: fontSize.base }}>
+          {section === "drivers" ? "Driver performance metrics and trip summaries" : "Truck health, maintenance, and fuel analytics"}
+        </p>
+      </div>
 
-      {/* Section tabs */}
+      {/* Section Tabs */}
       <div style={{ display: "flex", gap: 8, marginBottom: 24 }}>
-        {(["drivers", "trucks"] as const).map(s => (
+        {(["drivers", "trucks"] as const).map((s) => (
           <button
             key={s}
-            onClick={() => { setSection(s); setHasLoaded(false); setDrillDown(null) }}
+            onClick={() => {
+setSection(s)
+setHasLoaded(false)
+setDrillDown(null)
+}}
             style={{
-              padding: "8px 24px", borderRadius: 20, fontSize: 14, cursor: "pointer",
-              border: "1px solid #ddd",
-              background: section === s ? "#1a1a2e" : "white",
-              color: section === s ? "white" : "#333",
-              fontWeight: section === s ? "bold" : "normal"
+              padding: "8px 16px",
+borderRadius: 20,
+fontSize: fontSize.sm,
+cursor: "pointer",
+              border: section === s ? "1.5px solid #0070f3" : "1.5px solid #e2e8f0",
+              background: section === s ? "#eff6ff" : "white",
+              color: section === s ? "#0070f3" : "#64748b",
+              fontWeight: section === s ? 600 : 500,
+              transition: "all 0.2s ease",
+            }}
+            onMouseEnter={(e) => {
+              if (section !== s) {
+                e.currentTarget.style.background = "#f8fafc"
+                e.currentTarget.style.borderColor = "#cbd5e1"
+              }
+            }}
+            onMouseLeave={(e) => {
+              if (section !== s) {
+                e.currentTarget.style.background = "white"
+                e.currentTarget.style.borderColor = "#e2e8f0"
+              }
             }}
           >
             {s === "drivers" ? "Driver Performance" : "Truck Health"}
@@ -471,334 +542,603 @@ export default function Reports() {
         ))}
       </div>
 
-      {/* Filters */}
-      <div style={{ background: "white", border: "1px solid #eee", borderRadius: 12, padding: 24, marginBottom: 24, boxShadow: "0 2px 8px rgba(0,0,0,0.04)" }}>
-        {/* Quick filters */}
-        <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
-          {(["month", "year", "custom"] as const).map(f => (
-            <button
-              key={f}
-              onClick={() => { setQuickFilter(f); if (f !== "custom") applyQuickFilter(f as "month" | "year") }}
-              style={{
-                padding: "6px 16px", borderRadius: 20, fontSize: 13, cursor: "pointer",
-                border: "1px solid #ddd",
-                background: quickFilter === f ? "#0070f3" : "white",
-                color: quickFilter === f ? "white" : "#333",
-                fontWeight: quickFilter === f ? "bold" : "normal"
-              }}
-            >
-              {f === "month" ? "This Month" : f === "year" ? "This Year" : "Custom Range"}
-            </button>
-          ))}
+      {/* Filters Card */}
+      <div style={{ background: "white", border: "1px solid #e2e8f0", borderRadius: 12, padding: isMobile ? 16 : 20, marginBottom: 24, boxShadow: "0 1px 3px rgba(0, 0, 0, 0.05)" }}>
+        <div style={{ marginBottom: 16 }}>
+          <label style={{ display: "block", fontSize: fontSize.xs, color: "#475569", fontWeight: 500, marginBottom: 12, textTransform: "uppercase", letterSpacing: "0.5px" }}>
+            Quick Filters
+          </label>
+          <QuickFilterPills
+            options={[
+              { id: "month", label: "This Month" },
+              { id: "year", label: "This Year" },
+              { id: "custom", label: "Custom Range" },
+            ]}
+            selectedId={quickFilter}
+            onSelect={(id) => {
+              setQuickFilter(id as any)
+              if (id !== "custom") applyQuickFilter(id as "month" | "year")
+            }}
+          />
         </div>
 
-        {/* Custom date inputs */}
-        {quickFilter === "custom" && (
-          <div style={{ display: "flex", gap: 16, alignItems: "flex-end", flexWrap: "wrap", marginBottom: 16 }}>
-            <div>
-              <label style={{ display: "block", fontSize: 13, color: "#888", marginBottom: 6 }}>From</label>
-              <input type="date" value={fromDate} onChange={(e) => { setFromDate(e.target.value); setDateError("") }} style={{ padding: "8px 12px", borderRadius: 6, border: "1px solid #ddd", fontSize: 14 }} />
-            </div>
-            <div>
-              <label style={{ display: "block", fontSize: 13, color: "#888", marginBottom: 6 }}>To</label>
-              <input type="date" value={toDate} onChange={(e) => { setToDate(e.target.value); setDateError("") }} style={{ padding: "8px 12px", borderRadius: 6, border: "1px solid #ddd", fontSize: 14 }} />
-            </div>
+                {quickFilter === "custom" && (
+          <div style={{ marginBottom: 16 }}>
+                          <label style={{ display: "block", fontSize: fontSize.xs, color: "#475569", fontWeight: 500, marginBottom: 12, textTransform: "uppercase", letterSpacing: "0.5px" }}>
+              Date Range
+            </label>
+            <DateRangeSelector
+              fromDate={fromDate}
+              toDate={toDate}
+              onFromChange={setFromDate}
+              onToChange={setToDate}
+              error={dateError}
+              isMobile={isMobile}
+            />
           </div>
         )}
-
-        {dateError && <p style={{ color: "red", fontSize: 13, marginBottom: 12 }}>{dateError}</p>}
 
         <button
           onClick={handleGenerate}
           disabled={loading}
-          style={{ padding: "8px 24px", background: "#0070f3", color: "white", border: "none", borderRadius: 6, cursor: loading ? "not-allowed" : "pointer", fontWeight: "bold", fontSize: 14 }}
+          style={{
+            width: isMobile ? "100%" : "auto",
+padding: "12px 16px",
+background: "#0070f3",
+color: "white",
+border: "none",
+borderRadius: 8,
+cursor: loading ? "not-allowed" : "pointer",
+            fontWeight: 600,
+            fontSize: fontSize.md,
+            minHeight: 44,
+            opacity: loading ? 0.7 : 1,
+            transition: "all 0.2s ease",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            gap: 8,
+          }}
+          onMouseEnter={(e) => {
+            if (!loading) {
+              e.currentTarget.style.transform = "translateY(-2px)"
+              e.currentTarget.style.boxShadow = "0 4px 12px rgba(0, 112, 243, 0.25)"
+            }
+          }}
+          onMouseLeave={(e) => {
+            if (!loading) {
+              e.currentTarget.style.transform = "translateY(0)"
+              e.currentTarget.style.boxShadow = "none"
+            }
+          }}
         >
-          {loading ? "Generating..." : "Generate Report"}
+          {loading ? (
+            <>
+              <div style={{ width: 16, height: 16, borderRadius: "50%", border: "2px solid rgba(255,255,255,0.3)", borderTopColor: "white", animation: "spin 1s linear infinite" }} />
+              Generating...
+            </>
+          ) : (
+            "Generate Report"
+          )}
         </button>
       </div>
 
-      {loading && <p style={{ color: "#888" }}>Calculating...</p>}
+{/* Loading State */}
+      {loading && <LoadingState message="Calculating report data..." />}
 
-      {/* ── Driver Performance ── */}
+      {/* Empty State */}
+      {!loading && !hasLoaded && <EmptyState icon="📊" title="No report generated" description="Select a date range and click 'Generate Report' to view data." />}
+
+      {/* Driver Reports */}
       {!loading && hasLoaded && section === "drivers" && (
         <div>
-          {/* Summary table */}
-          <div style={{ background: "white", border: "1px solid #eee", borderRadius: 12, padding: 24, marginBottom: 24, boxShadow: "0 2px 8px rgba(0,0,0,0.04)" }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
-              <p style={{ margin: 0, fontWeight: "bold", fontSize: 15 }}>Driver Summary</p>
-              <div style={{ display: "flex", gap: 8 }}>
-                <button onClick={() => exportDriverSummary("csv")} style={exportBtn}>Export CSV</button>
-                <button onClick={() => exportDriverSummary("xlsx")} style={exportBtn}>Export Excel</button>
+          {driverSummaries.length === 0 ? (
+            <EmptyState icon="👥" title="No data available" description="No drivers with trips found in this period." />
+          ) : (
+            <div>
+              {/* Header with View Toggle */}
+            <div style={{ display: "flex", flexDirection: isMobile ? "column" : "row", justifyContent: "space-between", alignItems: isMobile ? "flex-start" : "center", gap: 12, marginBottom: 16 }}>
+              <div>
+                  <h2 style={{ margin: 0, color: "#0f172a", fontSize: fontSize.lg, fontWeight: 600 }}>Driver Summary</h2>
+              <p style={{ margin: "4px 0 0", color: "#64748b", fontSize: fontSize.sm }}>{driverSummaries.length} drivers</p>
               </div>
-            </div>
-
-            {driverSummaries.length === 0
-              ? <p style={{ color: "#888" }}>No trips found in this period.</p>
-              : (
-                <div style={{ overflowX: "auto" }}>
-                  <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 14 }}>
-                    <thead>
-                      <tr style={{ background: "#f0f0f0", textAlign: "left" }}>
-                        <th style={th}>Driver</th>
-                        <th style={th}>Trips</th>
-                        <th style={th}>Stops</th>
-                        <th style={th}>Bags Delivered</th>
-                        <th style={th}>Avg Bags/Trip</th>
-                        <th style={th}>Detail</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {driverSummaries.map(d => (
-                        <tr key={d.driver_id} style={{ borderBottom: "1px solid #eee" }}>
-                          <td style={td}><strong>{d.driver_name}</strong></td>
-                          <td style={td}>{d.trips_count}</td>
-                          <td style={td}>{d.stops_count}</td>
-                          <td style={td}>{d.total_bags.toLocaleString()}</td>
-                          <td style={td}>{d.avg_bags_per_trip.toLocaleString()}</td>
-                          <td style={td}>
+            <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+                  {/* View Toggle */}
+                  <div style={{ display: "flex", background: "white", border: "1px solid #e2e8f0", borderRadius: 8, padding: 4, gap: 0 }}>
                             <button
-                              onClick={() => fetchDriverDrillDown(d)}
-                              style={{ padding: "4px 12px", fontSize: 12, cursor: "pointer", borderRadius: 4, border: "1px solid #0070f3", color: "#0070f3", background: "white" }}
+                              onClick={() => setViewMode("card")}
+                              style={{
+                        padding: "8px 12px",
+                        background: viewMode === "card" ? "#0070f3" : "transparent",
+                        color: viewMode === "card" ? "white" : "#64748b",
+                        border: "none",
+                        borderRadius: 6,
+                        cursor: "pointer",
+                        fontSize: fontSize.xs,
+                        fontWeight: 600,
+                        minWidth: 44,
+                        height: 40,
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+}}
                             >
-                              View Trips
+                              <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M3 3h8v8H3V3zm10 0h8v8h-8V3zM3 13h8v8H3v-8zm10 0h8v8h-8v-8z" />
+                      </svg>
                             </button>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                          <button
+                      onClick={() => setViewMode("table")}
+                      style={{
+                        padding: "8px 12px",
+                        background: viewMode === "table" ? "#0070f3" : "transparent",
+                        color: viewMode === "table" ? "white" : "#64748b",
+                        border: "none",
+                        borderRadius: 6,
+                        cursor: "pointer",
+                        fontSize: fontSize.xs,
+                        fontWeight: 600,
+                        minWidth: 44,
+                        height: 40,
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                      }}
+>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M3 4h18v2H3V4zm0 7h18v2H3v-2zm0 7h18v2H3v-2z" />
+                      </svg>
+                    </button>
                 </div>
-              )
-            }
+              <ExportActions onExportCSV={() => exportDriverSummary("csv")} onExportXLSX={() => exportDriverSummary("xlsx")} />
+                </div>
           </div>
 
-          {/* Driver drill-down */}
-          {drillLoading && <p style={{ color: "#888" }}>Loading trips...</p>}
-          {drillDown?.kind === "driver" && !drillLoading && (
-            <div style={{ background: "white", border: "1px solid #eee", borderRadius: 12, padding: 24, boxShadow: "0 2px 8px rgba(0,0,0,0.04)" }}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+          {/* Card/Table Views */}
+          {viewMode === "card" ? (
+            <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(auto-fill, minmax(320px, 1fr))", gap: 12 }}>
+                  {driverSummaries.map((driver) => (
+                    <ReportCard key={driver.driver_id}>
                 <div>
-                  <p style={{ margin: 0, fontWeight: "bold", fontSize: 15 }}>{drillDown.driver.driver_name} — Trip Detail</p>
-                  <p style={{ margin: "4px 0 0", fontSize: 13, color: "#888" }}>{drillDown.trips.length} trips in period</p>
+                  <div style={{ marginBottom: 12 }}>
+                          <h3 style={{ margin: 0, color: "#0f172a", fontSize: fontSize.lg, fontWeight: 600 }}>{driver.driver_name}</h3>
                 </div>
-                <div style={{ display: "flex", gap: 8 }}>
-                  <button onClick={() => exportDriverDetail("csv")} style={exportBtn}>Export CSV</button>
-                  <button onClick={() => exportDriverDetail("xlsx")} style={exportBtn}>Export Excel</button>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, padding: "12px 0", borderTop: "1px solid #f1f5f9", borderBottom: "1px solid #f1f5f9" }}>
+                          <ReportCardField label="Trips" value={driver.trips_count} />
+                          <ReportCardField label="Stops" value={driver.stops_count} />
+                          <ReportCardField label="Bags" value={driver.total_bags} />
+                          <ReportCardField label="Avg/Trip" value={driver.avg_bags_per_trip} />
                 </div>
+<button
+                          onClick={() => fetchDriverDrillDown(driver)}
+                          style={{
+                            width: "100%",
+                            marginTop: 12,
+                            padding: "10px 14px",
+                            background: "#0070f3",
+                            color: "white",
+                            border: "none",
+                            borderRadius: 8,
+                            cursor: "pointer",
+                            fontWeight: 600,
+                            fontSize: fontSize.md,
+                            minHeight: 40,
+                            transition: "all 0.2s ease",
+                          }}
+                          onMouseEnter={(e) => {
+                            e.currentTarget.style.background = "#0057c7"
+                          }}
+                          onMouseLeave={(e) => {
+                            e.currentTarget.style.background = "#0070f3"
+                          }}
+                        >
+                          View Trips
+                        </button>
               </div>
-              <div style={{ overflowX: "auto" }}>
-                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 14 }}>
-                  <thead>
-                    <tr style={{ background: "#f0f0f0", textAlign: "left" }}>
-                      <th style={th}>Date</th>
-                      <th style={th}>Plate</th>
-                      <th style={th}>Product</th>
-                      <th style={th}>Loading Point</th>
-                      <th style={th}>Loaded</th>
-                      <th style={th}>Stops</th>
-                      <th style={th}>Delivered</th>
-                      <th style={th}>Status</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {drillDown.trips.map(t => (
-                      <tr key={t.trip_id} style={{ borderBottom: "1px solid #eee" }}>
-                        <td style={td}>{new Date(t.created_at).toLocaleDateString()}</td>
-                        <td style={td}><strong>{t.plate_number}</strong></td>
-                        <td style={td}>{t.product}</td>
-                        <td style={td}>{t.material_centre}</td>
-                        <td style={td}>{t.loaded_quantity}</td>
-                        <td style={td}>{t.stops_count}</td>
-                        <td style={td}>{t.total_bags_offloaded}</td>
-                        <td style={td}>
-                          <span style={{
-                            padding: "3px 10px", borderRadius: 12, fontSize: 11, fontWeight: "bold",
-                            background: t.trip_status === "Completed" ? "#00aa0022" : t.trip_status === "In transit" ? "#0070f322" : "#f5a62322",
-                            color: t.trip_status === "Completed" ? "#00aa00" : t.trip_status === "In transit" ? "#0070f3" : "#f5a623"
-                          }}>
-                            {t.trip_status}
-                          </span>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+              </ReportCard>
+                  ))}
               </div>
+) : (
+                <DataTable
+                  columns={[
+                    { key: "driver_name", label: "Driver" },
+                    { key: "trips_count", label: "Trips" },
+                    { key: "stops_count", label: "Stops" },
+                    { key: "total_bags", label: "Bags Delivered" },
+                    { key: "avg_bags_per_trip", label: "Avg Bags/Trip" },
+                    {
+                      key: "actions",
+                      label: "Actions",
+                      render: (_value, driver: DriverSummary) => (
+                        <button
+                          onClick={() => fetchDriverDrillDown(driver)}
+                          style={{
+                            padding: "6px 10px",
+                            background: "white",
+                            color: "#0070f3",
+                            border: "1px solid #e2e8f0",
+                            borderRadius: 6,
+                            cursor: "pointer",
+                            fontWeight: 500,
+                            fontSize: fontSize.xs,
+                            transition: "all 0.2s ease",
+                          }}
+                          onMouseEnter={(e) => {
+                            e.currentTarget.style.background = "#eff6ff"
+                          }}
+                          onMouseLeave={(e) => {
+                            e.currentTarget.style.background = "white"
+                          }}
+                        >
+                          View Trips
+                        </button>
+                      ),
+                    },
+                  ]}
+                  rows={driverSummaries}
+                  rowKey={(row) => row.driver_id}
+                />
+              )}
             </div>
           )}
+
+          {/* Driver Detail Modal */}
+          <ReportModal
+            isOpen={drillDown?.kind === "driver" && !drillLoading}
+            onClose={() => setDrillDown(null)}
+            title={`${drillDown?.kind === "driver" ? drillDown.driver.driver_name : ""} — Trip Details`}
+            subtitle={drillDown?.kind === "driver" ? `${drillDown.trips.length} trips in period` : ""}
+            isMobile={isMobile}
+            actions={
+              drillDown?.kind === "driver" ? (
+                <ExportActions onExportCSV={() => exportDriverDetail("csv")} onExportXLSX={() => exportDriverDetail("xlsx")} />
+              ) : null
+            }
+          >
+            {drillDown?.kind === "driver" && (
+              <DataTable
+                columns={[
+                  {
+                    key: "created_at",
+                    label: "Date",
+                    render: (value) => new Date(value).toLocaleDateString(),
+                  },
+                  { key: "plate_number", label: "Plate" },
+                  { key: "product", label: "Product" },
+                  { key: "material_centre", label: "Loading Point" },
+                  { key: "loaded_quantity", label: "Loaded" },
+                  { key: "stops_count", label: "Stops" },
+                  { key: "total_bags_offloaded", label: "Delivered" },
+                  {
+                    key: "trip_status",
+                    label: "Status",
+                    render: (value) => (
+                      <span
+                        style={{
+                          padding: "4px 8px",
+                          borderRadius: 12,
+                          fontSize: fontSize.xs,
+                          fontWeight: 600,
+                          background:
+                            value === "Completed"
+                              ? "#f0fdf4"
+                              : value === "In transit"
+                                ? "#eff6ff"
+                                : "#fef3c7",
+                          color: value === "Completed" ? "#16a34a" : value === "In transit" ? "#0070f3" : "#d97706",
+                        }}
+                      >
+                        {value}
+                      </span>
+                    ),
+                  },
+                ]}
+                rows={drillDown.trips}
+                rowKey={(row) => row.trip_id}
+              />
+            )}
+          </ReportModal>
         </div>
       )}
 
-      {/* ── Truck Health ── */}
+      {/* Truck Reports */}
       {!loading && hasLoaded && section === "trucks" && (
         <div>
-          <div style={{ background: "white", border: "1px solid #eee", borderRadius: 12, padding: 24, marginBottom: 24, boxShadow: "0 2px 8px rgba(0,0,0,0.04)" }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
-              <p style={{ margin: 0, fontWeight: "bold", fontSize: 15 }}>Truck Summary</p>
-              <div style={{ display: "flex", gap: 8 }}>
-                <button onClick={() => exportTruckSummary("csv")} style={exportBtn}>Export CSV</button>
-                <button onClick={() => exportTruckSummary("xlsx")} style={exportBtn}>Export Excel</button>
+          {truckSummaries.length === 0 ? (
+            <EmptyState icon="🚗" title="No data available" description="No trucks found in this period." />
+          ) : (
+            <div>
+              {/* Header with View Toggle */}
+            <div style={{ display: "flex", flexDirection: isMobile ? "column" : "row", justifyContent: "space-between", alignItems: isMobile ? "flex-start" : "center", gap: 12, marginBottom: 16 }}>
+              <div>
+                  <h2 style={{ margin: 0, color: "#0f172a", fontSize: fontSize.lg, fontWeight: 600 }}>Truck Summary</h2>
+                  <p style={{ margin: "4px 0 0", color: "#64748b", fontSize: fontSize.sm }}>{truckSummaries.length} trucks</p>
+</div>
+              <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+                  {/* View Toggle */}
+                  <div style={{ display: "flex", background: "white", border: "1px solid #e2e8f0", borderRadius: 8, padding: 4, gap: 0 }}>
+                <button
+                      onClick={() => setViewMode("card")}
+                      style={{
+                        padding: "8px 12px",
+                        background: viewMode === "card" ? "#0070f3" : "transparent",
+                        color: viewMode === "card" ? "white" : "#64748b",
+                        border: "none",
+                        borderRadius: 6,
+                        cursor: "pointer",
+                        fontSize: fontSize.xs,
+                        fontWeight: 600,
+                        minWidth: 44,
+                        height: 40,
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                      }}
+                    >
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M3 3h8v8H3V3zm10 0h8v8h-8V3zM3 13h8v8H3v-8zm10 0h8v8h-8v-8z" />
+                      </svg>
+</button>
+                <button
+                      onClick={() => setViewMode("table")}
+                      style={{
+                        padding: "8px 12px",
+                        background: viewMode === "table" ? "#0070f3" : "transparent",
+                        color: viewMode === "table" ? "white" : "#64748b",
+                        border: "none",
+                        borderRadius: 6,
+                        cursor: "pointer",
+                        fontSize: fontSize.xs,
+                        fontWeight: 600,
+                        minWidth: 44,
+                        height: 40,
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                      }}
+                    >
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M3 4h18v2H3V4zm0 7h18v2H3v-2zm0 7h18v2H3v-2z" />
+                      </svg>
+                    </button>
+                  </div>
+                  <ExportActions onExportCSV={() => exportTruckSummary("csv")} onExportXLSX={() => exportTruckSummary("xlsx")} />
               </div>
             </div>
 
-            <div style={{ overflowX: "auto" }}>
-              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 14 }}>
-                <thead>
-                  <tr style={{ background: "#f0f0f0", textAlign: "left" }}>
-                    <th style={th}>Truck</th>
-                    <th style={th}>Completed Trips</th>
-                    <th style={th}>Maintenance Events</th>
-                    <th style={th}>Total Maintenance</th>
-                    <th style={th}>Fuel Events</th>
-                    <th style={th}>Total Litres</th>
-                    <th style={th}>Total Fuel Cost</th>
-                    <th style={th}>Avg L/Trip</th>
-                    <th style={th}>Detail</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {truckSummaries.map(t => (
-                    <tr key={t.plate_number} style={{ borderBottom: "1px solid #eee" }}>
-                      <td style={td}>
-                        <strong>{t.plate_number}</strong>
-                        {t.kbnl_truck_no && <span style={{ marginLeft: 6, fontSize: 12, color: "#888" }}>· #{t.kbnl_truck_no}</span>}
-                        <br />
-                        <span style={{ fontSize: 12, color: "#888" }}>{t.truck_model}</span>
-                      </td>
-                      <td style={td}>{t.completed_trips}</td>
-                      <td style={td}>
-                        <span style={{ color: t.maintenance_count > 5 ? "#ff4444" : t.maintenance_count > 2 ? "#f5a623" : "#333", fontWeight: t.maintenance_count > 2 ? "bold" : "normal" }}>
-                          {t.maintenance_count}
-                        </span>
-                      </td>
-                      <td style={td}>₦{t.total_maintenance_amount.toLocaleString()}</td>
-                      <td style={td}>{t.fuel_count}</td>
-                      <td style={td}>{t.total_litres.toLocaleString()}L</td>
-                      <td style={td}>₦{t.total_fuel_amount.toLocaleString()}</td>
-                      <td style={td}>{t.avg_litres_per_trip}L</td>
-                      <td style={td}>
+            {/* Card/Table Views */}
+              {viewMode === "card" ? (
+                <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(auto-fill, minmax(320px, 1fr))", gap: 12 }}>
+                  {truckSummaries.map((truck) => (
+                    <ReportCard key={truck.plate_number}>
+                      <div>
+                        <div style={{ marginBottom: 12 }}>
+                      <h3 style={{ margin: 0, color: "#0f172a", fontSize: fontSize.lg, fontWeight: 600 }}>
+                            {truck.plate_number}
+                            {truck.kbnl_truck_no && <span style={{ fontSize: fontSize.sm, color: "#64748b", fontWeight: 400 }}> · #{truck.kbnl_truck_no}</span>}
+                        </h3>
+                        <p style={{ margin: "4px 0 0", color: "#64748b", fontSize: fontSize.sm }}>{truck.truck_model}</p>
+                      </div>
+                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, padding: "12px 0", borderTop: "1px solid #f1f5f9", borderBottom: "1px solid #f1f5f9" }}>
+                          <ReportCardField label="Completed Trips" value={truck.completed_trips} />
+                          <ReportCardField label="Maintenance" value={truck.maintenance_count} />
+                      <ReportCardField label="Total Litres" value={truck.total_litres} />
+                      <ReportCardField label="Avg L/Trip" value={truck.avg_litres_per_trip} />
+                      </div>
                         <button
-                          onClick={() => fetchTruckDrillDown(t)}
-                          style={{ padding: "4px 12px", fontSize: 12, cursor: "pointer", borderRadius: 4, border: "1px solid #0070f3", color: "#0070f3", background: "white" }}
+                          onClick={() => fetchTruckDrillDown(truck)}
+                          style={{
+                            width: "100%",
+                            marginTop: 12,
+                            padding: "10px 14px",
+                            background: "#0070f3",
+                            color: "white",
+                            border: "none",
+                            borderRadius: 8,
+                            cursor: "pointer",
+                            fontWeight: 600,
+                            fontSize: fontSize.md,
+                            minHeight: 40,
+                            transition: "all 0.2s ease",
+                          }}
+                          onMouseEnter={(e) => {
+                            e.currentTarget.style.background = "#0057c7"
+                          }}
+                          onMouseLeave={(e) => {
+                            e.currentTarget.style.background = "#0070f3"
+}}
                         >
                           View Detail
                         </button>
-                      </td>
-                    </tr>
+                      </div>
+                    </ReportCard>
                   ))}
-                </tbody>
-              </table>
-            </div>
+                            </div>
+) : (
+                <DataTable
+                  columns={[
+                    {
+                      key: "plate_number",
+                      label: "Truck",
+                      render: (_value, truck: TruckSummary) => (
+                        <div>
+                          <div style={{ fontWeight: 600, color: "#0f172a" }}>{truck.plate_number}</div>
+                          {truck.kbnl_truck_no && (
+                            <div style={{ fontSize: fontSize.xs, color: "#64748b" }}>#{truck.kbnl_truck_no}</div>
+                          )}
+                          <div style={{ fontSize: fontSize.xs, color: "#64748b" }}>{truck.truck_model}</div>
           </div>
+),
+                    },
+                    { key: "completed_trips", label: "Completed Trips" },
+                    { key: "maintenance_count", label: "Maintenance" },
+                    {
+                      key: "total_maintenance_amount",
+                      label: "Total Maintenance",
+                      render: (value) => `₦${(value as number).toLocaleString()}`,
+                    },
+                    { key: "fuel_count", label: "Fuel Events" },
+                    {
+                      key: "total_litres",
+                      label: "Litres",
+                      render: (value) => `${(value as number).toLocaleString()}L`,
+                    },
+                    {
+                      key: "total_fuel_amount",
+                      label: "Fuel Cost",
+                      render: (value) => `₦${(value as number).toLocaleString()}`,
+                    },
+                    { key: "avg_litres_per_trip", label: "Avg L/Trip" },
+                    {
+                      key: "actions",
+                      label: "Actions",
+                      render: (_value, truck: TruckSummary) => (
+                        <button
+                          onClick={() => fetchTruckDrillDown(truck)}
+                          style={{
+                            padding: "6px 10px",
+                            background: "white",
+                            color: "#0070f3",
+                            border: "1px solid #e2e8f0",
+                            borderRadius: 6,
+                            cursor: "pointer",
+                            fontWeight: 500,
+                            fontSize: fontSize.xs,
+                            transition: "all 0.2s ease",
+                          }}
+                          onMouseEnter={(e) => {
+                            e.currentTarget.style.background = "#eff6ff"
+                          }}
+                          onMouseLeave={(e) => {
+                            e.currentTarget.style.background = "white"
+                          }}
+                        >
+                          View Detail
+                        </button>
+                      ),
+                    },
+                  ]}
+                  rows={truckSummaries}
+                  rowKey={(row) => row.plate_number}
+                />
+              )}
+            </div>
+          )}
 
-          {/* Truck drill-down */}
-          {drillLoading && <p style={{ color: "#888" }}>Loading detail...</p>}
-          {drillDown?.kind === "truck" && !drillLoading && (
-            <div style={{ background: "white", border: "1px solid #eee", borderRadius: 12, padding: 24, boxShadow: "0 2px 8px rgba(0,0,0,0.04)" }}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
+          {/* Truck Detail Modal */}
+          <ReportModal
+            isOpen={drillDown?.kind === "truck" && !drillLoading}
+            onClose={() => setDrillDown(null)}
+            title={`${drillDown?.kind === "truck" ? drillDown.truck.plate_number : ""} — Details`}
+            subtitle={drillDown?.kind === "truck" ? drillDown.truck.truck_model : ""}
+            isMobile={isMobile}
+            actions={
+              drillDown?.kind === "truck" ? (
+                <ExportActions onExportCSV={() => exportTruckDetail("csv")} onExportXLSX={() => exportTruckDetail("xlsx")} />
+              ) : null
+            }
+          >
+            {drillDown?.kind === "truck" && (
                 <div>
-                  <p style={{ margin: 0, fontWeight: "bold", fontSize: 15 }}>
-                    {drillDown.truck.plate_number}{drillDown.truck.kbnl_truck_no ? ` · #${drillDown.truck.kbnl_truck_no}` : ""} — Detail
-                  </p>
-                  <p style={{ margin: "4px 0 0", fontSize: 13, color: "#888" }}>{drillDown.truck.truck_model}</p>
-                </div>
-                <div style={{ display: "flex", gap: 8 }}>
-                  <button onClick={() => exportTruckDetail("csv")} style={exportBtn}>Export CSV</button>
-                  <button onClick={() => exportTruckDetail("xlsx")} style={exportBtn}>Export Excel</button>
+                  {/* Summary Metrics */}
+                <div style={{ marginBottom: 20, padding: "12px 0", borderBottom: "1px solid #e2e8f0" }}>
+                  <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr 1fr" : "repeat(4, 1fr)", gap: 12 }}>
+                    <ReportCardField label="Completed Trips" value={drillDown.truck.completed_trips} />
+                    <ReportCardField label="Total Litres" value={drillDown.truck.total_litres} />
+                <ReportCardField label="Avg L/Trip" value={drillDown.truck.avg_litres_per_trip} />
+                    <ReportCardField label="Maintenance Events" value={drillDown.truck.maintenance_count} />
                 </div>
               </div>
 
-              {/* Maintenance breakdown */}
+              {/* Maintenance Breakdown Pills */}
               {drillDown.truck.maintenance_breakdown.length > 0 && (
                 <div style={{ marginBottom: 20 }}>
-                  <p style={{ fontWeight: "bold", fontSize: 13, marginBottom: 8 }}>Maintenance by Type</p>
-                  <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 16 }}>
-                    {drillDown.truck.maintenance_breakdown.map(b => (
-                      <div key={b.type} style={{ background: "#f9f9f9", border: "1px solid #eee", borderRadius: 8, padding: "8px 14px" }}>
-                        <p style={{ margin: 0, fontSize: 12, color: "#888" }}>{b.type}</p>
-                        <p style={{ margin: "2px 0 0", fontWeight: "bold", fontSize: 13 }}>{b.count}× · ₦{b.amount.toLocaleString()}</p>
+                  <p style={{ margin: "0 0 12px", fontSize: fontSize.xs, color: "#475569", fontWeight: 500, textTransform: "uppercase", letterSpacing: "0.5px" }}>
+Maintenance by Type
+</p>
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                    {drillDown.truck.maintenance_breakdown.map((b) => (
+                      <div
+key={b.type}
+style={{
+                            padding: "6px 12px",
+background: "#f8fafc",
+border: "1px solid #e2e8f0",
+borderRadius: 6,
+                            fontSize: fontSize.xs,
+                          }}
+>
+                        <div style={{ fontWeight: 600, color: "#0f172a" }}>{b.count}×</div>
+                        <div style={{ color: "#64748b", marginTop: 2 }}>{b.type}</div>
                       </div>
                     ))}
                   </div>
                 </div>
               )}
 
-              {/* Maintenance log */}
-              <p style={{ fontWeight: "bold", fontSize: 13, marginBottom: 8 }}>Maintenance Log</p>
-              {drillDown.maintenance.length === 0
-                ? <p style={{ color: "#888", fontSize: 13, marginBottom: 16 }}>No validated maintenance in this period.</p>
-                : (
-                  <div style={{ overflowX: "auto", marginBottom: 24 }}>
-                    <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
-                      <thead>
-                        <tr style={{ background: "#f0f0f0", textAlign: "left" }}>
-                          <th style={th}>Date</th>
-                          <th style={th}>Type</th>
-                          <th style={th}>Location</th>
-                          <th style={th}>Amount</th>
-                          <th style={th}>Officer</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {drillDown.maintenance.map(m => (
-                          <tr key={m.report_id} style={{ borderBottom: "1px solid #eee" }}>
-                            <td style={td}>{new Date(m.reported_at).toLocaleDateString()}</td>
-                            <td style={td}>{m.maintenance_type}</td>
-                            <td style={td}>{m.maintenance_location ?? "—"}</td>
-                            <td style={td}>₦{m.amount.toLocaleString()}</td>
-                            <td style={td}>{m.officer_name}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
+              {/* Maintenance Table */}
+              {drillDown.maintenance.length > 0 && (
+                  <div style={{ marginBottom: 20 }}>
+                    <p style={{ margin: "0 0 12px", fontSize: fontSize.xs, color: "#475569", fontWeight: 500, textTransform: "uppercase", letterSpacing: "0.5px" }}>
+                      Maintenance Log
+                    </p>
+                    <DataTable
+                      columns={[
+                        {
+                          key: "reported_at",
+                          label: "Date",
+                          render: (value) => new Date(value).toLocaleDateString(),
+                        },
+                        { key: "maintenance_type", label: "Type" },
+                        { key: "maintenance_location", label: "Location" },
+                        {
+                          key: "amount",
+                          label: "Amount",
+                          render: (value) => `₦${(value as number).toLocaleString()}`,
+                        },
+                        { key: "officer_name", label: "Officer" },
+                      ]}
+                      rows={drillDown.maintenance}
+                      rowKey={(row) => row.report_id}
+                    />
                   </div>
-                )
-              }
+                )}
 
-              {/* Fuel log */}
-              <p style={{ fontWeight: "bold", fontSize: 13, marginBottom: 8 }}>Fuel Log</p>
-              {drillDown.fuel.length === 0
-                ? <p style={{ color: "#888", fontSize: 13 }}>No validated fuel requests in this period.</p>
-                : (
-                  <div style={{ overflowX: "auto" }}>
-                    <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
-                      <thead>
-                        <tr style={{ background: "#f0f0f0", textAlign: "left" }}>
-                          <th style={th}>Date</th>
-                          <th style={th}>Driver</th>
-                          <th style={th}>Litres</th>
-                          <th style={th}>Amount</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {drillDown.fuel.map(f => (
-                          <tr key={f.request_id} style={{ borderBottom: "1px solid #eee" }}>
-                            <td style={td}>{new Date(f.validated_at).toLocaleDateString()}</td>
-                            <td style={td}>{f.driver_name}</td>
-                            <td style={td}>{f.litres}L</td>
-                            <td style={td}>₦{f.total_amount.toLocaleString()}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                )
-              }
+              {/* Fuel Table */}
+                {drillDown.fuel.length > 0 && (
+                  <div>
+                    <p style={{ margin: "0 0 12px", fontSize: fontSize.xs, color: "#475569", fontWeight: 500, textTransform: "uppercase", letterSpacing: "0.5px" }}>
+                      Fuel Log
+                    </p>
+                    <DataTable
+                      columns={[
+                        {
+                          key: "Confirmed_at",
+                          label: "Date",
+                          render: (value) => new Date(value).toLocaleDateString(),
+                        },
+                        { key: "driver_name", label: "Driver" },
+                        {
+                          key: "litres",
+                          label: "Litres",
+                          render: (value) => `${value}L`,
+                        },
+                        {
+                          key: "total_amount",
+                          label: "Amount",
+                          render: (value) => `₦${(value as number).toLocaleString()}`,
+                        },
+                      ]}
+                      rows={drillDown.fuel}
+                      rowKey={(row) => row.request_id}
+                    />
             </div>
           )}
         </div>
       )}
-
-      {!loading && !hasLoaded && (
-        <div style={{ textAlign: "center", paddingTop: 60, color: "#888" }}>
-          <p style={{ fontSize: 32, marginBottom: 12 }}>📊</p>
-          <p>Select a section and date range, then click Generate Report.</p>
+</ReportModal>
         </div>
       )}
     </div>
   )
 }
-
-const th: React.CSSProperties = { padding: "12px 16px", fontWeight: "bold", fontSize: 13 }
-const td: React.CSSProperties = { padding: "12px 16px" }
-const exportBtn: React.CSSProperties = { padding: "6px 14px", fontSize: 12, cursor: "pointer", borderRadius: 4, border: "1px solid #ddd", background: "white", color: "#333" }

@@ -532,6 +532,8 @@ export default function DriverDashboard() {
       
       <div style={{ maxWidth: maxW, margin: "0 auto", paddingBottom: 80 }}>
 
+        {/* //<TripOfflineIndicator /> */}
+
         {/* ── Header ── */}
         <div style={{
           display: "flex", justifyContent: "space-between", alignItems: "center",
@@ -559,11 +561,9 @@ export default function DriverDashboard() {
               {!isMobile && "Logout"}
             </button>
           </div>
-          <div style={{ padding: isMobile ? "0 16px" : "0 24px" }}>
-            <TripOfflineIndicator />
-          </div>
         </div>
 
+        
         <div style={{ padding: isMobile ? "0 16px" : "0 24px" }}>
 
           {/* ── Dashboard ── */}
@@ -813,7 +813,7 @@ export default function DriverDashboard() {
           {/* ── Active Trip ── */}
           {view === "active-trip" && activeTrip && (
             <div>
-              <button onClick={() => navigateTo("dashboard")} style={{ background: "none", border: "none", color: "#0070f3", cursor: "pointer", marginBottom: 20, padding: 0, fontSize: isMobile ? 15 : 14, display: "flex", alignItems: "center", gap: 4 }}>
+              <button onClick={() => navigateTo("dashboard")} style={{ background: "none", border: "none", color: "#0070f3", cursor: "pointer", marginBottom: 20, padding: 0, fontSize: isMobile ? 16 : 14, display: "flex", alignItems: "center", gap: 4 }}>
                 <Icon icon="mdi:arrow-left" width={18} /> Dashboard
               </button>
               <h2 style={{ marginBottom: 20, color: "#171717", fontSize: isMobile ? 22 : 20 }}>Active Trip</h2>
@@ -884,7 +884,7 @@ export default function DriverDashboard() {
 
               <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
                 {remaining > 0 && (
-                  <button onClick={() => navigateTo("log-stop")} style={fullBtn("#0070f3")}>
+                  <button onClick={() => { window.scrollTo(0, 0); navigateTo("log-stop") }} style={fullBtn("#0070f3")}>
                     <Icon icon="mdi:map-marker-plus" width={18} /> Make a Stop
                   </button>
                 )}
@@ -905,7 +905,9 @@ export default function DriverDashboard() {
           {/* ── Log Stop ── */}
           {view === "log-stop" && activeTrip && (
             <div>
-              <button onClick={() => navigateTo("active-trip")}>Back to Trip</button>
+              <button onClick={() => navigateTo("active-trip")} style= {{ background: "none", border: "none", color: "#0070f3", cursor: "pointer", marginBottom: 20, padding: 0, fontSize: isMobile ? 16 : 14, display: "flex", alignItems: "center", gap: 4 }}>
+                <Icon icon="mdi:arrow-left" width={18} /> Back to Trip
+              </button>
               <StopForm 
                 tripId={activeTrip.trip_id} 
                 loadedQuantity={activeTrip.loaded_quantity}

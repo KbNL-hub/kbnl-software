@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react"
 import { supabase } from "@/lib/supabase"
 import { formatAmount, parseAmount } from "@/lib/formatAmount"
+import ModernInput from "@/components/ModernInput"
 
 type CashOffice = {
   office_id: string
@@ -32,7 +33,39 @@ type ExpenseItem = {
 
 const OFFICES = ["Calabar", "Ikom", "Ogoja", "Uyo"]
 
+// Responsive breakpoint hook
+function useBreakpoint() {
+  const [isDesktop, setIsDesktop] = useState(false)
+  const [isMobile, setIsMobile] = useState(true)
+
+  useEffect(() => {
+    const handleResize = () => {
+      setIsMobile(window.innerWidth < 640)
+      setIsDesktop(window.innerWidth >= 640)
+    }
+
+    handleResize()
+    window.addEventListener("resize", handleResize)
+    return () => window.removeEventListener("resize", handleResize)
+  }, [])
+
+  return { isMobile, isDesktop }
+}
+
+// Fixed typography scale
+const fontSize = {
+  xs: 12,
+  sm: 13,
+  base: 14,
+  md: 15,
+  lg: 16,
+  xl: 20,
+  "2xl": 24,
+  "3xl": 28,
+}
+
 export default function CashTransactions() {
+  const { isMobile, isDesktop } = useBreakpoint()
   const [selectedOffice, setSelectedOffice] = useState<string>("Calabar")
   const [assignedOffice, setAssignedOffice] = useState<string | null>(null)
   const [adminUser, setAdminUser] = useState<any>(null)
@@ -323,37 +356,62 @@ export default function CashTransactions() {
     }
   }
 
+  const inputStyle: React.CSSProperties = {
+    width: "100%",
+    padding: "12px 14px",
+    boxSizing: "border-box",
+    borderRadius: 8,
+    border: "1px solid #e2e8f0",
+    fontSize: fontSize.base,
+    background: "white",
+    color: "#0f172a",
+    minHeight: 48,
+    transition: "border-color 0.2s ease",
+  }
+
+  const textareaStyle: React.CSSProperties = {
+    ...inputStyle,
+    minHeight: 100,
+    resize: "vertical",
+    fontFamily: "'Inter', sans-serif"
+  }
+
   return (
-    <div>
+    <div style={{ minHeight: "100vh", background: "#f8fafc", padding: isMobile ? "16px" : "32px", fontFamily: "'Inter', sans-serif" }}>
       {/* Messages */}
       {message && (
-        <div style={{ padding: "12px 16px", background: "#e6fffa", border: "1px solid #319795", color: "#234e52", borderRadius: 8, marginBottom: 20, fontWeight: "bold" }}>
+        <div style={{ padding: "12px 16px", background: "#f0fdf4", border: "1px solid #bbf7d0", color: "#16a34a", borderRadius: 8, marginBottom: 24, fontSize: fontSize.sm, fontWeight: 500, display: "flex", alignItems: "center", gap: 8 }}>
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
           {message}
         </div>
       )}
 
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24, flexWrap: "wrap", gap: 16 }}>
+      {/* Header */}
+      <div style={{ display: "flex", flexDirection: isMobile ? "column" : "row", justifyContent: "space-between", alignItems: isMobile ? "flex-start" : "center", gap: 16, marginBottom: 32 }}>
         <div>
-          <h2 style={{ margin: 0, fontSize: 24 }}>Cash Transactions</h2>
+          <h1 style={{ margin: 0, color: "#0f172a", fontSize: isMobile ? fontSize["2xl"] : fontSize["3xl"], fontWeight: 700, letterSpacing: "-0.5px" }}>
+            Cash Transactions
+          </h1>
           {assignedOffice ? (
-            <p style={{ margin: "4px 0 0", color: "#666", fontSize: 13 }}>
-              Your assigned office: <strong>{assignedOffice}</strong>{" "}
+            <p style={{ margin: "8px 0 0", color: "#64748b", fontSize: fontSize.base, display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+              Your assigned office: <strong style={{ color: "#0f172a" }}>{assignedOffice}</strong>
               <button 
                 onClick={() => { setNewAssignedOffice(assignedOffice); setShowAssignModal(true); setErrorMsg("") }}
-                style={{ background: "none", border: "none", color: "#0070f3", cursor: "pointer", textDecoration: "underline", padding: 0, fontSize: 13, marginLeft: 8 }}
+                style={{ background: "none", border: "none", color: "#0070f3", cursor: "pointer", textDecoration: "underline", padding: 0, fontSize: fontSize.sm, fontWeight: 500 }}
               >
                 Change Assignment
               </button>
             </p>
           ) : (
-            <p style={{ margin: "4px 0 0", color: "red", fontSize: 13 }}>
-              ⚠️ You have not been assigned an office yet.
+            <p style={{ margin: "8px 0 0", color: "#ef4444", fontSize: fontSize.base, display: "flex", alignItems: "center", gap: 6, fontWeight: 500 }}>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+              You have not been assigned an office yet.
             </p>
           )}
         </div>
 
         {/* Office Selection Pills */}
-        <div style={{ display: "flex", gap: 8, background: "#eee", padding: 4, borderRadius: 8 }}>
+        <div style={{ display: "flex", gap: 6, background: "#f1f5f9", padding: 4, borderRadius: 10, overflowX: "auto", maxWidth: "100%" }}>
           {OFFICES.map(o => (
             <button
               key={o}
@@ -363,12 +421,13 @@ export default function CashTransactions() {
                 border: "none",
                 borderRadius: 6,
                 cursor: "pointer",
-                fontWeight: "bold",
-                fontSize: 13,
-                background: selectedOffice === o ? "#fff" : "transparent",
-                color: selectedOffice === o ? "#111" : "#666",
+                fontWeight: selectedOffice === o ? 600 : 500,
+                fontSize: fontSize.sm,
+                background: selectedOffice === o ? "white" : "transparent",
+                color: selectedOffice === o ? "#0f172a" : "#64748b",
                 boxShadow: selectedOffice === o ? "0 1px 3px rgba(0,0,0,0.1)" : "none",
-                transition: "all 0.2s"
+                transition: "all 0.2s ease",
+                whiteSpace: "nowrap"
               }}
             >
               {o}
@@ -380,35 +439,35 @@ export default function CashTransactions() {
       {/* Office Status Panel */}
       <div style={{
         background: "white",
-        borderRadius: 12,
-        padding: 24,
-        border: "1px solid #eee",
-        boxShadow: "0 2px 8px rgba(0,0,0,0.04)",
-        marginBottom: 24,
+        borderRadius: 16,
+        padding: isMobile ? 20 : 32,
+        border: "1px solid #e2e8f0",
+        boxShadow: "0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03)",
+        marginBottom: 32,
         display: "flex",
         justifyContent: "space-between",
         alignItems: "center",
         flexWrap: "wrap",
-        gap: 20
+        gap: 24,
+        position: "relative",
+        overflow: "hidden"
       }}>
-        <div>
-          <span style={{ fontSize: 13, color: "#888", textTransform: "uppercase", fontWeight: "bold", letterSpacing: 0.5 }}>
+        {/* Subtle background decoration */}
+        <div style={{ position: "absolute", right: -50, top: -50, width: 200, height: 200, background: "radial-gradient(circle, rgba(0,112,243,0.05) 0%, rgba(255,255,255,0) 70%)", borderRadius: "50%", pointerEvents: "none" }} />
+
+        <div style={{ position: "relative", zIndex: 1 }}>
+          <span style={{ display: "flex", alignItems: "center", gap: 8, fontSize: fontSize.xs, color: "#64748b", textTransform: "uppercase", fontWeight: 700, letterSpacing: 0.5, marginBottom: 8 }}>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="12" cy="12" r="2"/><path d="M6 12h.01M18 12h.01"/></svg>
             {selectedOffice} Office Cash Balance
           </span>
-          <h1 style={{ margin: "4px 0 8px", fontSize: 36, color: "#111", display: "flex", alignItems: "baseline", gap: 4 }}>
-            <span style={{ fontSize: 24, color: "#555" }}>₦</span>
+          <h1 style={{ margin: "0 0 12px", fontSize: isMobile ? 32 : 48, color: "#0f172a", fontWeight: 800, display: "flex", alignItems: "baseline", gap: 6, letterSpacing: "-1px" }}>
+            <span style={{ fontSize: isMobile ? 24 : 32, color: "#94a3b8", fontWeight: 600 }}>₦</span>
             {officeBalance.toLocaleString()}
           </h1>
-          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <span style={{
-              width: 8, height: 8, borderRadius: "50%",
-              background: isAssigned ? "#00aa00" : "#d69e2e"
-            }} />
-            <span style={{ fontSize: 13, color: "#555" }}>
-              {isAssigned 
-                ? `You are in charge of ${selectedOffice} cash tx / ${selectedOffice} Office.`
-                : `Read-only access (You are not in charge of ${selectedOffice} Office)`
-              }
+          <div style={{ display: "flex", alignItems: "center", gap: 8, background: isAssigned ? "#f0fdf4" : "#fffbeb", padding: "6px 12px", borderRadius: 20, width: "fit-content" }}>
+            <span style={{ width: 8, height: 8, borderRadius: "50%", background: isAssigned ? "#16a34a" : "#f5a623" }} />
+            <span style={{ fontSize: fontSize.xs, color: isAssigned ? "#16a34a" : "#b45309", fontWeight: 600 }}>
+              {isAssigned ? `Active Assignment` : `Read-only Access`}
             </span>
           </div>
         </div>
@@ -417,54 +476,70 @@ export default function CashTransactions() {
           <button
             onClick={() => { setShowDepositModal(true); setErrorMsg(""); setDepositAmount(""); setDepositNote("") }}
             style={{
-              padding: "12px 24px",
+              padding: "14px 28px",
               background: "#0070f3",
               color: "white",
               border: "none",
-              borderRadius: 8,
+              borderRadius: 12,
               cursor: "pointer",
-              fontWeight: "bold",
-              fontSize: 14,
-              boxShadow: "0 2px 6px rgba(0,112,243,0.3)"
+              fontWeight: 600,
+              fontSize: fontSize.md,
+              boxShadow: "0 4px 14px 0 rgba(0,112,243,0.39)",
+              transition: "transform 0.2s, box-shadow 0.2s",
+              display: "flex",
+              alignItems: "center",
+              gap: 8,
+              width: isMobile ? "100%" : "auto",
+              justifyContent: "center",
+              position: "relative",
+              zIndex: 1
             }}
+            onMouseEnter={e => { e.currentTarget.style.transform = "translateY(-2px)"; e.currentTarget.style.boxShadow = "0 6px 20px rgba(0,112,243,0.4)" }}
+            onMouseLeave={e => { e.currentTarget.style.transform = "translateY(0)"; e.currentTarget.style.boxShadow = "0 4px 14px 0 rgba(0,112,243,0.39)" }}
           >
-            + Deposit Cash
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            Deposit Cash
           </button>
         )}
       </div>
 
       {/* Filters & Expenses List */}
-      <div style={{ background: "white", borderRadius: 12, border: "1px solid #eee", padding: 24 }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20, flexWrap: "wrap", gap: 12 }}>
-          <h3 style={{ margin: 0 }}>Expenses Logs</h3>
+      <div style={{ background: "white", borderRadius: 16, border: "1px solid #e2e8f0", padding: isMobile ? 20 : 32, boxShadow: "0 1px 3px rgba(0,0,0,0.05)" }}>
+        <div style={{ display: "flex", flexDirection: isMobile ? "column" : "row", justifyContent: "space-between", alignItems: isMobile ? "flex-start" : "center", gap: 16, marginBottom: 24 }}>
+          <h3 style={{ margin: 0, color: "#0f172a", fontSize: fontSize.xl, fontWeight: 700 }}>Expense Logs</h3>
 
           {/* Status Filters */}
-          <div style={{ display: "flex", gap: 6 }}>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
             {(["All", "Pending", "Authorised", "Rejected"] as const).map(f => {
-              let bg = "white";
-              let textColor = "#555";
-              let borderColor = "#ddd";
-              if (filter === f) {
-                if (f === "Pending") { bg = "#ebf8ff"; textColor = "#2b6cb0"; borderColor = "#2b6cb0"; }
-                else if (f === "Authorised") { bg = "#f0fff4"; textColor = "#2f855a"; borderColor = "#2f855a"; }
-                else if (f === "Rejected") { bg = "#fff5f5"; textColor = "#c53030"; borderColor = "#c53030"; }
-                else { bg = "#111"; textColor = "white"; borderColor = "#111"; }
+              const isActive = filter === f
+              let bg = "white"
+              let color = "#64748b"
+              let borderColor = "#e2e8f0"
+
+              if (isActive) {
+                if (f === "Pending") { bg = "#eff6ff"; color = "#0070f3"; borderColor = "#0070f3" }
+                else if (f === "Authorised") { bg = "#f0fdf4"; color = "#16a34a"; borderColor = "#16a34a" }
+                else if (f === "Rejected") { bg = "#fef2f2"; color = "#ef4444"; borderColor = "#ef4444" }
+                else { bg = "#0f172a"; color = "white"; borderColor = "#0f172a" }
               }
+
               return (
                 <button
                   key={f}
                   onClick={() => setFilter(f)}
                   style={{
-                    padding: "6px 12px",
+                    padding: "6px 14px",
                     borderRadius: 20,
-                    border: `1px solid ${borderColor}`,
-                    fontSize: 12,
+                    border: `1.5px solid ${borderColor}`,
+                    fontSize: fontSize.xs,
                     cursor: "pointer",
                     background: bg,
-                    color: textColor,
-                    fontWeight: "bold",
+                    color: color,
+                    fontWeight: isActive ? 600 : 500,
                     transition: "all 0.2s ease"
                   }}
+                  onMouseEnter={e => { if (!isActive) { e.currentTarget.style.background = "#f8fafc"; e.currentTarget.style.borderColor = "#cbd5e1" } }}
+                  onMouseLeave={e => { if (!isActive) { e.currentTarget.style.background = "white"; e.currentTarget.style.borderColor = "#e2e8f0" } }}
                 >
                   {f}
                 </button>
@@ -474,83 +549,113 @@ export default function CashTransactions() {
         </div>
 
         {loading ? (
-          <p style={{ color: "#888", textAlign: "center", padding: "40px 0" }}>Loading logs...</p>
+          <div style={{ display: "flex", justifyContent: "center", padding: "64px 0" }}>
+            <div style={{ width: 40, height: 40, borderRadius: "50%", border: "3px solid #e2e8f0", borderTopColor: "#0070f3", animation: "spin 1s linear infinite" }} />
+            <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+          </div>
         ) : filteredExpenses.length === 0 ? (
-          <p style={{ color: "#888", textAlign: "center", padding: "40px 0" }}>No expense logs found for this filter.</p>
+          <div style={{ textAlign: "center", padding: "64px 24px", background: "#f8fafc", borderRadius: 12, border: "1px dashed #cbd5e1" }}>
+            <div style={{ width: 48, height: 48, background: "white", borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 16px", boxShadow: "0 1px 3px rgba(0,0,0,0.1)" }}>
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+            </div>
+            <p style={{ color: "#64748b", fontSize: fontSize.base, margin: 0, fontWeight: 500 }}>No expense logs found for this filter.</p>
+          </div>
         ) : (
-          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
             {filteredExpenses.map(exp => {
               const clerkName = clerksMap[exp.clerk_id] || "Unknown Clerk"
               const isExpanded = expandedExpense === exp.expense_id
               const items = expenseItems[exp.expense_id] || []
 
               // Status styles
-              let statusBg = "#eee"
-              let statusColor = "#666"
-              if (exp.status === "Pending") { statusBg = "#ebf8ff"; statusColor = "#2b6cb0" }
-              else if (exp.status === "Authorised") { statusBg = "#f0fff4"; statusColor = "#2f855a" }
-              else if (exp.status === "Rejected") { statusBg = "#fff5f5"; statusColor = "#c53030" }
+              let statusBg = "#f1f5f9"
+              let statusColor = "#64748b"
+              let statusBorder = "#cbd5e1"
+              
+              if (exp.status === "Pending") { statusBg = "#eff6ff"; statusColor = "#0070f3"; statusBorder = "#bfdbfe" }
+              else if (exp.status === "Authorised") { statusBg = "#f0fdf4"; statusColor = "#16a34a"; statusBorder = "#bbf7d0" }
+              else if (exp.status === "Rejected") { statusBg = "#fef2f2"; statusColor = "#ef4444"; statusBorder = "#fecaca" }
 
               return (
                 <div key={exp.expense_id} style={{
-                  border: "1px solid #eee",
-                  borderRadius: 8,
+                  border: `1px solid ${isExpanded ? "#cbd5e1" : "#e2e8f0"}`,
+                  borderRadius: 12,
                   overflow: "hidden",
-                  transition: "box-shadow 0.2s"
+                  transition: "all 0.2s ease",
+                  boxShadow: isExpanded ? "0 4px 12px rgba(0,0,0,0.05)" : "none",
+                  background: "white"
                 }}>
                   {/* Expense Header Row */}
                   <div 
                     onClick={() => toggleExpand(exp.expense_id)}
                     style={{
-                      padding: "16px 20px",
+                      padding: isMobile ? "16px" : "20px 24px",
                       display: "flex",
                       justifyContent: "space-between",
-                      alignItems: "center",
+                      alignItems: isMobile ? "flex-start" : "center",
                       cursor: "pointer",
-                      background: isExpanded ? "#fcfcfc" : "white",
-                      flexWrap: "wrap",
-                      gap: 12
+                      background: isExpanded ? "#f8fafc" : "white",
+                      flexDirection: isMobile ? "column" : "row",
+                      gap: 16
                     }}
+                    onMouseEnter={e => { if (!isExpanded) e.currentTarget.style.background = "#f8fafc" }}
+                    onMouseLeave={e => { if (!isExpanded) e.currentTarget.style.background = "white" }}
                   >
-                    <div style={{ flex: 1, minWidth: 200 }}>
-                      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                        <span style={{ fontWeight: "bold", color: "#111", fontSize: 15 }}>{exp.title}</span>
+                    <div style={{ flex: 1, minWidth: 200, width: "100%" }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 8, flexWrap: "wrap" }}>
+                        <span style={{ fontWeight: 600, color: "#0f172a", fontSize: fontSize.md }}>{exp.title}</span>
                         <span style={{
-                          padding: "2px 8px", borderRadius: 10, fontSize: 11, fontWeight: "bold",
-                          background: statusBg, color: statusColor
+                          padding: "4px 10px", borderRadius: 16, fontSize: fontSize.xs, fontWeight: 600,
+                          background: statusBg, color: statusColor, border: `1px solid ${statusBorder}`
                         }}>{exp.status}</span>
                       </div>
-                      <div style={{ color: "#777", fontSize: 12, marginTop: 4 }}>
-                        Logged by: <strong>{clerkName}</strong> • {new Date(exp.created_at).toLocaleString()}
+                      <div style={{ display: "flex", alignItems: "center", gap: 8, color: "#64748b", fontSize: fontSize.xs }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                          <div style={{ width: 20, height: 20, borderRadius: "50%", background: "#e2e8f0", color: "#64748b", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, fontWeight: 700 }}>
+                            {clerkName.charAt(0)}
+                          </div>
+                          <strong style={{ color: "#334155" }}>{clerkName}</strong>
+                        </div>
+                        <span>•</span>
+                        <span>{new Date(exp.created_at).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>
                       </div>
                     </div>
 
-                    <div style={{ display: "flex", alignItems: "center", gap: 20 }}>
-                      <div style={{ textAlign: "right" }}>
-                        <div style={{ fontSize: 16, fontWeight: "bold", color: "#111" }}>
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", width: isMobile ? "100%" : "auto", gap: 24 }}>
+                      <div style={{ textAlign: isMobile ? "left" : "right" }}>
+                        <div style={{ fontSize: fontSize.lg, fontWeight: 700, color: "#0f172a", letterSpacing: "-0.5px" }}>
                           ₦{exp.total_amount.toLocaleString()}
                         </div>
-                        <span style={{ fontSize: 11, color: "#888" }}>{isExpanded ? "Hide items ▲" : "View items ▼"}</span>
+                        <span style={{ fontSize: fontSize.xs, color: "#0070f3", fontWeight: 500, display: "flex", alignItems: "center", gap: 4, justifyContent: isMobile ? "flex-start" : "flex-end", marginTop: 4 }}>
+                          {isExpanded ? "Hide Details" : "View Details"}
+                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ transform: isExpanded ? "rotate(180deg)" : "rotate(0deg)", transition: "transform 0.2s" }}><polyline points="6 9 12 15 18 9"/></svg>
+                        </span>
                       </div>
                     </div>
                   </div>
 
                   {/* Expanded Item Details */}
                   {isExpanded && (
-                    <div style={{ padding: "16px 20px", background: "#fcfcfc", borderTop: "1px solid #f1f1f1" }}>
-                      <h4 style={{ margin: "0 0 10px 0", fontSize: 13, color: "#555" }}>Expense Items Breakdown</h4>
+                    <div style={{ padding: isMobile ? "20px 16px" : "24px", background: "white", borderTop: "1px solid #e2e8f0" }}>
+                      <h4 style={{ margin: "0 0 16px 0", fontSize: fontSize.sm, color: "#64748b", fontWeight: 600, textTransform: "uppercase", letterSpacing: 0.5 }}>Expense Breakdown</h4>
+                      
                       {items.length === 0 ? (
-                        <p style={{ color: "#999", fontSize: 12, margin: 0 }}>Loading breakdown...</p>
+                        <div style={{ padding: 20, textAlign: "center", background: "#f8fafc", borderRadius: 8 }}>
+                          <div style={{ width: 24, height: 24, border: "2px solid #cbd5e1", borderTopColor: "#0070f3", borderRadius: "50%", animation: "spin 1s linear infinite", margin: "0 auto 8px" }} />
+                          <p style={{ color: "#94a3b8", fontSize: fontSize.xs, margin: 0 }}>Loading items...</p>
+                        </div>
                       ) : (
-                        <div style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 16 }}>
-                          {items.map(item => (
-                            <div key={item.item_id} style={{ display: "flex", justifyContent: "space-between", fontSize: 13, padding: "4px 0", borderBottom: "1px dashed #eee" }}>
-                              <span style={{ color: "#333" }}>{item.item_name}</span>
-                              <span style={{ fontWeight: "bold", color: "#111" }}>₦{item.amount.toLocaleString()}</span>
-                            </div>
-                          ))}
-                          <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, fontWeight: "bold", paddingTop: 8, borderTop: "1px solid #eee" }}>
-                            <span>Total</span>
+                        <div style={{ background: "#f8fafc", borderRadius: 12, padding: 16, border: "1px solid #e2e8f0" }}>
+                          <div style={{ display: "flex", flexDirection: "column", gap: 12, marginBottom: 16 }}>
+                            {items.map(item => (
+                              <div key={item.item_id} style={{ display: "flex", justifyContent: "space-between", fontSize: fontSize.sm, paddingBottom: 12, borderBottom: "1px dashed #cbd5e1" }}>
+                                <span style={{ color: "#475569", fontWeight: 500 }}>{item.item_name}</span>
+                                <span style={{ fontWeight: 600, color: "#0f172a" }}>₦{item.amount.toLocaleString()}</span>
+                              </div>
+                            ))}
+                          </div>
+                          <div style={{ display: "flex", justifyContent: "space-between", fontSize: fontSize.base, fontWeight: 700, paddingTop: 4 }}>
+                            <span style={{ color: "#0f172a" }}>Total Amount</span>
                             <span style={{ color: "#0070f3" }}>₦{exp.total_amount.toLocaleString()}</span>
                           </div>
                         </div>
@@ -558,16 +663,28 @@ export default function CashTransactions() {
 
                       {/* Resolution details (Authorised/Rejected info) */}
                       {exp.resolved_at && (
-                        <div style={{ background: "#f3f4f6", padding: 12, borderRadius: 6, fontSize: 12, color: "#555", marginTop: 12 }}>
+                        <div style={{ background: exp.status === "Authorised" ? "#f0fdf4" : "#fef2f2", padding: 16, borderRadius: 12, marginTop: 16, border: `1px solid ${exp.status === "Authorised" ? "#bbf7d0" : "#fecaca"}` }}>
                           {exp.status === "Authorised" ? (
-                            <div>
-                              ✅ Authorised by <strong>{adminsMap[exp.authorised_by || ""] || "Admin"}</strong> on {new Date(exp.resolved_at).toLocaleString()}
+                            <div style={{ display: "flex", gap: 12, alignItems: "flex-start" }}>
+                              <div style={{ background: "#16a34a", color: "white", padding: 4, borderRadius: "50%" }}>
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><polyline points="20 6 9 17 4 12"/></svg>
+                              </div>
+                              <div>
+                                <p style={{ margin: "0 0 4px 0", color: "#16a34a", fontSize: fontSize.sm, fontWeight: 600 }}>Authorised</p>
+                                <p style={{ margin: 0, color: "#15803d", fontSize: fontSize.xs }}>By <strong>{adminsMap[exp.authorised_by || ""] || "Admin"}</strong> on {new Date(exp.resolved_at).toLocaleString()}</p>
+                              </div>
                             </div>
                           ) : (
-                            <div>
-                              ❌ Rejected by <strong>{adminsMap[exp.authorised_by || ""] || "Admin"}</strong> on {new Date(exp.resolved_at).toLocaleString()}
-                              <div style={{ marginTop: 4, paddingLeft: 12, borderLeft: "2px solid #ff4444", color: "#c53030", fontWeight: "500" }}>
-                                Reason: "{exp.rejection_reason}"
+                            <div style={{ display: "flex", gap: 12, alignItems: "flex-start" }}>
+                              <div style={{ background: "#ef4444", color: "white", padding: 4, borderRadius: "50%" }}>
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                              </div>
+                              <div style={{ width: "100%" }}>
+                                <p style={{ margin: "0 0 4px 0", color: "#ef4444", fontSize: fontSize.sm, fontWeight: 600 }}>Rejected</p>
+                                <p style={{ margin: "0 0 12px 0", color: "#b91c1c", fontSize: fontSize.xs }}>By <strong>{adminsMap[exp.authorised_by || ""] || "Admin"}</strong> on {new Date(exp.resolved_at).toLocaleString()}</p>
+                                <div style={{ padding: 12, background: "white", borderRadius: 8, border: "1px solid #fecaca", color: "#7f1d1d", fontSize: fontSize.sm, fontStyle: "italic" }}>
+                                  "{exp.rejection_reason}"
+                                </div>
                               </div>
                             </div>
                           )}
@@ -576,32 +693,39 @@ export default function CashTransactions() {
 
                       {/* Pending Action Buttons (Only for assigned office) */}
                       {exp.status === "Pending" && (
-                        <div style={{ display: "flex", gap: 10, marginTop: 16 }}>
+                        <div style={{ marginTop: 20, paddingTop: 20, borderTop: "1px solid #e2e8f0" }}>
                           {isAssigned ? (
-                            <>
+                            <div style={{ display: "flex", gap: 12, flexDirection: isMobile ? "column" : "row" }}>
                               <button
                                 onClick={() => handleAuthorise(exp)}
                                 disabled={submitting}
                                 style={{
-                                  flex: 1, padding: "10px", cursor: "pointer", borderRadius: 8, border: "1px solid #10b981", color: "#10b981", background: "rgba(16,185,129,0.05)", fontSize: 13, fontWeight: "bold", transition: "all 0.2s ease"
+                                  flex: 1, padding: "12px", cursor: submitting ? "not-allowed" : "pointer", borderRadius: 8, border: "1px solid #16a34a", color: "white", background: "#16a34a", fontSize: fontSize.sm, fontWeight: 600, transition: "all 0.2s ease", display: "flex", justifyContent: "center", alignItems: "center", gap: 8, opacity: submitting ? 0.7 : 1
                                 }}
+                                onMouseEnter={e => !submitting && (e.currentTarget.style.background = "#15803d")}
+                                onMouseLeave={e => !submitting && (e.currentTarget.style.background = "#16a34a")}
                               >
-                                Authorise Expense
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="20 6 9 17 4 12"/></svg>
+                                Authorise
                               </button>
                               <button
                                 onClick={() => { setRejectId(exp.expense_id); setRejectionReason(""); setErrorMsg(""); setShowRejectModal(true) }}
                                 disabled={submitting}
                                 style={{
-                                  flex: 1, padding: "10px", cursor: "pointer", borderRadius: 8, border: "1px solid #ef4444", color: "#ef4444", background: "rgba(239,68,68,0.05)", fontSize: 13, fontWeight: "bold", transition: "all 0.2s ease"
+                                  flex: 1, padding: "12px", cursor: submitting ? "not-allowed" : "pointer", borderRadius: 8, border: "1px solid #fecaca", color: "#ef4444", background: "white", fontSize: fontSize.sm, fontWeight: 600, transition: "all 0.2s ease", display: "flex", justifyContent: "center", alignItems: "center", gap: 8, opacity: submitting ? 0.7 : 1
                                 }}
+                                onMouseEnter={e => !submitting && (e.currentTarget.style.background = "#fef2f2")}
+                                onMouseLeave={e => !submitting && (e.currentTarget.style.background = "white")}
                               >
-                                Reject Expense
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                                Reject
                               </button>
-                            </>
+                            </div>
                           ) : (
-                            <span style={{ fontSize: 12, color: "#d69e2e", fontStyle: "italic" }}>
-                              * Only the assigned administrator of {selectedOffice} office can authorise or reject.
-                            </span>
+                            <div style={{ display: "flex", alignItems: "center", gap: 8, padding: 12, background: "#fffbeb", borderRadius: 8, border: "1px solid #fde68a", color: "#b45309", fontSize: fontSize.xs, fontWeight: 500 }}>
+                              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+                              Only the assigned administrator for {selectedOffice} can authorise or reject expenses.
+                            </div>
                           )}
                         </div>
                       )}
@@ -617,32 +741,43 @@ export default function CashTransactions() {
       {/* MODALS */}
       {/* 1. Office Assignment Modal */}
       {showAssignModal && (
-        <div style={modalOverlay}>
-          <div style={modalContent}>
-            <h3 style={{ margin: "0 0 12px 0" }}>Set Office Assignment</h3>
-            <p style={{ color: "#666", fontSize: 13, marginBottom: 20 }}>
-              Please select the office you are in charge of. You will be able to authorise pending expenses and add balance for this office. Other offices will be read-only.
+        <div style={{ position: "fixed", inset: 0, background: "rgba(15, 23, 42, 0.6)", backdropFilter: "blur(4px)", display: "flex", alignItems: isMobile ? "flex-end" : "center", justifyContent: "center", zIndex: 100, padding: isMobile ? 0 : 24, animation: "fadeIn 0.2s ease-out" }}>
+          <style>{`@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } } @keyframes slideUp { from { transform: translateY(20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }`}</style>
+          <div style={{ background: "white", borderRadius: isMobile ? "20px 20px 0 0" : 16, padding: isMobile ? "28px 24px" : 32, width: "100%", maxWidth: 440, boxShadow: "0 25px 50px -12px rgba(0, 0, 0, 0.25)", animation: "slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1)" }}>
+            <h3 style={{ margin: "0 0 12px 0", color: "#0f172a", fontSize: fontSize.xl, fontWeight: 700 }}>Set Office Assignment</h3>
+            <p style={{ color: "#64748b", fontSize: fontSize.sm, marginBottom: 24, lineHeight: 1.5 }}>
+              Select the office you are managing. You will be able to authorise pending expenses and add deposits for this office. Other offices will remain read-only.
             </p>
-            <div style={{ marginBottom: 20 }}>
-              <label style={{ display: "block", fontWeight: "bold", marginBottom: 6, fontSize: 13 }}>Office Location</label>
+            
+            <div style={{ marginBottom: 24 }}>
+              <label style={{ display: "block", fontWeight: 600, color: "#334155", marginBottom: 8, fontSize: fontSize.sm }}>Office Location</label>
               <select
                 value={newAssignedOffice}
                 onChange={(e) => { setNewAssignedOffice(e.target.value); setErrorMsg("") }}
-                style={{ width: "100%", padding: 10, borderRadius: 6, border: "1px solid #ddd" }}
+                style={inputStyle}
               >
-                <option value="">Select office</option>
+                <option value="">Select office...</option>
                 {OFFICES.map(o => (<option key={o} value={o}>{o} Office</option>))}
               </select>
             </div>
-            {errorMsg && <p style={{ color: "red", fontSize: 12, margin: "0 0 12px" }}>{errorMsg}</p>}
-            <div style={{ display: "flex", gap: 8 }}>
+
+            {errorMsg && <div style={{ padding: 12, background: "#fef2f2", borderLeft: "4px solid #ef4444", borderRadius: 4, marginBottom: 20, color: "#b91c1c", fontSize: fontSize.sm }}>{errorMsg}</div>}
+            
+            <div style={{ display: "flex", gap: 12 }}>
               {assignedOffice && (
-                <button onClick={() => setShowAssignModal(false)} style={cancelBtn}>Cancel</button>
+                <button 
+                  onClick={() => setShowAssignModal(false)} 
+                  style={{ flex: 1, padding: "12px", background: "white", border: "1px solid #cbd5e1", color: "#475569", borderRadius: 8, fontWeight: 600, cursor: "pointer", fontSize: fontSize.md, transition: "background 0.2s" }}
+                  onMouseEnter={e => e.currentTarget.style.background = "#f8fafc"}
+                  onMouseLeave={e => e.currentTarget.style.background = "white"}
+                >
+                  Cancel
+                </button>
               )}
               <button
                 onClick={handleSaveAssignment}
                 disabled={submitting || !newAssignedOffice}
-                style={{ ...primaryBtn, flex: 1 }}
+                style={{ flex: 2, padding: "12px", background: "#0070f3", border: "none", color: "white", borderRadius: 8, fontWeight: 600, cursor: submitting || !newAssignedOffice ? "not-allowed" : "pointer", fontSize: fontSize.md, opacity: submitting || !newAssignedOffice ? 0.7 : 1, transition: "opacity 0.2s" }}
               >
                 {submitting ? "Saving..." : "Save Assignment"}
               </button>
@@ -653,40 +788,50 @@ export default function CashTransactions() {
 
       {/* 2. Deposit Cash Modal */}
       {showDepositModal && (
-        <div onClick={() => setShowDepositModal(false)} style={modalOverlay}>
-          <div onClick={(e) => e.stopPropagation()} style={modalContent}>
-            <h3 style={{ margin: "0 0 16px 0" }}>Deposit Cash — {selectedOffice}</h3>
+        <div onClick={() => setShowDepositModal(false)} style={{ position: "fixed", inset: 0, background: "rgba(15, 23, 42, 0.6)", backdropFilter: "blur(4px)", display: "flex", alignItems: isMobile ? "flex-end" : "center", justifyContent: "center", zIndex: 100, padding: isMobile ? 0 : 24, animation: "fadeIn 0.2s ease-out" }}>
+          <div onClick={(e) => e.stopPropagation()} style={{ background: "white", borderRadius: isMobile ? "20px 20px 0 0" : 16, padding: isMobile ? "28px 24px" : 32, width: "100%", maxWidth: 440, boxShadow: "0 25px 50px -12px rgba(0, 0, 0, 0.25)", animation: "slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1)" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24 }}>
+              <h3 style={{ margin: 0, color: "#0f172a", fontSize: fontSize.xl, fontWeight: 700 }}>Deposit Cash</h3>
+              <div style={{ background: "#f1f5f9", padding: "4px 10px", borderRadius: 16, fontSize: fontSize.xs, fontWeight: 600, color: "#475569" }}>{selectedOffice} Office</div>
+            </div>
             
-            <div style={{ marginBottom: 16 }}>
-              <label style={{ display: "block", fontWeight: "bold", marginBottom: 6, fontSize: 13 }}>Amount (₦) *</label>
-              <input
+            <div style={{ marginBottom: 20 }}>
+              <label style={{ display: "block", fontWeight: 600, color: "#334155", marginBottom: 8, fontSize: fontSize.sm }}>Amount (₦) *</label>
+              <ModernInput
                 type="text"
                 placeholder="e.g. 50,000"
                 value={depositAmount}
-                onChange={(e) => { setDepositAmount(formatAmount(e.target.value)); setErrorMsg("") }}
-                style={{ width: "100%", padding: 10, borderRadius: 6, border: "1px solid #ddd", fontSize: 16, fontWeight: "bold" }}
+                onChange={(e: any) => { setDepositAmount(formatAmount(e.target.value)); setErrorMsg("") }}
+                style={{ ...inputStyle, fontSize: fontSize.lg, fontWeight: 600, height: 56 }}
                 autoFocus
               />
             </div>
 
-            <div style={{ marginBottom: 20 }}>
-              <label style={{ display: "block", fontWeight: "bold", marginBottom: 6, fontSize: 13 }}>Notes / Description</label>
+            <div style={{ marginBottom: 24 }}>
+              <label style={{ display: "block", fontWeight: 600, color: "#334155", marginBottom: 8, fontSize: fontSize.sm }}>Notes / Description</label>
               <textarea
                 placeholder="Add a note about this cash injection..."
                 value={depositNote}
                 onChange={(e) => setDepositNote(e.target.value)}
-                style={{ width: "100%", padding: 10, borderRadius: 6, border: "1px solid #ddd", minHeight: 80, fontFamily: "inherit" }}
+                style={textareaStyle}
               />
             </div>
 
-            {errorMsg && <p style={{ color: "red", fontSize: 12, margin: "0 0 12px" }}>{errorMsg}</p>}
+            {errorMsg && <div style={{ padding: 12, background: "#fef2f2", borderLeft: "4px solid #ef4444", borderRadius: 4, marginBottom: 20, color: "#b91c1c", fontSize: fontSize.sm }}>{errorMsg}</div>}
             
-            <div style={{ display: "flex", gap: 8 }}>
-              <button onClick={() => setShowDepositModal(false)} style={cancelBtn}>Cancel</button>
+            <div style={{ display: "flex", gap: 12 }}>
+              <button 
+                onClick={() => setShowDepositModal(false)} 
+                style={{ flex: 1, padding: "12px", background: "white", border: "1px solid #cbd5e1", color: "#475569", borderRadius: 8, fontWeight: 600, cursor: "pointer", fontSize: fontSize.md, transition: "background 0.2s" }}
+                onMouseEnter={e => e.currentTarget.style.background = "#f8fafc"}
+                onMouseLeave={e => e.currentTarget.style.background = "white"}
+              >
+                Cancel
+              </button>
               <button
                 onClick={handleDeposit}
                 disabled={submitting}
-                style={{ ...primaryBtn, flex: 1 }}
+                style={{ flex: 1, padding: "12px", background: "#0070f3", border: "none", color: "white", borderRadius: 8, fontWeight: 600, cursor: submitting ? "not-allowed" : "pointer", fontSize: fontSize.md, opacity: submitting ? 0.7 : 1, transition: "opacity 0.2s" }}
               >
                 {submitting ? "Processing..." : "Complete Deposit"}
               </button>
@@ -697,32 +842,47 @@ export default function CashTransactions() {
 
       {/* 3. Rejection Reason Modal */}
       {showRejectModal && (
-        <div onClick={() => setShowRejectModal(false)} style={modalOverlay}>
-          <div onClick={(e) => e.stopPropagation()} style={modalContent}>
-            <h3 style={{ margin: "0 0 12px 0", color: "#ef4444" }}>Reject Expense</h3>
-            <p style={{ color: "#666", fontSize: 13, marginBottom: 16 }}>
-              Provide a reason for rejecting this expense. This will be shown to the office clerk.
+        <div onClick={() => setShowRejectModal(false)} style={{ position: "fixed", inset: 0, background: "rgba(15, 23, 42, 0.6)", backdropFilter: "blur(4px)", display: "flex", alignItems: isMobile ? "flex-end" : "center", justifyContent: "center", zIndex: 100, padding: isMobile ? 0 : 24, animation: "fadeIn 0.2s ease-out" }}>
+          <div onClick={(e) => e.stopPropagation()} style={{ background: "white", borderRadius: isMobile ? "20px 20px 0 0" : 16, padding: isMobile ? "28px 24px" : 32, width: "100%", maxWidth: 440, boxShadow: "0 25px 50px -12px rgba(0, 0, 0, 0.25)", animation: "slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1)" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 12 }}>
+              <div style={{ width: 40, height: 40, background: "#fef2f2", borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", color: "#ef4444" }}>
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+              </div>
+              <h3 style={{ margin: 0, color: "#0f172a", fontSize: fontSize.xl, fontWeight: 700 }}>Reject Expense</h3>
+            </div>
+            
+            <p style={{ color: "#64748b", fontSize: fontSize.sm, marginBottom: 24, lineHeight: 1.5 }}>
+              Provide a reason for rejecting this expense. This will be visible to the office clerk who submitted the request.
             </p>
 
-            <div style={{ marginBottom: 20 }}>
-              <label style={{ display: "block", fontWeight: "bold", marginBottom: 6, fontSize: 13 }}>Rejection Reason *</label>
+            <div style={{ marginBottom: 24 }}>
+              <label style={{ display: "block", fontWeight: 600, color: "#334155", marginBottom: 8, fontSize: fontSize.sm }}>Rejection Reason *</label>
               <textarea
                 placeholder="Explain why this expense is being rejected..."
                 value={rejectionReason}
                 onChange={(e) => { setRejectionReason(e.target.value); setErrorMsg("") }}
-                style={{ width: "100%", padding: 10, borderRadius: 6, border: "1px solid #ddd", minHeight: 80, fontFamily: "inherit" }}
+                style={textareaStyle}
                 autoFocus
               />
             </div>
 
-            {errorMsg && <p style={{ color: "red", fontSize: 12, margin: "0 0 12px" }}>{errorMsg}</p>}
+            {errorMsg && <div style={{ padding: 12, background: "#fef2f2", borderLeft: "4px solid #ef4444", borderRadius: 4, marginBottom: 20, color: "#b91c1c", fontSize: fontSize.sm }}>{errorMsg}</div>}
 
-            <div style={{ display: "flex", gap: 8 }}>
-              <button onClick={() => setShowRejectModal(false)} style={cancelBtn}>Cancel</button>
+            <div style={{ display: "flex", gap: 12 }}>
+              <button 
+                onClick={() => setShowRejectModal(false)} 
+                style={{ flex: 1, padding: "12px", background: "white", border: "1px solid #cbd5e1", color: "#475569", borderRadius: 8, fontWeight: 600, cursor: "pointer", fontSize: fontSize.md, transition: "background 0.2s" }}
+                onMouseEnter={e => e.currentTarget.style.background = "#f8fafc"}
+                onMouseLeave={e => e.currentTarget.style.background = "white"}
+              >
+                Cancel
+              </button>
               <button
                 onClick={handleReject}
                 disabled={submitting}
-                style={{ ...primaryBtn, background: "#ef4444", flex: 1 }}
+                style={{ flex: 1, padding: "12px", background: "#ef4444", border: "none", color: "white", borderRadius: 8, fontWeight: 600, cursor: submitting ? "not-allowed" : "pointer", fontSize: fontSize.md, opacity: submitting ? 0.7 : 1, transition: "background 0.2s" }}
+                onMouseEnter={e => !submitting && (e.currentTarget.style.background = "#dc2626")}
+                onMouseLeave={e => !submitting && (e.currentTarget.style.background = "#ef4444")}
               >
                 {submitting ? "Rejecting..." : "Reject Expense"}
               </button>
@@ -732,25 +892,4 @@ export default function CashTransactions() {
       )}
     </div>
   )
-}
-
-const modalOverlay: React.CSSProperties = {
-  position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)",
-  display: "flex", alignItems: "center", justifyContent: "center", zIndex: 100
-}
-
-const modalContent: React.CSSProperties = {
-  background: "white", borderRadius: 12, padding: 32,
-  width: 440, maxWidth: "90vw", boxShadow: "0 8px 32px rgba(0,0,0,0.2)"
-}
-
-const primaryBtn: React.CSSProperties = {
-  padding: "10px 0", background: "#0070f3", color: "white",
-  border: "none", borderRadius: 6, cursor: "pointer", fontWeight: "bold",
-  fontSize: 14
-}
-
-const cancelBtn: React.CSSProperties = {
-  flex: 1, padding: "10px 0", background: "white",
-  border: "1px solid #ddd", borderRadius: 6, cursor: "pointer", fontSize: 14
 }

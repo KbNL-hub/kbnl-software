@@ -15,11 +15,63 @@ type ActiveTruck = {
   route_points: string[]
 }
 
+type ViewMode = "card" | "table"
+
+// Responsive breakpoint hook
+function useBreakpoint() {
+  const [isDesktop, setIsDesktop] = useState(false)
+  const [isMobile, setIsMobile] = useState(true)
+
+  useEffect(() => {
+    const handleResize = () => {
+      setIsMobile(window.innerWidth < 640)
+      setIsDesktop(window.innerWidth >= 640)
+    }
+
+    handleResize()
+    window.addEventListener("resize", handleResize)
+    return () => window.removeEventListener("resize", handleResize)
+  }, [])
+
+  return { isMobile, isDesktop }
+}
+
+// Fixed typography scale
+const fontSize = {
+  xs: 12,
+  sm: 13,
+  base: 14,
+  md: 15,
+  lg: 16,
+  xl: 20,
+  "2xl": 24,
+  "3xl": 28
+}
+
+// Pill styles - demure aesthetic
+const getPillStyle = (filter: string, isActive: boolean) => {
+  if (!isActive) {
+    return { bg: "white", textColor: "#64748b", borderColor: "#e2e8f0" }
+  }
+  
+  if (filter === "All") {
+    return { bg: "#111", textColor: "white", borderColor: "#111" }
+  } else if (filter === "In transit") {
+    return { bg: "#ebf8ff", textColor: "#0070f3", borderColor: "#0070f3" }
+  } else if (filter === "On hold") {
+    return { bg: "#fffbeb", textColor: "#f5a623", borderColor: "#f5a623" }
+  }
+  
+  return { bg: "white", textColor: "#64748b", borderColor: "#e2e8f0" }
+}
+
 export default function MonitorTrucks() {
+  const { isMobile, isDesktop } = useBreakpoint()
   const [trucks, setTrucks] = useState<ActiveTruck[]>([])
   const [loading, setLoading] = useState(true)
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null)
   const [filterStatus, setFilterStatus] = useState("All")
+  const [viewMode, setViewMode] = useState<ViewMode>(isMobile ? "card" : "table")
 
   // Route editing
   const [editingRoute, setEditingRoute] = useState<ActiveTruck | null>(null)
@@ -77,6 +129,12 @@ export default function MonitorTrucks() {
     setNewPoint("")
   }
 
+  function closeRouteEditor() {
+    setEditingRoute(null)
+    setNewPoint("")
+    setRoutePoints([])
+  }
+
   function addPoint() {
     const trimmed = newPoint.trim()
     if (!trimmed) return
@@ -96,7 +154,7 @@ export default function MonitorTrucks() {
       .update({ route_points: routePoints })
       .eq("trip_id", editingRoute.trip_id)
     setRouteSaving(false)
-    setEditingRoute(null)
+    closeRouteEditor()
     fetchActiveTrucks()
   }
 
@@ -108,138 +166,398 @@ export default function MonitorTrucks() {
   const statusColor = (status: string) =>
     status === "In transit" ? "#0070f3" : "#f5a623"
 
+  const remainingColor = (remaining: number, loaded: number) => {
+    if (remaining === 0) return "#ef4444"
+    if (remaining < loaded * 0.2) return "#f59e0b"
+    return "#10b981"
+  }
+
   return (
-    <div>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24 }}>
-        <h2 style={{ margin: 0 }}>Monitor Trucks</h2>
-        <div style={{ fontSize: 12, color: "#888", display: "flex", alignItems: "center", gap: 12 }}>
-          {lastUpdated && `Last updated: ${lastUpdated.toLocaleTimeString()}`}
+    <div style={{ minHeight: "100vh", background: "#f8fafc", padding: isMobile ? "16px" : "32px", fontFamily: "'Inter', sans-serif" }}>
+      {/* Header Section */}
+      <div style={{ display: "flex", flexDirection: isMobile ? "column" : "row", justifyContent: "space-between", alignItems: isMobile ? "flex-start" : "center", gap: 16, marginBottom: 24 }}>
+        <div>
+          <h1 style={{ margin: 0, color: "#0f172a", fontSize: isMobile ? fontSize["2xl"] : fontSize["3xl"], fontWeight: 700, letterSpacing: "-0.5px" }}>
+            Monitor Trucks
+          </h1>
+          <p style={{ margin: "8px 0 0", color: "#64748b", fontSize: fontSize.base }}>
+            Track active trucks and manage routes in real-time.
+          </p>
+        </div>
+
+        <div style={{ display: "flex", alignItems: "center", gap: 12, width: isMobile ? "100%" : "auto" }}>
+          {/* View Toggle */}
+          {trucks.length > 0 && (
+            <div style={{ display: "flex", background: "white", border: "1px solid #e2e8f0", borderRadius: 8, padding: 4, gap: 0 }}>
+              <button
+                onClick={() => setViewMode("card")}
+                style={{
+                  padding: "8px 12px",
+                  background: viewMode === "card" ? "#0070f3" : "transparent",
+                  color: viewMode === "card" ? "white" : "#64748b",
+                  border: "none",
+                  borderRadius: 6,
+                  cursor: "pointer",
+                  fontSize: fontSize.xs,
+                  fontWeight: 600,
+                  minWidth: 44,
+                  height: 40,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center"
+                }}
+                title="Card view"
+              >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M3 3h8v8H3V3zm10 0h8v8h-8V3zM3 13h8v8H3v-8zm10 0h8v8h-8v-8z"/></svg>
+              </button>
+              <button
+                onClick={() => setViewMode("table")}
+                style={{
+                  padding: "8px 12px",
+                  background: viewMode === "table" ? "#0070f3" : "transparent",
+                  color: viewMode === "table" ? "white" : "#64748b",
+                  border: "none",
+                  borderRadius: 6,
+                  cursor: "pointer",
+                  fontSize: fontSize.xs,
+                  fontWeight: 600,
+                  minWidth: 44,
+                  height: 40,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center"
+                }}
+                title="Table view"
+              >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M3 4h18v2H3V4zm0 7h18v2H3v-2zm0 7h18v2H3v-2z"/></svg>
+              </button>
+            </div>
+          )}
+
+          {/* Refresh Button */}
           <button
             onClick={fetchActiveTrucks}
-            style={{ padding: "4px 12px", fontSize: 12, cursor: "pointer", borderRadius: 4, border: "1px solid #ddd", background: "white" }}
+            style={{
+              padding: "8px 12px",
+              background: "white",
+              color: "#64748b",
+              border: "1px solid #e2e8f0",
+              borderRadius: 8,
+              cursor: "pointer",
+              fontSize: fontSize.xs,
+              fontWeight: 500,
+              minHeight: 40,
+              minWidth: 40,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              transition: "all 0.2s"
+            }}
+            onMouseEnter={e => { e.currentTarget.style.background = "#f8fafc"; e.currentTarget.style.borderColor = "#cbd5e1" }}
+            onMouseLeave={e => { e.currentTarget.style.background = "white"; e.currentTarget.style.borderColor = "#e2e8f0" }}
+            title="Refresh"
           >
-            Refresh
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36M20.49 15a9 9 0 0 1-14.85 3.36"/></svg>
           </button>
         </div>
       </div>
 
-      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 16 }}>
-        {filterOptions.map(option => (
-          <button
-            key={option}
-            onClick={() => setFilterStatus(option)}
-            style={{
-              padding: "6px 14px", borderRadius: 20, fontSize: 13, cursor: "pointer",
-              border: "1px solid #ddd",
-              background: filterStatus === option ? "#0070f3" : "white",
-              color: filterStatus === option ? "white" : "#333",
-              fontWeight: filterStatus === option ? "bold" : "normal"
-            }}
-          >
-            {option}
-          </button>
-        ))}
+      {/* Last Updated */}
+      {lastUpdated && (
+        <p style={{ margin: "0 0 20px 0", color: "#94a3b8", fontSize: fontSize.xs }}>
+          Last updated: {lastUpdated.toLocaleTimeString()}
+        </p>
+      )}
+
+      {/* Filter Pills */}
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 24 }}>
+        {filterOptions.map(option => {
+          const isActive = filterStatus === option
+          const pill = getPillStyle(option, isActive)
+          return (
+            <button
+              key={option}
+              onClick={() => setFilterStatus(option)}
+              style={{
+                padding: "8px 14px",
+                borderRadius: 20,
+                fontSize: fontSize.sm,
+                cursor: "pointer",
+                border: `1.5px solid ${pill.borderColor}`,
+                background: pill.bg,
+                color: pill.textColor,
+                fontWeight: isActive ? 600 : 500,
+                transition: "all 0.2s"
+              }}
+              onMouseEnter={e => { if (!isActive) { e.currentTarget.style.background = "#f8fafc"; e.currentTarget.style.borderColor = "#cbd5e1" } }}
+              onMouseLeave={e => { if (!isActive) { e.currentTarget.style.background = "white"; e.currentTarget.style.borderColor = "#e2e8f0" } }}
+            >
+              {option}
+            </button>
+          )
+        })}
       </div>
 
-      {loading && <p style={{ color: "#888" }}>Loading...</p>}
-      {!loading && trucks.length === 0 && <p style={{ color: "#888" }}>No trucks currently active.</p>}
-
-      {!loading && trucks.length > 0 && (
-        <div style={{ overflowX: "auto" }}>
-          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 14 }}>
-            <thead>
-              <tr style={{ background: "#f0f0f0", textAlign: "left" }}>
-                <th style={th}>Truck</th>
-                <th style={th}>Driver</th>
-                <th style={th}>Phone</th>
-                <th style={th}>Loaded</th>
-                <th style={th}>Remaining</th>
-                <th style={th}>Status</th>
-                <th style={th}>Route</th>
-                <th style={th}>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filteredTrucks.map(truck => (
-                <tr key={truck.trip_id} style={{ borderBottom: "1px solid #eee" }}>
-                  <td style={td}>
-                    <strong>{truck.plate_number}</strong>
-                    {truck.kbnl_truck_no && (
-                      <span style={{ marginLeft: 6, fontSize: 12, color: "#888" }}>· #{truck.kbnl_truck_no}</span>
-                    )}
-                  </td>
-                  <td style={td}>{truck.driver_name}</td>
-                  <td style={td}>{truck.driver_phone}</td>
-                  <td style={td}>{truck.loaded_quantity} bags</td>
-                  <td style={td}>
+      {/* Content Section */}
+      {loading ? (
+        <div style={{ display: "flex", justifyContent: "center", padding: "64px 0" }}>
+          <div style={{ width: 40, height: 40, borderRadius: "50%", border: "3px solid #e2e8f0", borderTopColor: "#0070f3", animation: "spin 1s linear infinite" }} />
+          <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+        </div>
+      ) : filteredTrucks.length === 0 ? (
+        <div style={{ textAlign: "center", padding: "64px 24px", background: "white", borderRadius: 12, border: "1px solid #e2e8f0", boxShadow: "0 1px 3px rgba(0, 0, 0, 0.05)" }}>
+          <div style={{ width: 64, height: 64, background: "#f1f5f9", borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 16px" }}>
+            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2"/></svg>
+          </div>
+          <h3 style={{ margin: "0 0 8px", color: "#0f172a", fontSize: fontSize.xl, fontWeight: 600 }}>No trucks found</h3>
+          <p style={{ color: "#64748b", fontSize: fontSize.base, margin: 0 }}>
+            {filterStatus === "All" ? "No trucks are currently active." : `No trucks with status "${filterStatus}".`}
+          </p>
+        </div>
+      ) : (
+        <>
+          {/* Card View */}
+          {viewMode === "card" && (
+            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+              {filteredTrucks.map((truck) => (
+                <div key={truck.trip_id} style={{ background: "white", borderRadius: 12, padding: 16, border: "1px solid #e2e8f0", boxShadow: "0 1px 3px rgba(0, 0, 0, 0.05)", transition: "all 0.2s ease" }} onMouseEnter={e => { e.currentTarget.style.boxShadow = "0 4px 12px rgba(0, 0, 0, 0.08)"; e.currentTarget.style.borderColor = "#cbd5e1" }} onMouseLeave={e => { e.currentTarget.style.boxShadow = "0 1px 3px rgba(0, 0, 0, 0.05)"; e.currentTarget.style.borderColor = "#e2e8f0" }}>
+                  {/* Header with truck info and status */}
+                  <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12, marginBottom: 12 }}>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+                        <h3 style={{ margin: 0, color: "#0f172a", fontSize: fontSize.lg, fontWeight: 600 }}>{truck.plate_number}</h3>
+                        {truck.kbnl_truck_no && (
+                          <span style={{ color: "#94a3b8", fontSize: fontSize.xs }}>· #{truck.kbnl_truck_no}</span>
+                        )}
+                      </div>
+                      <p style={{ margin: 0, color: "#64748b", fontSize: fontSize.sm }}>{truck.driver_name}</p>
+                    </div>
                     <span style={{
-                      fontWeight: "bold",
-                      color: truck.remaining === 0 ? "red" : truck.remaining < truck.loaded_quantity * 0.2 ? "orange" : "green"
-                    }}>
-                      {truck.remaining} bags
-                    </span>
-                  </td>
-                  <td style={td}>
-                    <span style={{
-                      padding: "4px 10px", borderRadius: 12, fontSize: 12, fontWeight: "bold",
-                      background: statusColor(truck.trip_status) + "22",
-                      color: statusColor(truck.trip_status)
+                      padding: "6px 12px",
+                      borderRadius: 16,
+                      fontSize: fontSize.xs,
+                      fontWeight: 600,
+                      background: truck.trip_status === "In transit" ? "#ebf8ff" : "#fffbeb",
+                      color: statusColor(truck.trip_status),
+                      border: `1.5px solid ${statusColor(truck.trip_status)}`,
+                      whiteSpace: "nowrap"
                     }}>
                       {truck.trip_status}
                     </span>
-                  </td>
-                  <td style={td}>
-                    {truck.route_points.length > 0
-                      ? <span style={{ fontSize: 12, color: "#555" }}>{truck.route_points.join(" → ")}</span>
-                      : <span style={{ fontSize: 12, color: "#bbb" }}>No route set</span>
-                    }
-                  </td>
-                  <td style={td}>
-                    <button
-                      onClick={() => openRouteEditor(truck)}
-                      style={{
-                        padding: "6px 12px", cursor: "pointer", borderRadius: 4,
-                        border: "1px solid #0070f3", color: "#0070f3",
-                        background: "white", fontSize: 12
-                      }}
-                    >
-                      {truck.route_points.length > 0 ? "Edit Route" : "Set Route"}
-                    </button>
-                  </td>
-                </tr>
+                  </div>
+
+                  {/* Load info */}
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 12, padding: "12px 0", borderTop: "1px solid #f1f5f9", borderBottom: "1px solid #f1f5f9" }}>
+                    <div>
+                      <p style={{ margin: "0 0 4px 0", color: "#94a3b8", fontSize: fontSize.xs }}>Loaded</p>
+                      <p style={{ margin: 0, color: "#0f172a", fontSize: fontSize.lg, fontWeight: 600 }}>{truck.loaded_quantity} bags</p>
+                    </div>
+                    <div>
+                      <p style={{ margin: "0 0 4px 0", color: "#94a3b8", fontSize: fontSize.xs }}>Remaining</p>
+                      <p style={{ margin: 0, color: remainingColor(truck.remaining, truck.loaded_quantity), fontSize: fontSize.lg, fontWeight: 600 }}>{truck.remaining} bags</p>
+                    </div>
+                  </div>
+
+                  {/* Route and Phone */}
+                  <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 12 }}>
+                    <div>
+                      <p style={{ margin: "0 0 4px 0", color: "#94a3b8", fontSize: fontSize.xs }}>Route</p>
+                      {truck.route_points.length > 0 ? (
+                        <p style={{ margin: 0, color: "#0f172a", fontSize: fontSize.sm, wordBreak: "break-word" }}>{truck.route_points.join(" → ")}</p>
+                      ) : (
+                        <p style={{ margin: 0, color: "#cbd5e1", fontSize: fontSize.sm, fontStyle: "italic" }}>No route set</p>
+                      )}
+                    </div>
+                    <div>
+                      <p style={{ margin: "0 0 4px 0", color: "#94a3b8", fontSize: fontSize.xs }}>Driver Contact</p>
+                      <p style={{ margin: 0, color: "#0f172a", fontSize: fontSize.sm }}>{truck.driver_phone}</p>
+                    </div>
+                  </div>
+
+                  {/* Route Action Button */}
+                  <button
+                    onClick={() => openRouteEditor(truck)}
+                    style={{
+                      width: "100%",
+                      padding: "10px 14px",
+                      background: "#0070f3",
+                      color: "white",
+                      border: "none",
+                      borderRadius: 8,
+                      cursor: "pointer",
+                      fontSize: fontSize.md,
+                      fontWeight: 600,
+                      transition: "all 0.2s",
+                      minHeight: 40
+                    }}
+                    onMouseEnter={e => e.currentTarget.style.opacity = "0.9"}
+                    onMouseLeave={e => e.currentTarget.style.opacity = "1"}
+                  >
+                    {truck.route_points.length > 0 ? "Edit Route" : "Set Route"}
+                  </button>
+                </div>
               ))}
-            </tbody>
-          </table>
-        </div>
+            </div>
+          )}
+
+          {/* Table View */}
+          {viewMode === "table" && (
+            <div style={{ background: "white", borderRadius: 12, border: "1px solid #e2e8f0", boxShadow: "0 1px 3px rgba(0, 0, 0, 0.05)", overflowX: "auto" }}>
+              <table style={{ width: "100%", borderCollapse: "collapse", textAlign: "left" }}>
+                <thead>
+                  <tr style={{ background: "#f8fafc", borderBottom: "1px solid #e2e8f0" }}>
+                    <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: fontSize.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px" }}>Truck</th>
+                    <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: fontSize.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px" }}>Driver</th>
+                    <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: fontSize.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px" }}>Contact</th>
+                    <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: fontSize.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px" }}>Loaded</th>
+                    <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: fontSize.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px" }}>Remaining</th>
+                    <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: fontSize.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px" }}>Status</th>
+                    <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: fontSize.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px" }}>Route</th>
+                    <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: fontSize.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px", textAlign: "right" }}>Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredTrucks.map((truck, idx) => (
+                    <tr key={truck.trip_id} style={{ borderBottom: idx === filteredTrucks.length - 1 ? "none" : "1px solid #e2e8f0", transition: "background 0.2s ease" }} onMouseEnter={e => e.currentTarget.style.background = "#f8fafc"} onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
+                      <td style={{ padding: "12px 16px" }}>
+                        <strong style={{ color: "#0f172a", fontSize: fontSize.base }}>{truck.plate_number}</strong>
+                        {truck.kbnl_truck_no && (
+                          <div style={{ fontSize: fontSize.xs, color: "#94a3b8", marginTop: 2 }}>#{truck.kbnl_truck_no}</div>
+                        )}
+                      </td>
+                      <td style={{ padding: "12px 16px", color: "#0f172a", fontSize: fontSize.base }}>{truck.driver_name}</td>
+                      <td style={{ padding: "12px 16px", color: "#64748b", fontSize: fontSize.sm }}>{truck.driver_phone}</td>
+                      <td style={{ padding: "12px 16px", color: "#0f172a", fontSize: fontSize.base, fontWeight: 500 }}>{truck.loaded_quantity}</td>
+                      <td style={{ padding: "12px 16px", color: remainingColor(truck.remaining, truck.loaded_quantity), fontSize: fontSize.base, fontWeight: 600 }}>{truck.remaining}</td>
+                      <td style={{ padding: "12px 16px" }}>
+                        <span style={{
+                          padding: "6px 10px",
+                          borderRadius: 14,
+                          fontSize: fontSize.xs,
+                          fontWeight: 600,
+                          background: truck.trip_status === "In transit" ? "#ebf8ff" : "#fffbeb",
+                          color: statusColor(truck.trip_status),
+                          border: `1.5px solid ${statusColor(truck.trip_status)}`
+                        }}>
+                          {truck.trip_status}
+                        </span>
+                      </td>
+                      <td style={{ padding: "12px 16px", color: truck.route_points.length > 0 ? "#0f172a" : "#cbd5e1", fontSize: fontSize.sm }}>
+                        {truck.route_points.length > 0 ? truck.route_points.join(" → ") : "No route"}
+                      </td>
+                      <td style={{ padding: "12px 16px", textAlign: "right" }}>
+                        <button
+                          onClick={() => openRouteEditor(truck)}
+                          style={{
+                            padding: "6px 10px",
+                            cursor: "pointer",
+                            borderRadius: 6,
+                            border: "1.5px solid #0070f3",
+                            color: "#0070f3",
+                            background: "#f0f7ff",
+                            fontSize: fontSize.sm,
+                            fontWeight: 500,
+                            transition: "all 0.2s",
+                            minHeight: 32,
+                            minWidth: 32,
+                            display: "inline-flex",
+                            alignItems: "center",
+                            justifyContent: "center"
+                          }}
+                          onMouseEnter={e => { e.currentTarget.style.background = "#e0efff" }}
+                          onMouseLeave={e => { e.currentTarget.style.background = "#f0f7ff" }}
+                        >
+                          Route
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </>
       )}
 
       {/* Route Editor Modal */}
       {editingRoute && (
         <div
-          onClick={() => setEditingRoute(null)}
-          style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 100 }}
+          onClick={closeRouteEditor}
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(15, 23, 42, 0.6)",
+            backdropFilter: "blur(4px)",
+            display: "flex",
+            alignItems: isMobile ? "flex-end" : "center",
+            justifyContent: "center",
+            zIndex: 100,
+            padding: isMobile ? 0 : 24,
+            animation: "fadeIn 0.2s ease-out"
+          }}
         >
+          <style>{`@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } } @keyframes slideUp { from { transform: translateY(20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }`}</style>
           <div
             onClick={e => e.stopPropagation()}
-            style={{ background: "white", borderRadius: 12, padding: 32, width: 440, maxWidth: "90vw", maxHeight: "85vh", overflowY: "auto", boxShadow: "0 8px 32px rgba(0,0,0,0.2)" }}
+            style={{
+              background: "white",
+              borderRadius: isMobile ? "20px 20px 0 0" : 12,
+              padding: isMobile ? "28px 20px" : 32,
+              width: "100%",
+              maxWidth: 440,
+              maxHeight: isMobile ? "90vh" : "auto",
+              overflowY: "auto",
+              boxShadow: "0 25px 50px -12px rgba(0, 0, 0, 0.25)",
+              animation: "slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1)"
+            }}
           >
-            <h3 style={{ marginBottom: 4 }}>Set Route</h3>
-            <p style={{ color: "#888", fontSize: 13, marginBottom: 20 }}>
-              {editingRoute.plate_number}{editingRoute.kbnl_truck_no ? ` · #${editingRoute.kbnl_truck_no}` : ""}
-            </p>
+            {/* Header */}
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 24 }}>
+              <div>
+                <h3 style={{ margin: "0 0 4px 0", color: "#0f172a", fontSize: fontSize.xl, fontWeight: 700 }}>
+                  {editingRoute.route_points.length > 0 ? "Edit Route" : "Set Route"}
+                </h3>
+                <p style={{ margin: 0, color: "#94a3b8", fontSize: fontSize.sm }}>
+                  {editingRoute.plate_number}{editingRoute.kbnl_truck_no ? ` · #${editingRoute.kbnl_truck_no}` : ""}
+                </p>
+              </div>
+              <button
+                onClick={closeRouteEditor}
+                style={{
+                  background: "none",
+                  border: "none",
+                  color: "#94a3b8",
+                  cursor: "pointer",
+                  padding: 0,
+                  width: 32,
+                  height: 32,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  transition: "color 0.2s",
+                  flexShrink: 0
+                }}
+                onMouseEnter={e => e.currentTarget.style.color = "#64748b"}
+                onMouseLeave={e => e.currentTarget.style.color = "#94a3b8"}
+              >
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+              </button>
+            </div>
 
-            {/* Current points */}
+            {/* Current route points */}
             {routePoints.length > 0 && (
-              <div style={{ marginBottom: 16 }}>
-                <p style={{ fontWeight: "bold", fontSize: 13, marginBottom: 8 }}>Route Points</p>
+              <div style={{ marginBottom: 20 }}>
+                <label style={{ fontWeight: 600, display: "block", marginBottom: 10, color: "#475569", fontSize: fontSize.sm }}>Route Points</label>
                 <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                   {routePoints.map((point, i) => (
-                    <div key={i} style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 12px", background: "#f9f9f9", borderRadius: 6, border: "1px solid #eee" }}>
-                      <span style={{ fontSize: 12, color: "#aaa", minWidth: 20 }}>{i + 1}.</span>
-                      <span style={{ flex: 1, fontSize: 14 }}>{point}</span>
+                    <div key={i} style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 12px", background: "#f8fafc", borderRadius: 8, border: "1px solid #e2e8f0", transition: "all 0.2s" }} onMouseEnter={e => { e.currentTarget.style.background = "#f1f5f9"; e.currentTarget.style.borderColor = "#cbd5e1" }} onMouseLeave={e => { e.currentTarget.style.background = "#f8fafc"; e.currentTarget.style.borderColor = "#e2e8f0" }}>
+                      <span style={{ fontSize: fontSize.xs, color: "#94a3b8", fontWeight: 600, minWidth: 20 }}>{i + 1}.</span>
+                      <span style={{ flex: 1, fontSize: fontSize.base, color: "#0f172a" }}>{point}</span>
                       <button
                         onClick={() => removePoint(i)}
-                        style={{ background: "none", border: "none", cursor: "pointer", color: "#ff4444", fontSize: 16, lineHeight: 1 }}
+                        style={{ background: "none", border: "none", cursor: "pointer", color: "#ef4444", fontSize: 18, lineHeight: 1, padding: 0, display: "flex", alignItems: "center", justifyContent: "center", width: 24, height: 24, transition: "color 0.2s" }}
+                        onMouseEnter={e => e.currentTarget.style.color = "#dc2626"}
+                        onMouseLeave={e => e.currentTarget.style.color = "#ef4444"}
                       >
                         ✕
                       </button>
@@ -247,46 +565,98 @@ export default function MonitorTrucks() {
                   ))}
                 </div>
                 {routePoints.length > 1 && (
-                  <p style={{ fontSize: 12, color: "#888", marginTop: 8 }}>
+                  <p style={{ fontSize: fontSize.xs, color: "#94a3b8", marginTop: 8, margin: "8px 0 0 0" }}>
                     {routePoints.join(" → ")}
                   </p>
                 )}
               </div>
             )}
 
-            {/* Add point */}
-            <div style={{ marginBottom: 24 }}>
-              <label style={{ fontWeight: "bold", display: "block", marginBottom: 6, fontSize: 14 }}>Add a Point</label>
+            {/* Add point section */}
+            <div style={{ marginBottom: 24, paddingBottom: 20, borderBottom: "1px solid #e2e8f0" }}>
+              <label style={{ fontWeight: 600, display: "block", marginBottom: 8, color: "#475569", fontSize: fontSize.sm }}>Add a Point</label>
               <div style={{ display: "flex", gap: 8 }}>
                 <input
                   type="text"
-                  placeholder="e.g. Ikom"
+                  placeholder="e.g. Ikom, Calabar, Ogoja"
                   value={newPoint}
                   onChange={e => setNewPoint(e.target.value)}
                   onKeyDown={e => { if (e.key === "Enter") addPoint() }}
-                  style={{ flex: 1, padding: 10, borderRadius: 6, border: "1px solid #ddd", fontSize: 14 }}
+                  style={{
+                    flex: 1,
+                    padding: "12px 14px",
+                    borderRadius: 8,
+                    border: "1px solid #e0e0e0",
+                    fontSize: fontSize.base,
+                    background: "white",
+                    color: "#171717",
+                    minHeight: 40,
+                    transition: "border-color 0.2s ease",
+                    boxSizing: "border-box"
+                  }}
                   autoFocus
                 />
                 <button
                   onClick={addPoint}
-                  style={{ padding: "10px 16px", background: "#0070f3", color: "white", border: "none", borderRadius: 6, cursor: "pointer", fontWeight: "bold" }}
+                  style={{
+                    padding: "10px 16px",
+                    background: "#0070f3",
+                    color: "white",
+                    border: "none",
+                    borderRadius: 8,
+                    cursor: "pointer",
+                    fontWeight: 600,
+                    fontSize: fontSize.md,
+                    minHeight: 40,
+                    transition: "opacity 0.2s"
+                  }}
+                  onMouseEnter={e => e.currentTarget.style.opacity = "0.9"}
+                  onMouseLeave={e => e.currentTarget.style.opacity = "1"}
                 >
                   Add
                 </button>
               </div>
             </div>
 
-            <div style={{ display: "flex", gap: 8 }}>
+            {/* Action buttons */}
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
               <button
-                onClick={() => setEditingRoute(null)}
-                style={{ flex: 1, padding: "10px 0", background: "white", border: "1px solid #ddd", borderRadius: 6, cursor: "pointer" }}
+                onClick={closeRouteEditor}
+                style={{
+                  padding: "12px 16px",
+                  background: "white",
+                  color: "#475569",
+                  border: "1px solid #cbd5e1",
+                  borderRadius: 8,
+                  cursor: "pointer",
+                  fontWeight: 600,
+                  fontSize: fontSize.md,
+                  minHeight: 44,
+                  transition: "all 0.2s"
+                }}
+                onMouseEnter={e => { e.currentTarget.style.background = "#f8fafc"; e.currentTarget.style.borderColor = "#0070f3"; e.currentTarget.style.color = "#0070f3" }}
+                onMouseLeave={e => { e.currentTarget.style.background = "white"; e.currentTarget.style.borderColor = "#cbd5e1"; e.currentTarget.style.color = "#475569" }}
               >
                 Cancel
               </button>
               <button
                 onClick={saveRoute}
                 disabled={routeSaving}
-                style={{ flex: 1, padding: "10px 0", background: "#0070f3", color: "white", border: "none", borderRadius: 6, cursor: routeSaving ? "not-allowed" : "pointer", fontWeight: "bold" }}
+                style={{
+                  padding: "12px 16px",
+                  background: "#0070f3",
+                  color: "white",
+                  border: "none",
+                  borderRadius: 8,
+                  cursor: routeSaving ? "not-allowed" : "pointer",
+                  fontWeight: 600,
+                  fontSize: fontSize.md,
+                  opacity: routeSaving ? 0.7 : 1,
+                  minHeight: 44,
+                  transition: "opacity 0.2s"
+                }}
+                onMouseEnter={e => { if (!routeSaving) e.currentTarget.style.opacity = "0.9" }}
+                onMouseLeave={e => { if (!routeSaving) e.currentTarget.style.opacity = "1" }}
               >
                 {routeSaving ? "Saving..." : "Save Route"}
               </button>
@@ -297,6 +667,3 @@ export default function MonitorTrucks() {
     </div>
   )
 }
-
-const th: React.CSSProperties = { padding: "12px 16px", fontWeight: "bold", fontSize: 13 }
-const td: React.CSSProperties = { padding: "12px 16px" }
