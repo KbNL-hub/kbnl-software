@@ -518,9 +518,9 @@ setDrillDown(null)
 borderRadius: 20,
 fontSize: fontSize.sm,
 cursor: "pointer",
-              border: section === s ? "1.5px solid #0070f3" : "1.5px solid #e2e8f0",
-              background: section === s ? "#eff6ff" : "white",
-              color: section === s ? "#0070f3" : "#64748b",
+              border: section === s ? "" : "1.5px solid #e2e8f0",
+              background: section === s ? "#171717" : "white",
+              color: section === s ? "#f8fafc" : "#64748b",
               fontWeight: section === s ? 600 : 500,
               transition: "all 0.2s ease",
             }}
