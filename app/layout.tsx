@@ -115,16 +115,15 @@ export default function RootLayout({
       <body className="min-h-full flex flex-col">
         <OfflineIndicator />
         {children}
+
         {/* Service Worker Registration using Next.js Script */}
         <Script
           id="sw-register"
           strategy="afterInteractive"
           dangerouslySetInnerHTML={{
             __html: `
-              if ('serviceWorker' in navigator) {
-                navigator.serviceWorker.register('/sw.js').catch(() => {
-                  // Service worker registration failed, app will still work
-                });
+              if ('serviceWorker' in navigator && window.location.protocol === 'https:') {
+                navigator.serviceWorker.register('/sw.js').catch(e => console.log('SW registration failed:', e));
               }
             `,
           }}

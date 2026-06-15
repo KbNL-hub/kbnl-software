@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#0070f3" />
+  <title>KbNL - Offline</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    html,
+    body {
+      width: 100%;
+      height: 100%;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto',
+        'Oxygen', 'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans',
+        'Helvetica Neue', sans-serif;
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+    }
+
+    body {
+      background: linear-gradient(135deg, #0070f3 0%, #1e90ff 100%);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+
+    .container {
+      max-width: 400px;
+      width: 100%;
+      background: white;
+      border-radius: 16px;
+      padding: 40px 30px;
+      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.2);
+      text-align: center;
+    }
+
+    .icon {
+      width: 80px;
+      height: 80px;
+      margin: 0 auto 24px;
+      background: #f5f5f5;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 40px;
+    }
+
+    h1 {
+      font-size: 24px;
+      font-weight: 700;
+      color: #171717;
+      margin-bottom: 12px;
+      line-height: 1.3;
+    }
+
+    p {
+      font-size: 14px;
+      color: #666;
+      line-height: 1.6;
+      margin-bottom: 24px;
+    }
+
+    .status {
+      background: #fff9e6;
+      border: 1px solid #ffe58f;
+      border-radius: 10px;
+      padding: 16px;
+      margin-bottom: 24px;
+      font-size: 13px;
+      color: #b87903;
+      line-height: 1.5;
+    }
+
+    .tips {
+      text-align: left;
+      background: #f5f5f5;
+      border-radius: 10px;
+      padding: 16px;
+      margin-bottom: 24px;
+    }
+
+    .tips h3 {
+      font-size: 13px;
+      font-weight: 600;
+      color: #171717;
+      margin-bottom: 8px;
+    }
+
+    .tips ul {
+      list-style: none;
+      font-size: 12px;
+      color: #666;
+      line-height: 1.6;
+    }
+
+    .tips li {
+      padding: 4px 0;
+    }
+
+    .tips li:before {
+      content: '✓ ';
+      color: #0070f3;
+      font-weight: 600;
+      margin-right: 6px;
+    }
+
+    button {
+      width: 100%;
+      min-height: 44px;
+      background: #0070f3;
+      color: white;
+      border: none;
+      border-radius: 10px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
+      box-shadow: 0 4px 12px rgba(0, 112, 243, 0.25);
+    }
+
+    button:hover {
+      box-shadow: 0 8px 20px rgba(0, 112, 243, 0.35);
+      transform: translateY(-2px);
+    }
+
+    button:active {
+      transform: translateY(0);
+    }
+
+    .loader {
+      display: inline-block;
+      width: 16px;
+      height: 16px;
+      border: 2px solid #0070f3;
+      border-top: 2px solid transparent;
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+      margin: 0 8px 0 0;
+      vertical-align: middle;
+    }
+
+    @keyframes spin {
+      to {
+        transform: rotate(360deg);
+      }
+    }
+
+    .footer {
+      font-size: 12px;
+      color: #999;
+      margin-top: 24px;
+      line-height: 1.5;
+    }
+
+    /* Responsive */
+    @media (max-width: 480px) {
+      .container {
+        padding: 32px 24px;
+      }
+
+      h1 {
+        font-size: 20px;
+      }
+
+      p {
+        font-size: 13px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="icon">📡</div>
+
+    <h1>You're Offline</h1>
+
+    <p>It looks like you've lost your internet connection. Check your connection and try again.</p>
+
+    <div class="status">
+      🔗 Waiting for connection... The app will automatically reconnect when your network is available.
+    </div>
+
+    <div class="tips">
+      <h3>You can still:</h3>
+      <ul>
+        <li>View cached trip data</li>
+        <li>Check offline stops</li>
+        <li>Review previous stock levels</li>
+        <li>Read saved documents</li>
+      </ul>
+    </div>
+
+    <button onclick="retryConnection()">
+      <span class="loader" id="loader" style="display: none;"></span>
+      <span id="buttonText">Try Reconnecting</span>
+    </button>
+
+    <div class="footer">
+      <p>💡 Pro tip: KbNL works offline! Your data syncs automatically when you're back online.</p>
+    </div>
+  </div>
+
+  <script>
+    let isChecking = false;
+
+    function retryConnection() {
+      if (isChecking) return;
+
+      isChecking = true;
+      const loader = document.getElementById('loader');
+      const buttonText = document.getElementById('buttonText');
+
+      loader.style.display = 'inline-block';
+      buttonText.textContent = 'Checking...';
+
+      // Try to fetch a simple endpoint
+      fetch('/api/health', { method: 'HEAD' })
+        .then(() => {
+          buttonText.textContent = 'Connected! Reloading...';
+          loader.style.display = 'none';
+          setTimeout(() => {
+            location.reload();
+          }, 1000);
+        })
+        .catch(() => {
+          loader.style.display = 'none';
+          buttonText.textContent = 'Still Offline - Try Again';
+          isChecking = false;
+        });
+    }
+
+    // Auto-retry every 5 seconds
+    setInterval(() => {
+      if (navigator.onLine) {
+        retryConnection();
+      }
+    }, 5000);
+
+    // Listen for network status changes
+    window.addEventListener('online', () => {
+      console.log('Connection restored!');
+      setTimeout(() => location.reload(), 500);
+    });
+  </script>
+</body>
+</html>

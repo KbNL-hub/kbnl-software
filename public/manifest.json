@@ -56,31 +56,5 @@
     }
   ],
   "shortcuts": [
-    {
-      "name": "Driver Dashboard",
-      "short_name": "Dashboard",
-      "description": "Quick access to your driving dashboard",
-      "url": "/driver",
-      "icons": [
-        {
-          "src": "/icon-driver-96.png",
-          "sizes": "96x96",
-          "type": "image/png"
-        }
-      ]
-    },
-    {
-      "name": "My Trips",
-      "short_name": "Trips",
-      "description": "View and manage your trips",
-      "url": "/driver?tab=trips",
-      "icons": [
-        {
-          "src": "/icon-trips-96.png",
-          "sizes": "96x96",
-          "type": "image/png"
-        }
-      ]
-    }
   ]
 }

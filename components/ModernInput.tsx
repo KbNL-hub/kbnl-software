@@ -1,6 +1,7 @@
 "use client"
 
 import React, { forwardRef, useMemo, useState } from "react"
+import { Icon } from "@iconify/react"
 
 type ModernInputStyle = React.CSSProperties
 
@@ -14,17 +15,20 @@ type BaseProps = {
   className?: string
 }
 
-type InputProps = BaseProps & React.InputHTMLAttributes<HTMLInputElement> & {
-  as?: "input"
-}
+type InputProps = BaseProps &
+  React.InputHTMLAttributes<HTMLInputElement> & {
+    as?: "input"
+  }
 
-type TextareaProps = BaseProps & React.TextareaHTMLAttributes<HTMLTextAreaElement> & {
-  as: "textarea"
-}
+type TextareaProps = BaseProps &
+  React.TextareaHTMLAttributes<HTMLTextAreaElement> & {
+    as: "textarea"
+  }
 
-type SelectProps = BaseProps & React.SelectHTMLAttributes<HTMLSelectElement> & {
-  as: "select"
-}
+type SelectProps = BaseProps &
+  React.SelectHTMLAttributes<HTMLSelectElement> & {
+    as: "select"
+  }
 
 type ModernInputProps = InputProps | TextareaProps | SelectProps
 
@@ -34,11 +38,16 @@ const FILLED_BORDER_COLOR = "#0070f3"
 
 type FieldState = "idle" | "focused" | "filled"
 
-function deriveBorder(border: React.CSSProperties["border"], color: string) {
+function deriveBorder(
+  border: React.CSSProperties["border"],
+  color: string
+) {
   if (!border) return `1px solid ${color}`
+
   const parts = String(border).trim().split(" ")
   const width = parts[0] || "1px"
   const style = parts[1] || "solid"
+
   return `${width} ${style} ${color}`
 }
 
@@ -52,7 +61,8 @@ const baseStyles: ModernInputStyle = {
   fontSize: 15,
   minHeight: 48,
   outline: "none",
-  transition: "border-color 0.2s ease, box-shadow 0.2s ease",
+  transition:
+    "border-color 0.2s ease, box-shadow 0.2s ease, background-color 0.2s ease",
 }
 
 const ModernInput = forwardRef<HTMLElement, ModernInputProps>(
@@ -60,6 +70,7 @@ const ModernInput = forwardRef<HTMLElement, ModernInputProps>(
     {
       as = "input",
       style,
+      containerStyle,
       className,
       options,
       value,
@@ -75,7 +86,11 @@ const ModernInput = forwardRef<HTMLElement, ModernInputProps>(
 
     const isFilled = useMemo(() => {
       const v = value ?? defaultValue
-      return v !== undefined && v !== null && String(v).trim() !== ""
+      return (
+        v !== undefined &&
+        v !== null &&
+        String(v).trim() !== ""
+      )
     }, [value, defaultValue])
 
     const borderColor =
@@ -89,6 +104,10 @@ const ModernInput = forwardRef<HTMLElement, ModernInputProps>(
       ...baseStyles,
       ...style,
       border: deriveBorder(style?.border, borderColor),
+      boxShadow:
+        state === "focused"
+          ? "0 0 0 3px rgba(245, 166, 35, 0.15)"
+          : style?.boxShadow,
     }
 
     const handleFocus = (e: any) => {
@@ -118,29 +137,64 @@ const ModernInput = forwardRef<HTMLElement, ModernInputProps>(
 
     if (as === "select") {
       return (
-        <select
-          ref={ref as React.Ref<HTMLSelectElement>}
-          style={mergedStyle}
-          className={className}
-          value={value as string | number | undefined}
-          defaultValue={defaultValue as string | number | undefined}
-          onFocus={handleFocus}
-          onBlur={handleBlur}
-          {...(rest as React.SelectHTMLAttributes<HTMLSelectElement>)}
+        <div
+          style={{
+            position: "relative",
+            width: "100%",
+            ...containerStyle,
+          }}
         >
-          {children}
-          {options?.map((o, i) =>
-            typeof o === "string" ? (
-              <option key={i} value={o}>
-                {o}
-              </option>
-            ) : (
-              <option key={o.value ?? i} value={o.value}>
-                {o.label}
-              </option>
-            )
-          )}
-        </select>
+          <select
+            ref={ref as React.Ref<HTMLSelectElement>}
+            style={{
+              ...mergedStyle,
+
+              // Hide browser default arrow
+              appearance: "none",
+              WebkitAppearance: "none",
+              MozAppearance: "none",
+
+              // Space for custom icon
+              paddingRight: 42,
+
+              cursor: "pointer",
+            }}
+            className={className}
+            value={value as string | number | undefined}
+            defaultValue={defaultValue as string | number | undefined}
+            onFocus={handleFocus}
+            onBlur={handleBlur}
+            {...(rest as React.SelectHTMLAttributes<HTMLSelectElement>)}
+          >
+            {children}
+
+            {options?.map((o, i) =>
+              typeof o === "string" ? (
+                <option key={i} value={o}>
+                  {o}
+                </option>
+              ) : (
+                <option key={o.value ?? i} value={o.value}>
+                  {o.label}
+                </option>
+              )
+            )}
+          </select>
+
+          <Icon
+            icon="mdi:chevron-down"
+            width={20}
+            height={20}
+            style={{
+              position: "absolute",
+              right: 14,
+              top: "50%",
+              transform: "translateY(-50%)",
+              color: "#94a3b8",
+              pointerEvents: "none",
+            }}
+          />
+        </div>
       )
     }
 
@@ -160,4 +214,5 @@ const ModernInput = forwardRef<HTMLElement, ModernInputProps>(
 )
 
 ModernInput.displayName = "ModernInput"
+
 export default ModernInput

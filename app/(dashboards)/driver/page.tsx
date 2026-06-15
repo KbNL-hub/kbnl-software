@@ -669,9 +669,9 @@ export default function DriverDashboard() {
           <div style={{ display: "flex", gap: 8 }}>
             <button
               onClick={() => { setComplaintPendingEndTrip(false); setShowComplaintModal(true) }}
-              style={{ padding: "8px 14px", background: "#fff8e1", color: "#f5a623", border: "1.5px solid #fecaca", borderRadius: 8, cursor: "pointer", fontSize: fontSize.sm, minHeight: 40, fontWeight: 600, display: "flex", alignItems: "center", gap: 6, transition: "all 0.2s", whiteSpace: "nowrap" }}
+              style={{ padding: "8px 14px", background: "#fff8e1", color: "#f5a623", border: "1.5px solid #f8ad5c", borderRadius: 8, cursor: "pointer", fontSize: fontSize.sm, minHeight: 40, fontWeight: 600, display: "flex", alignItems: "center", gap: 6, transition: "all 0.2s", whiteSpace: "nowrap" }}
               onMouseEnter={e => { e.currentTarget.style.background = "#fff0e1"; e.currentTarget.style.borderColor = "#f8ad5c" }}
-              onMouseLeave={e => { e.currentTarget.style.background = "#fff8e1"; e.currentTarget.style.borderColor = "#fecaca" }}
+              onMouseLeave={e => { e.currentTarget.style.background = "#fff8e1"; e.currentTarget.style.borderColor = "#f8ad5c" }}
             >
               <Icon icon="mdi:alert-circle-outline" width={16} />
               {!isMobile && "Issue"}
@@ -680,7 +680,7 @@ export default function DriverDashboard() {
               onClick={async () => { await supabase.auth.signOut(); window.location.href = "/login" }}
               style={{ padding: "8px 14px", background: "rgba(239, 68, 68, 0.05)", color: "#ef4444", border: "1.5px solid #fecaca", borderRadius: 8, cursor: "pointer", fontSize: fontSize.sm, minHeight: 40, display: "flex", alignItems: "center", gap: 6, fontWeight: 600, transition: "all 0.2s", whiteSpace: "nowrap" }}
               onMouseEnter={e => { e.currentTarget.style.background = "rgba(239, 68, 68, 0.1)"; e.currentTarget.style.borderColor = "#fca5a5" }}
-              onMouseLeave={e => { e.currentTarget.style.background = "rgba(239, 68, 68, 0.05)"; e.currentTarget.style.borderColor = "#fecaca" }}
+              onMouseLeave={e => { e.currentTarget.style.background = "rgba(239, 68, 68, 0.05)"; e.currentTarget.style.borderColor = "#fca5a5" }}
             >
               <Icon icon="mdi:logout" width={16} />
               {!isMobile && "Logout"}
@@ -699,11 +699,11 @@ export default function DriverDashboard() {
                 {activeTrip ? `Continue Your Trip?` : "Ready to go?"}
               </h2>
               <p style={{ margin: "8px 0 0", color: "#64748b", fontSize: fontSize.base }}>
-                {activeTrip ? `${activeTrip.plate_number} • ${activeTrip.material_centre}` : "No active trip. Start your day below."}
+                {activeTrip ? `${activeTrip.plate_number} • ${activeTrip.material_centre}` : "No active trip. Start a trip below."}
               </p>
             </div>
 
-            <div style={{ display: "flex", flexDirection: "column", gap: 12, maxWidth: 320, margin: "0 auto" }}>
+            <div style={{ display: "flex", flexDirection: "column", gap: 12, maxWidth: 320, margin: "240px auto" }}>
               <button onClick={() => navigateTo(activeTrip ? "active-trip" : "start-trip")} style={{ width: "100%", padding: "14px 16px", background: "#0070f3", color: "white", border: "none", borderRadius: 10, cursor: "pointer", fontWeight: 700, fontSize: fontSize.md, minHeight: 52, display: "flex", alignItems: "center", justifyContent: "center", gap: 8, transition: "opacity 0.2s" }} onMouseEnter={e => e.currentTarget.style.opacity = "0.9"} onMouseLeave={e => e.currentTarget.style.opacity = "1"}>
                 <Icon icon={activeTrip ? "mdi:truck-fast" : "mdi:truck-outline"} width={20} />
                 {activeTrip ? "Continue Trip" : "Start a Trip"}
@@ -865,7 +865,7 @@ export default function DriverDashboard() {
                     <option value="">Select plate number</option>
                     {trucks.map(t => <option key={t.plate_number} value={t.plate_number}>{t.plate_number}{t.kbnl_truck_no ? ` · #${t.kbnl_truck_no}` : ""}</option>)}
                   </ModernInput>
-                  {chevron}
+                  
                 </div>
               </div>
 
@@ -876,7 +876,7 @@ export default function DriverDashboard() {
                     <option value="">Select loading point</option>
                     {Object.keys(LOADING_POINT_MAP).map(cat => <option key={cat} value={cat}>{cat}</option>)}
                   </ModernInput>
-                  {chevron}
+                  
                 </div>
               </div>
 
@@ -888,7 +888,7 @@ export default function DriverDashboard() {
                       <option value="">Select {loadingPointCategory.toLowerCase()}</option>
                       {availableLocations.map(loc => <option key={loc} value={loc}>{loc}</option>)}
                     </ModernInput>
-                    {chevron}
+                    
                   </div>
                 </div>
               )}
@@ -908,7 +908,7 @@ export default function DriverDashboard() {
                       <option value="">Select product</option>
                       {productOptions.map(p => <option key={p} value={p}>{p}</option>)}
                     </ModernInput>
-                    {chevron}
+                    
                   </div>
                 </div>
               )}
@@ -1171,7 +1171,7 @@ export default function DriverDashboard() {
                   <option value="">Select truck</option>
                   {allTrucks.map(t => <option key={t.plate_number} value={t.plate_number}>{t.plate_number}{t.kbnl_truck_no ? ` · #${t.kbnl_truck_no}` : ""}</option>)}
                 </ModernInput>
-                {chevron}
+                
               </div>
             </div>
 
@@ -1182,7 +1182,7 @@ export default function DriverDashboard() {
                   <option value="">Select type</option>
                   {COMPLAINT_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
                 </ModernInput>
-                {chevron}
+                
               </div>
             </div>
 
@@ -1278,7 +1278,7 @@ export default function DriverDashboard() {
                   <option value="">Select location</option>
                   {allStoreLocations.map(loc => <option key={loc} value={loc}>{loc}</option>)}
                 </ModernInput>
-                {chevron}
+                
               </div>
             </div>
             <div style={{ marginBottom: 16 }}>
@@ -1329,7 +1329,7 @@ export default function DriverDashboard() {
                   <option value="Depot">Depot</option>
                   <option value="Outlet">Outlet</option>
                 </ModernInput>
-                {chevron}
+                
               </div>
             </div>
             {loadMoreCategory && (
@@ -1340,7 +1340,7 @@ export default function DriverDashboard() {
                     <option value="">Select {loadMoreCategory.toLowerCase()}</option>
                     {LOADING_POINT_MAP[loadMoreCategory].map(loc => <option key={loc} value={loc}>{loc}</option>)}
                   </ModernInput>
-                  {chevron}
+                  
                 </div>
               </div>
             )}
@@ -1352,7 +1352,7 @@ export default function DriverDashboard() {
                     <option value="">Select product</option>
                     {loadMoreProductOptions.map(p => <option key={p} value={p}>{p}</option>)}
                   </ModernInput>
-                  {chevron}
+                  
                 </div>
               </div>
             )}

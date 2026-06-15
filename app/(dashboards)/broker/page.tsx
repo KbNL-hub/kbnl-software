@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import { Icon } from "@iconify/react"
 import { supabase } from "@/lib/supabase"
 import { formatAmount, parseAmount } from "@/lib/formatAmount"
@@ -9,6 +9,12 @@ import CustomerSelector from "@/components/CustomerSelector"
 import OfficeClerkPanel from "@/components/OfficeClerkPanel"
 import CustomerPayments from "@/components/CustomerPayments"
 import { useBreakpoint } from "@/app/hooks/useBreakpoint"
+
+type Broker = {
+  broker_id: string
+  full_name: string
+  profile_picture_url?: string
+}
 
 type Customer = {
   customer_id: string
@@ -31,14 +37,45 @@ type Stop = {
   disputed: boolean
 }
 
+function useResponsive() {
+  const [isMobile, setIsMobile] = useState(true)
+  const [isDesktop, setIsDesktop] = useState(false)
+
+  useEffect(() => {
+    const handleResize = () => {
+      setIsMobile(window.innerWidth < 640)
+      setIsDesktop(window.innerWidth >= 640)
+    }
+
+    handleResize()
+    window.addEventListener("resize", handleResize)
+    return () => window.removeEventListener("resize", handleResize)
+  }, [])
+
+  return { isMobile, isDesktop }
+}
+
+const fontSize = {
+  xs: 12,
+  sm: 13,
+  base: 14,
+  md: 15,
+  lg: 16,
+  xl: 20,
+  "2xl": 24,
+  "3xl": 28
+}
+
 export default function BrokerDashboard() {
   const bp = useBreakpoint()
-  const isMobile = bp === "mobile"
+  const { isMobile, isDesktop } = useResponsive()
   const isTablet = bp === "tablet"
   const isNarrow = isMobile || isTablet
 
+  const fileInputRef = useRef<HTMLInputElement>(null)
+
   const [brokerId, setBrokerId] = useState<string | null>(null)
-  const [brokerName, setBrokerName] = useState("")
+  const [broker, setBroker] = useState<Broker | null>(null)
   const [selectedStop, setSelectedStop] = useState<Stop | null>(null)
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null)
   const [pricePerBag, setPricePerBag] = useState("")
@@ -54,6 +91,13 @@ export default function BrokerDashboard() {
   const [isDualRole, setIsDualRole] = useState(false)
   const [clerkOfficeName, setClerkOfficeName] = useState("")
   const [activeView, setActiveView] = useState<"broker" | "expenses" | "payments">("broker")
+
+  // Profile picture upload states
+  const [showPictureModal, setShowPictureModal] = useState(false)
+  const [selectedFile, setSelectedFile] = useState<File | null>(null)
+  const [picturePreview, setPicturePreview] = useState<string | null>(null)
+  const [pictureLoading, setPictureLoading] = useState(false)
+  const [pictureError, setPictureError] = useState("")
 
   useEffect(() => { initBroker() }, [])
 
@@ -71,9 +115,23 @@ export default function BrokerDashboard() {
 
     setBrokerId(user.id)
 
-    const { data: profile } = await supabase
+    // Fetch broker profile
+    const { data: brokerData } = await supabase
       .from("Profiles").select("full_name").eq("user_id", user.id).single()
-    if (profile) setBrokerName(profile.full_name)
+    
+    if (brokerData) {
+      const { data: brokerDetails } = await supabase
+        .from("brokers")
+        .select("broker_id, full_name, profile_picture_url")
+        .eq("broker_id", user.id)
+        .single()
+      
+      if (brokerDetails) {
+        setBroker(brokerDetails)
+      } else {
+        setBroker({ broker_id: user.id, full_name: brokerData.full_name })
+      }
+    }
 
     const { data: clerkRecord } = await supabase
       .from("office_clerks").select("office_name")
@@ -120,6 +178,98 @@ export default function BrokerDashboard() {
     }
 
     setAllStops(await enrich(stops || []))
+  }
+
+  // Profile picture upload handlers
+  function handleAvatarClick() {
+    setPictureError("")
+    setPicturePreview(null)
+    setSelectedFile(null)
+    setShowPictureModal(true)
+  }
+
+  function handleFileSelect(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    // Validate file type
+    if (!file.type.startsWith("image/")) {
+      setPictureError("Please select an image file")
+      return
+    }
+
+    // Validate file size (max 1MB)
+    if (file.size > 1 * 1024 * 1024) {
+      setPictureError("Image must be less than 1MB")
+      return
+    }
+
+    setSelectedFile(file)
+    setPictureError("")
+
+    // Create preview
+    const reader = new FileReader()
+    reader.onload = (event) => {
+      setPicturePreview(event.target?.result as string)
+    }
+    reader.readAsDataURL(file)
+  }
+
+  async function handleUploadPicture() {
+    if (!selectedFile || !broker) {
+      setPictureError("Please select an image")
+      return
+    }
+
+    setPictureLoading(true)
+    setPictureError("")
+
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session) { setPictureError("Session expired"); setPictureLoading(false); return }
+
+      const fileExt = selectedFile.name.split(".").pop()
+      const fileName = `${broker.broker_id}-${Date.now()}.${fileExt}`
+      const filePath = `${broker.broker_id}/${fileName}`
+
+      // Delete old picture if exists
+      if (broker.profile_picture_url) {
+        const oldPath = broker.profile_picture_url.split("/").slice(-2).join("/")
+        await supabase.storage.from("profile-pictures").remove([oldPath])
+      }
+
+      // Upload new picture
+      const { error: uploadError } = await supabase.storage
+        .from("profile-pictures")
+        .upload(filePath, selectedFile, { upsert: false })
+
+      if (uploadError) { setPictureError("Upload failed"); setPictureLoading(false); return }
+
+      // Get public URL
+      const { data: { publicUrl } } = supabase.storage
+        .from("profile-pictures")
+        .getPublicUrl(filePath)
+
+      // Update broker profile
+      const { error: updateError } = await supabase
+        .from("brokers")
+        .update({ profile_picture_url: publicUrl })
+        .eq("broker_id", broker.broker_id)
+
+      if (updateError) { setPictureError("Failed to save profile"); setPictureLoading(false); return }
+
+      // Update local state
+      setBroker({ ...broker, profile_picture_url: publicUrl })
+
+      // Close modal
+      setPictureLoading(false)
+      setShowPictureModal(false)
+      setSelectedFile(null)
+      setPicturePreview(null)
+    } catch (err) {
+      setPictureError("Something went wrong")
+      setPictureLoading(false)
+    }
   }
 
   function openConfirmModal(stop: Stop) {
@@ -240,87 +390,133 @@ export default function BrokerDashboard() {
     display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
   })
 
-  const outlineBtn = (color: string): React.CSSProperties => ({
-    width: "100%", padding: isMobile ? "13px 0" : "11px 0",
-    background: "white", color, border: `1.5px solid ${color}`,
-    borderRadius: 10, fontSize: isMobile ? 15 : 14,
-    cursor: "pointer", minHeight: 48,
-    display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
-  })
-
   return (
-    <div style={{ fontFamily: "Arial, sans-serif", background: "#f7f7f7", minHeight: "100vh" }}>
-      <div style={{ maxWidth: maxW, margin: "0 auto" }}>
+    <div style={{ fontFamily: "'Inter', sans-serif", background: "#f8fafc", minHeight: "100vh" }}>
 
-        {/* ── Sticky Header ── */}
-        <div style={{
-          background: "white", borderBottom: "1px solid #eee",
-          padding: isMobile ? "14px 16px" : "16px 24px",
-          position: "sticky", top: 0, zIndex: 20,
-          boxShadow: "0 2px 8px rgba(0,0,0,0.05)",
-          display: "flex", justifyContent: "space-between", alignItems: "center",
-        }}>
-          <div>
-            <p style={{ margin: 0, fontSize: 11, color: "#aaa", fontWeight: "600", textTransform: "uppercase", letterSpacing: 0.5 }}>
-              {isDualRole ? "Broker · " + clerkOfficeName + " Clerk" : "Broker"}
-            </p>
-            <p style={{ margin: "2px 0 0", fontWeight: "bold", fontSize: isMobile ? 15 : 14, color: "#171717" }}>{brokerName}</p>
+      {/* Profile Banner */}
+      <div style={{ background: "white", borderBottom: "1px solid #e2e8f0", padding: isMobile ? "16px" : "24px 32px" }}>
+        <div style={{ maxWidth: 1200, margin: "0 auto", display: "flex", alignItems: "center", gap: isMobile ? 12 : 16, justifyContent: "space-between" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: isMobile ? 12 : 16, flex: 1 }}>
+            <div
+              onClick={handleAvatarClick}
+              style={{
+                width: isMobile ? 48 : 56,
+                height: isMobile ? 48 : 56,
+                borderRadius: "50%",
+                background: broker?.profile_picture_url ? "transparent" : "#f0f7ff",
+                border: "2px solid #bfdbfe",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                flexShrink: 0,
+                cursor: "pointer",
+                position: "relative",
+                overflow: "hidden",
+                transition: "all 0.2s",
+              }}
+              onMouseEnter={e => {
+                e.currentTarget.style.borderColor = "#0070f3"
+                e.currentTarget.style.transform = "scale(1.05)"
+              }}
+              onMouseLeave={e => {
+                e.currentTarget.style.borderColor = "#bfdbfe"
+                e.currentTarget.style.transform = "scale(1)"
+              }}
+            >
+              {broker?.profile_picture_url ? (
+                <img
+                  src={broker.profile_picture_url}
+                  alt={broker.full_name}
+                  style={{
+                    width: "100%",
+                    height: "100%",
+                    objectFit: "cover",
+                  }}
+                />
+              ) : (
+                <span style={{ fontSize: isMobile ? 20 : 24, fontWeight: 700, color: "#0070f3" }}>
+                  {broker?.full_name.charAt(0).toUpperCase()}
+                </span>
+              )}
+              {/* Camera overlay hint */}
+              <div
+                style={{
+                  position: "absolute",
+                  inset: 0,
+                  background: "rgba(0, 0, 0, 0.4)",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  opacity: 0,
+                  transition: "opacity 0.2s",
+                }}
+                onMouseEnter={e => e.currentTarget.style.opacity = "1"}
+                onMouseLeave={e => e.currentTarget.style.opacity = "0"}
+              >
+                <Icon icon="mdi:camera" width={20} height={20} color="white" />
+              </div>
+            </div>
+            <div>
+              <h1 style={{ margin: 0, fontSize: isMobile ? fontSize.lg : fontSize.xl, fontWeight: 700, color: "#0070f3" }}>
+                {broker?.full_name}
+              </h1>
+              <p style={{ margin: "2px 0 0", fontSize: fontSize.sm, color: "#64748b" }}>
+                {isDualRole ? clerkOfficeName + " Clerk & Broker" : "Broker"}
+              </p>
+            </div>
           </div>
           <button
             onClick={async () => { await supabase.auth.signOut(); window.location.href = "/login" }}
-            style={{
-              padding: isMobile ? "8px 12px" : "7px 14px",
-              background: "#fff0f0", color: "#ff4444",
-              border: "1.5px solid #ff4444", borderRadius: 8,
-              cursor: "pointer", fontSize: 12, minHeight: 38,
-              display: "flex", alignItems: "center", gap: 5,
-            }}
+            style={{ padding: "8px 16px", background: "rgba(239, 68, 68, 0.05)", color: "#ef4444", border: "1.5px solid #fecaca", borderRadius: 6, cursor: "pointer", fontSize: fontSize.sm, fontWeight: 600, transition: "all 0.2s", minHeight: 40, whiteSpace: "nowrap" }}
+            onMouseEnter={e => { e.currentTarget.style.background = "rgba(239, 68, 68, 0.1)"; e.currentTarget.style.borderColor = "#fca5a5" }}
+            onMouseLeave={e => { e.currentTarget.style.background = "rgba(239, 68, 68, 0.05)"; e.currentTarget.style.borderColor = "#fecaca" }}
           >
-            <Icon icon="mdi:logout" width={15} />
-            {!isMobile && "Logout"}
+            Logout
           </button>
         </div>
+      </div>
 
+      <div style={{ maxWidth: maxW, margin: "0 auto" }}>
         <div style={{ padding: sidePad }}>
 
           {/* ── View Switcher ── */}
           <div style={{
             display: "grid", gridTemplateColumns: isDualRole ? "1fr 1fr 1fr" : "1fr 1fr",
             gap: 10, padding: isMobile ? "16px 16px 0" : "20px 0 0",
-            background: isMobile ? "#f7f7f7" : "transparent",
+            background: isMobile ? "#f8fafc" : "transparent",
           }}>
             {[
               { key: "broker", label: "My Stops", icon: "mdi:truck-delivery", count: allStops.length },
               { key: "payments", label: "Payments", icon: "mdi:cash-register" },
-              ...(isDualRole ? [{ key: "expenses", label: "Cash Expenses", icon: "mdi:cash-multiple", count: pendingStops.length === 0 ? undefined : undefined }] : []),
+              ...(isDualRole ? [{ key: "expenses", label: "Cash Expenses", icon: "mdi:cash-multiple" }] : []),
             ].map(tab => {
               const isActive = activeView === tab.key
               return (
                 <button
                   key={tab.key}
                   onClick={() => setActiveView(tab.key as "broker" | "expenses" | "payments")}
-                    style={{
-                      padding: isMobile ? "14px 12px" : "13px 12px",
-                      background: isActive ? "rgba(0, 112, 243, 0.1)" : "white",
-                      color: isActive ? "#0070f3" : "#555",
-                      border: isActive ? "1px solid #0070f3" : "1.5px solid #e5e5e5",
-                      borderRadius: 10,
-                      cursor: "pointer",
-                      fontWeight: isActive ? "bold" : "normal",
-                      fontSize: isMobile ? 14 : 13,
-                      minHeight: 52,
-                      display: "flex", flexDirection: "column",
-                      alignItems: "center", justifyContent: "center", gap: 6,
-                      transition: "all 0.15s",
-                      boxShadow: isActive ? "0 4px 12px rgba(0,112,243,0.25)" : "none",
-                    }}
-                  >
-                    <Icon icon={tab.icon} width={20} />
-                    <span>{tab.label}</span>
-                  </button>
-                )
-              })}
-            </div>
+                  style={{
+                    padding: isMobile ? "14px 12px" : "13px 12px",
+                    background: isActive ? "rgba(0, 112, 243, 0.1)" : "white",
+                    color: isActive ? "#0070f3" : "#555",
+                    border: isActive ? "1px solid #0070f3" : "1.5px solid #e5e5e5",
+                    borderRadius: 10,
+                    cursor: "pointer",
+                    fontWeight: isActive ? "bold" : "normal",
+                    fontSize: isMobile ? 14 : 13,
+                    minHeight: 52,
+                    display: "flex", flexDirection: "column",
+                    alignItems: "center", justifyContent: "center", gap: 6,
+                    transition: "all 0.15s",
+                    boxShadow: isActive ? "0 4px 12px rgba(0,112,243,0.25)" : "none",
+                  }}
+                >
+                  <Icon icon={tab.icon} width={20} />
+                  <span>{tab.label}</span>
+                </button>
+              )
+            })}
+          </div>
 
           {/* ── Payments View ── */}
           {activeView === "payments" && brokerId && (
@@ -335,7 +531,7 @@ export default function BrokerDashboard() {
               <OfficeClerkPanel
                 clerkId={brokerId}
                 officeName={clerkOfficeName}
-                fullName={brokerName}
+                fullName={broker?.full_name || ""}
               />
             </div>
           )}
@@ -625,6 +821,108 @@ export default function BrokerDashboard() {
                   ? <><Icon icon="mdi:loading" width={16} style={{ animation: "spin 1s linear infinite" }} /> Submitting…</>
                   : <><Icon icon="mdi:alert-circle" width={16} /> Submit Dispute</>
                 }
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Profile Picture Upload Modal */}
+      {showPictureModal && (
+        <div onClick={() => { setShowPictureModal(false); setSelectedFile(null); setPicturePreview(null); setPictureError("") }} style={{ position: "fixed", inset: 0, background: "rgba(15, 23, 42, 0.6)", backdropFilter: "blur(4px)", display: "flex", alignItems: isMobile ? "flex-end" : "center", justifyContent: "center", zIndex: 100, padding: isMobile ? 0 : 24 }}>
+          <div onClick={e => e.stopPropagation()} style={{ background: "white", borderRadius: isMobile ? "20px 20px 0 0" : 12, padding: isMobile ? "28px 20px" : 32, width: "100%", maxWidth: 420, maxHeight: isMobile ? "90vh" : "auto", overflowY: "auto", boxShadow: "0 25px 50px -12px rgba(0, 0, 0, 0.25)" }}>
+            <h3 style={{ margin: "0 0 6px 0", fontSize: fontSize.xl, fontWeight: 700, color: "#0f172a" }}>Update Profile Picture</h3>
+            <p style={{ margin: "0 0 20px 0", fontSize: fontSize.sm, color: "#64748b" }}>Click to upload or drag and drop. PNG, JPG up to 1MB.</p>
+
+            {/* Preview or Upload Area */}
+            {picturePreview ? (
+              <div style={{ marginBottom: 20 }}>
+                <p style={{ margin: "0 0 8px 0", fontSize: fontSize.sm, fontWeight: 600, color: "#0f172a" }}>Preview</p>
+                <img
+                  src={picturePreview}
+                  alt="Preview"
+                  style={{
+                    width: "100%",
+                    height: 200,
+                    objectFit: "cover",
+                    borderRadius: 12,
+                    border: "2px solid #e2e8f0",
+                  }}
+                />
+              </div>
+            ) : (
+              <div
+                onClick={() => fileInputRef.current?.click()}
+                style={{
+                  border: "1.5px dashed #0070f3",
+                  borderRadius: 12,
+                  padding: "32px 16px",
+                  cursor: "pointer",
+                  background: "#f0f7ff",
+                  transition: "all 0.2s",
+                  marginBottom: 20,
+                  display: "flex",
+                  flexDirection: "column",
+                  alignItems: "center",
+                  justifyContent: "center",
+                }}
+                onMouseEnter={e => {
+                  e.currentTarget.style.background = "#e0efff"
+                  e.currentTarget.style.borderColor = "#0055d4"
+                }}
+                onMouseLeave={e => {
+                  e.currentTarget.style.background = "#f0f7ff"
+                  e.currentTarget.style.borderColor = "#0070f3"
+                }}
+              >
+                <Icon icon="mdi:cloud-upload" width={40} height={40} color="#0070f3" style={{ marginBottom: 8 }} />
+                <p style={{ margin: "0 0 4px 0", fontSize: fontSize.base, fontWeight: 600, color: "#0070f3" }}>
+                  Click to upload
+                </p>
+                <p style={{ margin: 0, fontSize: fontSize.sm, color: "#64748b" }}>
+                  or drag and drop
+                </p>
+              </div>
+            )}
+
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              onChange={handleFileSelect}
+              style={{ display: "none" }}
+            />
+
+            {pictureError && (
+              <div style={{ padding: 12, background: "#fef2f2", borderLeft: "4px solid #ef4444", borderRadius: 4, marginBottom: 16, color: "#b91c1c", fontSize: fontSize.sm }}>
+                {pictureError}
+              </div>
+            )}
+
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+              <button
+                onClick={() => { setShowPictureModal(false); setSelectedFile(null); setPicturePreview(null); setPictureError("") }}
+                style={{ padding: "12px 16px", background: "white", border: "1px solid #cbd5e1", color: "#475569", borderRadius: 8, cursor: "pointer", fontWeight: 600, fontSize: fontSize.md, minHeight: 44 }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleUploadPicture}
+                disabled={pictureLoading || !selectedFile}
+                style={{
+                  padding: "12px 16px",
+                  background: selectedFile ? "#0070f3" : "#bfdbfe",
+                  color: "white",
+                  border: "none",
+                  borderRadius: 8,
+                  cursor: selectedFile && !pictureLoading ? "pointer" : "not-allowed",
+                  fontWeight: 600,
+                  fontSize: fontSize.md,
+                  minHeight: 44,
+                  opacity: pictureLoading ? 0.7 : 1,
+                }}
+              >
+                {pictureLoading ? "Uploading..." : "Upload"}
               </button>
             </div>
           </div>
