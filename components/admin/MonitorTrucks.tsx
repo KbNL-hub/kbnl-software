@@ -117,11 +117,33 @@ export default function MonitorTrucks() {
     setLoading(false)
   }
 
+  const [lastSaveTime, setLastSaveTime] = useState(0)
+
   useEffect(() => {
     fetchActiveTrucks()
-    const interval = setInterval(fetchActiveTrucks, 5000)
-    return () => clearInterval(interval)
-  }, [])
+    
+    // Listen for changes to Trips table
+    const subscription = supabase
+      .channel('trips-changes')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'Trips' },
+        () => {
+          // Skip refetch if we saved within last 2 seconds (data is stale)
+          if (Date.now() - lastSaveTime > 2000) {
+            console.log("🔄 Trips changed, refetching...")
+            fetchActiveTrucks()
+          }
+        }
+      )
+      .subscribe()
+
+    const interval = setInterval(fetchActiveTrucks, 30000)
+    return () => {
+      clearInterval(interval)
+      subscription.unsubscribe()
+    }
+  }, [lastSaveTime])
 
   function openRouteEditor(truck: ActiveTruck) {
     setEditingRoute(truck)
@@ -171,6 +193,7 @@ export default function MonitorTrucks() {
     }
 
     console.log("✅ Route saved successfully:", data)
+    setLastSaveTime(Date.now())  // <-- Add this
     
     // Update state directly with saved data instead of refetching
     if (data && data.length > 0) {
