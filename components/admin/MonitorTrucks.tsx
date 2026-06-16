@@ -119,7 +119,7 @@ export default function MonitorTrucks() {
 
   useEffect(() => {
     fetchActiveTrucks()
-    const interval = setInterval(fetchActiveTrucks, 30000)
+    const interval = setInterval(fetchActiveTrucks, 5000)
     return () => clearInterval(interval)
   }, [])
 
@@ -149,11 +149,28 @@ export default function MonitorTrucks() {
   async function saveRoute() {
     if (!editingRoute) return
     setRouteSaving(true)
-    await supabase
+    
+    console.log("📡 Saving route:", {
+      trip_id: editingRoute.trip_id,
+      routePoints: routePoints,
+      timestamp: new Date().toISOString()
+    })
+
+    const { data, error } = await supabase
       .from("Trips")
       .update({ route_points: routePoints })
       .eq("trip_id", editingRoute.trip_id)
+      .select()
+
     setRouteSaving(false)
+
+    if (error) {
+      console.error("❌ Route save failed:", error)
+      alert(`Failed to save route:\n${error.message}`)
+      return
+    }
+
+    console.log("✅ Route saved successfully:", data)
     closeRouteEditor()
     fetchActiveTrucks()
   }
