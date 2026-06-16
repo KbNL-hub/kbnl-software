@@ -118,10 +118,27 @@ export default function MonitorTrucks() {
   }
 
   useEffect(() => {
-    fetchActiveTrucks()
-    const interval = setInterval(fetchActiveTrucks, 5000)
-    return () => clearInterval(interval)
-  }, [])
+  fetchActiveTrucks()
+  
+  // Listen for changes to Trips table
+  const subscription = supabase
+    .channel('trips-changes')
+    .on(
+      'postgres_changes',
+      { event: '*', schema: 'public', table: 'Trips' },
+      () => {
+        console.log("🔄 Trips changed, refetching...")
+        fetchActiveTrucks()
+      }
+    )
+    .subscribe()
+
+  const interval = setInterval(fetchActiveTrucks, 20000)
+  return () => {
+    clearInterval(interval)
+    subscription.unsubscribe()
+  }
+}, [])
 
   function openRouteEditor(truck: ActiveTruck) {
     setEditingRoute(truck)
