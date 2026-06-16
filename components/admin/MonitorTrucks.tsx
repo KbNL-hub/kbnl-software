@@ -118,27 +118,10 @@ export default function MonitorTrucks() {
   }
 
   useEffect(() => {
-  fetchActiveTrucks()
-  
-  // Listen for changes to Trips table
-  const subscription = supabase
-    .channel('trips-changes')
-    .on(
-      'postgres_changes',
-      { event: '*', schema: 'public', table: 'Trips' },
-      () => {
-        console.log("🔄 Trips changed, refetching...")
-        fetchActiveTrucks()
-      }
-    )
-    .subscribe()
-
-  const interval = setInterval(fetchActiveTrucks, 20000)
-  return () => {
-    clearInterval(interval)
-    subscription.unsubscribe()
-  }
-}, [])
+    fetchActiveTrucks()
+    const interval = setInterval(fetchActiveTrucks, 5000)
+    return () => clearInterval(interval)
+  }, [])
 
   function openRouteEditor(truck: ActiveTruck) {
     setEditingRoute(truck)
@@ -188,8 +171,19 @@ export default function MonitorTrucks() {
     }
 
     console.log("✅ Route saved successfully:", data)
+    
+    // Update state directly with saved data instead of refetching
+    if (data && data.length > 0) {
+      setTrucks(prev => 
+        prev.map(t => 
+          t.trip_id === editingRoute.trip_id 
+            ? { ...t, route_points: data[0].route_points }
+            : t
+        )
+      )
+    }
+    
     closeRouteEditor()
-    fetchActiveTrucks()
   }
 
   const filterOptions = ["All", "In transit", "On hold"]
