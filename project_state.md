@@ -25,18 +25,19 @@ Admin, Driver, Broker, StationManager, TruckOfficer, TruckAdmin, StoreOfficer, O
 
 ## Folder Structure
 app/
-  admin/page.tsx
-  broker/page.tsx
-  driver/page.tsx
-  login/page.tsx
-  store-officer/page.tsx
-  station-manager/page.tsx
-  truck-officer/page.tsx
-  truck-admin/page.tsx
-  api/invite-user/route.ts
-  auth/callback/page.tsx
-  hooks/useBreakpoint.ts
-  page.tsx (redirects to /login)
+  (dashboards)
+    admin/page.tsx
+    broker/page.tsx
+    driver/page.tsx
+    login/page.tsx
+    store-officer/page.tsx
+    station-manager/page.tsx
+    truck-officer/page.tsx
+    truck-admin/page.tsx
+    api/invite-user/route.ts
+    auth/callback/page.tsx
+    hooks/useBreakpoint.ts
+    page.tsx (redirects to /login)
 components/
   admin/
     AddTruck.tsx, AddDriver.tsx, ManageBrokers.tsx

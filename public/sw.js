@@ -55,8 +55,13 @@ self.addEventListener('fetch', (event) => {
 
   const url = new URL(request.url);
 
+  // NEVER cache Supabase API calls — always fetch fresh
+  if (url.hostname.includes('supabase.co')) {
+    event.respondWith(fetch(request));
+    return;
+  }
+
   // API calls: "Stale While Revalidate"
-  // Return cached data immediately, update cache in background
   if (url.pathname.startsWith('/api/')) {
     event.respondWith(staleWhileRevalidate(request));
     return;
