@@ -80,10 +80,15 @@ export default function MonitorTrucks() {
   const [routeSaving, setRouteSaving] = useState(false)
 
   async function fetchActiveTrucks() {
-    const { data: trips } = await supabase
+    const { data: trips, error } = await supabase
       .from("Trips")
-      .select("trip_id, plate_number, loaded_quantity, trip_status, driver_id, route_points")
+      .select(
+        "trip_id, plate_number, loaded_quantity, trip_status, driver_id, route_points"
+      )
       .in("trip_status", ["In transit", "On hold"])
+
+    console.log("TRIPS:", trips)
+    console.log("ERROR:", error)
 
     if (!trips) return
 
