@@ -950,12 +950,12 @@ export default function StoreOfficerDashboard() {
 
             <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 16 }}>
               {supplyLines.map((line, i) => (
-                <div key={i} style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                <div key={i} style={{ display: "flex", gap: 8, alignItems: "center", width: "100%" }}>
                   <ModernInput
                     as="select"
                     value={line.product}
                     onChange={e => updateSupplyLine(i, "product", e.target.value)}
-                    style={{ flex: 2, padding: "10px 12px", borderRadius: 6, border: "1px solid #e0e0e0", fontSize: fontSize.sm, boxSizing: "border-box" }}
+                    style={{ flex: 1, minWidth: 0, padding: "10px 12px", borderRadius: 6, border: "1px solid #e0e0e0", fontSize: fontSize.sm, boxSizing: "border-box" }}
                   >
                     <option value="">Select product</option>
                     {allProducts.map(p => (<option key={p} value={p}>{p}</option>))}
@@ -965,7 +965,7 @@ export default function StoreOfficerDashboard() {
                     placeholder="Qty"
                     value={line.quantity}
                     onChange={e => updateSupplyLine(i, "quantity", e.target.value)}
-                    style={{ flex: 1, padding: "10px 12px", borderRadius: 6, border: "1px solid #e0e0e0", fontSize: fontSize.sm, boxSizing: "border-box" }}
+                    style={{ flex: 1, width: isMobile ? 90 : 110, flexShrink: 0, padding: "10px 12px", borderRadius: 6, border: "1px solid #e0e0e0", fontSize: fontSize.sm, boxSizing: "border-box" }}
                   />
                   {supplyLines.length > 1 && (
                     <button onClick={() => removeSupplyLine(i)} style={{ background: "none", border: "none", cursor: "pointer", color: "#ef4444", fontSize: 18, lineHeight: 1, padding: 0, width: 24, height: 24, display: "flex", alignItems: "center", justifyContent: "center" }}>✕</button>
@@ -1069,7 +1069,7 @@ export default function StoreOfficerDashboard() {
                       <ModernInput
                         type="text"
                         inputMode="numeric"
-                        placeholder="Price"
+                        placeholder="Price per bag"
                         value={line.price_per_bag}
                         onChange={e => updateSaleLine(i, "price_per_bag", formatAmount(e.target.value))}
                         style={{ padding: "10px 12px", borderRadius: 6, border: "1px solid #e0e0e0", fontSize: fontSize.sm, boxSizing: "border-box", minHeight: 44 }}

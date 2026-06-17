@@ -1,10 +1,11 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useState, useRef } from "react"
 import { useRouter } from "next/navigation"
 import { supabase } from "@/lib/supabase"
 import { formatAmount, parseAmount } from "@/lib/formatAmount"
 import ModernInput from "@/components/ModernInput"
+import { Icon } from "@iconify/react"
 import { useBreakpoint } from "@/app/hooks/useBreakpoint"
 
 type AssignedTruck = {
@@ -61,6 +62,12 @@ type Driver = {
   full_name: string
 }
 
+type TruckOfficer = {
+  manager_id: string
+  full_name: string
+  profile_picture_url?: string
+}
+
 const MAINTENANCE_SUGGESTIONS = [
   "Oil service", "Tyre change", "Brake repair", "Electrical work",
   "Engine repair", "Suspension repair", "Body work", "Replacement of parts",
@@ -68,23 +75,34 @@ const MAINTENANCE_SUGGESTIONS = [
   "Exhaust repair", "General inspection",
 ]
 
+const fontSize = {
+  xs: 12,
+  sm: 13,
+  base: 14,
+  md: 15,
+  lg: 16,
+  xl: 20,
+  "2xl": 24,
+  "3xl": 28
+}
+
 const statusColor = (status: string) => {
   switch (status) {
-    case "Pending": return { bg: "#fff8e1", color: "#f5a623" }
-    case "Validated": return { bg: "#00aa0022", color: "#00aa00" }
-    case "Rejected": return { bg: "#ff444422", color: "#ff4444" }
-    default: return { bg: "#eee", color: "#888" }
+    case "Pending": return { bg: "#fff8e1", color: "#f5a623", border: "#fde68a" }
+    case "Validated": return { bg: "#f0fff4", color: "#16a34a", border: "#86efac" }
+    case "Rejected": return { bg: "#fef2f2", color: "#ef4444", border: "#fecaca" }
+    default: return { bg: "#f8fafc", color: "#64748b", border: "#e2e8f0" }
   }
 }
 
 const atfStatusColor = (status: string) => {
   switch (status) {
-    case "Pending": return { bg: "#fff8e1", color: "#f5a623" }
-    case "Authorised": return { bg: "#0070f322", color: "#0070f3" }
-    case "Dispensed": return { bg: "#7c3aed22", color: "#7c3aed" }
-    case "Confirmed": return { bg: "#00aa0022", color: "#00aa00" }
-    case "Invalidated": return { bg: "#ff444422", color: "#ff4444" }
-    default: return { bg: "#eee", color: "#888" }
+    case "Pending": return { bg: "#fff8e1", color: "#f5a623", border: "#fde68a" }
+    case "Authorised": return { bg: "#f0f7ff", color: "#0070f3", border: "#bfdbfe" }
+    case "Dispensed": return { bg: "#f0f7ff", color: "#0070f3", border: "#bfdbfe" }
+    case "Confirmed": return { bg: "#f0fff4", color: "#16a34a", border: "#86efac" }
+    case "Invalidated": return { bg: "#fef2f2", color: "#ef4444", border: "#fecaca" }
+    default: return { bg: "#f8fafc", color: "#64748b", border: "#e2e8f0" }
   }
 }
 
@@ -93,8 +111,9 @@ export default function TruckOfficerDashboard() {
   const bp = useBreakpoint()
   const isMobile = bp === "mobile"
 
-  const [managerId, setManagerId] = useState("")
-  const [managerName, setManagerName] = useState("")
+  const fileInputRef = useRef<HTMLInputElement>(null)
+
+  const [officer, setOfficer] = useState<TruckOfficer | null>(null)
   const [assignedTrucks, setAssignedTrucks] = useState<AssignedTruck[]>([])
   const [reports, setReports] = useState<MaintenanceReport[]>([])
   const [fuelExpenses, setFuelExpenses] = useState<FuelExpense[]>([])
@@ -105,8 +124,14 @@ export default function TruckOfficerDashboard() {
   const [tab, setTab] = useState<"reports" | "fuel" | "atf">("reports")
   const [filter, setFilter] = useState("All")
 
-  // Drivers for ATF initiation
   const [allDrivers, setAllDrivers] = useState<Driver[]>([])
+
+  // Profile picture upload
+  const [showPictureModal, setShowPictureModal] = useState(false)
+  const [selectedFile, setSelectedFile] = useState<File | null>(null)
+  const [picturePreview, setPicturePreview] = useState<string | null>(null)
+  const [pictureLoading, setPictureLoading] = useState(false)
+  const [pictureError, setPictureError] = useState("")
 
   // Log maintenance modal
   const [showLogModal, setShowLogModal] = useState(false)
@@ -155,15 +180,14 @@ export default function TruckOfficerDashboard() {
       const user = session.user
 
       const { data: profile } = await supabase
-        .from("Profiles").select("role, full_name").eq("user_id", user.id).single()
+        .from("Profiles").select("role").eq("user_id", user.id).single()
       if (profile?.role !== "TruckOfficer") { router.push("/login"); return }
 
       const { data: manager } = await supabase
-        .from("truck_officers").select("manager_id, full_name").eq("manager_id", user.id).single()
+        .from("truck_officers").select("manager_id, full_name, profile_picture_url").eq("manager_id", user.id).single()
       if (!manager) { router.push("/login"); return }
 
-      setManagerId(manager.manager_id)
-      setManagerName(manager.full_name)
+      setOfficer(manager)
 
       const { data: drivers } = await supabase
         .from("Drivers").select("driver_id, full_name").eq("status", "Active").order("full_name")
@@ -186,15 +210,15 @@ export default function TruckOfficerDashboard() {
   }, [])
 
   useEffect(() => {
-    if (!managerId) return
+    if (!officer) return
     const interval = setInterval(() => {
-      fetchReports(managerId)
-      fetchFuelExpenses(managerId)
+      fetchReports(officer.manager_id)
+      fetchFuelExpenses(officer.manager_id)
       fetchMaintenanceBalance()
-      fetchATFs(managerId)
+      fetchATFs(officer.manager_id)
     }, 30000)
     return () => clearInterval(interval)
-  }, [managerId])
+  }, [officer])
 
   async function fetchMaintenanceBalance() {
     const { data } = await supabase
@@ -255,6 +279,88 @@ export default function TruckOfficerDashboard() {
     setAtfs(enriched)
   }
 
+  function handleAvatarClick() {
+    setPictureError("")
+    setPicturePreview(null)
+    setSelectedFile(null)
+    setShowPictureModal(true)
+  }
+
+  function handleFileSelect(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    if (!file.type.startsWith("image/")) {
+      setPictureError("Please select an image file")
+      return
+    }
+
+    if (file.size > 5 * 1024 * 1024) {
+      setPictureError("Image must be less than 5MB")
+      return
+    }
+
+    setSelectedFile(file)
+    setPictureError("")
+
+    const reader = new FileReader()
+    reader.onload = (event) => {
+      setPicturePreview(event.target?.result as string)
+    }
+    reader.readAsDataURL(file)
+  }
+
+  async function handleUploadPicture() {
+    if (!selectedFile || !officer) {
+      setPictureError("Please select an image")
+      return
+    }
+
+    setPictureLoading(true)
+    setPictureError("")
+
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session) { setPictureError("Session expired"); setPictureLoading(false); return }
+
+      const fileExt = selectedFile.name.split(".").pop()
+      const fileName = `${officer.manager_id}-${Date.now()}.${fileExt}`
+      const filePath = `${officer.manager_id}/${fileName}`
+
+      if (officer.profile_picture_url) {
+        const oldPath = officer.profile_picture_url.split("/").slice(-2).join("/")
+        await supabase.storage.from("profile-pictures").remove([oldPath])
+      }
+
+      const { error: uploadError } = await supabase.storage
+        .from("profile-pictures")
+        .upload(filePath, selectedFile, { upsert: false })
+
+      if (uploadError) { setPictureError("Upload failed"); setPictureLoading(false); return }
+
+      const { data: { publicUrl } } = supabase.storage
+        .from("profile-pictures")
+        .getPublicUrl(filePath)
+
+      const { error: updateError } = await supabase
+        .from("truck_officers")
+        .update({ profile_picture_url: publicUrl })
+        .eq("manager_id", officer.manager_id)
+
+      if (updateError) { setPictureError("Failed to save profile"); setPictureLoading(false); return }
+
+      setOfficer({ ...officer, profile_picture_url: publicUrl })
+
+      setPictureLoading(false)
+      setShowPictureModal(false)
+      setSelectedFile(null)
+      setPicturePreview(null)
+    } catch (err) {
+      setPictureError("Something went wrong")
+      setPictureLoading(false)
+    }
+  }
+
   async function handleFuelPlateChange(plate: string) {
     setFuelPlate(plate); setFuelTripId(""); setFuelTrips([]); setFuelError("")
     if (!plate) return
@@ -275,7 +381,7 @@ export default function TruckOfficerDashboard() {
 
     setLogLoading(true)
     const { error } = await supabase.from("maintenance_reports").insert([{
-      manager_id: managerId, plate_number: logPlate, maintenance_type: finalType,
+      manager_id: officer?.manager_id, plate_number: logPlate, maintenance_type: finalType,
       maintenance_location: logLocation.trim(), amount: parseAmount(logAmount),
       notes: logNotes.trim() || null,
     }])
@@ -283,7 +389,7 @@ export default function TruckOfficerDashboard() {
     if (error) { setLogError("Failed to log report"); return }
     setShowLogModal(false)
     setLogPlate(""); setLogType(""); setLogTypeCustom(""); setLogAmount(""); setLogLocation(""); setLogNotes(""); setLogError("")
-    fetchReports(managerId)
+    if (officer) fetchReports(officer.manager_id)
   }
 
   async function handleLogFuelExpense() {
@@ -297,7 +403,7 @@ export default function TruckOfficerDashboard() {
 
     setFuelLoading(true)
     const { error: expenseError } = await supabase.from("truck_fuel_expenses").insert([{
-      manager_id: managerId, plate_number: fuelPlate, trip_id: fuelTripId,
+      manager_id: officer?.manager_id, plate_number: fuelPlate, trip_id: fuelTripId,
       litres, notes: fuelNotes.trim() || null,
     }])
     if (expenseError) { setFuelError("Failed to log fuel expense"); setFuelLoading(false); return }
@@ -308,8 +414,10 @@ export default function TruckOfficerDashboard() {
     setFuelLoading(false)
     setShowFuelModal(false)
     setFuelPlate(""); setFuelTripId(""); setFuelTrips([]); setFuelLitres(""); setFuelNotes(""); setFuelError("")
-    await fetchTrucks(managerId)
-    await fetchFuelExpenses(managerId)
+    if (officer) {
+      await fetchTrucks(officer.manager_id)
+      await fetchFuelExpenses(officer.manager_id)
+    }
   }
 
   async function handleInitiateATF() {
@@ -318,7 +426,6 @@ export default function TruckOfficerDashboard() {
     if (!atfLitres || parseFloat(atfLitres) <= 0) return setAtfError("Enter valid litres")
     if (!atfCompanyId) return setAtfError("Select a fuel station")
 
-    // Check no open ATF for this truck
     const { data: existing } = await supabase
       .from("fuel_requests")
       .select("request_id")
@@ -334,7 +441,7 @@ export default function TruckOfficerDashboard() {
       driver_id: atfDriverId,
       company_id: atfCompanyId,
       litres: parseFloat(atfLitres),
-      initiated_by: managerId,
+      initiated_by: officer?.manager_id,
       atf_status: "Pending",
     }])
     setAtfLoading(false)
@@ -342,166 +449,275 @@ export default function TruckOfficerDashboard() {
 
     setShowATFModal(false)
     setAtfPlate(""); setAtfDriverId(""); setAtfLitres(""); setAtfCompanyId(""); setAtfError("")
-    fetchATFs(managerId)
-  }
-
-  function closeLogModal() {
-    setShowLogModal(false)
-    setLogPlate(""); setLogType(""); setLogTypeCustom(""); setLogAmount(""); setLogLocation(""); setLogNotes(""); setLogError("")
-  }
-
-  function closeFuelModal() {
-    setShowFuelModal(false)
-    setFuelPlate(""); setFuelTripId(""); setFuelTrips([]); setFuelLitres(""); setFuelNotes(""); setFuelError("")
+    if (officer) fetchATFs(officer.manager_id)
   }
 
   const filteredReports = filter === "All" ? reports : reports.filter(r => r.status === filter)
+  const chevron = (
+    <Icon icon="mdi:chevron-down" width={18} color="#aaa"
+      style={{ position: "absolute", right: 12, top: "50%", transform: "translateY(-50%)", pointerEvents: "none" }}
+    />
+  )
 
   const inputStyle: React.CSSProperties = {
-    width: "100%", padding: "12px 14px", boxSizing: "border-box",
-    borderRadius: 8, border: "1.5px solid #ccc",
-    fontSize: 15, background: "white", color: "#171717",
+    width: "100%", padding: "10px 12px", paddingRight: 36,
+    boxSizing: "border-box", borderRadius: 8,
+    border: "1px solid #e2e8f0", fontSize: fontSize.base,
+    background: "white", color: "#0f172a",
     minHeight: 48,
   }
 
+  const labelStyle: React.CSSProperties = {
+    fontWeight: 600, display: "block",
+    marginBottom: 6, fontSize: fontSize.sm, color: "#475569"
+  }
+
+  const modalOverlay: React.CSSProperties = {
+    position: "fixed", inset: 0, background: "rgba(15, 23, 42, 0.6)",
+    backdropFilter: "blur(4px)",
+    display: "flex", alignItems: isMobile ? "flex-end" : "center",
+    justifyContent: "center", zIndex: 100, padding: isMobile ? 0 : 24
+  }
+
+  const modalBox: React.CSSProperties = {
+    background: "white",
+    borderRadius: isMobile ? "20px 20px 0 0" : 12,
+    padding: isMobile ? "28px 20px" : 32,
+    width: "100%",
+    maxWidth: 480,
+    maxHeight: isMobile ? "90vh" : "auto",
+    overflowY: "auto",
+    boxShadow: "0 25px 50px -12px rgba(0, 0, 0, 0.25)"
+  }
+
   if (loading) return (
-    <div style={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: "100vh", background: "white" }}>
-      <p style={{ color: "#888" }}>Loading...</p>
+    <div style={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: "100vh", background: "#f8fafc", fontFamily: "'Inter', sans-serif" }}>
+      <div style={{ textAlign: "center" }}>
+        <div style={{ width: 40, height: 40, borderRadius: "50%", border: "3px solid #e2e8f0", borderTopColor: "#0070f3", animation: "spin 1s linear infinite", margin: "0 auto 12px" }} />
+        <p style={{ color: "#64748b", fontSize: fontSize.sm }}>Loading…</p>
+      </div>
+      <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
     </div>
   )
 
   return (
-    <div style={{ minHeight: "100vh", background: "#f9f9f9", fontFamily: "Arial" }}>
+    <div style={{ minHeight: "100vh", background: "#f8fafc", fontFamily: "'Inter', sans-serif" }}>
+      <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
 
-      {/* Header */}
-      <div style={{ background: "white", borderBottom: "1px solid #eee", padding: "16px 24px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-        <div>
-          <p style={{ margin: 0, fontSize: 12, color: "#888" }}>Truck Officer</p>
-          <p style={{ margin: 0, fontWeight: "bold", fontSize: 16, color: "#171717" }}>{managerName}</p>
+      {/* Profile Banner */}
+      <div style={{ background: "white", borderBottom: "1px solid #e2e8f0", padding: isMobile ? "16px" : "24px 32px", boxShadow: "0 1px 3px rgba(0,0,0,0.05)" }}>
+        <div style={{ maxWidth: 1200, margin: "0 auto", display: "flex", alignItems: "center", gap: isMobile ? 12 : 16, justifyContent: "space-between" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: isMobile ? 12 : 16, flex: 1 }}>
+            <div
+              onClick={handleAvatarClick}
+              style={{
+                width: isMobile ? 48 : 56,
+                height: isMobile ? 48 : 56,
+                borderRadius: "50%",
+                background: officer?.profile_picture_url ? "transparent" : "#f0f7ff",
+                border: "2px solid #bfdbfe",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                flexShrink: 0,
+                cursor: "pointer",
+                position: "relative",
+                overflow: "hidden",
+                transition: "all 0.2s",
+              }}
+              onMouseEnter={e => {
+                e.currentTarget.style.borderColor = "#0070f3"
+                e.currentTarget.style.transform = "scale(1.05)"
+              }}
+              onMouseLeave={e => {
+                e.currentTarget.style.borderColor = "#bfdbfe"
+                e.currentTarget.style.transform = "scale(1)"
+              }}
+            >
+              {officer?.profile_picture_url ? (
+                <img
+                  src={officer.profile_picture_url}
+                  alt={officer.full_name}
+                  style={{
+                    width: "100%",
+                    height: "100%",
+                    objectFit: "cover",
+                  }}
+                />
+              ) : (
+                <span style={{ fontSize: isMobile ? 20 : 24, fontWeight: 700, color: "#0070f3" }}>
+                  {officer?.full_name.charAt(0).toUpperCase()}
+                </span>
+              )}
+              <div
+                style={{
+                  position: "absolute",
+                  inset: 0,
+                  background: "rgba(0, 0, 0, 0.4)",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  opacity: 0,
+                  transition: "opacity 0.2s",
+                }}
+                onMouseEnter={e => e.currentTarget.style.opacity = "1"}
+                onMouseLeave={e => e.currentTarget.style.opacity = "0"}
+              >
+                <Icon icon="mdi:camera" width={20} height={20} color="white" />
+              </div>
+            </div>
+            <div>
+              <h1 style={{ margin: 0, fontSize: isMobile ? fontSize.lg : fontSize.xl, fontWeight: 700, color: "#0070f3" }}>
+                {officer?.full_name}
+              </h1>
+              <p style={{ margin: "2px 0 0", fontSize: fontSize.sm, color: "#64748b" }}>
+                Truck Officer
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={async () => { await supabase.auth.signOut(); router.push("/login") }}
+            style={{ padding: "8px 16px", background: "rgba(239, 68, 68, 0.05)", color: "#ef4444", border: "1.5px solid #fecaca", borderRadius: 6, cursor: "pointer", fontSize: fontSize.sm, minHeight: 40, fontWeight: 600, transition: "all 0.2s", whiteSpace: "nowrap" }}
+            onMouseEnter={e => { e.currentTarget.style.background = "rgba(239, 68, 68, 0.1)"; e.currentTarget.style.borderColor = "#fca5a5" }}
+            onMouseLeave={e => { e.currentTarget.style.background = "rgba(239, 68, 68, 0.05)"; e.currentTarget.style.borderColor = "#fecaca" }}
+          >
+            Logout
+          </button>
         </div>
-        <button
-          onClick={async () => { await supabase.auth.signOut(); router.push("/login") }}
-          style={{ padding: "8px 20px", background: "rgba(255, 68, 68,0.05)", color: "#ff4444", border: "1px solid #ff4444", borderRadius: 6, cursor: "pointer", fontSize: 14 }}
-        >
-          Logout
-        </button>
       </div>
 
-      <div style={{ padding: isMobile ? 16 : 24, maxWidth: 800, margin: "0 auto" }}>
+      <div style={{ padding: isMobile ? "16px" : "32px", maxWidth: 1200, margin: "0 auto" }}>
 
         {/* Maintenance Balance */}
-        <div style={{ background: "white", border: "1px solid #eee", borderRadius: 12, padding: 20, marginBottom: 16, boxShadow: "0 2px 8px rgba(0,0,0,0.04)" }}>
-          <p style={{ margin: "0 0 4px", fontSize: 13, color: "#888" }}>Maintenance Balance</p>
-          <p style={{ margin: 0, fontSize: 32, fontWeight: "bold", color: "#0070f3" }}>
+        <div style={{ background: "white", border: "1px solid #e2e8f0", borderRadius: 12, padding: isMobile ? 16 : 24, marginBottom: 24, boxShadow: "0 1px 3px rgba(0,0,0,0.05)" }}>
+          <p style={{ margin: "0 0 8px 0", fontWeight: 600, fontSize: fontSize.sm, color: "#94a3b8", letterSpacing: 0.5 }}>Maintenance Balance</p>
+          <p style={{ margin: 0, fontSize: isMobile ? fontSize["2xl"] : fontSize.xl, fontWeight: 700, color: "#0070f3" }}>
             ₦{maintenanceBalance !== null ? maintenanceBalance.toLocaleString() : "—"}
           </p>
         </div>
 
         {/* Assigned Trucks */}
-        <div style={{ background: "white", border: "1px solid #eee", borderRadius: 12, padding: 20, marginBottom: 24, boxShadow: "0 2px 8px rgba(0,0,0,0.04)" }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-            <p style={{ margin: 0, fontWeight: "bold", fontSize: 15, color: "#171717" }}>My Trucks ({assignedTrucks.length})</p>
-            <button onClick={() => fetchTrucks(managerId)} style={{ padding: "4px 12px", fontSize: 12, cursor: "pointer", borderRadius: 4, border: "1px solid #ddd", background: "white" }}>
+        <div style={{ background: "white", border: "1px solid #e2e8f0", borderRadius: 12, padding: isMobile ? 16 : 24, marginBottom: 24, boxShadow: "0 1px 3px rgba(0,0,0,0.05)" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+            <p style={{ margin: 0, fontWeight: 700, fontSize: fontSize.lg, color: "#0f172a" }}>My Trucks ({assignedTrucks.length})</p>
+            <button onClick={() => officer && fetchTrucks(officer.manager_id)} style={{ padding: "6px 12px", fontSize: fontSize.xs, cursor: "pointer", borderRadius: 6, border: "1px solid #e2e8f0", background: "white", color: "#64748b", transition: "all 0.2s", fontWeight: 600 }} onMouseEnter={e => { e.currentTarget.style.background = "#f8fafc"; e.currentTarget.style.borderColor = "#cbd5e1" }} onMouseLeave={e => { e.currentTarget.style.background = "white"; e.currentTarget.style.borderColor = "#e2e8f0" }}>
               Refresh
             </button>
           </div>
-          {assignedTrucks.length === 0 && <p style={{ color: "#888", fontSize: 13, margin: 0 }}>No trucks assigned yet.</p>}
-          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          {assignedTrucks.length === 0 && <p style={{ color: "#64748b", fontSize: fontSize.base, margin: 0 }}>No trucks assigned yet.</p>}
+          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
             {assignedTrucks.map(t => (
-              <div key={t.plate_number} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 14px", background: "#f9f9f9", borderRadius: 8, border: "1px solid #eee" }}>
+              <div key={t.plate_number} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "12px 14px", background: "#f8fafc", borderRadius: 10, border: "1px solid #e2e8f0", transition: "all 0.2s" }} onMouseEnter={e => { e.currentTarget.style.background = "#f0f7ff"; e.currentTarget.style.borderColor = "#bfdbfe" }} onMouseLeave={e => { e.currentTarget.style.background = "#f8fafc"; e.currentTarget.style.borderColor = "#e2e8f0" }}>
                 <div>
-                  <span style={{ fontWeight: "bold", fontSize: 14, color: "#171717" }}>{t.plate_number}</span>
-                  {t.kbnl_truck_no && <span style={{ fontSize: 12, color: "#888", marginLeft: 6 }}>· #{t.kbnl_truck_no}</span>}
-                  <span style={{ fontSize: 12, color: "#888", marginLeft: 8 }}>{t.truck_model}</span>
+                  <p style={{ margin: 0, fontWeight: 700, fontSize: fontSize.base, color: "#0f172a" }}>{t.plate_number}</p>
+                  <p style={{ margin: "2px 0 0", fontSize: fontSize.xs, color: "#94a3b8" }}>{t.truck_model}{t.kbnl_truck_no ? ` · #${t.kbnl_truck_no}` : ""}</p>
                 </div>
-                <span style={{ fontSize: 13, color: "#0070f3", fontWeight: "bold" }}>⛽ {t.fuel_balance}L</span>
+                <span style={{ fontSize: fontSize.sm, color: "#0070f3", fontWeight: 700, display: "flex", alignItems: "center", gap: 4 }}>
+                  <Icon icon="mdi:gas-station" width={16} />{t.fuel_balance}L
+                </span>
               </div>
             ))}
           </div>
         </div>
 
         {/* Section Tabs */}
-        <div style={{ marginBottom: 8 }}>
-          <p style={{ margin: "0 0 8px", fontSize: 11, color: "#aaa", textTransform: "uppercase", letterSpacing: 1 }}>Section</p>
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-            {[
-              { key: "reports", label: "Maintenance" },
-              { key: "fuel", label: "Fuel Log" },
-              { key: "atf", label: "ATF" },
-            ].map(t => (
-              <button
-                key={t.key}
-                onClick={() => setTab(t.key as any)}
-                style={{
-                  padding: "8px 18px", borderRadius: 6, fontSize: 13, cursor: "pointer",
-                  border: `2px solid ${tab === t.key ? "#171717" : "#ddd"}`,
-                  background: tab === t.key ? "#171717" : "white",
-                  color: tab === t.key ? "white" : "#555",
-                  fontWeight: tab === t.key ? "bold" : "normal",
-                }}
-              >
-                {t.label}
-              </button>
-            ))}
-          </div>
+        <div style={{ display: "flex", gap: 8, marginBottom: 24, flexWrap: "wrap" }}>
+          {[
+            { key: "reports", label: "Maintenance", icon: "mdi:wrench" },
+            { key: "fuel", label: "Fuel Log", icon: "mdi:fuel" },
+            { key: "atf", label: "ATF", icon: "mdi:gas-station" },
+          ].map(t => (
+            <button
+              key={t.key}
+              onClick={() => setTab(t.key as any)}
+              style={{
+                padding: "8px 16px", borderRadius: 6, fontSize: fontSize.sm, cursor: "pointer",
+                border: `1.5px solid ${tab === t.key ? "" : "#e2e8f0"}`,
+                background: tab === t.key ? "#171717" : "white",
+                color: tab === t.key ? "white" : "#64748b",
+                fontWeight: tab === t.key ? 600 : 500,
+                transition: "all 0.2s",
+                display: "flex",
+                alignItems: "center",
+                gap: 6,
+                minHeight: 40,
+              }}
+              onMouseEnter={e => { if (tab !== t.key) { e.currentTarget.style.borderColor = "#cbd5e1"; e.currentTarget.style.background = "#f8fafc" } }}
+              onMouseLeave={e => { if (tab !== t.key) { e.currentTarget.style.borderColor = "#e2e8f0"; e.currentTarget.style.background = "white" } }}
+            >
+              <Icon icon={t.icon} width={16} />
+              {t.label}
+            </button>
+          ))}
         </div>
-
-        <div style={{ height: 1, background: "#eee", marginBottom: 20 }} />
 
         {/* Reports Tab */}
         {tab === "reports" && (
           <div>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12, flexWrap: "wrap", gap: 8 }}>
-              <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                <p style={{ margin: "0 8px 0 0", fontSize: 12, color: "#aaa", alignSelf: "center", textTransform: "uppercase", letterSpacing: 0.5 }}>Filter</p>
-                {filters.map(f => (
-                  <button key={f} onClick={() => setFilter(f)} style={{
-                    padding: "5px 12px", borderRadius: 20, fontSize: 12, cursor: "pointer",
-                    border: "1px solid #ddd",
-                    background: filter === f ? "#0070f3" : "white",
-                    color: filter === f ? "white" : "#555",
-                    fontWeight: filter === f ? "bold" : "normal"
-                  }}>{f}</button>
-                ))}
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16, flexWrap: "wrap", gap: 12 }}>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+                {filters.map(f => {
+                  let activeColor = "#0070f3"
+                  let activeBg = "rgba(0, 112, 243, 0.1)"
+                  if (f === "Pending") { activeColor = "#f5a623"; activeBg = "rgba(245, 166, 35, 0.1)" }
+                  if (f === "Validated") { activeColor = "#16a34a"; activeBg = "rgba(22, 163, 74, 0.1)" }
+                  if (f === "Rejected") { activeColor = "#ef4444"; activeBg = "rgba(239, 68, 68, 0.1)" }
+
+                  return (
+                    <button key={f} onClick={() => setFilter(f)} style={{
+                      padding: "6px 14px", borderRadius: 20, fontSize: fontSize.xs, cursor: "pointer",
+                      border: `1.5px solid ${filter === f ? activeColor : "#e2e8f0"}`,
+                      background: filter === f ? activeBg : "white",
+                      color: filter === f ? activeColor : "#64748b",
+                      fontWeight: filter === f ? 600 : 500,
+                      transition: "all 0.2s",
+                      minHeight: 40,
+                    }} onMouseEnter={e => { if (filter !== f) { e.currentTarget.style.borderColor = "#cbd5e1"; e.currentTarget.style.background = "#f8fafc" } }} onMouseLeave={e => { if (filter !== f) { e.currentTarget.style.borderColor = "#e2e8f0"; e.currentTarget.style.background = "white" } }}>{f}</button>
+                  )
+                })}
               </div>
               <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                {lastUpdated && <span style={{ fontSize: 11, color: "#aaa" }}>{lastUpdated.toLocaleTimeString()}</span>}
-                <button onClick={() => fetchReports(managerId)} style={{ padding: "5px 10px", fontSize: 12, cursor: "pointer", borderRadius: 4, border: "1px solid #ddd", background: "white" }}>↻</button>
+                {lastUpdated && <span style={{ fontSize: fontSize.xs, color: "#94a3b8", whiteSpace: "nowrap" }}>Updated {lastUpdated.toLocaleTimeString()}</span>}
+                <button onClick={() => officer && fetchReports(officer.manager_id)} style={{ padding: "6px 12px", fontSize: fontSize.xs, cursor: "pointer", borderRadius: 6, border: "1px solid #e2e8f0", background: "white", color: "#64748b", transition: "all 0.2s", fontWeight: 600 }} onMouseEnter={e => { e.currentTarget.style.background = "#f8fafc"; e.currentTarget.style.borderColor = "#cbd5e1" }} onMouseLeave={e => { e.currentTarget.style.background = "white"; e.currentTarget.style.borderColor = "#e2e8f0" }}>
+                  Refresh
+                </button>
                 <button
-                  onClick={() => setShowLogModal(true)}
+                  onClick={() => { setShowLogModal(true); setLogError("") }}
                   disabled={assignedTrucks.length === 0}
-                  style={{ padding: "8px 14px", fontSize: 13, fontWeight: "bold", cursor: "pointer", background: "#0070f3", color: "white", border: "none", borderRadius: 6, whiteSpace: "nowrap" }}
+                  style={{ padding: "8px 16px", fontSize: fontSize.sm, fontWeight: 700, cursor: "pointer", background: "#0070f3", color: "white", border: "none", borderRadius: 8, minHeight: 40, display: "flex", alignItems: "center", gap: 6, transition: "opacity 0.2s", whiteSpace: "nowrap", opacity: assignedTrucks.length === 0 ? 0.5 : 1 }}
+                  onMouseEnter={e => { if (assignedTrucks.length > 0) e.currentTarget.style.opacity = "0.9" }}
+                  onMouseLeave={e => { if (assignedTrucks.length > 0) e.currentTarget.style.opacity = "1" }}
                 >
-                  + Log
+                  <Icon icon="mdi:plus" width={16} /> Log
                 </button>
               </div>
             </div>
 
-            {filteredReports.length === 0 && <p style={{ color: "#888" }}>No {filter === "All" ? "" : filter.toLowerCase()} reports.</p>}
+            {filteredReports.length === 0 && <p style={{ color: "#64748b", fontSize: fontSize.base }}>No {filter === "All" ? "" : filter.toLowerCase()} reports.</p>}
             <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
               {filteredReports.map(r => {
-                const { bg, color } = statusColor(r.status)
+                const { bg, color, border } = statusColor(r.status)
                 return (
-                  <div key={r.report_id} style={{ background: "white", border: `1px solid ${r.status === "Rejected" ? "#ff444433" : "#eee"}`, borderRadius: 10, padding: 16, boxShadow: "0 2px 8px rgba(0,0,0,0.04)" }}>
-                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 10 }}>
+                  <div key={r.report_id} style={{ background: "white", border: `1px solid ${border}`, borderRadius: 12, padding: 16, boxShadow: "0 1px 3px rgba(0,0,0,0.05)", transition: "all 0.2s" }} onMouseEnter={e => { e.currentTarget.style.boxShadow = "0 4px 12px rgba(0,0,0,0.08)"; e.currentTarget.style.borderColor = "#cbd5e1" }} onMouseLeave={e => { e.currentTarget.style.boxShadow = "0 1px 3px rgba(0,0,0,0.05)"; e.currentTarget.style.borderColor = border }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 12 }}>
                       <div>
-                        <p style={{ margin: 0, fontWeight: "bold", fontSize: 15, color: "#171717" }}>{r.plate_number}</p>
-                        <p style={{ margin: "4px 0 0", fontSize: 13, color: "#555" }}>{r.maintenance_type}</p>
-                        {r.maintenance_location && <p style={{ margin: "4px 0 0", fontSize: 12, color: "#888" }}>📍 {r.maintenance_location}</p>}
-                        <p style={{ margin: "4px 0 0", fontSize: 12, color: "#aaa" }}>{new Date(r.reported_at).toLocaleString()}</p>
+                        <p style={{ margin: 0, fontWeight: 700, fontSize: fontSize.lg, color: "#0f172a" }}>{r.plate_number}</p>
+                        <p style={{ margin: "4px 0 0", fontSize: fontSize.sm, color: "#64748b" }}>{r.maintenance_type}</p>
+                        {r.maintenance_location && <p style={{ margin: "4px 0 0", fontSize: fontSize.xs, color: "#94a3b8" }}>📍 {r.maintenance_location}</p>}
                       </div>
-                      <span style={{ padding: "4px 10px", borderRadius: 12, fontSize: 12, background: bg, color, fontWeight: "bold", whiteSpace: "nowrap" }}>{r.status}</span>
+                      <span style={{ padding: "4px 10px", borderRadius: 20, fontSize: fontSize.xs, background: bg, color, fontWeight: 700, whiteSpace: "nowrap", border: `1px solid ${color}33` }}>{r.status}</span>
                     </div>
-                    <div style={{ background: "#f9f9f9", borderRadius: 6, padding: "8px 12px", display: "inline-block" }}>
-                      <p style={{ margin: 0, fontSize: 11, color: "#888" }}>Amount</p>
-                      <p style={{ margin: 0, fontWeight: "bold", color: "#0070f3" }}>₦{r.amount.toLocaleString()}</p>
+                    <div style={{ background: "#f8fafc", borderRadius: 8, padding: "10px 12px", marginBottom: 12, border: "1px solid #e2e8f0" }}>
+                      <p style={{ margin: 0, fontSize: fontSize.xs, color: "#94a3b8" }}>Amount</p>
+                      <p style={{ margin: "2px 0 0", fontWeight: 700, color: "#0070f3", fontSize: fontSize.base }}>₦{r.amount.toLocaleString()}</p>
                     </div>
-                    {r.notes && <p style={{ margin: "8px 0 0", fontSize: 13, color: "#555" }}><strong>Notes:</strong> {r.notes}</p>}
+                    {r.notes && <p style={{ margin: "0 0 8px 0", fontSize: fontSize.sm, color: "#64748b" }}><strong>Notes:</strong> {r.notes}</p>}
                     {r.status === "Rejected" && r.rejection_reason && (
-                      <div style={{ marginTop: 10, padding: "8px 12px", background: "#fff5f5", border: "1px solid #ffcccc", borderRadius: 6 }}>
-                        <p style={{ margin: 0, fontSize: 13, color: "#ff4444" }}><strong>Rejection reason:</strong> {r.rejection_reason}</p>
+                      <div style={{ marginTop: 8, padding: "10px 12px", background: "#fef2f2", border: "1px solid #fecaca", borderRadius: 8 }}>
+                        <p style={{ margin: 0, fontSize: fontSize.sm, color: "#b91c1c", fontWeight: 600 }}>{r.rejection_reason}</p>
                       </div>
                     )}
+                    <p style={{ margin: "8px 0 0", fontSize: fontSize.xs, color: "#94a3b8" }}>{new Date(r.reported_at).toLocaleString()}</p>
                   </div>
                 )
               })}
@@ -513,27 +729,29 @@ export default function TruckOfficerDashboard() {
         {tab === "fuel" && (
           <div>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
-              <p style={{ margin: 0, fontWeight: "bold", fontSize: 15, color: "#171717" }}>Fuel Expense Log</p>
+              <p style={{ margin: 0, fontWeight: 700, fontSize: fontSize.lg, color: "#0f172a" }}>Fuel Expense Log</p>
               <button
-                onClick={() => setShowFuelModal(true)}
+                onClick={() => { setShowFuelModal(true); setFuelError("") }}
                 disabled={assignedTrucks.length === 0}
-                style={{ padding: "8px 14px", fontSize: 13, fontWeight: "bold", cursor: "pointer", background: "#0070f3", color: "white", border: "none", borderRadius: 6 }}
+                style={{ padding: "8px 16px", fontSize: fontSize.sm, fontWeight: 700, cursor: "pointer", background: "#0070f3", color: "white", border: "none", borderRadius: 8, minHeight: 40, display: "flex", alignItems: "center", gap: 6, transition: "opacity 0.2s", opacity: assignedTrucks.length === 0 ? 0.5 : 1 }}
+                onMouseEnter={e => { if (assignedTrucks.length > 0) e.currentTarget.style.opacity = "0.9" }}
+                onMouseLeave={e => { if (assignedTrucks.length > 0) e.currentTarget.style.opacity = "1" }}
               >
-                + Log Expense
+                <Icon icon="mdi:plus" width={16} /> Log Expense
               </button>
             </div>
-            {fuelExpenses.length === 0 && <p style={{ color: "#888" }}>No fuel expenses logged yet.</p>}
+            {fuelExpenses.length === 0 && <p style={{ color: "#64748b", fontSize: fontSize.base }}>No fuel expenses logged yet.</p>}
             <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
               {fuelExpenses.map(e => (
-                <div key={e.expense_id} style={{ background: "white", border: "1px solid #eee", borderRadius: 10, padding: 16, boxShadow: "0 2px 8px rgba(0,0,0,0.04)" }}>
+                <div key={e.expense_id} style={{ background: "white", border: "1px solid #e2e8f0", borderRadius: 12, padding: 16, boxShadow: "0 1px 3px rgba(0,0,0,0.05)", transition: "all 0.2s" }} onMouseEnter={e => { e.currentTarget.style.boxShadow = "0 4px 12px rgba(0,0,0,0.08)"; e.currentTarget.style.borderColor = "#cbd5e1" }} onMouseLeave={e => { e.currentTarget.style.boxShadow = "0 1px 3px rgba(0,0,0,0.05)"; e.currentTarget.style.borderColor = "#e2e8f0" }}>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 8 }}>
                     <div>
-                      <p style={{ margin: 0, fontWeight: "bold", color: "#171717" }}>{e.plate_number}</p>
-                      <p style={{ margin: "4px 0 0", fontSize: 12, color: "#aaa" }}>{new Date(e.logged_at).toLocaleString()}</p>
+                      <p style={{ margin: 0, fontWeight: 700, fontSize: fontSize.base, color: "#0f172a" }}>{e.plate_number}</p>
+                      <p style={{ margin: "2px 0 0", fontSize: fontSize.xs, color: "#94a3b8" }}>{new Date(e.logged_at).toLocaleString()}</p>
                     </div>
-                    <span style={{ padding: "4px 12px", borderRadius: 12, fontSize: 13, background: "#f0f7ff", color: "#0070f3", fontWeight: "bold" }}>{e.litres}L</span>
+                    <span style={{ padding: "4px 10px", borderRadius: 20, fontSize: fontSize.sm, background: "#f0f7ff", color: "#0070f3", fontWeight: 700, border: "1px solid #bfdbfe" }}>{e.litres}L</span>
                   </div>
-                  {e.notes && <p style={{ margin: "6px 0 0", fontSize: 13, color: "#555" }}>{e.notes}</p>}
+                  {e.notes && <p style={{ margin: "6px 0 0", fontSize: fontSize.sm, color: "#64748b" }}>{e.notes}</p>}
                 </div>
               ))}
             </div>
@@ -544,41 +762,43 @@ export default function TruckOfficerDashboard() {
         {tab === "atf" && (
           <div>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
-              <p style={{ margin: 0, fontWeight: "bold", fontSize: 15, color: "#171717" }}>Authority to Fuel</p>
+              <p style={{ margin: 0, fontWeight: 700, fontSize: fontSize.lg, color: "#0f172a" }}>Authority to Fuel</p>
               <button
-                onClick={() => setShowATFModal(true)}
-                style={{ padding: "8px 14px", fontSize: 13, fontWeight: "bold", cursor: "pointer", background: "#0070f3", color: "white", border: "none", borderRadius: 6 }}
+                onClick={() => { setShowATFModal(true); setAtfError("") }}
+                style={{ padding: "8px 16px", fontSize: fontSize.sm, fontWeight: 700, cursor: "pointer", background: "#0070f3", color: "white", border: "none", borderRadius: 8, minHeight: 40, display: "flex", alignItems: "center", gap: 6, transition: "opacity 0.2s" }}
+                onMouseEnter={e => e.currentTarget.style.opacity = "0.9"}
+                onMouseLeave={e => e.currentTarget.style.opacity = "1"}
               >
-                + Initiate ATF
+                <Icon icon="mdi:plus" width={16} /> Initiate ATF
               </button>
             </div>
 
-            {atfs.length === 0 && <p style={{ color: "#888" }}>No ATFs initiated yet.</p>}
+            {atfs.length === 0 && <p style={{ color: "#64748b", fontSize: fontSize.base }}>No ATFs initiated yet.</p>}
             <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
               {atfs.map(atf => {
-                const { bg, color } = atfStatusColor(atf.atf_status)
+                const { bg, color, border } = atfStatusColor(atf.atf_status)
                 return (
-                  <div key={atf.request_id} style={{ background: "white", border: "1px solid #eee", borderRadius: 10, padding: 16, boxShadow: "0 2px 8px rgba(0,0,0,0.04)" }}>
+                  <div key={atf.request_id} style={{ background: "white", border: `1px solid ${border}`, borderRadius: 12, padding: 16, boxShadow: "0 1px 3px rgba(0,0,0,0.05)", transition: "all 0.2s" }} onMouseEnter={e => { e.currentTarget.style.boxShadow = "0 4px 12px rgba(0,0,0,0.08)"; e.currentTarget.style.borderColor = "#cbd5e1" }} onMouseLeave={e => { e.currentTarget.style.boxShadow = "0 1px 3px rgba(0,0,0,0.05)"; e.currentTarget.style.borderColor = border }}>
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 12 }}>
                       <div>
-                        <p style={{ margin: 0, fontWeight: "bold", fontSize: 16, color: "#171717", fontFamily: "monospace" }}>{atf.atf_code ?? "Pending code"}</p>
-                        <p style={{ margin: "4px 0 0", fontSize: 13, color: "#555" }}>{atf.plate_number} · {atf.driver_name}</p>
-                        <p style={{ margin: "4px 0 0", fontSize: 12, color: "#aaa" }}>{new Date(atf.requested_at).toLocaleString()}</p>
+                        <p style={{ margin: 0, fontWeight: 700, fontSize: fontSize.base, fontFamily: "monospace", letterSpacing: 1, color: "#0f172a" }}>{atf.atf_code ?? "Pending"}</p>
+                        <p style={{ margin: "4px 0 0", fontSize: fontSize.sm, color: "#64748b" }}>{atf.plate_number} · {atf.driver_name}</p>
                       </div>
-                      <span style={{ padding: "4px 10px", borderRadius: 12, fontSize: 12, background: bg, color, fontWeight: "bold", whiteSpace: "nowrap" }}>{atf.atf_status}</span>
+                      <span style={{ padding: "4px 10px", borderRadius: 20, fontSize: fontSize.xs, background: bg, color, fontWeight: 700, whiteSpace: "nowrap", border: `1px solid ${color}33` }}>{atf.atf_status}</span>
                     </div>
-                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-                      <div style={{ background: "#f9f9f9", borderRadius: 6, padding: "8px 12px" }}>
-                        <p style={{ margin: 0, fontSize: 11, color: "#888" }}>Litres Requested</p>
-                        <p style={{ margin: 0, fontWeight: "bold", color: "#171717" }}>{atf.litres}L</p>
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                      <div style={{ background: "#f8fafc", borderRadius: 8, padding: "10px 12px", border: "1px solid #e2e8f0" }}>
+                        <p style={{ margin: 0, fontSize: fontSize.xs, color: "#94a3b8" }}>Litres Requested</p>
+                        <p style={{ margin: "2px 0 0", fontWeight: 700, color: "#0f172a", fontSize: fontSize.base }}>{atf.litres}L</p>
                       </div>
                       {atf.total_amount && (
-                        <div style={{ background: "#f9f9f9", borderRadius: 6, padding: "8px 12px" }}>
-                          <p style={{ margin: 0, fontSize: 11, color: "#888" }}>Total Amount</p>
-                          <p style={{ margin: 0, fontWeight: "bold", color: "#0070f3" }}>₦{atf.total_amount.toLocaleString()}</p>
+                        <div style={{ background: "#f8fafc", borderRadius: 8, padding: "10px 12px", border: "1px solid #e2e8f0" }}>
+                          <p style={{ margin: 0, fontSize: fontSize.xs, color: "#94a3b8" }}>Total Amount</p>
+                          <p style={{ margin: "2px 0 0", fontWeight: 700, color: "#0070f3", fontSize: fontSize.base }}>₦{atf.total_amount.toLocaleString()}</p>
                         </div>
                       )}
                     </div>
+                    <p style={{ margin: "8px 0 0", fontSize: fontSize.xs, color: "#94a3b8" }}>{new Date(atf.requested_at).toLocaleString()}</p>
                   </div>
                 )
               })}
@@ -587,32 +807,137 @@ export default function TruckOfficerDashboard() {
         )}
       </div>
 
+      {/* Profile Picture Upload Modal */}
+      {showPictureModal && (
+        <div onClick={() => { setShowPictureModal(false); setSelectedFile(null); setPicturePreview(null); setPictureError("") }} style={modalOverlay}>
+          <div onClick={e => e.stopPropagation()} style={modalBox}>
+            <h3 style={{ margin: "0 0 6px 0", fontSize: fontSize.xl, fontWeight: 700, color: "#0f172a" }}>Update Profile Picture</h3>
+            <p style={{ margin: "0 0 20px 0", fontSize: fontSize.sm, color: "#64748b" }}>PNG, JPG up to 5MB</p>
+
+            {picturePreview ? (
+              <div style={{ marginBottom: 20 }}>
+                <p style={{ margin: "0 0 8px 0", fontSize: fontSize.sm, fontWeight: 600, color: "#0f172a" }}>Preview</p>
+                <img
+                  src={picturePreview}
+                  alt="Preview"
+                  style={{
+                    width: "100%",
+                    height: 200,
+                    objectFit: "cover",
+                    borderRadius: 12,
+                    border: "2px solid #e2e8f0",
+                  }}
+                />
+              </div>
+            ) : (
+              <div
+                onClick={() => fileInputRef.current?.click()}
+                style={{
+                  border: "2px dashed #0070f3",
+                  borderRadius: 12,
+                  padding: "32px 16px",
+                  cursor: "pointer",
+                  background: "#f0f7ff",
+                  transition: "all 0.2s",
+                  marginBottom: 20,
+                  display: "flex",
+                  flexDirection: "column",
+                  alignItems: "center",
+                  justifyContent: "center",
+                }}
+                onMouseEnter={e => {
+                  e.currentTarget.style.background = "#e0efff"
+                  e.currentTarget.style.borderColor = "#0055d4"
+                }}
+                onMouseLeave={e => {
+                  e.currentTarget.style.background = "#f0f7ff"
+                  e.currentTarget.style.borderColor = "#0070f3"
+                }}
+              >
+                <Icon icon="mdi:cloud-upload" width={40} height={40} color="#0070f3" style={{ marginBottom: 8 }} />
+                <p style={{ margin: "0 0 4px 0", fontSize: fontSize.base, fontWeight: 700, color: "#0070f3" }}>
+                  Click to upload
+                </p>
+                <p style={{ margin: 0, fontSize: fontSize.sm, color: "#64748b" }}>
+                  or drag and drop
+                </p>
+              </div>
+            )}
+
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              onChange={handleFileSelect}
+              style={{ display: "none" }}
+            />
+
+            {pictureError && (
+              <div style={{ padding: 12, background: "#fef2f2", borderLeft: "4px solid #ef4444", borderRadius: 4, marginBottom: 16, color: "#b91c1c", fontSize: fontSize.sm, fontWeight: 600 }}>
+                {pictureError}
+              </div>
+            )}
+
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+              <button
+                onClick={() => { setShowPictureModal(false); setSelectedFile(null); setPicturePreview(null); setPictureError("") }}
+                style={{ padding: "12px 16px", background: "white", border: "1px solid #cbd5e1", color: "#475569", borderRadius: 8, cursor: "pointer", fontWeight: 700, fontSize: fontSize.md, minHeight: 44 }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleUploadPicture}
+                disabled={pictureLoading || !selectedFile}
+                style={{
+                  padding: "12px 16px",
+                  background: selectedFile ? "#0070f3" : "#bfdbfe",
+                  color: "white",
+                  border: "none",
+                  borderRadius: 8,
+                  cursor: selectedFile && !pictureLoading ? "pointer" : "not-allowed",
+                  fontWeight: 700,
+                  fontSize: fontSize.md,
+                  minHeight: 44,
+                  opacity: pictureLoading ? 0.7 : 1,
+                  transition: "opacity 0.2s",
+                }}
+              >
+                {pictureLoading ? "Uploading..." : "Upload"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Log Maintenance Modal */}
       {showLogModal && (
-        <div onClick={closeLogModal} style={overlay}>
-          <div onClick={e => e.stopPropagation()} style={{ ...modalBox(isMobile), width: isMobile ? "100%" : 480 }}>
-            {isMobile && <div style={dragHandle} />}
-            <h3 style={{ marginBottom: 20, color: "#171717" }}>Log Maintenance</h3>
+        <div onClick={() => { setShowLogModal(false); setLogPlate(""); setLogType(""); setLogTypeCustom(""); setLogAmount(""); setLogLocation(""); setLogNotes(""); setLogError("") }} style={modalOverlay}>
+          <div onClick={e => e.stopPropagation()} style={modalBox}>
+            <h3 style={{ marginBottom: 6, color: "#0f172a", fontSize: fontSize.xl, fontWeight: 700 }}>Log Maintenance</h3>
+            <p style={{ margin: "0 0 20px", fontSize: fontSize.sm, color: "#64748b" }}>Record a maintenance expense</p>
 
             <div style={{ marginBottom: 16 }}>
-              <label style={label}>Truck *</label>
-              <ModernInput as="select" value={logPlate} onChange={e => { setLogPlate(e.target.value); setLogError("") }} style={inputStyle}>
-                <option value="">Select truck</option>
-                {assignedTrucks.map(t => <option key={t.plate_number} value={t.plate_number}>{t.plate_number}{t.kbnl_truck_no ? ` · #${t.kbnl_truck_no}` : ""} — {t.truck_model}</option>)}
-              </ModernInput>
+              <label style={labelStyle}>Truck *</label>
+              <div style={{ position: "relative" }}>
+                <ModernInput as="select" value={logPlate} onChange={e => { setLogPlate(e.target.value); setLogError("") }} style={inputStyle}>
+                  <option value="">Select truck</option>
+                  {assignedTrucks.map(t => <option key={t.plate_number} value={t.plate_number}>{t.plate_number}{t.kbnl_truck_no ? ` · #${t.kbnl_truck_no}` : ""} — {t.truck_model}</option>)}
+                </ModernInput>
+                {chevron}
+              </div>
             </div>
 
             <div style={{ marginBottom: 16 }}>
-              <label style={label}>Maintenance Type *</label>
+              <label style={labelStyle}>Maintenance Type *</label>
               <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 10 }}>
                 {MAINTENANCE_SUGGESTIONS.map(s => (
                   <button key={s} onClick={() => { setLogType(s); setLogTypeCustom(""); setLogError("") }}
-                    style={{ padding: "4px 12px", borderRadius: 20, fontSize: 12, cursor: "pointer", border: `1px solid ${logType === s ? "#0070f3" : "#ddd"}`, background: logType === s ? "#0070f322" : "white", color: logType === s ? "#0070f3" : "#333", fontWeight: logType === s ? "bold" : "normal" }}>
+                    style={{ padding: "6px 12px", borderRadius: 20, fontSize: fontSize.xs, cursor: "pointer", border: `1.5px solid ${logType === s ? "#0070f3" : "#e2e8f0"}`, background: logType === s ? "rgba(0, 112, 243, 0.1)" : "white", color: logType === s ? "#0070f3" : "#64748b", fontWeight: logType === s ? 600 : 500, transition: "all 0.2s", minHeight: 36 }}>
                     {s}
                   </button>
                 ))}
                 <button onClick={() => { setLogType("__custom__"); setLogError("") }}
-                  style={{ padding: "4px 12px", borderRadius: 20, fontSize: 12, cursor: "pointer", border: `1px solid ${logType === "__custom__" ? "#0070f3" : "#ddd"}`, background: logType === "__custom__" ? "#0070f322" : "white", color: logType === "__custom__" ? "#0070f3" : "#333", fontWeight: logType === "__custom__" ? "bold" : "normal" }}>
+                  style={{ padding: "6px 12px", borderRadius: 20, fontSize: fontSize.xs, cursor: "pointer", border: `1.5px solid ${logType === "__custom__" ? "#0070f3" : "#e2e8f0"}`, background: logType === "__custom__" ? "rgba(0, 112, 243, 0.1)" : "white", color: logType === "__custom__" ? "#0070f3" : "#64748b", fontWeight: logType === "__custom__" ? 600 : 500, transition: "all 0.2s", minHeight: 36 }}>
                   Other...
                 </button>
               </div>
@@ -622,21 +947,21 @@ export default function TruckOfficerDashboard() {
             </div>
 
             <div style={{ marginBottom: 16 }}>
-              <label style={label}>Maintenance Location *</label>
+              <label style={labelStyle}>Maintenance Location *</label>
               <ModernInput type="text" placeholder="e.g. Mechanic village, Aba Road" value={logLocation} onChange={e => { setLogLocation(e.target.value); setLogError("") }} style={inputStyle} />
             </div>
             <div style={{ marginBottom: 16 }}>
-              <label style={label}>Amount Spent (₦) *</label>
+              <label style={labelStyle}>Amount Spent (₦) *</label>
               <ModernInput type="text" inputMode="numeric" placeholder="e.g. 25,000" value={logAmount} onChange={e => { setLogAmount(formatAmount(e.target.value)); setLogError("") }} style={inputStyle} />
             </div>
-            <div style={{ marginBottom: 24 }}>
-              <label style={label}>Notes (optional)</label>
-              <ModernInput as="textarea" placeholder="Any additional details..." value={logNotes} onChange={e => setLogNotes(e.target.value)} rows={3} style={{ ...inputStyle, resize: "none" }} />
+            <div style={{ marginBottom: 20 }}>
+              <label style={labelStyle}>Notes (optional)</label>
+              <ModernInput as="textarea" placeholder="Any additional details..." value={logNotes} onChange={e => setLogNotes(e.target.value)} rows={3} style={{ ...inputStyle, resize: "none", minHeight: 100, paddingRight: 12 }} />
             </div>
-            {logError && <p style={err}>{logError}</p>}
-            <div style={{ display: "flex", gap: 8 }}>
-              <button onClick={closeLogModal} style={cancelBtn}>Cancel</button>
-              <button onClick={handleLogReport} disabled={logLoading} style={primaryBtn}>{logLoading ? "Logging..." : "Log Report"}</button>
+            {logError && <div style={{ padding: 12, background: "#fef2f2", borderLeft: "4px solid #ef4444", borderRadius: 4, marginBottom: 16, color: "#b91c1c", fontSize: fontSize.sm, fontWeight: 600 }}>{logError}</div>}
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+              <button onClick={() => { setShowLogModal(false); setLogPlate(""); setLogType(""); setLogTypeCustom(""); setLogAmount(""); setLogLocation(""); setLogNotes(""); setLogError("") }} style={{ padding: "12px 16px", background: "white", border: "1px solid #cbd5e1", color: "#475569", borderRadius: 8, cursor: "pointer", fontWeight: 700, fontSize: fontSize.md, minHeight: 44 }}>Cancel</button>
+              <button onClick={handleLogReport} disabled={logLoading} style={{ padding: "12px 16px", background: "#0070f3", color: "white", border: "none", borderRadius: 8, cursor: logLoading ? "not-allowed" : "pointer", fontWeight: 700, fontSize: fontSize.md, minHeight: 44, opacity: logLoading ? 0.7 : 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>{logLoading ? <><Icon icon="mdi:loading" width={16} style={{ animation: "spin 1s linear infinite" }} /> Logging...</> : "Log Report"}</button>
             </div>
           </div>
         </div>
@@ -644,113 +969,67 @@ export default function TruckOfficerDashboard() {
 
       {/* Log Fuel Expense Modal */}
       {showFuelModal && (
-        <div onClick={closeFuelModal} style={overlay}>
-          <div
-            onClick={e => e.stopPropagation()}
-            style={{ ...modalBox(isMobile), width: isMobile ? "100%" : 480 }}
-          >
-            {isMobile && <div style={dragHandle} />}
+        <div onClick={() => { setShowFuelModal(false); setFuelPlate(""); setFuelTripId(""); setFuelTrips([]); setFuelLitres(""); setFuelNotes(""); setFuelError("") }} style={modalOverlay}>
+          <div onClick={e => e.stopPropagation()} style={modalBox}>
+            <h3 style={{ marginBottom: 6, color: "#0f172a", fontSize: fontSize.xl, fontWeight: 700 }}>Log Fuel Expense</h3>
+            <p style={{ margin: "0 0 20px", fontSize: fontSize.sm, color: "#64748b" }}>Record fuel consumption for a completed trip</p>
 
-            <h3 style={{ marginBottom: 20, color: "#171717" }}>
-              Log Fuel Expense
-            </h3>
-
-            {/* Truck */}
             <div style={{ marginBottom: 16 }}>
-              <label style={label}>Truck *</label>
-              <ModernInput
-                as="select"
-                value={fuelPlate}
-                onChange={e => handleFuelPlateChange(e.target.value)}
-                style={inputStyle}
-              >
-                <option value="">Select truck</option>
-                {assignedTrucks.map(t => (
-                  <option key={t.plate_number} value={t.plate_number}>
-                    {t.plate_number}
-                    {t.kbnl_truck_no ? ` · #${t.kbnl_truck_no}` : ""} — ⛽{" "}
-                    {t.fuel_balance}L
-                  </option>
-                ))}
-              </ModernInput>
+              <label style={labelStyle}>Truck *</label>
+              <div style={{ position: "relative" }}>
+                <ModernInput as="select" value={fuelPlate} onChange={e => handleFuelPlateChange(e.target.value)} style={inputStyle}>
+                  <option value="">Select truck</option>
+                  {assignedTrucks.map(t => (
+                    <option key={t.plate_number} value={t.plate_number}>
+                      {t.plate_number}{t.kbnl_truck_no ? ` · #${t.kbnl_truck_no}` : ""} — ⛽ {t.fuel_balance}L
+                    </option>
+                  ))}
+                </ModernInput>
+                {chevron}
+              </div>
             </div>
 
-            {/* Trip */}
             {fuelPlate && (
               <div style={{ marginBottom: 16 }}>
-                <label style={label}>Trip *</label>
+                <label style={labelStyle}>Trip *</label>
 
                 {fuelTrips.length === 0 ? (
-                  <p style={{ fontSize: 13, color: "#888", marginTop: 4 }}>
-                    No completed trips found.
+                  <p style={{ fontSize: fontSize.sm, color: "#94a3b8", marginTop: 4, margin: 0 }}>
+                    No completed trips found for this truck.
                   </p>
                 ) : (
-                  <ModernInput
-                    as="select"
-                    value={fuelTripId}
-                    onChange={e => {
-                      setFuelTripId(e.target.value)
-                      setFuelError("")
-                    }}
-                    style={inputStyle}
-                  >
-                    <option value="">Select trip</option>
-                    {fuelTrips.map(t => (
-                      <option key={t.trip_id} value={t.trip_id}>
-                        {new Date(t.created_at).toLocaleDateString()} —{" "}
-                        {t.material_centre} · {t.product}
-                      </option>
-                    ))}
-                  </ModernInput>
+                  <div style={{ position: "relative" }}>
+                    <ModernInput as="select" value={fuelTripId} onChange={e => { setFuelTripId(e.target.value); setFuelError("") }} style={inputStyle}>
+                      <option value="">Select trip</option>
+                      {fuelTrips.map(t => (
+                        <option key={t.trip_id} value={t.trip_id}>
+                          {new Date(t.created_at).toLocaleDateString()} — {t.material_centre} · {t.product}
+                        </option>
+                      ))}
+                    </ModernInput>
+                    {chevron}
+                  </div>
                 )}
               </div>
             )}
 
-            {/* Litres */}
             {fuelTripId && (
               <div style={{ marginBottom: 16 }}>
-                <label style={label}>Estimated Litres Consumed *</label>
-                <ModernInput
-                  type="number"
-                  step="0.1"
-                  placeholder="e.g. 120"
-                  value={fuelLitres}
-                  onChange={e => {
-                    setFuelLitres(e.target.value)
-                    setFuelError("")
-                  }}
-                  style={inputStyle}
-                />
+                <label style={labelStyle}>Estimated Litres Consumed *</label>
+                <ModernInput type="number" step="0.1" placeholder="e.g. 120" value={fuelLitres} onChange={e => { setFuelLitres(e.target.value); setFuelError("") }} style={inputStyle} />
               </div>
             )}
 
-            {/* Notes */}
-            <div style={{ marginBottom: 16 }}>
-              <label style={label}>Notes (optional)</label>
-              <ModernInput
-                as="textarea"
-                placeholder="e.g. Long haul — 400km"
-                value={fuelNotes}
-                onChange={e => setFuelNotes(e.target.value)}
-                rows={3}
-                style={{ ...inputStyle, resize: "none" }}
-              />
+            <div style={{ marginBottom: 20 }}>
+              <label style={labelStyle}>Notes (optional)</label>
+              <ModernInput as="textarea" placeholder="e.g. Long haul — 400km" value={fuelNotes} onChange={e => setFuelNotes(e.target.value)} rows={3} style={{ ...inputStyle, resize: "none", minHeight: 100, paddingRight: 12 }} />
             </div>
 
-            {fuelError && <p style={err}>{fuelError}</p>}
+            {fuelError && <div style={{ padding: 12, background: "#fef2f2", borderLeft: "4px solid #ef4444", borderRadius: 4, marginBottom: 16, color: "#b91c1c", fontSize: fontSize.sm, fontWeight: 600 }}>{fuelError}</div>}
 
-            {/* Actions */}
-            <div style={{ display: "flex", gap: 8 }}>
-              <button onClick={closeFuelModal} style={cancelBtn}>
-                Cancel
-              </button>
-              <button
-                onClick={handleLogFuelExpense}
-                disabled={fuelLoading}
-                style={primaryBtn}
-              >
-                {fuelLoading ? "Logging..." : "Log Expense"}
-              </button>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+              <button onClick={() => { setShowFuelModal(false); setFuelPlate(""); setFuelTripId(""); setFuelTrips([]); setFuelLitres(""); setFuelNotes(""); setFuelError("") }} style={{ padding: "12px 16px", background: "white", border: "1px solid #cbd5e1", color: "#475569", borderRadius: 8, cursor: "pointer", fontWeight: 700, fontSize: fontSize.md, minHeight: 44 }}>Cancel</button>
+              <button onClick={handleLogFuelExpense} disabled={fuelLoading} style={{ padding: "12px 16px", background: "#0070f3", color: "white", border: "none", borderRadius: 8, cursor: fuelLoading ? "not-allowed" : "pointer", fontWeight: 700, fontSize: fontSize.md, minHeight: 44, opacity: fuelLoading ? 0.7 : 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>{fuelLoading ? <><Icon icon="mdi:loading" width={16} style={{ animation: "spin 1s linear infinite" }} /> Logging...</> : "Log Expense"}</button>
             </div>
           </div>
         </div>
@@ -758,45 +1037,53 @@ export default function TruckOfficerDashboard() {
 
       {/* ATF Initiation Modal */}
       {showATFModal && (
-        <div onClick={() => { setShowATFModal(false); setAtfPlate(""); setAtfDriverId(""); setAtfLitres(""); setAtfCompanyId(""); setAtfError("") }} style={overlay}>
-          <div onClick={e => e.stopPropagation()} style={{ ...modalBox(isMobile), width: isMobile ? "100%" : 440 }}>
-            {isMobile && <div style={dragHandle} />}
-            <h3 style={{ marginBottom: 4, color: "#171717" }}>Initiate ATF</h3>
-            <p style={{ color: "#888", fontSize: 13, marginBottom: 20 }}>Authority to Fuel — this will go to the Truck Admin for authorisation</p>
+        <div onClick={() => { setShowATFModal(false); setAtfPlate(""); setAtfDriverId(""); setAtfLitres(""); setAtfCompanyId(""); setAtfError("") }} style={modalOverlay}>
+          <div onClick={e => e.stopPropagation()} style={modalBox}>
+            <h3 style={{ marginBottom: 6, color: "#0f172a", fontSize: fontSize.xl, fontWeight: 700 }}>Initiate ATF</h3>
+            <p style={{ margin: "0 0 20px", fontSize: fontSize.sm, color: "#64748b" }}>Authority to Fuel — this will be sent to the Truck Admin for authorisation</p>
 
             <div style={{ marginBottom: 16 }}>
-              <label style={label}>Truck *</label>
-              <ModernInput as="select" value={atfPlate} onChange={e => { setAtfPlate(e.target.value); setAtfError("") }} style={inputStyle}>
-                <option value="">Select truck</option>
-                {assignedTrucks.map(t => <option key={t.plate_number} value={t.plate_number}>{t.plate_number}{t.kbnl_truck_no ? ` · #${t.kbnl_truck_no}` : ""} — ⛽ {t.fuel_balance}L</option>)}
-              </ModernInput>
+              <label style={labelStyle}>Truck *</label>
+              <div style={{ position: "relative" }}>
+                <ModernInput as="select" value={atfPlate} onChange={e => { setAtfPlate(e.target.value); setAtfError("") }} style={inputStyle}>
+                  <option value="">Select truck</option>
+                  {assignedTrucks.map(t => <option key={t.plate_number} value={t.plate_number}>{t.plate_number}{t.kbnl_truck_no ? ` · #${t.kbnl_truck_no}` : ""} — ⛽ {t.fuel_balance}L</option>)}
+                </ModernInput>
+                {chevron}
+              </div>
             </div>
 
             <div style={{ marginBottom: 16 }}>
-              <label style={label}>Driver *</label>
-              <ModernInput as="select" value={atfDriverId} onChange={e => { setAtfDriverId(e.target.value); setAtfError("") }} style={inputStyle}>
-                <option value="">Select driver</option>
-                {allDrivers.map(d => <option key={d.driver_id} value={d.driver_id}>{d.full_name}</option>)}
-              </ModernInput>
+              <label style={labelStyle}>Driver *</label>
+              <div style={{ position: "relative" }}>
+                <ModernInput as="select" value={atfDriverId} onChange={e => { setAtfDriverId(e.target.value); setAtfError("") }} style={inputStyle}>
+                  <option value="">Select driver</option>
+                  {allDrivers.map(d => <option key={d.driver_id} value={d.driver_id}>{d.full_name}</option>)}
+                </ModernInput>
+                {chevron}
+              </div>
             </div>
 
             <div style={{ marginBottom: 16 }}>
-              <label style={label}>Fuel Station *</label>
-              <ModernInput as="select" value={atfCompanyId} onChange={e => { setAtfCompanyId(e.target.value); setAtfError("") }} style={inputStyle}>
-                <option value="">Select station</option>
-                {fuelCompanies.map(c => <option key={c.company_id} value={c.company_id}>{c.company_name}</option>)}
-              </ModernInput>
+              <label style={labelStyle}>Fuel Station *</label>
+              <div style={{ position: "relative" }}>
+                <ModernInput as="select" value={atfCompanyId} onChange={e => { setAtfCompanyId(e.target.value); setAtfError("") }} style={inputStyle}>
+                  <option value="">Select station</option>
+                  {fuelCompanies.map(c => <option key={c.company_id} value={c.company_id}>{c.company_name}</option>)}
+                </ModernInput>
+                {chevron}
+              </div>
             </div>
 
-            <div style={{ marginBottom: 24 }}>
-              <label style={label}>Litres to Fill *</label>
+            <div style={{ marginBottom: 20 }}>
+              <label style={labelStyle}>Litres to Fill *</label>
               <ModernInput type="number" step="0.1" placeholder="e.g. 200" value={atfLitres} onChange={e => { setAtfLitres(e.target.value); setAtfError("") }} style={inputStyle} />
             </div>
 
-            {atfError && <p style={err}>{atfError}</p>}
-            <div style={{ display: "flex", gap: 8 }}>
-              <button onClick={() => { setShowATFModal(false); setAtfPlate(""); setAtfDriverId(""); setAtfLitres(""); setAtfCompanyId(""); setAtfError("") }} style={cancelBtn}>Cancel</button>
-              <button onClick={handleInitiateATF} disabled={atfLoading} style={primaryBtn}>{atfLoading ? "Initiating..." : "Submit ATF"}</button>
+            {atfError && <div style={{ padding: 12, background: "#fef2f2", borderLeft: "4px solid #ef4444", borderRadius: 4, marginBottom: 16, color: "#b91c1c", fontSize: fontSize.sm, fontWeight: 600 }}>{atfError}</div>}
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+              <button onClick={() => { setShowATFModal(false); setAtfPlate(""); setAtfDriverId(""); setAtfLitres(""); setAtfCompanyId(""); setAtfError("") }} style={{ padding: "12px 16px", background: "white", border: "1px solid #cbd5e1", color: "#475569", borderRadius: 8, cursor: "pointer", fontWeight: 700, fontSize: fontSize.md, minHeight: 44 }}>Cancel</button>
+              <button onClick={handleInitiateATF} disabled={atfLoading} style={{ padding: "12px 16px", background: "#0070f3", color: "white", border: "none", borderRadius: 8, cursor: atfLoading ? "not-allowed" : "pointer", fontWeight: 700, fontSize: fontSize.md, minHeight: 44, opacity: atfLoading ? 0.7 : 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>{atfLoading ? <><Icon icon="mdi:loading" width={16} style={{ animation: "spin 1s linear infinite" }} /> Initiating...</> : "Submit ATF"}</button>
             </div>
           </div>
         </div>
@@ -804,11 +1091,3 @@ export default function TruckOfficerDashboard() {
     </div>
   )
 }
-
-const overlay: React.CSSProperties = { position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "flex-end", justifyContent: "center", zIndex: 100 }
-const modalBox = (isMobile: boolean): React.CSSProperties => ({ background: "white", borderRadius: isMobile ? "16px 16px 0 0" : 12, padding: isMobile ? "24px 20px 36px" : 32, width: isMobile ? "100%" : 420, maxWidth: "100%", maxHeight: "90vh", overflowY: "auto", boxShadow: "0 8px 32px rgba(0,0,0,0.2)" })
-const dragHandle: React.CSSProperties = { width: 40, height: 4, background: "#ddd", borderRadius: 2, margin: "0 auto 20px" }
-const label: React.CSSProperties = { display: "block", fontWeight: "bold", marginBottom: 6, fontSize: 14, color: "#171717" }
-const err: React.CSSProperties = { color: "red", fontSize: 13, marginBottom: 12 }
-const primaryBtn: React.CSSProperties = { flex: 1, padding: "12px 0", background: "#0070f3", color: "white", border: "none", borderRadius: 8, cursor: "pointer", fontWeight: "bold", fontSize: 15, minHeight: 48 }
-const cancelBtn: React.CSSProperties = { flex: 1, padding: "12px 0", background: "white", border: "1.5px solid #ddd", borderRadius: 8, cursor: "pointer", fontSize: 15, minHeight: 48, color: "#171717" }
