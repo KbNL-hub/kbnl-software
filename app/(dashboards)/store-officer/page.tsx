@@ -28,18 +28,37 @@ type Sale = {
   sale_id: string
   product: string
   quantity: number
-  price_per_bag: number
-  total_amount: number
+  price_per_bag: number | null
+  total_amount: number | null
   customer_name: string | null
   payment_mode: string
   sale_type: string
   tricycle_number: string | null
   sold_at: string
+  broker_id: string | null
+  broker_name?: string | null
+  status: string
 }
 
-type SupplyLine = { product: string; quantity: string }
+type GroupedSale = {
+  group_id: string
+  customer_name: string | null
+  payment_mode: string
+  sale_type: string
+  tricycle_number: string | null
+  sold_at: string
+  broker_id: string | null
+  broker_name?: string | null
+  status: string
+  lines: Sale[]
+}
 
-const PAYMENT_MODES = ["Cash", "Transfer", "POS", "Credit"]
+type Broker = { broker_id: string; broker_name: string }
+
+type SupplyLine = { product: string; quantity: string }
+type SaleLine = { product: string; quantity: string; price_per_bag: string }
+
+const PAYMENT_MODES = ["Cash", "Transfer", "POS", "Broker"]
 
 function useBreakpoint() {
   const [isDesktop, setIsDesktop] = useState(false)
@@ -71,7 +90,7 @@ const fontSize = {
 }
 
 export default function StoreOfficerDashboard() {
-  const { isMobile, isDesktop } = useBreakpoint()
+  const { isMobile } = useBreakpoint()
   const router = useRouter()
   const fileInputRef = useRef<HTMLInputElement>(null)
   
@@ -90,9 +109,7 @@ export default function StoreOfficerDashboard() {
   const [allProducts, setAllProducts] = useState<string[]>([])
 
   const [showSaleModal, setShowSaleModal] = useState(false)
-  const [saleProduct, setSaleProduct] = useState("")
-  const [saleQty, setSaleQty] = useState("")
-  const [salePrice, setSalePrice] = useState("")
+  const [saleLines, setSaleLines] = useState<SaleLine[]>([{ product: "", quantity: "", price_per_bag: "" }])
   const [saleCustomer, setSaleCustomer] = useState<{ full_name: string } | null>(null)
   const [salePayment, setSalePayment] = useState("")
   const [saleError, setSaleError] = useState("")
@@ -102,6 +119,11 @@ export default function StoreOfficerDashboard() {
   const [saleTricycleId, setSaleTricycleId] = useState("")
   const [tricycleSearch, setTricycleSearch] = useState("")
   const [tricycleDropOpen, setTricycleDropOpen] = useState(false)
+  const [brokers, setBrokers] = useState<Broker[]>([])
+  const [saleBroker, setSaleBroker] = useState<Broker | null>(null)
+  const [brokerSearch, setBrokerSearch] = useState("")
+  const [brokerDropOpen, setBrokerDropOpen] = useState(false)
+  const [isBrokerLinked, setIsBrokerLinked] = useState(false)
 
   const [salesFilter, setSalesFilter] = useState("All")
 
@@ -146,6 +168,7 @@ export default function StoreOfficerDashboard() {
       fetchStock(officerData.store_name),
       fetchSales(officerData.officer_id),
       fetchTricycles(),
+      fetchBrokers(),
     ])
     setLoading(false)
   }
@@ -204,7 +227,7 @@ export default function StoreOfficerDashboard() {
   async function fetchSales(officerId: string) {
     const { data } = await supabase
       .from("store_sales")
-      .select("sale_id, product, quantity, price_per_bag, total_amount, customer_name, payment_mode, sale_type, tricycle_id, sold_at")
+      .select("sale_id, product, quantity, price_per_bag, total_amount, customer_name, payment_mode, sale_type, tricycle_id, sold_at, broker_id, status")
       .eq("officer_id", officerId)
       .order("sold_at", { ascending: false })
 
@@ -212,12 +235,21 @@ export default function StoreOfficerDashboard() {
 
     const enriched = await Promise.all(data.map(async s => {
       let tricycle_number: string | null = null
+      let broker_name: string | null = null
+
       if (s.tricycle_id) {
         const { data: t } = await supabase
           .from("tricycles").select("tricycle_number").eq("tricycle_id", s.tricycle_id).single()
         tricycle_number = t?.tricycle_number ?? null
       }
-      return { ...s, tricycle_number }
+
+      if (s.broker_id) {
+        const { data: b } = await supabase
+          .from("Brokers").select("broker_name").eq("broker_id", s.broker_id).single()
+        broker_name = b?.broker_name ?? null
+      }
+
+      return { ...s, tricycle_number, broker_name }
     }))
 
     setSales(enriched)
@@ -229,6 +261,14 @@ export default function StoreOfficerDashboard() {
       .select("tricycle_id, tricycle_number")
       .order("tricycle_number", { ascending: true })
     setTricycles(data || [])
+  }
+
+  async function fetchBrokers() {
+    const { data } = await supabase
+      .from("Brokers")
+      .select("broker_id, broker_name")
+      .order("broker_name", { ascending: true })
+    setBrokers(data || [])
   }
 
   function addSupplyLine() {
@@ -314,49 +354,110 @@ export default function StoreOfficerDashboard() {
     ])
   }
 
+  function addSaleLine() {
+    setSaleLines([...saleLines, { product: "", quantity: "", price_per_bag: "" }])
+  }
+  
+  function removeSaleLine(index: number) {
+    if (saleLines.length === 1) return
+    setSaleLines(saleLines.filter((_, i) => i !== index))
+  }
+  
+  function updateSaleLine(index: number, field: "product" | "quantity" | "price_per_bag", value: string) {
+    setSaleLines(saleLines.map((l, i) => i === index ? { ...l, [field]: value } : l))
+    setSaleError("")
+  }
+  
   async function handleLogSale() {
     if (!officer) return
-    if (!saleProduct) return setSaleError("Select a product")
-    const qty = parseInt(saleQty)
-    if (!saleQty || qty <= 0) return setSaleError("Enter a valid quantity")
-    const price = parseAmount(salePrice)
-    if (!salePrice || price <= 0) return setSaleError("Enter a valid price per bag")
+  
+    // Validate lines
+    if (saleLines.some(l => !l.product)) return setSaleError("Select a product for each line")
+    if (saleLines.some(l => !l.quantity || parseInt(l.quantity) <= 0)) return setSaleError("Enter a valid quantity for each line")
+    
     if (!salePayment) return setSaleError("Select a payment mode")
     if (saleType === "tricycle" && !saleTricycleId) return setSaleError("Select a tricycle")
-    if (!saleCustomer || !saleCustomer.full_name.trim()) return setSaleError("Customer name is required")
-
-    const stockItem = stock.find(s => s.product === saleProduct)
-    if (!stockItem || stockItem.balance < qty) return setSaleError(`Insufficient stock — only ${stockItem?.balance ?? 0} bags available`)
-
+  
+    // Broker-linked validation
+    if (isBrokerLinked) {
+      if (!saleBroker) return setSaleError("Select a broker")
+      if (!saleCustomer || !saleCustomer.full_name.trim()) return setSaleError("Customer name is required for broker-linked sales")
+    } else {
+      // Direct sale: all lines must have price
+      if (saleLines.some(l => !l.price_per_bag)) return setSaleError("Enter a price per bag for each line")
+      if (saleLines.some(l => parseAmount(l.price_per_bag) <= 0)) return setSaleError("Enter valid prices")
+    }
+  
+    // Check stock for all products
+    const insufficientStock = saleLines.find(line => {
+      const stockItem = stock.find(s => s.product === line.product)
+      const qty = parseInt(line.quantity)
+      return !stockItem || stockItem.balance < qty
+    })
+  
+    if (insufficientStock) {
+      const stockItem = stock.find(s => s.product === insufficientStock.product)
+      return setSaleError(`Insufficient ${insufficientStock.product} — only ${stockItem?.balance ?? 0} bags available`)
+    }
+  
     setSaleLoading(true)
-
-    const { error: saleErr } = await supabase.from("store_sales").insert([{
-      officer_id: officer.officer_id,
-      store_name: officer.store_name,
-      product: saleProduct,
-      quantity: qty,
-      price_per_bag: price,
-      customer_name: saleCustomer.full_name.trim(),
-      payment_mode: salePayment,
-      sale_type: saleType,
-      tricycle_id: saleType === "tricycle" ? saleTricycleId : null,
-    }])
-
-    if (saleErr) { setSaleError("Failed to log sale"); setSaleLoading(false); return }
-
-    await supabase
-      .from("store_stock")
-      .update({ balance: stockItem.balance - qty, updated_at: new Date().toISOString() })
-      .eq("store_name", officer.store_name)
-      .eq("product", saleProduct)
-
-    setSaleLoading(false)
-    setShowSaleModal(false)
-    setSaleProduct(""); setSaleQty(""); setSalePrice(""); setSaleCustomer(null); setSalePayment(""); setSaleError(""); setSaleType("direct"); setSaleTricycleId(""); setTricycleSearch("")
-    await Promise.all([fetchSales(officer.officer_id), fetchStock(officer.store_name)])
+  
+    try {
+      // Insert one row per product line
+      const salesToInsert = saleLines.map(line => ({
+        officer_id: officer.officer_id,
+        store_name: officer.store_name,
+        product: line.product,
+        quantity: parseInt(line.quantity),
+        price_per_bag: isBrokerLinked ? null : parseAmount(line.price_per_bag),
+        customer_name: saleCustomer?.full_name.trim() || null,
+        payment_mode: salePayment,
+        sale_type: saleType,
+        tricycle_id: saleType === "tricycle" ? saleTricycleId : null,
+        broker_id: isBrokerLinked ? saleBroker?.broker_id : null,
+        status: isBrokerLinked ? "Pending" : "Confirmed",
+      }))
+  
+      const { error: saleErr } = await supabase.from("store_sales").insert(salesToInsert)
+      if (saleErr) {
+        setSaleError("Failed to log sales")
+        setSaleLoading(false)
+        return
+      }
+  
+      // Deduct stock for each product
+      for (const line of saleLines) {
+        const stockItem = stock.find(s => s.product === line.product)
+        if (!stockItem) continue
+  
+        const qty = parseInt(line.quantity)
+        await supabase
+          .from("store_stock")
+          .update({ balance: stockItem.balance - qty, updated_at: new Date().toISOString() })
+          .eq("store_name", officer.store_name)
+          .eq("product", line.product)
+      }
+  
+      setSaleLoading(false)
+      setShowSaleModal(false)
+      setSaleLines([{ product: "", quantity: "", price_per_bag: "" }])
+      setSaleCustomer(null)
+      setSalePayment("")
+      setSaleError("")
+      setSaleType("direct")
+      setSaleTricycleId("")
+      setTricycleSearch("")
+      setIsBrokerLinked(false)
+      setSaleBroker(null)
+      setBrokerSearch("")
+  
+      await Promise.all([fetchSales(officer.officer_id), fetchStock(officer.store_name)])
+    } catch (err) {
+      setSaleError("An error occurred")
+      setSaleLoading(false)
+    }
   }
 
-  // Profile picture upload handlers
   function handleAvatarClick() {
     setPictureError("")
     setPicturePreview(null)
@@ -368,13 +469,11 @@ export default function StoreOfficerDashboard() {
     const file = e.target.files?.[0]
     if (!file) return
 
-    // Validate file type
     if (!file.type.startsWith("image/")) {
       setPictureError("Please select an image file")
       return
     }
 
-    // Validate file size (max 1MB)
     if (file.size > 1 * 1024 * 1024) {
       setPictureError("Image must be less than 1MB")
       return
@@ -383,7 +482,6 @@ export default function StoreOfficerDashboard() {
     setSelectedFile(file)
     setPictureError("")
 
-    // Create preview
     const reader = new FileReader()
     reader.onload = (event) => {
       setPicturePreview(event.target?.result as string)
@@ -408,25 +506,21 @@ export default function StoreOfficerDashboard() {
       const fileName = `${officer.officer_id}-${Date.now()}.${fileExt}`
       const filePath = `${officer.officer_id}/${fileName}`
 
-      // Delete old picture if exists
       if (officer.profile_picture_url) {
         const oldPath = officer.profile_picture_url.split("/").slice(-2).join("/")
         await supabase.storage.from("profile-pictures").remove([oldPath])
       }
 
-      // Upload new picture
       const { error: uploadError } = await supabase.storage
         .from("profile-pictures")
         .upload(filePath, selectedFile, { upsert: false })
 
       if (uploadError) { setPictureError("Upload failed"); setPictureLoading(false); return }
 
-      // Get public URL
       const { data: { publicUrl } } = supabase.storage
         .from("profile-pictures")
         .getPublicUrl(filePath)
 
-      // Update officer profile
       const { error: updateError } = await supabase
         .from("store_officers")
         .update({ profile_picture_url: publicUrl })
@@ -434,10 +528,8 @@ export default function StoreOfficerDashboard() {
 
       if (updateError) { setPictureError("Failed to save profile"); setPictureLoading(false); return }
 
-      // Update local state
       setOfficer({ ...officer, profile_picture_url: publicUrl })
 
-      // Close modal
       setPictureLoading(false)
       setShowPictureModal(false)
       setSelectedFile(null)
@@ -448,8 +540,49 @@ export default function StoreOfficerDashboard() {
     }
   }
 
-  const filteredSales = salesFilter === "All" ? sales : sales.filter(s => s.product === salesFilter)
-  const uniqueProducts = [...new Set(sales.map(s => s.product))]
+  const groupedSales = sales.reduce<GroupedSale[]>((groups, sale) => {
+    const groupId = [
+      sale.sold_at,
+      sale.customer_name ?? "",
+      sale.payment_mode,
+      sale.sale_type,
+      sale.tricycle_number ?? "",
+      sale.broker_id ?? "",
+      sale.status,
+    ].join("|")
+    const existing = groups.find(group => group.group_id === groupId)
+
+    if (existing) {
+      existing.lines.push(sale)
+      return groups
+    }
+
+    groups.push({
+      group_id: groupId,
+      customer_name: sale.customer_name,
+      payment_mode: sale.payment_mode,
+      sale_type: sale.sale_type,
+      tricycle_number: sale.tricycle_number,
+      sold_at: sale.sold_at,
+      broker_id: sale.broker_id,
+      broker_name: sale.broker_name,
+      status: sale.status,
+      lines: [sale],
+    })
+    return groups
+  }, [])
+
+  const filteredSales = salesFilter === "All" ? groupedSales : groupedSales.filter(s => s.payment_mode === salesFilter)
+  const paymentFilters = PAYMENT_MODES.filter(mode => sales.some(sale => sale.payment_mode === mode))
+
+  const getStatusColor = (status: string) => {
+    switch(status) {
+      case "Pending": return "#f5a623"
+      case "Confirmed": return "#10b981"
+      case "Rejected": return "#ef4444"
+      default: return "#64748b"
+    }
+  }
 
   if (loading) return (
     <div style={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: "100vh", fontFamily: "'Inter', sans-serif" }}>
@@ -506,7 +639,6 @@ export default function StoreOfficerDashboard() {
                   {officer?.full_name.charAt(0).toUpperCase()}
                 </span>
               )}
-              {/* Camera overlay hint */}
               <div
                 style={{
                   position: "absolute",
@@ -651,7 +783,7 @@ export default function StoreOfficerDashboard() {
           <div>
             <div style={{ display: "flex", flexDirection: isMobile ? "column" : "row", justifyContent: "space-between", alignItems: isMobile ? "flex-start" : "center", gap: 12, marginBottom: 16 }}>
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                {["All", ...uniqueProducts].map(f => (
+                {["All", ...paymentFilters].map(f => (
                   <button
                     key={f}
                     onClick={() => setSalesFilter(f)}
@@ -675,7 +807,7 @@ export default function StoreOfficerDashboard() {
                 ))}
               </div>
               <button
-                onClick={() => { setShowSaleModal(true); setSaleError("") }}
+                onClick={() => { setShowSaleModal(true); setSaleError(""); setIsBrokerLinked(false); setSaleBroker(null) }}
                 style={{ padding: "8px 16px", background: "#0070f3", color: "white", border: "none", borderRadius: 8, cursor: "pointer", fontWeight: 600, fontSize: fontSize.md, minHeight: 40, whiteSpace: "nowrap", transition: "opacity 0.2s" }}
                 onMouseEnter={e => e.currentTarget.style.opacity = "0.9"}
                 onMouseLeave={e => e.currentTarget.style.opacity = "1"}
@@ -687,130 +819,97 @@ export default function StoreOfficerDashboard() {
             {filteredSales.length === 0 && <p style={{ color: "#64748b", fontSize: fontSize.base }}>No sales logged yet.</p>}
 
             <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-              {filteredSales.map(sale => (
-                <div key={sale.sale_id} style={{ background: "white", border: "1px solid #e2e8f0", borderRadius: 12, padding: 16, boxShadow: "0 1px 3px rgba(0,0,0,0.05)", transition: "all 0.2s ease" }} onMouseEnter={e => { e.currentTarget.style.boxShadow = "0 4px 12px rgba(0,0,0,0.08)"; e.currentTarget.style.borderColor = "#cbd5e1" }} onMouseLeave={e => { e.currentTarget.style.boxShadow = "0 1px 3px rgba(0,0,0,0.05)"; e.currentTarget.style.borderColor = "#e2e8f0" }}>
+              {filteredSales.map(sale => {
+                const totalAmount = sale.lines.reduce((sum, line) => sum + (line.total_amount ?? 0), 0)
+                const hasBrokerPricing = sale.lines.some(line => line.price_per_bag === null)
+
+                return (
+                <div key={sale.group_id} style={{ background: "white", border: "1px solid #e2e8f0", borderRadius: 12, padding: 16, boxShadow: "0 1px 3px rgba(0,0,0,0.05)", transition: "all 0.2s ease" }} onMouseEnter={e => { e.currentTarget.style.boxShadow = "0 4px 12px rgba(0,0,0,0.08)"; e.currentTarget.style.borderColor = "#cbd5e1" }} onMouseLeave={e => { e.currentTarget.style.boxShadow = "0 1px 3px rgba(0,0,0,0.05)"; e.currentTarget.style.borderColor = "#e2e8f0" }}>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 12 }}>
                     <div style={{ flex: 1 }}>
-                      <p style={{ margin: 0, fontWeight: 700, fontSize: fontSize.lg, color: "#0f172a" }}>{sale.product}</p>
+                      <p style={{ margin: 0, fontWeight: 700, fontSize: fontSize.lg, color: "#0f172a" }}>
+                        {sale.lines.length === 1 ? sale.lines[0].product : `${sale.lines.length} products`}
+                      </p>
                       {sale.customer_name && <p style={{ margin: "4px 0 0", fontSize: fontSize.sm, color: "#64748b" }}>{sale.customer_name}</p>}
+                      {sale.broker_name && <p style={{ margin: "4px 0 0", fontSize: fontSize.sm, color: "#0070f3", fontWeight: 500 }}>Broker: {sale.broker_name}</p>}
                       <p style={{ margin: "4px 0 0", fontSize: fontSize.xs, color: "#94a3b8" }}>{new Date(sale.sold_at).toLocaleString()}</p>
                     </div>
                     <div style={{ textAlign: "right" }}>
-                      <p style={{ margin: 0, fontWeight: 700, fontSize: fontSize.lg, color: "#16a34a" }}>₦{sale.total_amount.toLocaleString()}</p>
-                      <span style={{ fontSize: fontSize.xs, padding: "3px 8px", borderRadius: 6, background: "#f0f7ff", color: "#0070f3", fontWeight: 600, display: "inline-block", marginTop: 4 }}>{sale.payment_mode}</span>
+                      {!hasBrokerPricing ? (
+                        <>
+                          <p style={{ margin: 0, fontWeight: 700, fontSize: fontSize.lg, color: "#16a34a" }}>₦{totalAmount.toLocaleString()}</p>
+                          <span style={{ fontSize: fontSize.xs, padding: "3px 8px", borderRadius: 6, background: "#f0f7ff", color: "#0070f3", fontWeight: 600, display: "inline-block", marginTop: 4 }}>{sale.payment_mode}</span>
+                        </>
+                      ) : (
+                        <>
+                          <p style={{ margin: 0, fontWeight: 700, fontSize: fontSize.lg, color: "#94a3b8", fontStyle: "italic" }}>Provided by broker</p>
+                          <span style={{ fontSize: fontSize.xs, padding: "3px 8px", borderRadius: 6, background: "#f0f7ff", color: "#0070f3", fontWeight: 600, display: "inline-block", marginTop: 4 }}>{sale.payment_mode}</span>
+                        </>
+                      )}
                     </div>
                   </div>
+
+                  {/* Status Badge */}
+                  {sale.broker_id && (
+                    <div style={{ background: "#f8fafc", borderRadius: 8, padding: "10px 12px", marginBottom: 10, border: "1px solid #e2e8f0" }}>
+                      <p style={{ margin: 0, fontSize: fontSize.xs, color: "#94a3b8" }}>Status</p>
+                      <span style={{
+                        fontSize: fontSize.xs,
+                        padding: "4px 10px",
+                        borderRadius: 6,
+                        background: sale.status === "Pending" ? "#fffbeb" : sale.status === "Confirmed" ? "#ecfdf5" : "#fef2f2",
+                        color: getStatusColor(sale.status),
+                        fontWeight: 600,
+                        display: "inline-block",
+                        marginTop: 4
+                      }}>
+                        {sale.status}
+                      </span>
+                    </div>
+                  )}
 
                   {/* Sale Type */}
-                  <div
-                    style={{
-                      background: sale.sale_type === "tricycle" ? "#eff6ff" : "#f8fafc",
-                      borderRadius: 8,
-                      padding: "10px 12px",
-                      marginBottom: 10,
-                      border: sale.sale_type === "tricycle"
-                        ? "1px solid #bfdbfe"
-                        : "1px solid #e2e8f0"
-                    }}
-                  >
-                    <p
-                      style={{
-                        margin: 0,
-                        fontSize: fontSize.xs,
-                        color: "#94a3b8"
-                      }}
-                    >
-                      Sale Type
-                    </p>
-
-                    <div
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        gap: 6,
-                        marginTop: 4
-                      }}
-                    >
-                      {sale.sale_type === "tricycle" && (
-                        <Icon
-                          icon="mdi:rickshaw"
-                          width={18}
-                          height={18}
-                          color="#0070f3"
-                        />
-                      )}
-
-                      <p
-                        style={{
-                          margin: 0,
-                          fontWeight: 600,
-                          fontSize: fontSize.base,
-                          color:
-                            sale.sale_type === "tricycle"
-                              ? "#0070f3"
-                              : "#0f172a"
-                        }}
-                      >
-                        {sale.sale_type === "tricycle" && sale.tricycle_number
-                          ? sale.tricycle_number
-                          : "Direct to Customer"}
-                      </p>
+                  {sale.sale_type === "tricycle" && (
+                    <div style={{ background: "#eff6ff", borderRadius: 8, padding: "10px 12px", marginBottom: 10, border: "1px solid #bfdbfe" }}>
+                      <p style={{ margin: 0, fontSize: fontSize.xs, color: "#94a3b8" }}>Sale Type</p>
+                      <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 4 }}>
+                        <Icon icon="mdi:rickshaw" width={18} height={18} color="#0070f3" />
+                        <p style={{ margin: 0, fontWeight: 600, fontSize: fontSize.base, color: "#0070f3" }}>
+                          {sale.tricycle_number || "Tricycle"}
+                        </p>
+                      </div>
                     </div>
-                  </div>
+                  )}
 
-                  <div
-                    style={{
-                      display: "grid",
-                      gridTemplateColumns: "1fr 1fr",
-                      gap: 8
-                    }}
-                  >
-                    <div
-                      style={{
-                        background: "#f8fafc",
-                        borderRadius: 8,
-                        padding: "8px 12px"
-                      }}
-                    >
-                      <p style={{ margin: 0, fontSize: fontSize.xs, color: "#94a3b8" }}>
-                        Bags
-                      </p>
-                      <p
-                        style={{
-                          margin: "2px 0 0",
-                          fontWeight: 600,
-                          fontSize: fontSize.base,
-                          color: "#0f172a"
-                        }}
-                      >
-                        {sale.quantity}
-                      </p>
-                    </div>
-
-                    <div
-                      style={{
-                        background: "#f8fafc",
-                        borderRadius: 8,
-                        padding: "8px 12px"
-                      }}
-                    >
-                      <p style={{ margin: 0, fontSize: fontSize.xs, color: "#94a3b8" }}>
-                        Price/Bag
-                      </p>
-                      <p
-                        style={{
-                          margin: "2px 0 0",
-                          fontWeight: 600,
-                          fontSize: fontSize.base,
-                          color: "#0f172a"
-                        }}
-                      >
-                        ₦{sale.price_per_bag.toLocaleString()}
-                      </p>
-                    </div>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                    {sale.lines.map(line => (
+                      <div key={line.sale_id} style={{ display: "grid", gridTemplateColumns: line.price_per_bag !== null ? "1.4fr 0.7fr 0.9fr" : "1.4fr 0.7fr", gap: 8 }}>
+                        <div style={{ background: "#f8fafc", borderRadius: 8, padding: "8px 12px" }}>
+                          <p style={{ margin: 0, fontSize: fontSize.xs, color: "#94a3b8" }}>Product</p>
+                          <p style={{ margin: "2px 0 0", fontWeight: 600, fontSize: fontSize.base, color: "#0f172a" }}>
+                            {line.product}
+                          </p>
+                        </div>
+                        <div style={{ background: "#f8fafc", borderRadius: 8, padding: "8px 12px" }}>
+                          <p style={{ margin: 0, fontSize: fontSize.xs, color: "#94a3b8" }}>Bags</p>
+                          <p style={{ margin: "2px 0 0", fontWeight: 600, fontSize: fontSize.base, color: "#0f172a" }}>
+                            {line.quantity}
+                          </p>
+                        </div>
+                        {line.price_per_bag !== null && (
+                          <div style={{ background: "#f8fafc", borderRadius: 8, padding: "8px 12px" }}>
+                            <p style={{ margin: 0, fontSize: fontSize.xs, color: "#94a3b8" }}>Price/Bag</p>
+                            <p style={{ margin: "2px 0 0", fontWeight: 600, fontSize: fontSize.base, color: "#0f172a" }}>
+                              ₦{line.price_per_bag.toLocaleString()}
+                            </p>
+                          </div>
+                        )}
+                      </div>
+                    ))}
                   </div>
                 </div>
-              ))}
+                )
+              })}
             </div>
           </div>
         )}
@@ -901,27 +1000,160 @@ export default function StoreOfficerDashboard() {
 
       {/* Log Sale Modal */}
       {showSaleModal && (
-        <div onClick={() => { setShowSaleModal(false); setSaleProduct(""); setSaleQty(""); setSalePrice(""); setSaleCustomer(null); setSalePayment(""); setSaleType("direct"); setSaleTricycleId(""); setTricycleSearch(""); setSaleError("") }} style={{ position: "fixed", inset: 0, background: "rgba(15, 23, 42, 0.6)", backdropFilter: "blur(4px)", display: "flex", alignItems: isMobile ? "flex-end" : "center", justifyContent: "center", zIndex: 100, padding: isMobile ? 0 : 24 }}>
-          <div onClick={e => e.stopPropagation()} style={{ background: "white", borderRadius: isMobile ? "20px 20px 0 0" : 12, padding: isMobile ? "28px 20px" : 32, width: "100%", maxWidth: 480, maxHeight: isMobile ? "90vh" : "auto", overflowY: "auto", boxShadow: "0 25px 50px -12px rgba(0, 0, 0, 0.25)" }}>
-            <h3 style={{ margin: "0 0 20px 0", fontSize: fontSize.xl, fontWeight: 700, color: "#0f172a" }}>Log Sale</h3>
-
-            <div style={{ marginBottom: 16 }}>
-              <label style={{ display: "block", fontWeight: 600, marginBottom: 6, fontSize: fontSize.sm, color: "#475569" }}>Product *</label>
-              <ModernInput
-                as="select"
-                value={saleProduct}
-                onChange={e => { setSaleProduct(e.target.value); setSaleError("") }}
-                style={{ width: "100%", padding: "10px 12px", borderRadius: 6, border: "1px solid #e0e0e0", fontSize: fontSize.base, boxSizing: "border-box", minHeight: 44 }}
-              >
-                <option value="">Select product</option>
-                {stock.filter(s => s.balance > 0).map(s => (
-                  <option key={s.product} value={s.product}>{s.product} ({s.balance} bags)</option>
-                ))}
-              </ModernInput>
+        <div onClick={() => { 
+          setShowSaleModal(false)
+          setSaleLines([{ product: "", quantity: "", price_per_bag: "" }])
+          setSaleCustomer(null)
+          setSalePayment("")
+          setSaleError("")
+          setSaleType("direct")
+          setSaleTricycleId("")
+          setTricycleSearch("")
+          setIsBrokerLinked(false)
+          setSaleBroker(null)
+          setBrokerSearch("")
+        }} style={{ position: "fixed", inset: 0, background: "rgba(15, 23, 42, 0.6)", backdropFilter: "blur(4px)", display: "flex", alignItems: isMobile ? "flex-end" : "center", justifyContent: "center", zIndex: 100, padding: isMobile ? 0 : 24 }}>
+          <div onClick={e => e.stopPropagation()} style={{ background: "white", borderRadius: isMobile ? "20px 20px 0 0" : 12, padding: isMobile ? "28px 20px" : 32, width: "100%", maxWidth: 600, maxHeight: isMobile ? "90vh" : "auto", overflowY: "auto", boxShadow: "0 25px 50px -12px rgba(0, 0, 0, 0.25)" }}>
+            <h3 style={{ margin: "0 0 20px 0", fontSize: fontSize.xl, fontWeight: 700, color: "#0f172a" }}>Log Sales</h3>
+      
+            {/* Broker Linked Toggle */}
+            <div style={{ marginBottom: 20, padding: "12px", background: "#f0f7ff", borderRadius: 8, border: "1px solid #bfdbfe" }}>
+              <label style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer" }}>
+                <input
+                  type="checkbox"
+                  checked={isBrokerLinked}
+                  onChange={e => { setIsBrokerLinked(e.target.checked); setSaleBroker(null); setSaleError("") }}
+                  style={{ width: 18, height: 18, cursor: "pointer" }}
+                />
+                <span style={{ margin: "4px 0 0", fontWeight: 600, color: "#0070f3", fontSize: fontSize.sm }}>Broker-linked sales</span>
+              </label>
+              <p style={{ margin: "6px 0 0", fontSize: fontSize.xs, color: "#64748b" }}>
+                {isBrokerLinked ? "Broker will provide the prices" : ""}
+              </p>
             </div>
-
+      
+            {/* Products Section */}
+            <div style={{ marginBottom: 20 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+                <label style={{ fontWeight: 700, fontSize: fontSize.base, color: "#0f172a" }}>Products *</label>
+                <p style={{ margin: 0, fontSize: fontSize.xs, color: "#94a3b8" }}>{saleLines.length} product(s)</p>
+              </div>
+      
+              <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 12 }}>
+                {saleLines.map((line, i) => (
+                  <div key={i} style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr 1fr" : "2fr 1fr " + (isBrokerLinked ? "0fr" : "1fr") + " auto", gap: 8, alignItems: "center" }}>
+                    {/* Product Select */}
+                    <ModernInput
+                      as="select"
+                      value={line.product}
+                      onChange={e => updateSaleLine(i, "product", e.target.value)}
+                      style={{ padding: "10px 12px", borderRadius: 6, border: "1px solid #e0e0e0", fontSize: fontSize.sm, boxSizing: "border-box", minHeight: 44 }}
+                    >
+                      <option value="">Select product</option>
+                      {stock.filter(s => s.balance > 0).map(s => (
+                        <option key={s.product} value={s.product}>{s.product} ({s.balance})</option>
+                      ))}
+                    </ModernInput>
+      
+                    {/* Quantity */}
+                    <ModernInput
+                      type="number"
+                      placeholder="Qty"
+                      value={line.quantity}
+                      onChange={e => updateSaleLine(i, "quantity", e.target.value)}
+                      style={{ padding: "10px 12px", borderRadius: 6, border: "1px solid #e0e0e0", fontSize: fontSize.sm, boxSizing: "border-box", minHeight: 44 }}
+                    />
+      
+                    {/* Price (only for direct sales) */}
+                    {!isBrokerLinked && (
+                      <ModernInput
+                        type="text"
+                        inputMode="numeric"
+                        placeholder="Price"
+                        value={line.price_per_bag}
+                        onChange={e => updateSaleLine(i, "price_per_bag", formatAmount(e.target.value))}
+                        style={{ padding: "10px 12px", borderRadius: 6, border: "1px solid #e0e0e0", fontSize: fontSize.sm, boxSizing: "border-box", minHeight: 44 }}
+                      />
+                    )}
+      
+                    {/* Remove Button */}
+                    {saleLines.length > 1 && (
+                      <button onClick={() => removeSaleLine(i)} style={{ background: "none", border: "none", cursor: "pointer", color: "#ef4444", fontSize: 18, lineHeight: 1, padding: 0, width: 24, height: 24, display: "flex", alignItems: "center", justifyContent: "center" }}>✕</button>
+                    )}
+                  </div>
+                ))}
+              </div>
+      
+              <button onClick={addSaleLine} style={{ width: "100%", padding: "8px 12px", background: "white", border: "1px dashed #0070f3", color: "#0070f3", borderRadius: 6, cursor: "pointer", fontSize: fontSize.sm, fontWeight: 600, minHeight: 40 }}>
+                + Add Another Product
+              </button>
+            </div>
+      
+            {/* Broker Selection (if broker-linked) */}
+            {isBrokerLinked && (
+              <div style={{ marginBottom: 16, position: "relative" }}>
+                <label style={{ display: "block", fontWeight: 600, marginBottom: 6, fontSize: fontSize.sm, color: "#475569" }}>Broker *</label>
+                {brokers.length === 0
+                  ? <p style={{ fontSize: fontSize.sm, color: "#94a3b8", margin: 0 }}>No brokers available.</p>
+                  : (
+                    <div style={{ position: "relative" }}>
+                      <ModernInput
+                        type="text"
+                        placeholder="Search broker…"
+                        value={brokerSearch}
+                        onChange={e => { setBrokerSearch(e.target.value); setBrokerDropOpen(true) }}
+                        onFocus={() => setBrokerDropOpen(true)}
+                        onBlur={() => setTimeout(() => setBrokerDropOpen(false), 150)}
+                        style={{ width: "100%", padding: "10px 12px", borderRadius: 6, border: "1px solid #e0e0e0", fontSize: fontSize.base, boxSizing: "border-box", minHeight: 44 }}
+                      />
+                      {brokerDropOpen && (
+                        <ul style={{ position: "absolute", top: "calc(100% + 4px)", left: 0, right: 0, background: "white", border: "1px solid #e2e8f0", borderRadius: 8, listStyle: "none", margin: 0, padding: 4, maxHeight: 200, overflowY: "auto", zIndex: 50, boxShadow: "0 4px 12px rgba(0,0,0,0.1)" }}>
+                          {brokers
+                            .filter(b => b.broker_name.toLowerCase().includes(brokerSearch.toLowerCase()))
+                            .map(b => (
+                              <li
+                                key={b.broker_id}
+                                onMouseDown={() => { setSaleBroker(b); setBrokerSearch(b.broker_name); setBrokerDropOpen(false); setSaleError("") }}
+                                style={{ padding: "10px 12px", cursor: "pointer", fontSize: fontSize.base, background: saleBroker?.broker_id === b.broker_id ? "#eff6ff" : "white", borderRadius: 6, transition: "all 0.2s" }}
+                                onMouseEnter={e => { if (saleBroker?.broker_id !== b.broker_id) e.currentTarget.style.background = "#f8fafc" }}
+                                onMouseLeave={e => { e.currentTarget.style.background = saleBroker?.broker_id === b.broker_id ? "#eff6ff" : "white" }}
+                              >
+                                {b.broker_name}
+                              </li>
+                            ))}
+                        </ul>
+                      )}
+                    </div>
+                  )
+                }
+                {saleBroker && (
+                  <div style={{ marginTop: 8, padding: "8px 12px", background: "#eff6ff", borderRadius: 6, fontSize: fontSize.sm, color: "#0070f3", fontWeight: 500 }}>
+                    Selected: {saleBroker.broker_name}
+                  </div>
+                )}
+              </div>
+            )}
+      
+            {/* Customer Name (required for broker-linked) */}
+            {isBrokerLinked && (
+              <div style={{ marginBottom: 16 }}>
+                <label style={{ display: "block", fontWeight: 600, marginBottom: 6, fontSize: fontSize.sm, color: "#475569" }}>Customer Name *</label>
+                <CustomerSelector 
+                  onSelect={(c: any) => { setSaleCustomer(c); setSaleError("") }} 
+                  allowUnsavedNew={true}
+                  initialValue={saleCustomer?.full_name || ""}
+                />
+                {saleCustomer && (
+                  <div style={{ marginTop: 8, padding: "8px 12px", background: "#eff6ff", borderRadius: 6, fontSize: fontSize.sm, color: "#0070f3", fontWeight: 500 }}>
+                    Selected: {saleCustomer.full_name}
+                  </div>
+                )}
+              </div>
+            )}
+      
+            {/* Sale Type */}
             <div style={{ marginBottom: 16 }}>
-              <label style={{ display: "block", fontWeight: 600, marginBottom: 6, fontSize: fontSize.sm, color: "#475569" }}>Sale Type *</label>
+              <label style={{ display: "block", fontWeight: 600, marginBottom: 6, fontSize: fontSize.sm, color: "#475569" }}>Sale Type</label>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
                 {(["direct", "tricycle"] as const).map(type => (
                   <button
@@ -947,7 +1179,8 @@ export default function StoreOfficerDashboard() {
                 ))}
               </div>
             </div>
-
+      
+            {/* Tricycle Selection */}
             {saleType === "tricycle" && (
               <div style={{ marginBottom: 16, position: "relative" }}>
                 <label style={{ display: "block", fontWeight: 600, marginBottom: 6, fontSize: fontSize.sm, color: "#475569" }}>Tricycle *</label>
@@ -986,44 +1219,8 @@ export default function StoreOfficerDashboard() {
                 }
               </div>
             )}
-
-            <div style={{ marginBottom: 16 }}>
-              <label style={{ display: "block", fontWeight: 600, marginBottom: 6, fontSize: fontSize.sm, color: "#475569" }}>Quantity (bags) *</label>
-              <ModernInput
-                type="number"
-                placeholder="e.g. 50"
-                value={saleQty}
-                onChange={e => { setSaleQty(e.target.value); setSaleError("") }}
-                style={{ width: "100%", padding: "10px 12px", borderRadius: 6, border: "1px solid #e0e0e0", fontSize: fontSize.base, boxSizing: "border-box", minHeight: 44 }}
-              />
-            </div>
-
-            <div style={{ marginBottom: 16 }}>
-              <label style={{ display: "block", fontWeight: 600, marginBottom: 6, fontSize: fontSize.sm, color: "#475569" }}>Price per Bag (₦) *</label>
-              <ModernInput
-                type="text"
-                inputMode="numeric"
-                placeholder="e.g. 12,000"
-                value={salePrice}
-                onChange={e => { setSalePrice(formatAmount(e.target.value)); setSaleError("") }}
-                style={{ width: "100%", padding: "10px 12px", borderRadius: 6, border: "1px solid #e0e0e0", fontSize: fontSize.base, boxSizing: "border-box", minHeight: 44 }}
-              />
-            </div>
-
-            <div style={{ marginBottom: 16 }}>
-              <label style={{ display: "block", fontWeight: 600, marginBottom: 6, fontSize: fontSize.sm, color: "#475569" }}>Customer Name *</label>
-              <CustomerSelector 
-                onSelect={(c: any) => { setSaleCustomer(c); setSaleError("") }} 
-                allowUnsavedNew={true}
-                initialValue={saleCustomer?.full_name || ""}
-              />
-              {saleCustomer && (
-                <div style={{ marginTop: 8, padding: "8px 12px", background: "#eff6ff", borderRadius: 6, fontSize: fontSize.sm, color: "#0070f3", fontWeight: 500 }}>
-                  Selected: {saleCustomer.full_name}
-                </div>
-              )}
-            </div>
-
+      
+            {/* Payment Mode */}
             <div style={{ marginBottom: 24 }}>
               <label style={{ display: "block", fontWeight: 600, marginBottom: 6, fontSize: fontSize.sm, color: "#475569" }}>Payment Mode *</label>
               <ModernInput
@@ -1036,13 +1233,25 @@ export default function StoreOfficerDashboard() {
                 {PAYMENT_MODES.map(m => (<option key={m} value={m}>{m}</option>))}
               </ModernInput>
             </div>
-
+      
             {saleError && <div style={{ padding: 12, background: "#fef2f2", borderLeft: "4px solid #ef4444", borderRadius: 4, marginBottom: 16, color: "#b91c1c", fontSize: fontSize.sm }}>{saleError}</div>}
-
+      
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-              <button onClick={() => { setShowSaleModal(false); setSaleProduct(""); setSaleQty(""); setSalePrice(""); setSaleCustomer(null); setSalePayment(""); setSaleType("direct"); setSaleTricycleId(""); setTricycleSearch(""); setSaleError("") }} style={{ padding: "12px 16px", background: "white", border: "1px solid #cbd5e1", color: "#475569", borderRadius: 8, cursor: "pointer", fontWeight: 600, fontSize: fontSize.md, minHeight: 44 }}>Cancel</button>
+              <button onClick={() => { 
+                setShowSaleModal(false)
+                setSaleLines([{ product: "", quantity: "", price_per_bag: "" }])
+                setSaleCustomer(null)
+                setSalePayment("")
+                setSaleError("")
+                setSaleType("direct")
+                setSaleTricycleId("")
+                setTricycleSearch("")
+                setIsBrokerLinked(false)
+                setSaleBroker(null)
+                setBrokerSearch("")
+              }} style={{ padding: "12px 16px", background: "white", border: "1px solid #cbd5e1", color: "#475569", borderRadius: 8, cursor: "pointer", fontWeight: 600, fontSize: fontSize.md, minHeight: 44 }}>Cancel</button>
               <button onClick={handleLogSale} disabled={saleLoading} style={{ padding: "12px 16px", background: "#0070f3", color: "white", border: "none", borderRadius: 8, cursor: saleLoading ? "not-allowed" : "pointer", fontWeight: 600, fontSize: fontSize.md, opacity: saleLoading ? 0.7 : 1, minHeight: 44 }}>
-                {saleLoading ? "Logging..." : "Log Sale"}
+                {saleLoading ? "Logging..." : `Log ${saleLines.filter(l => l.product).length} Sale(s)`}
               </button>
             </div>
           </div>
@@ -1056,7 +1265,6 @@ export default function StoreOfficerDashboard() {
             <h3 style={{ margin: "0 0 6px 0", fontSize: fontSize.xl, fontWeight: 700, color: "#0f172a" }}>Update Profile Picture</h3>
             <p style={{ margin: "0 0 20px 0", fontSize: fontSize.sm, color: "#64748b" }}>Click to upload or drag and drop. PNG, JPG up to 1MB.</p>
 
-            {/* Preview or Upload Area */}
             {picturePreview ? (
               <div style={{ marginBottom: 20 }}>
                 <p style={{ margin: "0 0 8px 0", fontSize: fontSize.sm, fontWeight: 600, color: "#0f172a" }}>Preview</p>

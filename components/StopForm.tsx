@@ -250,7 +250,7 @@ export default function StopForm({ tripId, loadedQuantity: initialLoaded = 0, of
       <div style={{ marginBottom: 24 }}>
         <label style={{ fontWeight: "bold", fontSize: 15, color: "#171717" }}>GPS Coordinates <span style={{ fontWeight: "normal", color: "#aaa", fontSize: 13 }}>(optional)</span></label>
         <div style={{ marginTop: 6 }}>
-          <button onClick={captureGPS} style={{ padding: "12px 16px", cursor: "pointer", marginBottom: 8, borderRadius: 8, border: "1.5px solid #ddd", background: "white", color: "#171717", fontSize: 14, minHeight: 48 }}>
+          <button onClick={captureGPS} style={{ padding: "12px 16px", cursor: "pointer", marginBottom: 8, borderRadius: 8, border: "1.5px solid #0070f3", background: "white", color: "#0070f3", fontSize: 14, minHeight: 48 }}>
             📍 Capture My Location
           </button>
           <p style={{ fontSize: 13, color: "#555", margin: 0 }}>{gpsStatus}</p>

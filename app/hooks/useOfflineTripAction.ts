@@ -7,8 +7,6 @@ import { useCallback, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import {
   savePendingTripAction,
-  markTripActionSynced,
-  updateTripActionError,
   getPendingTripActionCount,
 } from '@/lib/offline/tripsDb';
 
@@ -47,14 +45,25 @@ export function useOfflineTripAction(): UseOfflineTripActionResult {
         if (isOnline) {
           console.log(`[Trip Action] Online - submitting ${type} immediately`);
 
-          const { error } = await supabase
-            .from(tableName)
-            .insert([data]);
+          let result;
+          if (type === 'load_more') {
+            // load_more: UPDATE existing Trips record
+            const { loaded_quantity, trip_status, updated_at } = data;
+            result = await supabase
+              .from(tableName)
+              .update({ loaded_quantity, trip_status, updated_at })
+              .eq('trip_id', tripId);
+          } else {
+            // stop & discrepancy: INSERT new records
+            result = await supabase
+              .from(tableName)
+              .insert([data]);
+          }
 
-          if (error) {
-            console.error(`[Trip Action] Submit failed:`, error);
+          if (result.error) {
+            console.error(`[Trip Action] Submit failed:`, result.error);
             setIsSubmitting(false);
-            return { success: false, error: error.message };
+            return { success: false, error: result.error.message };
           }
 
           console.log(`[Trip Action] ${type} submitted successfully`);

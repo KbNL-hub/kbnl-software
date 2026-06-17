@@ -117,6 +117,7 @@ export default function DriverDashboard() {
   const [showPictureModal, setShowPictureModal] = useState(false)
 
   // Discrepancy
+  const [discrepancyType, setDiscrepancyType] = useState<'shortage' | 'caked'>('shortage')
   const [discShortage, setDiscShortage] = useState("")
   const [discCaked, setDiscCaked] = useState("")
   const [discNotes, setDiscNotes] = useState("")
@@ -424,20 +425,27 @@ export default function DriverDashboard() {
   async function handleReportDiscrepancy() {
     const shortage = parseInt(discShortage) || 0
     const caked = parseInt(discCaked) || 0
-    if (shortage === 0 && caked === 0) return setDiscError("Enter at least a shortage or caked bags count")
-    if (shortage < 0 || caked < 0) return setDiscError("Values cannot be negative")
-    if (shortage > remaining) return setDiscError(`Shortage cannot exceed remaining bags (${remaining})`)
-    if (!discDropLocation) return setDiscError("Select a drop location")
+
+    if (discrepancyType === 'shortage') {
+      if (shortage === 0) return setDiscError("Enter shortage bags count")
+      if (shortage < 0) return setDiscError("Values cannot be negative")
+      if (shortage > remaining) return setDiscError(`Shortage cannot exceed remaining bags (${remaining})`)
+    } else {
+      if (caked === 0) return setDiscError("Enter caked bags count")
+      if (caked < 0) return setDiscError("Values cannot be negative")
+      if (!discDropLocation) return setDiscError("Select a drop location")
+    }
 
     setDiscSubmitting(true)
     
     const discrepancyData = {
       trip_id: activeTrip?.trip_id,
       driver_id: driver?.driver_id,
-      shortage,
-      caked_bags: caked,
+      shortage: discrepancyType === 'shortage' ? shortage : 0,
+      caked_bags: discrepancyType === 'caked' ? caked : 0,
+      discrepancy_type: discrepancyType,
       notes: discNotes.trim() || null,
-      drop_location: discDropLocation,
+      drop_location: discrepancyType === 'caked' ? discDropLocation : null,
     }
 
     const result = await submitAction(
@@ -455,6 +463,7 @@ export default function DriverDashboard() {
     }
 
     setShowDiscrepancyModal(false)
+    setDiscrepancyType('shortage')
     setDiscShortage(""); setDiscCaked(""); setDiscNotes(""); setDiscDropLocation(""); setDiscError("")
     
     if (result.offline) {
@@ -1021,8 +1030,8 @@ export default function DriverDashboard() {
               <button onClick={() => { setShowLoadMoreModal(true); setLoadMoreError("") }} style={{ width: "100%", padding: "12px 16px", background: "white", color: "#0070f3", border: "1.5px solid #0070f3", borderRadius: 10, cursor: "pointer", fontWeight: 700, fontSize: fontSize.md, minHeight: 44, display: "flex", alignItems: "center", justifyContent: "center", gap: 8, transition: "all 0.2s" }} onMouseEnter={e => { e.currentTarget.style.background = "#f0f7ff"; e.currentTarget.style.borderColor = "#0055d4" }} onMouseLeave={e => { e.currentTarget.style.background = "white"; e.currentTarget.style.borderColor = "#0070f3" }}>
                 <Icon icon="mdi:plus-box-outline" width={18} /> Load More Bags
               </button>
-              <button onClick={() => { setShowDiscrepancyModal(true); setDiscError("") }} style={{ width: "100%", padding: "12px 16px", background: "white", color: "#f5a623", border: "1.5px solid #f5a623", borderRadius: 10, cursor: "pointer", fontWeight: 700, fontSize: fontSize.md, minHeight: 44, display: "flex", alignItems: "center", justifyContent: "center", gap: 8, transition: "all 0.2s" }} onMouseEnter={e => { e.currentTarget.style.background = "#fff8e1"; e.currentTarget.style.borderColor = "#f5a623" }} onMouseLeave={e => { e.currentTarget.style.background = "white"; e.currentTarget.style.borderColor = "#f5a623" }}>
-                <Icon icon="mdi:alert-outline" width={18} /> Report Shortage
+              <button onClick={() => { setShowDiscrepancyModal(true); setDiscError(""); setDiscrepancyType("shortage") }} style={{ width: "100%", padding: "12px 16px", background: "white", color: "#f5a623", border: "1.5px solid #f5a623", borderRadius: 10, cursor: "pointer", fontWeight: 700, fontSize: fontSize.md, minHeight: 44, display: "flex", alignItems: "center", justifyContent: "center", gap: 8, transition: "all 0.2s" }} onMouseEnter={e => { e.currentTarget.style.background = "#fff8e1"; e.currentTarget.style.borderColor = "#f5a623" }} onMouseLeave={e => { e.currentTarget.style.background = "white"; e.currentTarget.style.borderColor = "#f5a623" }}>
+                <Icon icon="mdi:alert-outline" width={18} /> Shortage/Caked Bags
               </button>
               <button onClick={() => setShowHoldConfirm(true)} style={{ width: "100%", padding: "12px 16px", background: "white", color: activeTrip.trip_status === "On hold" ? "#0070f3" : "#64748b", border: `1.5px solid ${activeTrip.trip_status === "On hold" ? "#0070f3" : "#cbd5e1"}`, borderRadius: 10, cursor: "pointer", fontWeight: 700, fontSize: fontSize.md, minHeight: 44, display: "flex", alignItems: "center", justifyContent: "center", gap: 8, transition: "all 0.2s" }} onMouseEnter={e => { e.currentTarget.style.background = "#f8fafc"; e.currentTarget.style.borderColor = "#cbd5e1" }} onMouseLeave={e => { e.currentTarget.style.background = "white"; e.currentTarget.style.borderColor = activeTrip.trip_status === "On hold" ? "#0070f3" : "#cbd5e1" }}>
                 <Icon icon={activeTrip.trip_status === "On hold" ? "mdi:play-circle-outline" : "mdi:pause-circle-outline"} width={18} />
@@ -1244,15 +1253,15 @@ export default function DriverDashboard() {
         <div onClick={() => setShowHoldConfirm(false)} style={modalOverlay}>
           <div onClick={e => e.stopPropagation()} style={modalBox}>
             <div style={{ textAlign: "center", marginBottom: 20 }}>
-              <div style={{ width: 56, height: 56, background: "#fff8e1", borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 12px", border: "2px solid #fde68a" }}>
-                <Icon icon={activeTrip?.trip_status === "On hold" ? "mdi:play-circle" : "mdi:pause-circle"} width={28} color="#f5a623" />
+              <div style={{ width: 56, height: 56, background: activeTrip?.trip_status === "On hold" ? "#dfecfc" : "#fff8e0", borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 12px", border: `2px solid ${activeTrip?.trip_status === "On hold" ? "#8abaf0" : "#fde68a"}` }}>
+                <Icon icon={activeTrip?.trip_status === "On hold" ? "mdi:play-circle" : "mdi:pause-circle"} width={28} color = {activeTrip?.trip_status === "On hold" ? "#0070f3" : "#f5a623"} />
               </div>
               <h3 style={{ margin: 0, color: "#0f172a", fontSize: fontSize.xl, fontWeight: 700 }}>{activeTrip?.trip_status === "On hold" ? "Resume Trip?" : "Put Trip On Hold?"}</h3>
               <p style={{ margin: "8px 0 0", color: "#64748b", fontSize: fontSize.sm }}>{activeTrip?.trip_status === "On hold" ? "Sets trip back to In Transit." : "Pauses your trip until resumed."}</p>
             </div>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
               <button onClick={() => setShowHoldConfirm(false)} style={{ padding: "12px 16px", background: "white", border: "1px solid #cbd5e1", color: "#475569", borderRadius: 8, cursor: "pointer", fontWeight: 700, fontSize: fontSize.md, minHeight: 44 }}>Cancel</button>
-              <button onClick={handleHoldTrip} disabled={submitting} style={{ padding: "12px 16px", background: "#f5a623", color: "white", border: "none", borderRadius: 8, cursor: submitting ? "not-allowed" : "pointer", fontWeight: 700, fontSize: fontSize.md, minHeight: 44, opacity: submitting ? 0.7 : 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
+              <button onClick={handleHoldTrip} disabled={submitting} style={{ padding: "12px 16px", background: activeTrip?.trip_status === "On hold" ? "#0070f3" : "#f5a623", color: "white", border: "none", borderRadius: 8, cursor: submitting ? "not-allowed" : "pointer", fontWeight: 700, fontSize: fontSize.md, minHeight: 44, opacity: submitting ? 0.7 : 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
                 {submitting ? <><Icon icon="mdi:loading" width={16} style={{ animation: "spin 1s linear infinite" }} /> Updating…</> : "Confirm"}
               </button>
             </div>
@@ -1262,9 +1271,9 @@ export default function DriverDashboard() {
 
       {/* Discrepancy */}
       {showDiscrepancyModal && (
-        <div onClick={() => { setShowDiscrepancyModal(false); setDiscShortage(""); setDiscCaked(""); setDiscNotes(""); setDiscDropLocation(""); setDiscError("") }} style={modalOverlay}>
+        <div onClick={() => { setShowDiscrepancyModal(false); setDiscrepancyType('shortage'); setDiscShortage(""); setDiscCaked(""); setDiscNotes(""); setDiscDropLocation(""); setDiscError("") }} style={modalOverlay}>
           <div onClick={e => e.stopPropagation()} style={modalBox}>
-            <h3 style={{ marginBottom: 4, color: "#0f172a", fontSize: fontSize.xl, fontWeight: 700 }}>Report Shortage / Caked Bags</h3>
+            <h3 style={{ marginBottom: 4, color: "#0f172a", fontSize: fontSize.xl, fontWeight: 700 }}>Report Discrepancy</h3>
             <p style={{ color: "#64748b", fontSize: fontSize.sm, marginBottom: 20 }}>Remaining: <strong style={{ color: "#0f172a" }}>{remaining} bags</strong></p>
 
             {!isOnline && (
@@ -1273,26 +1282,42 @@ export default function DriverDashboard() {
               </div>
             )}
 
-            <div style={{ marginBottom: 16 }}>
-              <label style={labelStyle}>Drop Location *</label>
+            <div style={{ marginBottom: 20 }}>
+              <label style={labelStyle}>Discrepancy Type *</label>
               <div style={{ position: "relative" }}>
-                <ModernInput as="select" value={discDropLocation} onChange={e => { setDiscDropLocation(e.target.value); setDiscError("") }} style={inputStyle}>
-                  <option value="">Select location</option>
-                  {allStoreLocations.map(loc => <option key={loc} value={loc}>{loc}</option>)}
+                <ModernInput as="select" value={discrepancyType} onChange={e => { setDiscrepancyType(e.target.value as 'shortage' | 'caked'); setDiscError("") }} style={inputStyle}>
+                  <option value="shortage">Shortage (Missing Bags)</option>
+                  <option value="caked">Caked Bags</option>
                 </ModernInput>
-                
               </div>
             </div>
-            <div style={{ marginBottom: 16 }}>
-              <label style={labelStyle}>Shortage (bags)</label>
-              <p style={{ margin: "0 0 6px", fontSize: fontSize.xs, color: "#94a3b8" }}>Will be deducted from remaining</p>
-              <ModernInput type="number" placeholder="0" value={discShortage} onChange={e => { setDiscShortage(e.target.value); setDiscError("") }} style={inputStyle} />
-            </div>
-            <div style={{ marginBottom: 16 }}>
-              <label style={labelStyle}>Caked Bags</label>
-              <p style={{ margin: "0 0 6px", fontSize: fontSize.xs, color: "#94a3b8" }}>Logged for record only</p>
-              <ModernInput type="number" placeholder="0" value={discCaked} onChange={e => { setDiscCaked(e.target.value); setDiscError("") }} style={inputStyle} />
-            </div>
+
+            {discrepancyType === 'shortage' && (
+              <div style={{ marginBottom: 20 }}>
+                <label style={labelStyle}>Shortage (bags) *</label>
+                <p style={{ margin: "0 0 6px", fontSize: fontSize.xs, color: "#94a3b8" }}>Will be deducted from remaining</p>
+                <ModernInput type="number" placeholder="0" value={discShortage} onChange={e => { setDiscShortage(e.target.value); setDiscError("") }} style={inputStyle} />
+              </div>
+            )}
+
+            {discrepancyType === 'caked' && (
+              <>
+                <div style={{ marginBottom: 16 }}>
+                  <label style={labelStyle}>No. of Caked Bags *</label>
+                  <ModernInput type="number" placeholder="0" value={discCaked} onChange={e => { setDiscCaked(e.target.value); setDiscError("") }} style={inputStyle} />
+                </div>
+                <div style={{ marginBottom: 16 }}>
+                  <label style={labelStyle}>Drop Location *</label>
+                  <div style={{ position: "relative" }}>
+                    <ModernInput as="select" value={discDropLocation} onChange={e => { setDiscDropLocation(e.target.value); setDiscError("") }} style={inputStyle}>
+                      <option value="">Select location</option>
+                      {allStoreLocations.map(loc => <option key={loc} value={loc}>{loc}</option>)}
+                    </ModernInput>
+                  </div>
+                </div>
+              </>
+            )}
+
             <div style={{ marginBottom: 20 }}>
               <label style={labelStyle}>Notes (optional)</label>
               <ModernInput as="textarea" placeholder="Any additional context…" value={discNotes} onChange={e => setDiscNotes(e.target.value)} rows={3} style={{ ...inputStyle, resize: "none", paddingRight: 12 }} />
@@ -1301,7 +1326,7 @@ export default function DriverDashboard() {
             {discError && <div style={{ padding: 12, background: "#fef2f2", borderLeft: "4px solid #ef4444", borderRadius: 4, marginBottom: 16, color: "#b91c1c", fontSize: fontSize.sm, fontWeight: 600 }}>{discError}</div>}
 
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-              <button onClick={() => { setShowDiscrepancyModal(false); setDiscShortage(""); setDiscCaked(""); setDiscNotes(""); setDiscDropLocation(""); setDiscError("") }} style={{ padding: "12px 16px", background: "white", border: "1px solid #cbd5e1", color: "#475569", borderRadius: 8, cursor: "pointer", fontSize: fontSize.md, minHeight: 44, fontWeight: 700 }}>Cancel</button>
+              <button onClick={() => { setShowDiscrepancyModal(false); setDiscrepancyType('shortage'); setDiscShortage(""); setDiscCaked(""); setDiscNotes(""); setDiscDropLocation(""); setDiscError("") }} style={{ padding: "12px 16px", background: "white", border: "1px solid #cbd5e1", color: "#475569", borderRadius: 8, cursor: "pointer", fontSize: fontSize.md, minHeight: 44, fontWeight: 700 }}>Cancel</button>
               <button onClick={handleReportDiscrepancy} disabled={discSubmitting} style={{ padding: "12px 16px", background: "#f5a623", color: "white", border: "none", borderRadius: 8, cursor: discSubmitting ? "not-allowed" : "pointer", fontWeight: 700, fontSize: fontSize.md, minHeight: 44, opacity: discSubmitting ? 0.7 : 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
                 {discSubmitting ? <><Icon icon="mdi:loading" width={16} style={{ animation: "spin 1s linear infinite" }} /> Submitting…</> : "Submit Report"}
               </button>
