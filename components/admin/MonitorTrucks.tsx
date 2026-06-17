@@ -65,6 +65,7 @@ const getPillStyle = (filter: string, isActive: boolean) => {
   return { bg: "white", textColor: "#64748b", borderColor: "#e2e8f0" }
 }
 
+export const revalidate = 0  // Disable ISR — always fetch fresh
 export default function MonitorTrucks() {
   const { isMobile, isDesktop } = useBreakpoint()
   const [trucks, setTrucks] = useState<ActiveTruck[]>([])
