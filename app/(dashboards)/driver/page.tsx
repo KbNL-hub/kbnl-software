@@ -79,6 +79,8 @@ const fontSize = {
   "3xl": 28
 }
 
+export const dynamic = "force-dynamic"
+
 export default function DriverDashboard() {
   const router = useRouter()
   const searchParams = useSearchParams()

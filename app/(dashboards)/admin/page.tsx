@@ -51,6 +51,9 @@ type LowBalanceCompany = {
   current_balance: number
 }
 
+
+export const dynamic = "force-dynamic"
+
 export default function AdminDashboard() {
   const bp = useBreakpoint()
   const isMobile = bp === "mobile"
