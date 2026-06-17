@@ -126,7 +126,7 @@ export default function AdminDashboard() {
       case "add-truck":          return <AddTruck />
       case "add-driver":         return <AddDriver />
       case "manage-brokers":     return <ManageBrokers />
-      case "monitor-trucks":     return <MonitorTrucks />
+      case "monitor-trucks":     return <MonitorTrucks key={Date.now()} />
       case "manage-trucks":      return <ManageTrucks />
       case "manage-drivers":     return <ManageDrivers />
       case "monitor-trips":      return <MonitorTrips />
