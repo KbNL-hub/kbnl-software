@@ -295,8 +295,8 @@ export default function TruckOfficerDashboard() {
       return
     }
 
-    if (file.size > 5 * 1024 * 1024) {
-      setPictureError("Image must be less than 5MB")
+    if (file.size > 1 * 1024 * 1024) {
+      setPictureError("Image must be less than 1MB")
       return
     }
 
@@ -812,7 +812,7 @@ export default function TruckOfficerDashboard() {
         <div onClick={() => { setShowPictureModal(false); setSelectedFile(null); setPicturePreview(null); setPictureError("") }} style={modalOverlay}>
           <div onClick={e => e.stopPropagation()} style={modalBox}>
             <h3 style={{ margin: "0 0 6px 0", fontSize: fontSize.xl, fontWeight: 700, color: "#0f172a" }}>Update Profile Picture</h3>
-            <p style={{ margin: "0 0 20px 0", fontSize: fontSize.sm, color: "#64748b" }}>PNG, JPG up to 5MB</p>
+            <p style={{ margin: "0 0 20px 0", fontSize: fontSize.sm, color: "#64748b" }}>PNG, JPG up to 1MB</p>
 
             {picturePreview ? (
               <div style={{ marginBottom: 20 }}>

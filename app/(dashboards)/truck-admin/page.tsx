@@ -1,9 +1,10 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useState, useRef } from "react"
 import { useRouter } from "next/navigation"
 import { supabase } from "@/lib/supabase"
 import { formatAmount, parseAmount } from "@/lib/formatAmount"
+import { Icon } from "@iconify/react"
 import { useBreakpoint } from "@/app/hooks/useBreakpoint"
 
 type MaintenanceReport = {
@@ -46,24 +47,59 @@ type ATF = {
   total_amount: number | null
 }
 
+type TruckAdmin = {
+  admin_id: string
+  full_name: string
+  profile_picture_url?: string
+}
+
+const fontSize = {
+  xs: 12,
+  sm: 13,
+  base: 14,
+  md: 15,
+  lg: 16,
+  xl: 20,
+  "2xl": 24,
+  "3xl": 28
+}
+
 const statusColor = (status: string) => {
   switch (status) {
-    case "Pending": return { bg: "#fff8e1", color: "#f5a623" }
-    case "Validated": return { bg: "#00aa0022", color: "#00aa00" }
-    case "Rejected": return { bg: "#ff444422", color: "#ff4444" }
-    default: return { bg: "#eee", color: "#888" }
+    case "Pending": return { bg: "#fff8e1", color: "#f5a623", border: "#fde68a" }
+    case "Validated": return { bg: "#f0fff4", color: "#16a34a", border: "#86efac" }
+    case "Rejected": return { bg: "#fef2f2", color: "#ef4444", border: "#fecaca" }
+    default: return { bg: "#f8fafc", color: "#64748b", border: "#e2e8f0" }
   }
 }
 
 const atfStatusColor = (status: string) => {
   switch (status) {
-    case "Pending": return { bg: "#fff8e1", color: "#f5a623" }
-    case "Authorised": return { bg: "#0070f322", color: "#0070f3" }
-    case "Dispensed": return { bg: "#7c3aed22", color: "#7c3aed" }
-    case "Confirmed": return { bg: "#00aa0022", color: "#00aa00" }
-    case "Invalidated": return { bg: "#ff444422", color: "#ff4444" }
-    default: return { bg: "#eee", color: "#888" }
+    case "Pending": return { bg: "#fff8e1", color: "#f5a623", border: "#fde68a" }
+    case "Authorised": return { bg: "#f0f7ff", color: "#0070f3", border: "#bfdbfe" }
+    case "Dispensed": return { bg: "#f0f7ff", color: "#0070f3", border: "#bfdbfe" }
+    case "Confirmed": return { bg: "#f0fff4", color: "#16a34a", border: "#86efac" }
+    case "Invalidated": return { bg: "#fef2f2", color: "#ef4444", border: "#fecaca" }
+    default: return { bg: "#f8fafc", color: "#64748b", border: "#e2e8f0" }
   }
+}
+
+const filterColor = (filter: string, activeFilter: string) => {
+  if (filter === "All") return { bg: activeFilter === "All" ? "rgba(0, 112, 243, 0.1)" : "white", color: activeFilter === "All" ? "#0070f3" : "#64748b", border: activeFilter === "All" ? "#0070f3" : "#e2e8f0" }
+  if (filter === "Pending") return { bg: activeFilter === "Pending" ? "rgba(245, 166, 35, 0.1)" : "white", color: activeFilter === "Pending" ? "#f5a623" : "#64748b", border: activeFilter === "Pending" ? "#f5a623" : "#e2e8f0" }
+  if (filter === "Validated") return { bg: activeFilter === "Validated" ? "rgba(22, 163, 74, 0.1)" : "white", color: activeFilter === "Validated" ? "#16a34a" : "#64748b", border: activeFilter === "Validated" ? "#16a34a" : "#e2e8f0" }
+  if (filter === "Rejected") return { bg: activeFilter === "Rejected" ? "rgba(239, 68, 68, 0.1)" : "white", color: activeFilter === "Rejected" ? "#ef4444" : "#64748b", border: activeFilter === "Rejected" ? "#ef4444" : "#e2e8f0" }
+  if (filter === "Bulk Procurement") return { bg: activeFilter === "Bulk Procurement" ? "rgba(124, 58, 237, 0.1)" : "white", color: activeFilter === "Bulk Procurement" ? "#7c3aed" : "#64748b", border: activeFilter === "Bulk Procurement" ? "#7c3aed" : "#e2e8f0" }
+  return { bg: "white", color: "#64748b", border: "#e2e8f0" }
+}
+
+const atfFilterColor = (filter: string, activeFilter: string) => {
+  if (filter === "All") return { bg: activeFilter === "All" ? "rgba(0, 112, 243, 0.1)" : "white", color: activeFilter === "All" ? "#0070f3" : "#64748b", border: activeFilter === "All" ? "#0070f3" : "#e2e8f0" }
+  if (filter === "Pending") return { bg: activeFilter === "Pending" ? "rgba(245, 166, 35, 0.1)" : "white", color: activeFilter === "Pending" ? "#f5a623" : "#64748b", border: activeFilter === "Pending" ? "#f5a623" : "#e2e8f0" }
+  if (filter === "Authorised" || filter === "Dispensed") return { bg: activeFilter === filter ? "rgba(0, 112, 243, 0.1)" : "white", color: activeFilter === filter ? "#0070f3" : "#64748b", border: activeFilter === filter ? "#0070f3" : "#e2e8f0" }
+  if (filter === "Confirmed") return { bg: activeFilter === "Confirmed" ? "rgba(22, 163, 74, 0.1)" : "white", color: activeFilter === "Confirmed" ? "#16a34a" : "#64748b", border: activeFilter === "Confirmed" ? "#16a34a" : "#e2e8f0" }
+  if (filter === "Invalidated") return { bg: activeFilter === "Invalidated" ? "rgba(239, 68, 68, 0.1)" : "white", color: activeFilter === "Invalidated" ? "#ef4444" : "#64748b", border: activeFilter === "Invalidated" ? "#ef4444" : "#e2e8f0" }
+  return { bg: "white", color: "#64748b", border: "#e2e8f0" }
 }
 
 function generateATFCode(): string {
@@ -78,8 +114,9 @@ export default function TruckAdminDashboard() {
   const bp = useBreakpoint()
   const isMobile = bp === "mobile"
 
-  const [adminId, setAdminId] = useState("")
-  const [adminName, setAdminName] = useState("")
+  const fileInputRef = useRef<HTMLInputElement>(null)
+
+  const [admin, setAdmin] = useState<TruckAdmin | null>(null)
   const [reports, setReports] = useState<MaintenanceReport[]>([])
   const [procurements, setProcurements] = useState<BulkProcurement[]>([])
   const [maintenanceBalance, setMaintenanceBalance] = useState<number | null>(null)
@@ -90,7 +127,12 @@ export default function TruckAdminDashboard() {
   const [filter, setFilter] = useState("All")
   const [atfFilter, setAtfFilter] = useState("All")
 
-  // Validate / Reject maintenance
+  const [showPictureModal, setShowPictureModal] = useState(false)
+  const [selectedFile, setSelectedFile] = useState<File | null>(null)
+  const [picturePreview, setPicturePreview] = useState<string | null>(null)
+  const [pictureLoading, setPictureLoading] = useState(false)
+  const [pictureError, setPictureError] = useState("")
+
   const [validating, setValidating] = useState<MaintenanceReport | null>(null)
   const [validateLoading, setValidateLoading] = useState(false)
   const [rejecting, setRejecting] = useState<MaintenanceReport | null>(null)
@@ -98,18 +140,15 @@ export default function TruckAdminDashboard() {
   const [rejectError, setRejectError] = useState("")
   const [rejectLoading, setRejectLoading] = useState(false)
 
-  // ATF authorise
   const [authorisingATF, setAuthorisingATF] = useState<ATF | null>(null)
   const [authoriseLoading, setAuthoriseLoading] = useState(false)
 
-  // Bulk procurement
   const [procItem, setProcItem] = useState("")
   const [procTotal, setProcTotal] = useState("")
   const [procNotes, setProcNotes] = useState("")
   const [procError, setProcError] = useState("")
   const [procLoading, setProcLoading] = useState(false)
 
-  // Balance deposit
   const [depositAmount, setDepositAmount] = useState("")
   const [depositNote, setDepositNote] = useState("")
   const [depositError, setDepositError] = useState("")
@@ -134,11 +173,10 @@ export default function TruckAdminDashboard() {
       const { data: profile } = await supabase.from("Profiles").select("role").eq("user_id", user.id).single()
       if (profile?.role !== "TruckAdmin") { router.push("/login"); return }
 
-      const { data: admin } = await supabase.from("truck_admins").select("admin_id, full_name").eq("admin_id", user.id).single()
-      if (!admin) { router.push("/login"); return }
+      const { data: adm } = await supabase.from("truck_admins").select("admin_id, full_name, profile_picture_url").eq("admin_id", user.id).single()
+      if (!adm) { router.push("/login"); return }
 
-      setAdminId(admin.admin_id)
-      setAdminName(admin.full_name)
+      setAdmin(adm)
 
       await Promise.all([fetchReports(), fetchProcurements(), fetchMaintenanceBalance(), fetchATFs()])
       setLoading(false)
@@ -147,12 +185,12 @@ export default function TruckAdminDashboard() {
   }, [])
 
   useEffect(() => {
-    if (!adminId) return
+    if (!admin) return
     const interval = setInterval(() => {
       fetchReports(); fetchProcurements(); fetchMaintenanceBalance(); fetchATFs()
     }, 30000)
     return () => clearInterval(interval)
-  }, [adminId])
+  }, [admin])
 
   async function fetchMaintenanceBalance() {
     const { data } = await supabase.from("maintenance_balance").select("current_balance").eq("id", 1).single()
@@ -205,10 +243,92 @@ export default function TruckAdminDashboard() {
     setAtfs(enriched)
   }
 
+  function handleAvatarClick() {
+    setPictureError("")
+    setPicturePreview(null)
+    setSelectedFile(null)
+    setShowPictureModal(true)
+  }
+
+  function handleFileSelect(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    if (!file.type.startsWith("image/")) {
+      setPictureError("Please select an image file")
+      return
+    }
+
+    if (file.size > 1024 * 1024) {
+      setPictureError("Image must be less than 1MB")
+      return
+    }
+
+    setSelectedFile(file)
+    setPictureError("")
+
+    const reader = new FileReader()
+    reader.onload = (event) => {
+      setPicturePreview(event.target?.result as string)
+    }
+    reader.readAsDataURL(file)
+  }
+
+  async function handleUploadPicture() {
+    if (!selectedFile || !admin) {
+      setPictureError("Please select an image")
+      return
+    }
+
+    setPictureLoading(true)
+    setPictureError("")
+
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session) { setPictureError("Session expired"); setPictureLoading(false); return }
+
+      const fileExt = selectedFile.name.split(".").pop()
+      const fileName = `${admin.admin_id}-${Date.now()}.${fileExt}`
+      const filePath = `${admin.admin_id}/${fileName}`
+
+      if (admin.profile_picture_url) {
+        const oldPath = admin.profile_picture_url.split("/").slice(-2).join("/")
+        await supabase.storage.from("profile-pictures").remove([oldPath])
+      }
+
+      const { error: uploadError } = await supabase.storage
+        .from("profile-pictures")
+        .upload(filePath, selectedFile, { upsert: false })
+
+      if (uploadError) { setPictureError("Upload failed"); setPictureLoading(false); return }
+
+      const { data: { publicUrl } } = supabase.storage
+        .from("profile-pictures")
+        .getPublicUrl(filePath)
+
+      const { error: updateError } = await supabase
+        .from("truck_admins")
+        .update({ profile_picture_url: publicUrl })
+        .eq("admin_id", admin.admin_id)
+
+      if (updateError) { setPictureError("Failed to save profile"); setPictureLoading(false); return }
+
+      setAdmin({ ...admin, profile_picture_url: publicUrl })
+
+      setPictureLoading(false)
+      setShowPictureModal(false)
+      setSelectedFile(null)
+      setPicturePreview(null)
+    } catch (err) {
+      setPictureError("Something went wrong")
+      setPictureLoading(false)
+    }
+  }
+
   async function handleValidate() {
     if (!validating) return
     setValidateLoading(true)
-    await supabase.from("maintenance_reports").update({ status: "Validated", validated_at: new Date().toISOString(), validated_by: adminId }).eq("report_id", validating.report_id)
+    await supabase.from("maintenance_reports").update({ status: "Validated", validated_at: new Date().toISOString(), validated_by: admin?.admin_id }).eq("report_id", validating.report_id)
     const newBalance = Math.max(0, (maintenanceBalance ?? 0) - validating.amount)
     await supabase.from("maintenance_balance").update({ current_balance: newBalance, updated_at: new Date().toISOString() }).eq("id", 1)
     setMaintenanceBalance(newBalance)
@@ -230,7 +350,6 @@ export default function TruckAdminDashboard() {
     if (!authorisingATF) return
     setAuthoriseLoading(true)
 
-    // Generate unique ATF code
     let code = generateATFCode()
     let attempts = 0
     while (attempts < 10) {
@@ -242,7 +361,7 @@ export default function TruckAdminDashboard() {
 
     const { error } = await supabase
       .from("fuel_requests")
-      .update({ atf_status: "Authorised", atf_code: code, authorised_by: adminId })
+      .update({ atf_status: "Authorised", atf_code: code, authorised_by: admin?.admin_id })
       .eq("request_id", authorisingATF.request_id)
 
     setAuthoriseLoading(false)
@@ -255,7 +374,7 @@ export default function TruckAdminDashboard() {
     const amount = parseAmount(depositAmount)
     if (!depositAmount || amount <= 0) return setDepositError("Enter a valid amount")
     setDepositLoading(true)
-    const { error } = await supabase.from("maintenance_deposits").insert([{ amount, note: depositNote.trim() || null, deposited_by: adminId }])
+    const { error } = await supabase.from("maintenance_deposits").insert([{ amount, note: depositNote.trim() || null, deposited_by: admin?.admin_id }])
     if (error) { setDepositError("Failed to log deposit"); setDepositLoading(false); return }
     const newBalance = (maintenanceBalance ?? 0) + amount
     await supabase.from("maintenance_balance").update({ current_balance: newBalance, updated_at: new Date().toISOString() }).eq("id", 1)
@@ -268,11 +387,10 @@ export default function TruckAdminDashboard() {
     const totalNum = parseAmount(procTotal)
     if (!procTotal || totalNum <= 0) return setProcError("Enter a valid total amount")
     setProcLoading(true)
-    const { data: procurement, error } = await supabase.from("bulk_procurement").insert([{ item_name: procItem.trim(), total_amount: totalNum, notes: procNotes.trim() || null, logged_by: adminId }]).select().single()
+    const { data: procurement, error } = await supabase.from("bulk_procurement").insert([{ item_name: procItem.trim(), total_amount: totalNum, notes: procNotes.trim() || null, logged_by: admin?.admin_id }]).select().single()
     setProcLoading(false)
     if (error || !procurement) { setProcError("Failed to log procurement"); return }
     
-    // Deduct from maintenance balance
     const newBalance = Math.max(0, (maintenanceBalance ?? 0) - totalNum)
     await supabase.from("maintenance_balance").update({ current_balance: newBalance, updated_at: new Date().toISOString() }).eq("id", 1)
     setMaintenanceBalance(newBalance)
@@ -293,141 +411,210 @@ export default function TruckAdminDashboard() {
 
   const filteredATFs = atfFilter === "All" ? atfs : atfs.filter(a => a.atf_status === atfFilter)
 
+  const chevron = (
+    <Icon icon="mdi:chevron-down" width={18} color="#aaa"
+      style={{ position: "absolute", right: 12, top: "50%", transform: "translateY(-50%)", pointerEvents: "none" }}
+    />
+  )
+
   const inputStyle: React.CSSProperties = {
-    width: "100%", padding: "12px 14px", boxSizing: "border-box",
-    borderRadius: 8, border: "1.5px solid #ccc",
-    fontSize: 15, background: "white", color: "#171717", minHeight: 48,
+    width: "100%", padding: "10px 12px", paddingRight: 36,
+    boxSizing: "border-box", borderRadius: 8,
+    border: "1px solid #e2e8f0", fontSize: fontSize.base,
+    background: "white", color: "#0f172a", minHeight: 48,
+  }
+
+  const labelStyle: React.CSSProperties = {
+    fontWeight: 600, display: "block",
+    marginBottom: 6, fontSize: fontSize.sm, color: "#475569"
+  }
+
+  const modalOverlay: React.CSSProperties = {
+    position: "fixed", inset: 0, background: "rgba(15, 23, 42, 0.6)",
+    backdropFilter: "blur(4px)",
+    display: "flex", alignItems: isMobile ? "flex-end" : "center",
+    justifyContent: "center", zIndex: 100, padding: isMobile ? 0 : 24
+  }
+
+  const modalBox: React.CSSProperties = {
+    background: "white",
+    borderRadius: isMobile ? "20px 20px 0 0" : 12,
+    padding: isMobile ? "28px 20px" : 32,
+    width: "100%",
+    maxWidth: 480,
+    maxHeight: isMobile ? "90vh" : "auto",
+    overflowY: "auto",
+    boxShadow: "0 25px 50px -12px rgba(0, 0, 0, 0.25)"
   }
 
   if (loading) return (
-    <div style={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: "100vh", background: "white" }}>
-      <p style={{ color: "#888" }}>Loading...</p>
+    <div style={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: "100vh", background: "#f8fafc", fontFamily: "'Inter', sans-serif" }}>
+      <div style={{ textAlign: "center" }}>
+        <div style={{ width: 40, height: 40, borderRadius: "50%", border: "3px solid #e2e8f0", borderTopColor: "#0070f3", animation: "spin 1s linear infinite", margin: "0 auto 12px" }} />
+        <p style={{ color: "#64748b", fontSize: fontSize.sm }}>Loading…</p>
+      </div>
+      <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
     </div>
   )
 
   return (
-    <div style={{ minHeight: "100vh", background: "#f9f9f9", fontFamily: "Arial" }}>
+    <div style={{ minHeight: "100vh", background: "#f8fafc", fontFamily: "'Inter', sans-serif" }}>
+      <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
 
-      {/* Header */}
-      <div style={{ background: "white", borderBottom: "1px solid #eee", padding: "16px 24px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-        <div>
-          <p style={{ margin: 0, fontSize: 12, color: "#888" }}>Truck Admin</p>
-          <p style={{ margin: 0, fontWeight: "bold", fontSize: 16, color: "#171717" }}>{adminName}</p>
+      {/* Profile Banner */}
+      <div style={{ background: "white", borderBottom: "1px solid #e2e8f0", padding: isMobile ? "16px" : "24px 32px", boxShadow: "0 1px 3px rgba(0,0,0,0.05)" }}>
+        <div style={{ maxWidth: 1200, margin: "0 auto", display: "flex", alignItems: "center", gap: isMobile ? 12 : 16, justifyContent: "space-between" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: isMobile ? 12 : 16, flex: 1 }}>
+            <div
+              onClick={handleAvatarClick}
+              style={{
+                width: isMobile ? 48 : 56,
+                height: isMobile ? 48 : 56,
+                borderRadius: "50%",
+                background: admin?.profile_picture_url ? "transparent" : "#f0f7ff",
+                border: "2px solid #bfdbfe",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                flexShrink: 0,
+                cursor: "pointer",
+                position: "relative",
+                overflow: "hidden",
+                transition: "all 0.2s",
+              }}
+              onMouseEnter={e => {
+                e.currentTarget.style.borderColor = "#0070f3"
+                e.currentTarget.style.transform = "scale(1.05)"
+              }}
+              onMouseLeave={e => {
+                e.currentTarget.style.borderColor = "#bfdbfe"
+                e.currentTarget.style.transform = "scale(1)"
+              }}
+            >
+              {admin?.profile_picture_url ? (
+                <img src={admin.profile_picture_url} alt={admin.full_name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+              ) : (
+                <span style={{ fontSize: isMobile ? 20 : 24, fontWeight: 700, color: "#0070f3" }}>
+                  {admin?.full_name.charAt(0).toUpperCase()}
+                </span>
+              )}
+              <div style={{ position: "absolute", inset: 0, background: "rgba(0, 0, 0, 0.4)", display: "flex", alignItems: "center", justifyContent: "center", opacity: 0, transition: "opacity 0.2s" }} onMouseEnter={e => e.currentTarget.style.opacity = "1"} onMouseLeave={e => e.currentTarget.style.opacity = "0"}>
+                <Icon icon="mdi:camera" width={20} height={20} color="white" />
+              </div>
+            </div>
+            <div>
+              <h1 style={{ margin: 0, fontSize: isMobile ? fontSize.lg : fontSize.xl, fontWeight: 700, color: "#0070f3" }}>
+                {admin?.full_name}
+              </h1>
+              <p style={{ margin: "2px 0 0", fontSize: fontSize.sm, color: "#64748b" }}>Truck Admin</p>
+            </div>
+          </div>
+          <button onClick={async () => { await supabase.auth.signOut(); router.push("/login") }} style={{ padding: "8px 16px", background: "rgba(239, 68, 68, 0.05)", color: "#ef4444", border: "1.5px solid #fecaca", borderRadius: 8, cursor: "pointer", fontSize: fontSize.sm, minHeight: 40, fontWeight: 600, transition: "all 0.2s" }} onMouseEnter={e => { e.currentTarget.style.background = "rgba(239, 68, 68, 0.1)"; e.currentTarget.style.borderColor = "#fca5a5" }} onMouseLeave={e => { e.currentTarget.style.background = "rgba(239, 68, 68, 0.05)"; e.currentTarget.style.borderColor = "#fecaca" }}>
+            Logout
+          </button>
         </div>
-        <button onClick={async () => { await supabase.auth.signOut(); router.push("/login") }} style={{ padding: "8px 20px", background: "rgba(255, 68, 68,0.05)", color: "#ff4444", border: "1px solid #ff4444", borderRadius: 6, cursor: "pointer", fontSize: 14 }}>
-          Logout
-        </button>
       </div>
 
-      <div style={{ padding: isMobile ? 16 : 24, maxWidth: 900, margin: "0 auto" }}>
+      <div style={{ padding: isMobile ? "16px" : "32px", maxWidth: 1200, margin: "0 auto" }}>
 
         {/* Balance Card */}
-        <div style={{ background: "white", border: "1px solid #eee", borderRadius: 12, padding: 20, marginBottom: 24, boxShadow: "0 2px 8px rgba(0,0,0,0.04)" }}>
-          <p style={{ margin: "0 0 4px", fontSize: 13, color: "#888" }}>Maintenance Balance</p>
-          <p style={{ margin: 0, fontSize: 36, fontWeight: "bold", color: "#0070f3" }}>
+        <div style={{ background: "white", border: "1px solid #e2e8f0", borderRadius: 12, padding: isMobile ? 16 : 24, marginBottom: 24, boxShadow: "0 1px 3px rgba(0,0,0,0.05)" }}>
+          <p style={{ margin: "0 0 8px 0", fontWeight: 600, fontSize: fontSize.sm, color: "#94a3b8", letterSpacing: 0.5 }}>Maintenance Balance</p>
+          <p style={{ margin: 0, fontSize: isMobile ? fontSize["2xl"] : fontSize.xl, fontWeight: 700, color: "#0070f3" }}>
             ₦{maintenanceBalance !== null ? maintenanceBalance.toLocaleString() : "—"}
           </p>
         </div>
 
-        {/* Section Tabs — distinct style */}
-        <div style={{ marginBottom: 8 }}>
-          <p style={{ margin: "0 0 8px", fontSize: 11, color: "#aaa", textTransform: "uppercase", letterSpacing: 1 }}>Section</p>
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-            {[
-              { key: "reports", label: "Maintenance" },
-              { key: "atf", label: "ATF" },
-              { key: "procurement", label: "Procurement" },
-              { key: "balance", label: "Top Up" },
-            ].map(t => (
-              <button key={t.key} onClick={() => setTab(t.key as any)} style={{
-                padding: "8px 18px", borderRadius: 6, fontSize: 13, cursor: "pointer",
-                border: `2px solid ${tab === t.key ? "#171717" : "#ddd"}`,
-                background: tab === t.key ? "#171717" : "white",
-                color: tab === t.key ? "white" : "#555",
-                fontWeight: tab === t.key ? "bold" : "normal",
-              }}>
-                {t.label}
-              </button>
-            ))}
-          </div>
+        {/* Tabs */}
+        <div style={{ display: "flex", gap: 8, marginBottom: 24, flexWrap: "wrap" }}>
+          {[
+            { key: "reports", label: "Maintenance", icon: "mdi:wrench" },
+            { key: "atf", label: "ATF", icon: "mdi:gas-station" },
+            { key: "procurement", label: "Procurement", icon: "mdi:package" },
+            { key: "balance", label: "Top Up", icon: "mdi:plus-circle" },
+          ].map(t => (
+            <button key={t.key} onClick={() => setTab(t.key as any)} style={{ padding: "8px 16px", borderRadius: 8, fontSize: fontSize.sm, cursor: "pointer", border: `1.5px solid ${tab === t.key ? "" : "#e2e8f0"}`, background: tab === t.key ? "#171717" : "white", color: tab === t.key ? "white" : "#64748b", fontWeight: tab === t.key ? 600 : 500, transition: "all 0.2s", display: "flex", alignItems: "center", gap: 6, minHeight: 40 }} onMouseEnter={e => { if (tab !== t.key) { e.currentTarget.style.borderColor = "#cbd5e1"; e.currentTarget.style.background = "#f8fafc" } }} onMouseLeave={e => { if (tab !== t.key) { e.currentTarget.style.borderColor = "#e2e8f0"; e.currentTarget.style.background = "white" } }}>
+              <Icon icon={t.icon} width={16} />
+              {t.label}
+            </button>
+          ))}
         </div>
-
-        <div style={{ height: 1, background: "#eee", marginBottom: 20 }} />
 
         {/* Reports Tab */}
         {tab === "reports" && (
           <div>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12, flexWrap: "wrap", gap: 8 }}>
-              <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
-                <p style={{ margin: "0 6px 0 0", fontSize: 12, color: "#aaa", textTransform: "uppercase", letterSpacing: 0.5 }}>Filter</p>
-                {maintenanceFilters.map(f => (
-                  <button key={f} onClick={() => setFilter(f)} style={{
-                    padding: "5px 12px", borderRadius: 20, fontSize: 12, cursor: "pointer",
-                    border: "1px solid #ddd",
-                    background: filter === f ? "#0070f3" : "white",
-                    color: filter === f ? "white" : "#555",
-                    fontWeight: filter === f ? "bold" : "normal"
-                  }}>{f}</button>
-                ))}
-              </div>
-              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                {lastUpdated && <span style={{ fontSize: 11, color: "#aaa" }}>{lastUpdated.toLocaleTimeString()}</span>}
-                <button onClick={() => { fetchReports(); fetchProcurements() }} style={{ padding: "5px 10px", fontSize: 12, cursor: "pointer", borderRadius: 4, border: "1px solid #ddd", background: "white" }}>↻</button>
-              </div>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 16, alignItems: "center" }}>
+              {maintenanceFilters.map(f => {
+                const { bg, color, border } = filterColor(f, filter)
+                return (
+                  <button key={f} onClick={() => setFilter(f)} style={{ padding: "6px 14px", borderRadius: 20, fontSize: fontSize.xs, cursor: "pointer", border: `1.5px solid ${border}`, background: bg, color, fontWeight: filter === f ? 600 : 500, transition: "all 0.2s", minHeight: 40 }} onMouseEnter={e => { if (filter !== f) { e.currentTarget.style.borderColor = "#cbd5e1" } }} onMouseLeave={e => { if (filter !== f) { e.currentTarget.style.borderColor = border } }}>
+                    {f}
+                  </button>
+                )
+              })}
+              <div style={{ flex: 1 }} />
+              {lastUpdated && <span style={{ fontSize: fontSize.xs, color: "#94a3b8" }}>Updated {lastUpdated.toLocaleTimeString()}</span>}
+              <button onClick={() => { fetchReports(); fetchProcurements() }} style={{ padding: "6px 12px", fontSize: fontSize.xs, cursor: "pointer", borderRadius: 8, border: "1px solid #e2e8f0", background: "white", color: "#64748b", transition: "all 0.2s", fontWeight: 600 }} onMouseEnter={e => { e.currentTarget.style.background = "#f8fafc"; e.currentTarget.style.borderColor = "#cbd5e1" }} onMouseLeave={e => { e.currentTarget.style.background = "white"; e.currentTarget.style.borderColor = "#e2e8f0" }}>
+                ↻
+              </button>
             </div>
 
-            {filteredFeed.length === 0 && <p style={{ color: "#888" }}>No entries.</p>}
+            {filteredFeed.length === 0 && <p style={{ color: "#64748b", fontSize: fontSize.base }}>No entries.</p>}
             <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
               {filteredFeed.map(item => {
                 if (item.kind === "procurement") {
                   const p = item.data as BulkProcurement
                   return (
-                    <div key={p.procurement_id} style={{ background: "white", border: "1px solid #7c3aed33", borderRadius: 10, padding: 20 }}>
+                    <div key={p.procurement_id} style={{ background: "white", border: "1px solid #e2e8f0", borderRadius: 12, padding: 16, boxShadow: "0 1px 3px rgba(0,0,0,0.05)", transition: "all 0.2s" }} onMouseEnter={e => { e.currentTarget.style.boxShadow = "0 4px 12px rgba(0,0,0,0.08)"; e.currentTarget.style.borderColor = "#cbd5e1" }} onMouseLeave={e => { e.currentTarget.style.boxShadow = "0 1px 3px rgba(0,0,0,0.05)"; e.currentTarget.style.borderColor = "#e2e8f0" }}>
                       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 12 }}>
                         <div>
-                          <p style={{ margin: 0, fontWeight: "bold", fontSize: 15, color: "#171717" }}>{p.item_name}</p>
-                          <p style={{ margin: "4px 0 0", fontSize: 12, color: "#aaa" }}>{new Date(p.logged_at).toLocaleString()}</p>
+                          <p style={{ margin: 0, fontWeight: 700, fontSize: fontSize.lg, color: "#0f172a" }}>{p.item_name}</p>
+                          <p style={{ margin: "4px 0 0", fontSize: fontSize.xs, color: "#94a3b8" }}>{new Date(p.logged_at).toLocaleString()}</p>
                         </div>
-                        <span style={{ padding: "4px 10px", borderRadius: 12, fontSize: 12, background: "#7c3aed22", color: "#7c3aed", fontWeight: "bold" }}>Bulk Procurement</span>
+                        <span style={{ padding: "4px 10px", borderRadius: 20, fontSize: fontSize.xs, background: "rgba(124, 58, 237, 0.1)", color: "#7c3aed", fontWeight: 700, border: "1px solid #7c3aed33" }}>Bulk Procurement</span>
                       </div>
-                      <div style={{ background: "#f9f9f9", borderRadius: 6, padding: "8px 12px", display: "inline-block" }}>
-                        <p style={{ margin: 0, fontSize: 11, color: "#888" }}>Total Amount</p>
-                        <p style={{ margin: 0, fontWeight: "bold", color: "#0070f3" }}>₦{p.total_amount.toLocaleString()}</p>
+                      <div style={{ background: "#f8fafc", borderRadius: 8, padding: "10px 12px", marginBottom: 8, border: "1px solid #e2e8f0" }}>
+                        <p style={{ margin: 0, fontSize: fontSize.xs, color: "#94a3b8" }}>Total Amount</p>
+                        <p style={{ margin: "2px 0 0", fontWeight: 700, color: "#0070f3", fontSize: fontSize.base }}>₦{p.total_amount.toLocaleString()}</p>
                       </div>
-                      {p.notes && <p style={{ margin: "10px 0 0", fontSize: 13, color: "#555" }}><strong>Notes:</strong> {p.notes}</p>}
+                      {p.notes && <p style={{ margin: 0, fontSize: fontSize.sm, color: "#64748b" }}><strong>Notes:</strong> {p.notes}</p>}
                     </div>
                   )
                 }
                 const r = item.data as MaintenanceReport
-                const { bg, color } = statusColor(r.status)
+                const { bg, color, border } = statusColor(r.status)
                 return (
-                  <div key={r.report_id} style={{ background: "white", border: `1px solid ${r.status === "Rejected" ? "#ff444433" : "#eee"}`, borderRadius: 10, padding: 20 }}>
+                  <div key={r.report_id} style={{ background: "white", border: `1px solid ${border}`, borderRadius: 12, padding: 16, boxShadow: "0 1px 3px rgba(0,0,0,0.05)", transition: "all 0.2s" }} onMouseEnter={e => { e.currentTarget.style.boxShadow = "0 4px 12px rgba(0,0,0,0.08)"; e.currentTarget.style.borderColor = "#cbd5e1" }} onMouseLeave={e => { e.currentTarget.style.boxShadow = "0 1px 3px rgba(0,0,0,0.05)"; e.currentTarget.style.borderColor = border }}>
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 12 }}>
                       <div>
-                        <p style={{ margin: 0, fontWeight: "bold", fontSize: 15, color: "#171717" }}>{r.plate_number}</p>
-                        <p style={{ margin: "4px 0 0", fontSize: 13, color: "#555" }}>{r.maintenance_type}</p>
-                        {r.maintenance_location && <p style={{ margin: "4px 0 0", fontSize: 12, color: "#888" }}>📍 {r.maintenance_location}</p>}
-                        <p style={{ margin: "4px 0 0", fontSize: 12, color: "#888" }}>By {r.manager_name}</p>
-                        <p style={{ margin: "4px 0 0", fontSize: 12, color: "#aaa" }}>{new Date(r.reported_at).toLocaleString()}</p>
+                        <p style={{ margin: 0, fontWeight: 700, fontSize: fontSize.lg, color: "#0f172a" }}>{r.plate_number}</p>
+                        <p style={{ margin: "4px 0 0", fontSize: fontSize.sm, color: "#64748b" }}>{r.maintenance_type}</p>
+                        {r.maintenance_location && <p style={{ margin: "4px 0 0", fontSize: fontSize.xs, color: "#94a3b8" }}>📍 {r.maintenance_location}</p>}
+                        <p style={{ margin: "4px 0 0", fontSize: fontSize.xs, color: "#94a3b8" }}>By {r.manager_name}</p>
                       </div>
-                      <span style={{ padding: "4px 10px", borderRadius: 12, fontSize: 12, background: bg, color, fontWeight: "bold", whiteSpace: "nowrap" }}>{r.status}</span>
+                      <span style={{ padding: "4px 10px", borderRadius: 20, fontSize: fontSize.xs, background: bg, color, fontWeight: 700, whiteSpace: "nowrap", border: `1px solid ${color}33` }}>{r.status}</span>
                     </div>
-                    <div style={{ background: "#f9f9f9", borderRadius: 6, padding: "8px 12px", display: "inline-block", marginBottom: 8 }}>
-                      <p style={{ margin: 0, fontSize: 11, color: "#888" }}>Amount</p>
-                      <p style={{ margin: 0, fontWeight: "bold", color: "#0070f3" }}>₦{r.amount.toLocaleString()}</p>
+                    <div style={{ background: "#f8fafc", borderRadius: 8, padding: "10px 12px", marginBottom: 12, border: "1px solid #e2e8f0" }}>
+                      <p style={{ margin: 0, fontSize: fontSize.xs, color: "#94a3b8" }}>Amount</p>
+                      <p style={{ margin: "2px 0 0", fontWeight: 700, color: "#0070f3", fontSize: fontSize.base }}>₦{r.amount.toLocaleString()}</p>
                     </div>
-                    {r.notes && <p style={{ fontSize: 13, color: "#555", marginBottom: 8 }}><strong>Notes:</strong> {r.notes}</p>}
+                    {r.notes && <p style={{ margin: "0 0 8px 0", fontSize: fontSize.sm, color: "#64748b" }}><strong>Notes:</strong> {r.notes}</p>}
                     {r.status === "Rejected" && r.rejection_reason && (
-                      <div style={{ padding: "8px 12px", background: "#fff5f5", border: "1px solid #ffcccc", borderRadius: 6, marginBottom: 12 }}>
-                        <p style={{ margin: 0, fontSize: 13, color: "#ff4444" }}><strong>Rejection reason:</strong> {r.rejection_reason}</p>
+                      <div style={{ padding: "10px 12px", background: "#fef2f2", border: "1px solid #fecaca", borderRadius: 8, marginBottom: 12 }}>
+                        <p style={{ margin: 0, fontSize: fontSize.sm, color: "#b91c1c", fontWeight: 600 }}>{r.rejection_reason}</p>
                       </div>
                     )}
                     {r.status === "Pending" && (
-                      <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
-                        <button onClick={() => setValidating(r)} style={{ flex: 1, padding: "8px 0", background: "#00aa00", color: "white", border: "none", borderRadius: 6, cursor: "pointer", fontWeight: "bold", fontSize: 13, minHeight: 44 }}>Validate</button>
-                        <button onClick={() => { setRejecting(r); setRejectReason(""); setRejectError("") }} style={{ flex: 1, padding: "8px 0", background: "white", color: "#ff4444", border: "1px solid #ff4444", borderRadius: 6, cursor: "pointer", fontWeight: "bold", fontSize: 13, minHeight: 44 }}>Reject</button>
+                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                        <button onClick={() => setValidating(r)} style={{ padding: "10px 14px", background: "#16a34a", color: "white", border: "none", borderRadius: 8, cursor: "pointer", fontWeight: 700, fontSize: fontSize.sm, minHeight: 40, transition: "opacity 0.2s" }} onMouseEnter={e => e.currentTarget.style.opacity = "0.9"} onMouseLeave={e => e.currentTarget.style.opacity = "1"}>
+                          Validate
+                        </button>
+                        <button onClick={() => { setRejecting(r); setRejectReason(""); setRejectError("") }} style={{ padding: "10px 14px", background: "white", color: "#ef4444", border: "1.5px solid #ef4444", borderRadius: 8, cursor: "pointer", fontWeight: 700, fontSize: fontSize.sm, minHeight: 40, transition: "all 0.2s" }} onMouseEnter={e => { e.currentTarget.style.background = "rgba(239, 68, 68, 0.05)"; e.currentTarget.style.borderColor = "#f87171" }} onMouseLeave={e => { e.currentTarget.style.background = "white"; e.currentTarget.style.borderColor = "#ef4444" }}>
+                          Reject
+                        </button>
                       </div>
                     )}
+                    <p style={{ margin: "8px 0 0", fontSize: fontSize.xs, color: "#94a3b8" }}>{new Date(r.reported_at).toLocaleString()}</p>
                   </div>
                 )
               })}
@@ -438,64 +625,60 @@ export default function TruckAdminDashboard() {
         {/* ATF Tab */}
         {tab === "atf" && (
           <div>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12, flexWrap: "wrap", gap: 8 }}>
-              <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
-                <p style={{ margin: "0 6px 0 0", fontSize: 12, color: "#aaa", textTransform: "uppercase", letterSpacing: 0.5 }}>Filter</p>
-                {atfFilters.map(f => (
-                  <button key={f} onClick={() => setAtfFilter(f)} style={{
-                    padding: "5px 12px", borderRadius: 20, fontSize: 12, cursor: "pointer",
-                    border: "1px solid #ddd",
-                    background: atfFilter === f ? "#0070f3" : "white",
-                    color: atfFilter === f ? "white" : "#555",
-                    fontWeight: atfFilter === f ? "bold" : "normal"
-                  }}>{f}</button>
-                ))}
-              </div>
-              <button onClick={fetchATFs} style={{ padding: "5px 10px", fontSize: 12, cursor: "pointer", borderRadius: 4, border: "1px solid #ddd", background: "white" }}>↻</button>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 16, alignItems: "center" }}>
+              {atfFilters.map(f => {
+                const { bg, color, border } = atfFilterColor(f, atfFilter)
+                return (
+                  <button key={f} onClick={() => setAtfFilter(f)} style={{ padding: "6px 14px", borderRadius: 20, fontSize: fontSize.xs, cursor: "pointer", border: `1.5px solid ${border}`, background: bg, color, fontWeight: atfFilter === f ? 600 : 500, transition: "all 0.2s", minHeight: 40 }} onMouseEnter={e => { if (atfFilter !== f) { e.currentTarget.style.borderColor = "#cbd5e1" } }} onMouseLeave={e => { if (atfFilter !== f) { e.currentTarget.style.borderColor = border } }}>
+                    {f}
+                  </button>
+                )
+              })}
+              <div style={{ flex: 1 }} />
+              <button onClick={fetchATFs} style={{ padding: "6px 12px", fontSize: fontSize.xs, cursor: "pointer", borderRadius: 8, border: "1px solid #e2e8f0", background: "white", color: "#64748b", transition: "all 0.2s", fontWeight: 600 }} onMouseEnter={e => { e.currentTarget.style.background = "#f8fafc"; e.currentTarget.style.borderColor = "#cbd5e1" }} onMouseLeave={e => { e.currentTarget.style.background = "white"; e.currentTarget.style.borderColor = "#e2e8f0" }}>
+                ↻
+              </button>
             </div>
 
-            {filteredATFs.length === 0 && <p style={{ color: "#888" }}>No ATFs found.</p>}
+            {filteredATFs.length === 0 && <p style={{ color: "#64748b", fontSize: fontSize.base }}>No ATFs found.</p>}
             <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
               {filteredATFs.map(atf => {
-                const { bg, color } = atfStatusColor(atf.atf_status)
+                const { bg, color, border } = atfStatusColor(atf.atf_status)
                 return (
-                  <div key={atf.request_id} style={{ background: "white", border: "1px solid #eee", borderRadius: 10, padding: 16 }}>
+                  <div key={atf.request_id} style={{ background: "white", border: `1px solid ${border}`, borderRadius: 12, padding: 16, boxShadow: "0 1px 3px rgba(0,0,0,0.05)", transition: "all 0.2s" }} onMouseEnter={e => { e.currentTarget.style.boxShadow = "0 4px 12px rgba(0,0,0,0.08)"; e.currentTarget.style.borderColor = "#cbd5e1" }} onMouseLeave={e => { e.currentTarget.style.boxShadow = "0 1px 3px rgba(0,0,0,0.05)"; e.currentTarget.style.borderColor = border }}>
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 12 }}>
                       <div>
-                        {atf.atf_code
-                          ? <p style={{ margin: 0, fontWeight: "bold", fontSize: 18, color: "#171717", fontFamily: "monospace", letterSpacing: 2 }}>{atf.atf_code}</p>
-                          : <p style={{ margin: 0, fontSize: 13, color: "#aaa" }}>Awaiting authorisation</p>
-                        }
-                        <p style={{ margin: "4px 0 0", fontSize: 13, color: "#555" }}>{atf.plate_number} · {atf.driver_name}</p>
-                        <p style={{ margin: "4px 0 0", fontSize: 12, color: "#888" }}>Station: {atf.company_name}</p>
-                        <p style={{ margin: "4px 0 0", fontSize: 12, color: "#888" }}>Initiated by {atf.officer_name}</p>
-                        <p style={{ margin: "4px 0 0", fontSize: 12, color: "#aaa" }}>{new Date(atf.requested_at).toLocaleString()}</p>
+                        {atf.atf_code ? <p style={{ margin: 0, fontWeight: 700, fontSize: fontSize.base, fontFamily: "monospace", letterSpacing: 1, color: "#0f172a" }}>{atf.atf_code}</p> : <p style={{ margin: 0, fontSize: fontSize.sm, color: "#94a3b8" }}>Awaiting authorisation</p>}
+                        <p style={{ margin: "4px 0 0", fontSize: fontSize.sm, color: "#64748b" }}>{atf.plate_number} · {atf.driver_name}</p>
+                        <p style={{ margin: "4px 0 0", fontSize: fontSize.xs, color: "#94a3b8" }}>Station: {atf.company_name}</p>
+                        <p style={{ margin: "4px 0 0", fontSize: fontSize.xs, color: "#94a3b8" }}>Initiated by {atf.officer_name}</p>
                       </div>
-                      <span style={{ padding: "4px 10px", borderRadius: 12, fontSize: 12, background: bg, color, fontWeight: "bold", whiteSpace: "nowrap" }}>{atf.atf_status}</span>
+                      <span style={{ padding: "4px 10px", borderRadius: 20, fontSize: fontSize.xs, background: bg, color, fontWeight: 700, whiteSpace: "nowrap", border: `1px solid ${color}33` }}>{atf.atf_status}</span>
                     </div>
-                    <div style={{ display: "grid", gridTemplateColumns: atf.total_amount ? "1fr 1fr 1fr" : "1fr 1fr", gap: 8, marginBottom: 12 }}>
-                      <div style={{ background: "#f9f9f9", borderRadius: 6, padding: "8px 12px" }}>
-                        <p style={{ margin: 0, fontSize: 11, color: "#888" }}>Litres</p>
-                        <p style={{ margin: 0, fontWeight: "bold", color: "#171717" }}>{atf.litres}L</p>
+                    <div style={{ display: "grid", gridTemplateColumns: atf.total_amount ? "1fr 1fr 1fr" : "1fr 1fr", gap: 10, marginBottom: 12 }}>
+                      <div style={{ background: "#f8fafc", borderRadius: 8, padding: "10px 12px", border: "1px solid #e2e8f0" }}>
+                        <p style={{ margin: 0, fontSize: fontSize.xs, color: "#94a3b8" }}>Litres</p>
+                        <p style={{ margin: "2px 0 0", fontWeight: 700, color: "#0f172a", fontSize: fontSize.base }}>{atf.litres}L</p>
                       </div>
                       {atf.rate_per_litre && (
-                        <div style={{ background: "#f9f9f9", borderRadius: 6, padding: "8px 12px" }}>
-                          <p style={{ margin: 0, fontSize: 11, color: "#888" }}>Rate/L</p>
-                          <p style={{ margin: 0, fontWeight: "bold", color: "#171717" }}>₦{atf.rate_per_litre.toLocaleString()}</p>
+                        <div style={{ background: "#f8fafc", borderRadius: 8, padding: "10px 12px", border: "1px solid #e2e8f0" }}>
+                          <p style={{ margin: 0, fontSize: fontSize.xs, color: "#94a3b8" }}>Rate/L</p>
+                          <p style={{ margin: "2px 0 0", fontWeight: 700, color: "#0f172a", fontSize: fontSize.base }}>₦{atf.rate_per_litre.toLocaleString()}</p>
                         </div>
                       )}
                       {atf.total_amount && (
-                        <div style={{ background: "#f9f9f9", borderRadius: 6, padding: "8px 12px" }}>
-                          <p style={{ margin: 0, fontSize: 11, color: "#888" }}>Total</p>
-                          <p style={{ margin: 0, fontWeight: "bold", color: "#0070f3" }}>₦{atf.total_amount.toLocaleString()}</p>
+                        <div style={{ background: "#f8fafc", borderRadius: 8, padding: "10px 12px", border: "1px solid #e2e8f0" }}>
+                          <p style={{ margin: 0, fontSize: fontSize.xs, color: "#94a3b8" }}>Total</p>
+                          <p style={{ margin: "2px 0 0", fontWeight: 700, color: "#0070f3", fontSize: fontSize.base }}>₦{atf.total_amount.toLocaleString()}</p>
                         </div>
                       )}
                     </div>
                     {atf.atf_status === "Pending" && (
-                      <button onClick={() => setAuthorisingATF(atf)} style={{ width: "100%", padding: "10px 0", background: "#0070f3", color: "white", border: "none", borderRadius: 6, cursor: "pointer", fontWeight: "bold", fontSize: 14, minHeight: 44 }}>
+                      <button onClick={() => setAuthorisingATF(atf)} style={{ width: "100%", padding: "10px 14px", background: "#0070f3", color: "white", border: "none", borderRadius: 8, cursor: "pointer", fontWeight: 700, fontSize: fontSize.sm, minHeight: 40, transition: "opacity 0.2s" }} onMouseEnter={e => e.currentTarget.style.opacity = "0.9"} onMouseLeave={e => e.currentTarget.style.opacity = "1"}>
                         Authorise ATF
                       </button>
                     )}
+                    <p style={{ margin: "8px 0 0", fontSize: fontSize.xs, color: "#94a3b8" }}>{new Date(atf.requested_at).toLocaleString()}</p>
                   </div>
                 )
               })}
@@ -506,98 +689,132 @@ export default function TruckAdminDashboard() {
         {/* Procurement Tab */}
         {tab === "procurement" && (
           <div style={{ maxWidth: 600 }}>
-            <h3 style={{ marginBottom: 20, color: "#171717" }}>Log Bulk Procurement</h3>
+            <h3 style={{ marginBottom: 20, color: "#0f172a", fontSize: fontSize.xl, fontWeight: 700 }}>Log Bulk Procurement</h3>
             <div style={{ marginBottom: 16 }}>
-              <label style={label}>Item Name *</label>
+              <label style={labelStyle}>Item Name *</label>
               <input type="text" placeholder="e.g. Grease, Engine oil" value={procItem} onChange={e => { setProcItem(e.target.value); setProcError("") }} style={inputStyle} />
             </div>
             <div style={{ marginBottom: 16 }}>
-              <label style={label}>Total Amount (₦) *</label>
+              <label style={labelStyle}>Total Amount (₦) *</label>
               <input type="text" inputMode="numeric" placeholder="e.g. 150,000" value={procTotal} onChange={e => { setProcTotal(formatAmount(e.target.value)); setProcError("") }} style={inputStyle} />
             </div>
-            <div style={{ marginBottom: 24 }}>
-              <label style={label}>Notes (optional)</label>
-              <textarea placeholder="Any additional details..." value={procNotes} onChange={e => setProcNotes(e.target.value)} rows={2} style={{ ...inputStyle, resize: "none" }} />
+            <div style={{ marginBottom: 20 }}>
+              <label style={labelStyle}>Notes (optional)</label>
+              <textarea placeholder="Any additional details..." value={procNotes} onChange={e => setProcNotes(e.target.value)} rows={2} style={{ ...inputStyle, resize: "none", minHeight: 80, paddingRight: 12 }} />
             </div>
-            {procError && <p style={err}>{procError}</p>}
-            <button onClick={handleLogProcurement} disabled={procLoading} style={{ width: "100%", padding: "12px 0", background: "#0070f3", color: "white", border: "none", borderRadius: 8, cursor: "pointer", fontWeight: "bold", fontSize: 15, minHeight: 48 }}>
-              {procLoading ? "Logging..." : "Log Procurement"}
+            {procError && <div style={{ padding: 12, background: "#fef2f2", borderLeft: "4px solid #ef4444", borderRadius: 4, marginBottom: 16, color: "#b91c1c", fontSize: fontSize.sm, fontWeight: 600 }}>{procError}</div>}
+            <button onClick={handleLogProcurement} disabled={procLoading} style={{ width: "100%", padding: "12px 16px", background: "#0070f3", color: "white", border: "none", borderRadius: 8, cursor: procLoading ? "not-allowed" : "pointer", fontWeight: 700, fontSize: fontSize.md, minHeight: 48, opacity: procLoading ? 0.7 : 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
+              {procLoading ? <><Icon icon="mdi:loading" width={16} style={{ animation: "spin 1s linear infinite" }} /> Logging...</> : "Log Procurement"}
             </button>
           </div>
         )}
 
         {/* Balance Tab */}
         {tab === "balance" && (
-          <div style={{ maxWidth: 480 }}>
-            <h3 style={{ marginBottom: 20, color: "#171717" }}>Top Up Maintenance Balance</h3>
-            <div style={{ background: "white", border: "1px solid #eee", borderRadius: 12, padding: 20, marginBottom: 24 }}>
-              <p style={{ margin: "0 0 4px", fontSize: 13, color: "#888" }}>Current Balance</p>
-              <p style={{ margin: 0, fontSize: 28, fontWeight: "bold", color: "#0070f3" }}>₦{maintenanceBalance !== null ? maintenanceBalance.toLocaleString() : "—"}</p>
+          <div style={{ maxWidth: 600 }}>
+            <h3 style={{ marginBottom: 20, color: "#0f172a", fontSize: fontSize.xl, fontWeight: 700 }}>Top Up maintenance balance</h3>
+            <div style={{ background: "white", border: "1px solid #e2e8f0", borderRadius: 12, padding: 20, marginBottom: 24 }}>
+              <p style={{ margin: "0 0 8px 0", fontWeight: 600, fontSize: fontSize.sm, color: "#94a3b8", textTransform: "uppercase", letterSpacing: 0.5 }}>current balance</p>
+              <p style={{ margin: 0, fontSize: fontSize.xl, fontWeight: 700, color: "#0070f3" }}>₦{maintenanceBalance !== null ? maintenanceBalance.toLocaleString() : "—"}</p>
             </div>
             <div style={{ marginBottom: 16 }}>
-              <label style={label}>Amount to Add (₦) *</label>
+              <label style={labelStyle}>Amount to Add (₦) *</label>
               <input type="text" inputMode="numeric" placeholder="e.g. 500,000" value={depositAmount} onChange={e => { setDepositAmount(formatAmount(e.target.value)); setDepositError("") }} style={inputStyle} />
             </div>
-            <div style={{ marginBottom: 24 }}>
-              <label style={label}>Note (optional)</label>
+            <div style={{ marginBottom: 20 }}>
+              <label style={labelStyle}>Note (optional)</label>
               <input type="text" placeholder="e.g. Monthly allocation" value={depositNote} onChange={e => setDepositNote(e.target.value)} style={inputStyle} />
             </div>
-            {depositError && <p style={err}>{depositError}</p>}
-            <button onClick={handleDeposit} disabled={depositLoading} style={{ width: "100%", padding: "12px 0", background: "#0070f3", color: "white", border: "none", borderRadius: 8, cursor: "pointer", fontWeight: "bold", fontSize: 15, minHeight: 48 }}>
-              {depositLoading ? "Adding..." : "Add to Balance"}
+            {depositError && <div style={{ padding: 12, background: "#fef2f2", borderLeft: "4px solid #ef4444", borderRadius: 4, marginBottom: 16, color: "#b91c1c", fontSize: fontSize.sm, fontWeight: 600 }}>{depositError}</div>}
+            <button onClick={handleDeposit} disabled={depositLoading} style={{ width: "100%", padding: "12px 16px", background: "#0070f3", color: "white", border: "none", borderRadius: 8, cursor: depositLoading ? "not-allowed" : "pointer", fontWeight: 700, fontSize: fontSize.md, minHeight: 48, opacity: depositLoading ? 0.7 : 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
+              {depositLoading ? <><Icon icon="mdi:loading" width={16} style={{ animation: "spin 1s linear infinite" }} /> Adding...</> : "Add to Balance"}
             </button>
           </div>
         )}
       </div>
 
-      {/* Authorise ATF Modal */}
-      {authorisingATF && (
-        <div style={overlayStyle}>
-          <div onClick={e => e.stopPropagation()} style={modalBox(isMobile)}>
-            {isMobile && <div style={dragHandle} />}
-            <h3 style={{ marginBottom: 12, color: "#171717" }}>Authorise ATF?</h3>
-            <p style={{ color: "#555", fontSize: 14, marginBottom: 20 }}>
-              A unique ATF code will be generated and sent to the driver and station manager.
-            </p>
-            <div style={{ background: "#f9f9f9", borderRadius: 8, padding: 16, marginBottom: 24 }}>
-              <p style={{ margin: "0 0 6px" }}><strong>Truck:</strong> {authorisingATF.plate_number}</p>
-              <p style={{ margin: "0 0 6px" }}><strong>Driver:</strong> {authorisingATF.driver_name}</p>
-              <p style={{ margin: "0 0 6px" }}><strong>Station:</strong> {authorisingATF.company_name}</p>
-              <p style={{ margin: 0 }}><strong>Litres:</strong> {authorisingATF.litres}L</p>
-            </div>
-            <div style={{ display: "flex", gap: 8 }}>
-              <button onClick={() => setAuthorisingATF(null)} style={cancelBtn}>Cancel</button>
-              <button onClick={handleAuthoriseATF} disabled={authoriseLoading} style={primaryBtn}>
-                {authoriseLoading ? "Authorising..." : "Yes, Authorise"}
+      {/* Profile Picture Modal */}
+      {showPictureModal && (
+        <div onClick={() => { setShowPictureModal(false); setSelectedFile(null); setPicturePreview(null); setPictureError("") }} style={modalOverlay}>
+          <div onClick={e => e.stopPropagation()} style={modalBox}>
+            <h3 style={{ margin: "0 0 6px 0", fontSize: fontSize.xl, fontWeight: 700, color: "#0f172a" }}>Update Profile Picture</h3>
+            <p style={{ margin: "0 0 20px 0", fontSize: fontSize.sm, color: "#64748b" }}>PNG, JPG up to 1MB</p>
+
+            {picturePreview ? (
+              <div style={{ marginBottom: 20 }}>
+                <p style={{ margin: "0 0 8px 0", fontSize: fontSize.sm, fontWeight: 600, color: "#0f172a" }}>Preview</p>
+                <img src={picturePreview} alt="Preview" style={{ width: "100%", height: 200, objectFit: "cover", borderRadius: 12, border: "2px solid #e2e8f0" }} />
+              </div>
+            ) : (
+              <div onClick={() => fileInputRef.current?.click()} style={{ border: "2px dashed #0070f3", borderRadius: 12, padding: "32px 16px", cursor: "pointer", background: "#f0f7ff", transition: "all 0.2s", marginBottom: 20, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center" }} onMouseEnter={e => { e.currentTarget.style.background = "#e0efff"; e.currentTarget.style.borderColor = "#0055d4" }} onMouseLeave={e => { e.currentTarget.style.background = "#f0f7ff"; e.currentTarget.style.borderColor = "#0070f3" }}>
+                <Icon icon="mdi:cloud-upload" width={40} height={40} color="#0070f3" style={{ marginBottom: 8 }} />
+                <p style={{ margin: "0 0 4px 0", fontSize: fontSize.base, fontWeight: 700, color: "#0070f3" }}>Click to upload</p>
+                <p style={{ margin: 0, fontSize: fontSize.sm, color: "#64748b" }}>or drag and drop</p>
+              </div>
+            )}
+
+            <input ref={fileInputRef} type="file" accept="image/*" onChange={handleFileSelect} style={{ display: "none" }} />
+
+            {pictureError && <div style={{ padding: 12, background: "#fef2f2", borderLeft: "4px solid #ef4444", borderRadius: 4, marginBottom: 16, color: "#b91c1c", fontSize: fontSize.sm, fontWeight: 600 }}>{pictureError}</div>}
+
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+              <button onClick={() => { setShowPictureModal(false); setSelectedFile(null); setPicturePreview(null); setPictureError("") }} style={{ padding: "12px 16px", background: "white", border: "1px solid #cbd5e1", color: "#475569", borderRadius: 8, cursor: "pointer", fontWeight: 700, fontSize: fontSize.md, minHeight: 44 }}>
+                Cancel
+              </button>
+              <button onClick={handleUploadPicture} disabled={pictureLoading || !selectedFile} style={{ padding: "12px 16px", background: selectedFile ? "#0070f3" : "#bfdbfe", color: "white", border: "none", borderRadius: 8, cursor: selectedFile && !pictureLoading ? "pointer" : "not-allowed", fontWeight: 700, fontSize: fontSize.md, minHeight: 44, opacity: pictureLoading ? 0.7 : 1, transition: "opacity 0.2s" }}>
+                {pictureLoading ? "Uploading..." : "Upload"}
               </button>
             </div>
           </div>
         </div>
       )}
 
-      {/* Validate Maintenance Modal */}
+      {/* Authorise ATF Modal */}
+      {authorisingATF && (
+        <div style={modalOverlay}>
+          <div onClick={e => e.stopPropagation()} style={modalBox}>
+            <h3 style={{ marginBottom: 12, color: "#0f172a", fontSize: fontSize.xl, fontWeight: 700 }}>Authorise ATF?</h3>
+            <p style={{ color: "#64748b", fontSize: fontSize.sm, marginBottom: 20 }}>A unique ATF code will be generated and sent to the driver and station manager.</p>
+            <div style={{ background: "#f8fafc", borderRadius: 8, padding: 16, marginBottom: 24, border: "1px solid #e2e8f0" }}>
+              <p style={{ margin: "0 0 6px" }}><strong>Truck:</strong> {authorisingATF.plate_number}</p>
+              <p style={{ margin: "0 0 6px" }}><strong>Driver:</strong> {authorisingATF.driver_name}</p>
+              <p style={{ margin: "0 0 6px" }}><strong>Station:</strong> {authorisingATF.company_name}</p>
+              <p style={{ margin: 0 }}><strong>Litres:</strong> {authorisingATF.litres}L</p>
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+              <button onClick={() => setAuthorisingATF(null)} style={{ padding: "12px 16px", background: "white", border: "1px solid #cbd5e1", color: "#475569", borderRadius: 8, cursor: "pointer", fontWeight: 700, fontSize: fontSize.md, minHeight: 44 }}>
+                Cancel
+              </button>
+              <button onClick={handleAuthoriseATF} disabled={authoriseLoading} style={{ padding: "12px 16px", background: "#0070f3", color: "white", border: "none", borderRadius: 8, cursor: authoriseLoading ? "not-allowed" : "pointer", fontWeight: 700, fontSize: fontSize.md, minHeight: 44, opacity: authoriseLoading ? 0.7 : 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
+                {authoriseLoading ? <><Icon icon="mdi:loading" width={16} style={{ animation: "spin 1s linear infinite" }} /> Authorising...</> : "Yes, Authorise"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Validate Modal */}
       {validating && (
-        <div style={overlayStyle}>
-          <div onClick={e => e.stopPropagation()} style={modalBox(isMobile)}>
-            {isMobile && <div style={dragHandle} />}
-            <h3 style={{ marginBottom: 12, color: "#171717" }}>Validate Report?</h3>
-            <div style={{ background: "#f9f9f9", borderRadius: 8, padding: 16, marginBottom: 16 }}>
+        <div style={modalOverlay}>
+          <div onClick={e => e.stopPropagation()} style={modalBox}>
+            <h3 style={{ marginBottom: 12, color: "#0f172a", fontSize: fontSize.xl, fontWeight: 700 }}>Validate Report?</h3>
+            <div style={{ background: "#f8fafc", borderRadius: 8, padding: 16, marginBottom: 16, border: "1px solid #e2e8f0" }}>
               <p style={{ margin: "0 0 8px" }}><strong>Truck:</strong> {validating.plate_number}</p>
               <p style={{ margin: "0 0 8px" }}><strong>Type:</strong> {validating.maintenance_type}</p>
               {validating.maintenance_location && <p style={{ margin: "0 0 8px" }}><strong>Location:</strong> {validating.maintenance_location}</p>}
               <p style={{ margin: "0 0 8px" }}><strong>Officer:</strong> {validating.manager_name}</p>
-              <p style={{ margin: 0 }}><strong>Amount:</strong> <span style={{ color: "#0070f3", fontWeight: "bold" }}>₦{validating.amount.toLocaleString()}</span></p>
+              <p style={{ margin: 0 }}><strong>Amount:</strong> <span style={{ color: "#0070f3", fontWeight: 700 }}>₦{validating.amount.toLocaleString()}</span></p>
             </div>
-            <p style={{ fontSize: 13, color: "#888", marginBottom: 24 }}>
-              Balance after deduction: <strong style={{ color: (maintenanceBalance ?? 0) - validating.amount < 0 ? "#ff4444" : "#333" }}>
-                ₦{Math.max(0, (maintenanceBalance ?? 0) - validating.amount).toLocaleString()}
-              </strong>
-              {(maintenanceBalance ?? 0) - validating.amount < 0 && <span style={{ color: "#ff4444", marginLeft: 8, fontSize: 12 }}>⚠️ Insufficient balance</span>}
+            <p style={{ fontSize: fontSize.sm, color: "#64748b", marginBottom: 24 }}>
+              Balance after: <strong style={{ color: (maintenanceBalance ?? 0) - validating.amount < 0 ? "#ef4444" : "#0f172a" }}>₦{Math.max(0, (maintenanceBalance ?? 0) - validating.amount).toLocaleString()}</strong>
+              {(maintenanceBalance ?? 0) - validating.amount < 0 && <span style={{ color: "#ef4444", marginLeft: 8 }}>⚠️ Insufficient</span>}
             </p>
-            <div style={{ display: "flex", gap: 8 }}>
-              <button onClick={() => setValidating(null)} style={cancelBtn}>Cancel</button>
-              <button onClick={handleValidate} disabled={validateLoading} style={{ ...primaryBtn, background: "#00aa00" }}>
-                {validateLoading ? "Validating..." : "Yes, Validate"}
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+              <button onClick={() => setValidating(null)} style={{ padding: "12px 16px", background: "white", border: "1px solid #cbd5e1", color: "#475569", borderRadius: 8, cursor: "pointer", fontWeight: 700, fontSize: fontSize.md, minHeight: 44 }}>
+                Cancel
+              </button>
+              <button onClick={handleValidate} disabled={validateLoading} style={{ padding: "12px 16px", background: "#16a34a", color: "white", border: "none", borderRadius: 8, cursor: validateLoading ? "not-allowed" : "pointer", fontWeight: 700, fontSize: fontSize.md, minHeight: 44, opacity: validateLoading ? 0.7 : 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
+                {validateLoading ? <><Icon icon="mdi:loading" width={16} style={{ animation: "spin 1s linear infinite" }} /> Validating...</> : "Yes, Validate"}
               </button>
             </div>
           </div>
@@ -606,18 +823,19 @@ export default function TruckAdminDashboard() {
 
       {/* Reject Modal */}
       {rejecting && (
-        <div style={overlayStyle}>
-          <div onClick={e => e.stopPropagation()} style={modalBox(isMobile)}>
-            {isMobile && <div style={dragHandle} />}
-            <h3 style={{ marginBottom: 12, color: "#171717" }}>Reject Report</h3>
-            <p style={{ color: "#555", marginBottom: 16 }}><strong>{rejecting.plate_number}</strong> — {rejecting.maintenance_type}</p>
-            <label style={label}>Reason *</label>
-            <textarea value={rejectReason} onChange={e => { setRejectReason(e.target.value); setRejectError("") }} placeholder="e.g. Amount seems incorrect" rows={3} style={{ width: "100%", padding: "12px 14px", boxSizing: "border-box", borderRadius: 8, border: "1.5px solid #ccc", fontSize: 14, resize: "none", marginBottom: 8, background: "white", color: "#171717" }} />
-            {rejectError && <p style={err}>{rejectError}</p>}
-            <div style={{ display: "flex", gap: 8, marginTop: 16 }}>
-              <button onClick={() => setRejecting(null)} style={cancelBtn}>Cancel</button>
-              <button onClick={handleReject} disabled={rejectLoading} style={{ ...primaryBtn, background: "#ff4444" }}>
-                {rejectLoading ? "Rejecting..." : "Confirm Reject"}
+        <div style={modalOverlay}>
+          <div onClick={e => e.stopPropagation()} style={modalBox}>
+            <h3 style={{ marginBottom: 12, color: "#0f172a", fontSize: fontSize.xl, fontWeight: 700 }}>Reject Report</h3>
+            <p style={{ color: "#64748b", marginBottom: 16, fontSize: fontSize.sm }}><strong>{rejecting.plate_number}</strong> — {rejecting.maintenance_type}</p>
+            <label style={labelStyle}>Reason *</label>
+            <textarea value={rejectReason} onChange={e => { setRejectReason(e.target.value); setRejectError("") }} placeholder="e.g. Amount seems incorrect" rows={3} style={{ width: "100%", padding: "10px 12px", boxSizing: "border-box", borderRadius: 8, border: "1px solid #e2e8f0", fontSize: fontSize.base, resize: "none", marginBottom: 8, background: "white", color: "#0f172a", minHeight: 80 }} />
+            {rejectError && <div style={{ padding: 12, background: "#fef2f2", borderLeft: "4px solid #ef4444", borderRadius: 4, marginBottom: 16, color: "#b91c1c", fontSize: fontSize.sm, fontWeight: 600 }}>{rejectError}</div>}
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+              <button onClick={() => setRejecting(null)} style={{ padding: "12px 16px", background: "white", border: "1px solid #cbd5e1", color: "#475569", borderRadius: 8, cursor: "pointer", fontWeight: 700, fontSize: fontSize.md, minHeight: 44 }}>
+                Cancel
+              </button>
+              <button onClick={handleReject} disabled={rejectLoading} style={{ padding: "12px 16px", background: "#ef4444", color: "white", border: "none", borderRadius: 8, cursor: rejectLoading ? "not-allowed" : "pointer", fontWeight: 700, fontSize: fontSize.md, minHeight: 44, opacity: rejectLoading ? 0.7 : 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
+                {rejectLoading ? <><Icon icon="mdi:loading" width={16} style={{ animation: "spin 1s linear infinite" }} /> Rejecting...</> : "Confirm Reject"}
               </button>
             </div>
           </div>
@@ -626,11 +844,3 @@ export default function TruckAdminDashboard() {
     </div>
   )
 }
-
-const overlayStyle: React.CSSProperties = { position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "flex-end", justifyContent: "center", zIndex: 100 }
-const modalBox = (isMobile: boolean): React.CSSProperties => ({ background: "white", borderRadius: isMobile ? "16px 16px 0 0" : 12, padding: isMobile ? "24px 20px 36px" : 32, width: isMobile ? "100%" : 420, maxWidth: "100%", maxHeight: "90vh", overflowY: "auto", boxShadow: "0 8px 32px rgba(0,0,0,0.2)" })
-const dragHandle: React.CSSProperties = { width: 40, height: 4, background: "#ddd", borderRadius: 2, margin: "0 auto 20px" }
-const label: React.CSSProperties = { display: "block", fontWeight: "bold", marginBottom: 6, fontSize: 14, color: "#171717" }
-const err: React.CSSProperties = { color: "red", fontSize: 13, marginBottom: 12 }
-const primaryBtn: React.CSSProperties = { flex: 1, padding: "12px 0", background: "#0070f3", color: "white", border: "none", borderRadius: 8, cursor: "pointer", fontWeight: "bold", fontSize: 15, minHeight: 48 }
-const cancelBtn: React.CSSProperties = { flex: 1, padding: "12px 0", background: "white", border: "1.5px solid #ddd", borderRadius: 8, cursor: "pointer", fontSize: 15, minHeight: 48, color: "#171717" }
