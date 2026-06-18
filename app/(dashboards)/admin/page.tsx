@@ -21,6 +21,7 @@ import StoreOfficers from "@/components/admin/StoreOfficers"
 import OfficeClerks from "@/components/admin/OfficeClerks"
 import CashExpenses from "@/components/admin/CashExpenses"
 import CustomerPaymentsAdmin from "@/components/admin/CustomerPaymentsAdmin"
+import BrokerCredits from "@/components/admin/BrokerCredits"
 import { Icon } from "@iconify/react"
 import { useBreakpoint } from "@/app/hooks/useBreakpoint"
 
@@ -42,6 +43,7 @@ const NAV_ITEMS = [
   { label: "Office Clerks",     key: "office-clerks",       icon: "mdi:account-tie" },
   { label: "Cash Expenses",     key: "cash-expenses",       icon: "mdi:cash-multiple" },
   { label: "Customer Payments", key: "customer-payments",   icon: "mdi:cash-register" },
+  { label: "Credit",            key: "credit",              icon: "mdi:credit-card-outline" },
   { label: "Reports",           key: "reports",             icon: "mdi:chart-bar" },
 ]
 
@@ -143,6 +145,7 @@ export default function AdminDashboard() {
       case "office-clerks":      return <OfficeClerks />
       case "cash-expenses":      return <CashExpenses />
       case "customer-payments":  return <CustomerPaymentsAdmin />
+      case "credit":             return <BrokerCredits />
       case "reports":            return <Reports />
       default: return (
         <div>
