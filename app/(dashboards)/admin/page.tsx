@@ -19,7 +19,7 @@ import Reports from "@/components/admin/Reports"
 import Complaints from "@/components/admin/Complaints"
 import StoreOfficers from "@/components/admin/StoreOfficers"
 import OfficeClerks from "@/components/admin/OfficeClerks"
-import CashTransactions from "@/components/admin/CashTransactions"
+import CashExpenses from "@/components/admin/CashExpenses"
 import CustomerPaymentsAdmin from "@/components/admin/CustomerPaymentsAdmin"
 import { Icon } from "@iconify/react"
 import { useBreakpoint } from "@/app/hooks/useBreakpoint"
@@ -40,7 +40,7 @@ const NAV_ITEMS = [
   { label: "Tricycles",         key: "tricycles",           icon: "mdi:rickshaw" },
   { label: "Store Officers",    key: "store-officers",      icon: "mdi:storefront" },
   { label: "Office Clerks",     key: "office-clerks",       icon: "mdi:account-tie" },
-  { label: "Cash Transactions", key: "cash-transactions",   icon: "mdi:cash-multiple" },
+  { label: "Cash Expenses",     key: "cash-expenses",       icon: "mdi:cash-multiple" },
   { label: "Customer Payments", key: "customer-payments",   icon: "mdi:cash-register" },
   { label: "Reports",           key: "reports",             icon: "mdi:chart-bar" },
 ]
@@ -141,7 +141,7 @@ export default function AdminDashboard() {
       case "tricycles":          return <Tricycles />
       case "store-officers":     return <StoreOfficers />
       case "office-clerks":      return <OfficeClerks />
-      case "cash-transactions":  return <CashTransactions />
+      case "cash-expenses":      return <CashExpenses />
       case "customer-payments":  return <CustomerPaymentsAdmin />
       case "reports":            return <Reports />
       default: return (

@@ -36,6 +36,7 @@ export default function OfficeClerkPanel({ clerkId, officeName, fullName }: Prop
   const [expenses, setExpenses] = useState<CashExpense[]>([])
   const [loading, setLoading] = useState(true)
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null)
+  const [filter, setFilter] = useState("All")
 
   // New Expense Modal
   const [showLogModal, setShowLogModal] = useState(false)
@@ -273,14 +274,36 @@ export default function OfficeClerkPanel({ clerkId, officeName, fullName }: Prop
       {/* Expense History Table */}
       <div style={{ background: "white", borderRadius: 12, border: "1px solid #eee", padding: 24 }}>
         <h3 style={{ margin: "0 0 20px" }}>My Logged Expenses</h3>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 20 }}>
+          {["All", "Pending", "Authorised", "Rejected"].map(f => {
+            let activeColor = "white"
+            let activeBg = "#171717"
+            if (f === "Pending") { activeColor = "#0070f3"; activeBg = "rgba(0, 112, 243, 0.1)" }
+            if (f === "Authorised") { activeColor = "#16a34a"; activeBg = "rgba(22, 163, 74, 0.1)" }
+            if (f === "Rejected") { activeColor = "#ef4444"; activeBg = "rgba(239, 68, 68, 0.1)" }
+            return (
+              <button key={f} onClick={() => setFilter(f)} style={{
+                padding: "6px 14px", borderRadius: 20, fontSize: 12, cursor: "pointer",
+                border: `1.5px solid ${filter === f ? activeColor : "#e2e8f0"}`,
+                background: filter === f ? activeBg : "white",
+                color: filter === f ? activeColor : "#64748b",
+                fontWeight: filter === f ? 600 : 500,
+                transition: "all 0.2s",
+                minHeight: 40,
+              }} onMouseEnter={e => { if (filter !== f) { e.currentTarget.style.borderColor = "#cbd5e1"; e.currentTarget.style.background = "#f8fafc" } }} onMouseLeave={e => { if (filter !== f) { e.currentTarget.style.borderColor = "#e2e8f0"; e.currentTarget.style.background = "white" } }}>
+                {f}
+              </button>
+            )
+          })}
+        </div>
 
         {loading ? (
           <p style={{ color: "#888", textAlign: "center", padding: "40px 0" }}>Loading expenses...</p>
-        ) : expenses.length === 0 ? (
-          <p style={{ color: "#888", textAlign: "center", padding: "40px 0" }}>No expenses logged yet.</p>
+        ) : expenses.filter(e => filter === "All" || e.status === filter).length === 0 ? (
+          <p style={{ color: "#888", textAlign: "center", padding: "40px 0" }}>No {filter === "All" ? "" : filter.toLowerCase()} expenses found.</p>
         ) : (
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: "16px" }}>
-            {expenses.map((exp) => {
+            {expenses.filter(e => filter === "All" || e.status === filter).map((exp) => {
               let statusBg = "#eee"
               let statusColor = "#666"
               if (exp.status === "Pending") { statusBg = "#ebf8ff"; statusColor = "#2b6cb0" }

@@ -79,6 +79,8 @@ export default function OfficeClerkDashboard() {
 
     if (!clerkData) { router.push("/login"); return }
     setClerk(clerkData)
+    
+
     setLoading(false)
   }
 
@@ -269,11 +271,15 @@ export default function OfficeClerkDashboard() {
 
       {/* Main Content */}
       <div style={{ padding: isMobile ? "16px" : "32px", maxWidth: 1200, margin: "0 auto" }}>
-        <OfficeClerkPanel 
-          clerkId={clerk?.clerk_id || ""} 
-          officeName={clerk?.office_name || ""} 
-          fullName={clerk?.full_name || ""} 
-        />
+        <div style={{ marginBottom: 40 }}>
+          <OfficeClerkPanel 
+            clerkId={clerk?.clerk_id || ""} 
+            officeName={clerk?.office_name || ""} 
+            fullName={clerk?.full_name || ""} 
+          />
+        </div>
+
+
       </div>
 
       {/* Profile Picture Upload Modal */}

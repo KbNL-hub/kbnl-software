@@ -64,7 +64,7 @@ const fontSize = {
   "3xl": 28,
 }
 
-export default function CashTransactions() {
+export default function CashExpenses() {
   const { isMobile, isDesktop } = useBreakpoint()
   const [selectedOffice, setSelectedOffice] = useState<string>("Calabar")
   const [assignedOffice, setAssignedOffice] = useState<string | null>(null)
@@ -390,7 +390,7 @@ export default function CashTransactions() {
       <div style={{ display: "flex", flexDirection: isMobile ? "column" : "row", justifyContent: "space-between", alignItems: isMobile ? "flex-start" : "center", gap: 16, marginBottom: 32 }}>
         <div>
           <h1 style={{ margin: 0, color: "#0f172a", fontSize: isMobile ? fontSize["2xl"] : fontSize["3xl"], fontWeight: 700, letterSpacing: "-0.5px" }}>
-            Cash Transactions
+            Cash Expenses
           </h1>
           {assignedOffice ? (
             <p style={{ margin: "8px 0 0", color: "#64748b", fontSize: fontSize.base, display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
