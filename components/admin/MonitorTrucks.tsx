@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from "react"
 import { supabase } from "@/lib/supabase"
 import { Icon } from "@iconify/react"
 import ModernInput from "@/components/ModernInput"
+import StopForm from "@/components/StopForm"
 
 type ActiveTruck = {
   trip_id: string
@@ -54,14 +55,14 @@ function useBreakpoint() {
 type Mode = "mdd" | "dd"
 
 const LOADING_POINT_MAP: Record<string, string[]> = {
-  Factory: ["Lafarge (Unicem)", "Dangote BOCO"],
-  Depot: ["Calabar Mini Depot", "Ikom Mini Depot", "Ogoja Warehouse", "Uyo Depot"],
+  Factory: ["Lafarge Mfamosing", "Lafarge Uyo Warehouse"],
+  Depot: ["Calabar Mini Depot", "Ikom Mini Depot", "Ogoja Depot", "Uyo Depot"],
   Outlet: ["Brooks Outlet", "Urua Ekpa Outlet", "Urua Nyemeiko Outlet", "Reserve Store", "E1 Outlet", "Ogoja Outlet"],
 }
 
 const FACTORY_PRODUCTS: Record<string, string[]> = {
-  "Lafarge (Unicem)": ["Classic", "Supaset"],
-  "Dangote BOCO": ["Falcon", "3X"],
+  "Lafarge Mfamosing": ["Classic", "Supaset"],
+  "Lafarge Uyo Warehouse": ["Falcon", "3X"],
 }
 
 const ALL_PRODUCTS = ["BUA Cement", "3X", "Falcon", "Classic", "Supafix", "Supaset"]
@@ -133,6 +134,11 @@ export default function MonitorTrucks() {
   const [routePoints, setRoutePoints] = useState<string[]>([])
   const [newPoint, setNewPoint] = useState("")
   const [routeSaving, setRouteSaving] = useState(false)
+
+  // Stop form for DD trips
+  const [showDdStopForm, setShowDdStopForm] = useState(false)
+  const [selectedDdStopTrip, setSelectedDdStopTrip] = useState<DDTrip | null>(null)
+  const [ddStopOffloaded, setDdStopOffloaded] = useState(0)
 
   async function fetchActiveTrucks() {
     const { data: trips, error } = await supabase
@@ -290,6 +296,26 @@ export default function MonitorTrucks() {
     if (error) { alert(`Failed to update status: ${error.message}`); return }
     ddLastSaveTimeRef.current = Date.now()
     setDdTrips(prev => prev.map(t => t.dd_trip_id === tripId ? { ...t, trip_status: status } : t))
+  }
+
+  async function openDdStopForm(trip: DDTrip) {
+    setSelectedDdStopTrip(trip)
+    setDdStopOffloaded(0)
+    const { data: existing } = await supabase
+      .from("Stops")
+      .select("quantity_offloaded")
+      .eq("trip_id", trip.dd_trip_id)
+    if (existing) {
+      setDdStopOffloaded(existing.reduce((sum, s) => sum + s.quantity_offloaded, 0))
+    }
+    setShowDdStopForm(true)
+  }
+
+  function handleDdStopLogged(quantityOffloaded: number) {
+    setShowDdStopForm(false)
+    setSelectedDdStopTrip(null)
+    setDdStopOffloaded(0)
+    fetchDdTrips()
   }
 
   async function saveDdRoute() {
@@ -923,6 +949,18 @@ export default function MonitorTrucks() {
                     {trip.trip_status !== "Completed" && (
                       <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                         <button
+                          onClick={() => openDdStopForm(trip)}
+                          style={{
+                            flex: 1, padding: "10px 14px", background: "#8b5cf6", color: "white",
+                            border: "none", borderRadius: 8, cursor: "pointer", fontSize: fontSize.xs,
+                            fontWeight: 600, minHeight: 36, transition: "opacity 0.2s"
+                          }}
+                          onMouseEnter={e => e.currentTarget.style.opacity = "0.9"}
+                          onMouseLeave={e => e.currentTarget.style.opacity = "1"}
+                        >
+                          Log Stop
+                        </button>
+                        <button
                           onClick={() => openDdRouteEditor(trip)}
                           style={{
                             flex: 1, padding: "10px 14px", background: "#0070f3", color: "white",
@@ -992,6 +1030,9 @@ export default function MonitorTrucks() {
                         <td style={{ padding: "12px 16px", textAlign: "right" }}>
                           {trip.trip_status !== "Completed" && (
                           <div style={{ display: "flex", gap: 6, justifyContent: "flex-end" }}>
+                            <button onClick={() => openDdStopForm(trip)} style={{ padding: "6px 10px", cursor: "pointer", borderRadius: 6, border: "1.5px solid #8b5cf6", color: "#8b5cf6", background: "#f5f3ff", fontSize: fontSize.xs, fontWeight: 500, transition: "all 0.2s", minHeight: 32, whiteSpace: "nowrap" }}
+                              onMouseEnter={e => { e.currentTarget.style.background = "#ede9fe" }}
+                              onMouseLeave={e => { e.currentTarget.style.background = "#f5f3ff" }}>Stop</button>
                             <button onClick={() => openDdRouteEditor(trip)} style={{ padding: "6px 10px", cursor: "pointer", borderRadius: 6, border: "1.5px solid #0070f3", color: "#0070f3", background: "#f0f7ff", fontSize: fontSize.xs, fontWeight: 500, transition: "all 0.2s", minHeight: 32, whiteSpace: "nowrap" }}
                               onMouseEnter={e => { e.currentTarget.style.background = "#e0efff" }}
                               onMouseLeave={e => { e.currentTarget.style.background = "#f0f7ff" }}>Route</button>
@@ -1177,6 +1218,38 @@ export default function MonitorTrucks() {
               </div>
             </div>
           )}
+        </div>
+      )}
+
+      {/* Stop form modal for DD trips */}
+      {showDdStopForm && selectedDdStopTrip && (
+        <div style={{
+          position: "fixed", inset: 0, zIndex: 9999, background: "rgba(0,0,0,0.5)",
+          display: "flex", justifyContent: "center", alignItems: "center",
+          padding: 16
+        }}
+          onClick={() => { setShowDdStopForm(false); setSelectedDdStopTrip(null) }}>
+          <div style={{ background: "white", borderRadius: 16, padding: 24, width: "100%", maxWidth: 480, maxHeight: "90vh", overflow: "auto" }}
+            onClick={e => e.stopPropagation()}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
+              <div>
+                <h3 style={{ margin: 0, color: "#171717", fontWeight: 700, fontSize: fontSize.lg }}>Log Stop</h3>
+                <p style={{ margin: "4px 0 0", color: "#64748b", fontSize: fontSize.sm }}>
+                  {selectedDdStopTrip.plate_number} — {selectedDdStopTrip.product}
+                </p>
+              </div>
+              <button onClick={() => { setShowDdStopForm(false); setSelectedDdStopTrip(null) }}
+                style={{ background: "none", border: "none", cursor: "pointer", color: "#94a3b8", fontSize: 24, padding: 4, lineHeight: 1 }}>
+                ✕
+              </button>
+            </div>
+            <StopForm
+              tripId={selectedDdStopTrip.dd_trip_id}
+              loadedQuantity={selectedDdStopTrip.loaded_quantity}
+              offloadedSoFar={ddStopOffloaded}
+              onStopLogged={handleDdStopLogged}
+            />
+          </div>
         </div>
       )}
     </div>

@@ -141,14 +141,10 @@ export default function DieselManager() {
       company_id: depositCompanyId,
       amount,
       note: depositNote.trim() || null,
+      status: "Pending",
     }])
 
     if (error) { setDepositError("Failed to log deposit"); setDepositLoading(false); return }
-
-    const company = companies.find(c => c.company_id === depositCompanyId)
-    if (company) {
-      await supabase.from("fuel_companies").update({ current_balance: company.current_balance + amount }).eq("company_id", depositCompanyId)
-    }
 
     setDepositLoading(false)
     setShowDepositModal(false)

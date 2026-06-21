@@ -6,12 +6,12 @@ import BrokerDropdown from "./BrokerDropdown"
 import CustomerSelector from "./CustomerSelector"
 import { useOfflineTripAction } from "@/app/hooks/useOfflineTripAction"
 
-type Broker = { broker_id: string; broker_name: string }
+type Broker = { broker_id: string; broker_name: string; phone_number?: string | null }
 type Customer = { customer_id: string; full_name: string; phone_number: string }
 type Props = { tripId: string; loadedQuantity?: number; offloadedSoFar?: number; onStopLogged: (quantityOffloaded: number) => void }
 
 const STORE_LOCATIONS = [
-  "Calabar Mini Depot", "Ikom Mini Depot", "Ogoja Warehouse", "Uyo Depot",
+  "Calabar Mini Depot", "Ikom Mini Depot", "Ogoja Depot", "Uyo Depot",
   "Brooks Outlet", "Urua Ekpa Outlet", "Urua Nyemeiko Outlet", "Reserve Store", "E1 Outlet", "Ogoja Outlet",
 ]
 

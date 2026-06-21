@@ -37,7 +37,9 @@ export default function BrokerCredits() {
   const [submitting, setSubmitting] = useState(false)
   const [errorMsg, setErrorMsg] = useState("")
   const [showAddModal, setShowAddModal] = useState(false)
-  const [showHistory, setShowHistory] = useState(false)
+  const [showUpdateModal, setShowUpdateModal] = useState(false)
+  const [updatingCredit, setUpdatingCredit] = useState<CreditEntry | null>(null)
+  const [updateAmountInput, setUpdateAmountInput] = useState("")
   const [selectedCustomer, setSelectedCustomer] = useState<{ customer_id: string; full_name: string } | null>(null)
   const [amountInput, setAmountInput] = useState("")
   const [viewMode, setViewMode] = useState<ViewMode>("card")
@@ -88,7 +90,6 @@ export default function BrokerCredits() {
   function openBrokerDetail(broker: Broker) {
     setSelectedBroker(broker)
     setView("detail")
-    setShowHistory(false)
     fetchBrokerCredits(broker.broker_id)
   }
 
@@ -96,16 +97,10 @@ export default function BrokerCredits() {
     setView("overview")
     setSelectedBroker(null)
     setCredits([])
-    setShowHistory(false)
     fetchBrokerTotals()
   }
 
-  const displayedCredits = credits.filter(c =>
-    showHistory ? c.status === "Cleared" : c.status === "Active"
-  )
-
   const brokerActiveTotal = credits
-    .filter(c => c.status === "Active")
     .reduce((sum, c) => sum + Number(c.amount), 0)
 
   async function handleAddCredit() {
@@ -137,22 +132,37 @@ export default function BrokerCredits() {
     await fetchBrokerTotals()
   }
 
-  async function handleClear(credit: CreditEntry) {
+  function openUpdateModal(credit: CreditEntry) {
+    setUpdatingCredit(credit)
+    setUpdateAmountInput(String(credit.amount))
+    setErrorMsg("")
+    setShowUpdateModal(true)
+  }
+
+  async function handleUpdate() {
+    if (!updatingCredit) return
+    const parsed = parseAmount(updateAmountInput)
+    if (isNaN(parsed) || parsed < 0) { setErrorMsg("Enter a valid amount (0 or more)"); return }
+
     setSubmitting(true)
     setErrorMsg("")
+
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) { setErrorMsg("Not authenticated"); setSubmitting(false); return }
 
     const { error } = await supabase
       .from("broker_credits")
-      .update({ status: "Cleared", cleared_at: new Date().toISOString(), cleared_by: user.id })
-      .eq("credit_id", credit.credit_id)
+      .update({ amount: parsed, cleared_at: parsed === 0 ? new Date().toISOString() : null })
+      .eq("credit_id", updatingCredit.credit_id)
 
     if (error) { setErrorMsg(error.message); setSubmitting(false); return }
 
+    setShowUpdateModal(false)
+    setUpdatingCredit(null)
+    setUpdateAmountInput("")
+    setSubmitting(false)
     await fetchBrokerCredits(selectedBroker!.broker_id)
     await fetchBrokerTotals()
-    setSubmitting(false)
   }
 
   function openAddModal() {
@@ -339,33 +349,6 @@ export default function BrokerCredits() {
             </div>
           </div>
 
-          <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
-            <button
-              onClick={() => setShowHistory(false)}
-              style={{
-                padding: "8px 14px", borderRadius: 20, fontSize: fontSize.sm, cursor: "pointer",
-                border: showHistory ? "1.5px solid #e2e8f0" : "1.5px solid #0070f3",
-                background: showHistory ? "white" : "#eff6ff",
-                color: showHistory ? "#64748b" : "#0070f3",
-                fontWeight: showHistory ? 500 : 600, transition: "all 0.2s ease",
-              }}
-            >
-              Active ({credits.filter(c => c.status === "Active").length})
-            </button>
-            <button
-              onClick={() => setShowHistory(true)}
-              style={{
-                padding: "8px 14px", borderRadius: 20, fontSize: fontSize.sm, cursor: "pointer",
-                border: showHistory ? "1.5px solid #0070f3" : "1.5px solid #e2e8f0",
-                background: showHistory ? "#eff6ff" : "white",
-                color: showHistory ? "#0070f3" : "#64748b",
-                fontWeight: showHistory ? 600 : 500, transition: "all 0.2s ease",
-              }}
-            >
-              History ({credits.filter(c => c.status === "Cleared").length})
-            </button>
-          </div>
-
           {errorMsg && (
             <div style={{ padding: "12px 16px", background: "#fef2f2", border: "1px solid #fecaca", color: "#dc2626", borderRadius: 8, marginBottom: 16, fontSize: fontSize.sm, fontWeight: 500 }}>
               {errorMsg}
@@ -374,11 +357,11 @@ export default function BrokerCredits() {
 
           {loading && credits.length === 0 ? (
             <LoadingState />
-          ) : displayedCredits.length === 0 ? (
-            <EmptyState message={showHistory ? "No cleared credits" : "No active credits — tap Add Credit to file one"} />
+          ) : credits.length === 0 ? (
+            <EmptyState message="No credits yet — tap Add Credit to file one" />
           ) : viewMode === "card" ? (
             <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-              {displayedCredits.map(c => (
+              {credits.map(c => (
                 <div key={c.credit_id} style={{ background: "white", borderRadius: 12, padding: "16px 18px", border: "1px solid #e5e7eb", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
                   <div style={{ minWidth: 0, flex: 1 }}>
                     <span style={{ fontSize: fontSize.base, fontWeight: 600, color: "#171717" }}>{c.customer_name}</span>
@@ -387,20 +370,13 @@ export default function BrokerCredits() {
                       <span>{new Date(c.created_at).toLocaleDateString()}</span>
                     </div>
                   </div>
-                  {!showHistory && c.status === "Active" && (
-                    <button
-                      onClick={() => handleClear(c)}
-                      disabled={submitting}
-                      style={{ padding: "8px 14px", borderRadius: 8, border: "none", background: "#16a34a", color: "white", fontWeight: "bold", fontSize: 12, cursor: submitting ? "not-allowed" : "pointer", opacity: submitting ? 0.6 : 1, whiteSpace: "nowrap", minHeight: 36 }}
-                    >
-                      Mark Cleared
-                    </button>
-                  )}
-                  {showHistory && c.status === "Cleared" && (
-                    <span style={{ padding: "4px 10px", borderRadius: 999, fontSize: fontSize.xs, fontWeight: "bold", background: "#f0fdf4", color: "#16a34a", whiteSpace: "nowrap" }}>
-                      Cleared
-                    </span>
-                  )}
+                  <button
+                    onClick={() => openUpdateModal(c)}
+                    disabled={submitting}
+                    style={{ padding: "8px 14px", borderRadius: 8, border: "none", background: "#0070f3", color: "white", fontWeight: "bold", fontSize: 12, cursor: submitting ? "not-allowed" : "pointer", opacity: submitting ? 0.6 : 1, whiteSpace: "nowrap", minHeight: 36 }}
+                  >
+                    Update
+                  </button>
                 </div>
               ))}
             </div>
@@ -412,29 +388,23 @@ export default function BrokerCredits() {
                     <th style={tblHeadStyle}>Customer</th>
                     <th style={{ ...tblHeadStyle, textAlign: "right" }}>Amount</th>
                     <th style={{ ...tblHeadStyle, textAlign: "right" }}>Date</th>
-                    <th style={{ ...tblHeadStyle, textAlign: "right" }}>{showHistory ? "Status" : "Action"}</th>
+                    <th style={{ ...tblHeadStyle, textAlign: "right" }}>Action</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {displayedCredits.map((c, idx) => (
-                    <tr key={c.credit_id} style={{ borderBottom: idx === displayedCredits.length - 1 ? "none" : "1px solid #e2e8f0" }}>
+                  {credits.map((c, idx) => (
+                    <tr key={c.credit_id} style={{ borderBottom: idx === credits.length - 1 ? "none" : "1px solid #e2e8f0" }}>
                       <td style={{ padding: "12px 16px", color: "#0f172a", fontSize: fontSize.base, fontWeight: 500 }}>{c.customer_name}</td>
                       <td style={{ padding: "12px 16px", textAlign: "right", color: "#475569", fontSize: fontSize.sm, fontWeight: 600 }}>₦{formatAmount(String(c.amount))}</td>
                       <td style={{ padding: "12px 16px", textAlign: "right", color: "#64748b", fontSize: fontSize.sm }}>{new Date(c.created_at).toLocaleDateString()}</td>
                       <td style={{ padding: "12px 16px", textAlign: "right" }}>
-                        {!showHistory && c.status === "Active" ? (
-                          <button
-                            onClick={() => handleClear(c)}
-                            disabled={submitting}
-                            style={{ padding: "6px 10px", borderRadius: 6, border: "none", background: "#16a34a", color: "white", fontWeight: "bold", fontSize: fontSize.xs, cursor: submitting ? "not-allowed" : "pointer", opacity: submitting ? 0.6 : 1, minHeight: 32 }}
-                          >
-                            Mark Cleared
-                          </button>
-                        ) : (
-                          <span style={{ padding: "4px 10px", borderRadius: 999, fontSize: fontSize.xs, fontWeight: "bold", background: "#f0fdf4", color: "#16a34a" }}>
-                            Cleared
-                          </span>
-                        )}
+                        <button
+                          onClick={() => openUpdateModal(c)}
+                          disabled={submitting}
+                          style={{ padding: "6px 10px", borderRadius: 6, border: "none", background: "#0070f3", color: "white", fontWeight: "bold", fontSize: fontSize.xs, cursor: submitting ? "not-allowed" : "pointer", opacity: submitting ? 0.6 : 1, minHeight: 32 }}
+                        >
+                          Update
+                        </button>
                       </td>
                     </tr>
                   ))}
@@ -474,6 +444,41 @@ export default function BrokerCredits() {
                 style={{ flex: 1, padding: "12px 0", background: "#0070f3", color: "white", border: "none", borderRadius: 8, cursor: (submitting || !selectedCustomer || !parseAmount(amountInput)) ? "not-allowed" : "pointer", fontWeight: "bold", fontSize: 14, minHeight: 48, opacity: (submitting || !selectedCustomer || !parseAmount(amountInput)) ? 0.5 : 1 }}
               >
                 {submitting ? "Adding..." : "Add Credit"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showUpdateModal && updatingCredit && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.4)", backdropFilter: "blur(4px)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 100, padding: 16 }} onClick={() => setShowUpdateModal(false)}>
+          <div style={{ background: "white", borderRadius: 16, padding: 24, width: "100%", maxWidth: 440, boxShadow: "0 20px 60px rgba(0,0,0,0.2)" }} onClick={e => e.stopPropagation()}>
+            <h3 style={{ fontSize: fontSize.lg, margin: 0, marginBottom: 4, color: "#171717" }}>
+              Update Credit
+            </h3>
+            <p style={{ fontSize: fontSize.sm, color: "#6b7280", margin: "0 0 20px 0" }}>
+              {selectedBroker?.broker_name} — {updatingCredit.customer_name}
+            </p>
+
+            <label style={{ display: "block", fontSize: fontSize.sm, fontWeight: 600, color: "#374151", marginBottom: 6 }}>New Amount (₦)</label>
+            <input
+              type="text"
+              placeholder="0"
+              value={updateAmountInput}
+              onChange={e => setUpdateAmountInput(formatAmount(e.target.value))}
+              style={{ width: "100%", padding: "12px 14px", boxSizing: "border-box", borderRadius: 8, border: "1.5px solid #ccc", fontSize: 14, background: "white", color: "#171717", outline: "none", minHeight: 48 }}
+            />
+
+            {errorMsg && <p style={{ color: "#dc2626", fontSize: fontSize.sm, margin: "12px 0 0 0" }}>{errorMsg}</p>}
+
+            <div style={{ display: "flex", gap: 10, marginTop: 20 }}>
+              <button onClick={() => setShowUpdateModal(false)} style={{ flex: 1, padding: "12px 0", background: "white", border: "1.5px solid #d1d5db", borderRadius: 8, cursor: "pointer", fontSize: 14, minHeight: 48 }}>Cancel</button>
+              <button
+                onClick={handleUpdate}
+                disabled={submitting || updateAmountInput === ""}
+                style={{ flex: 1, padding: "12px 0", background: "#0070f3", color: "white", border: "none", borderRadius: 8, cursor: (submitting || updateAmountInput === "") ? "not-allowed" : "pointer", fontWeight: "bold", fontSize: 14, minHeight: 48, opacity: (submitting || updateAmountInput === "") ? 0.5 : 1 }}
+              >
+                {submitting ? "Updating..." : "Update"}
               </button>
             </div>
           </div>

@@ -22,6 +22,13 @@ type ATF = {
   total_amount: number | null
 }
 
+type FuelDeposit = {
+  deposit_id: string
+  amount: number
+  note: string | null
+  deposited_at: string
+}
+
 type StationManager = {
   manager_id: string
   company_id: string
@@ -70,6 +77,7 @@ export default function StationManagerDashboard() {
   const [currentBalance, setCurrentBalance] = useState<number | null>(null)
   const [lowThreshold, setLowThreshold] = useState<number>(0)
   const [atfs, setAtfs] = useState<ATF[]>([])
+  const [deposits, setDeposits] = useState<FuelDeposit[]>([])
   const [filter, setFilter] = useState("All")
   const [loading, setLoading] = useState(true)
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null)
@@ -84,6 +92,9 @@ export default function StationManagerDashboard() {
   const [ratePerLitre, setRatePerLitre] = useState("")
   const [dispenseError, setDispenseError] = useState("")
   const [dispenseLoading, setDispenseLoading] = useState(false)
+
+  const [confirmingDeposit, setConfirmingDeposit] = useState<string | null>(null)
+  const [confirmLoading, setConfirmLoading] = useState(false)
 
   const [invalidatingATF, setInvalidatingATF] = useState<ATF | null>(null)
   const [invalidateReason, setInvalidateReason] = useState("")
@@ -113,7 +124,10 @@ export default function StationManagerDashboard() {
 
       setManager(mgr)
       await fetchCompanyData(mgr.company_id)
-      await fetchATFs(mgr.company_id)
+      await Promise.all([
+        fetchATFs(mgr.company_id),
+        fetchDeposits(mgr.company_id),
+      ])
       setLoading(false)
     }
     init()
@@ -124,6 +138,7 @@ export default function StationManagerDashboard() {
     const interval = setInterval(() => {
       fetchCompanyData(manager.company_id)
       fetchATFs(manager.company_id)
+      fetchDeposits(manager.company_id)
     }, 30000)
     return () => clearInterval(interval)
   }, [manager])
@@ -155,6 +170,82 @@ export default function StationManagerDashboard() {
 
     setAtfs(enriched)
     setLastUpdated(new Date())
+  }
+
+  async function fetchDeposits(cId: string) {
+    const { data } = await supabase
+      .from("fuel_deposits")
+      .select("deposit_id, amount, note, deposited_at")
+      .eq("company_id", cId)
+      .eq("status", "Pending")
+      .order("deposited_at", { ascending: false })
+
+    setDeposits(data || [])
+    setLastUpdated(new Date())
+  }
+
+  async function confirmDeposit(deposit: FuelDeposit) {
+    setConfirmLoading(true)
+
+    const { data: fresh } = await supabase
+      .from("fuel_deposits")
+      .select("status")
+      .eq("deposit_id", deposit.deposit_id)
+      .single()
+
+    if (!fresh || fresh.status !== "Pending") {
+      setConfirmLoading(false)
+      setConfirmingDeposit(null)
+      fetchDeposits(manager?.company_id ?? "")
+      return
+    }
+
+    const { error: updateError } = await supabase
+      .from("fuel_deposits")
+      .update({ status: "Confirmed", confirmed_at: new Date().toISOString() })
+      .eq("deposit_id", deposit.deposit_id)
+
+    if (updateError) { setConfirmLoading(false); return }
+
+    const { data: company } = await supabase
+      .from("fuel_companies")
+      .select("current_balance")
+      .eq("company_id", manager?.company_id)
+      .single()
+
+    const newBalance = (company?.current_balance ?? 0) + deposit.amount
+    await supabase.from("fuel_companies").update({ current_balance: newBalance }).eq("company_id", manager?.company_id)
+    setCurrentBalance(newBalance)
+
+    setConfirmLoading(false)
+    setConfirmingDeposit(null)
+    fetchDeposits(manager?.company_id ?? "")
+  }
+
+  async function declineDeposit(deposit: FuelDeposit) {
+    setConfirmLoading(true)
+
+    const { data: fresh } = await supabase
+      .from("fuel_deposits")
+      .select("status")
+      .eq("deposit_id", deposit.deposit_id)
+      .single()
+
+    if (!fresh || fresh.status !== "Pending") {
+      setConfirmLoading(false)
+      setConfirmingDeposit(null)
+      fetchDeposits(manager?.company_id ?? "")
+      return
+    }
+
+    await supabase
+      .from("fuel_deposits")
+      .update({ status: "Declined", declined_at: new Date().toISOString() })
+      .eq("deposit_id", deposit.deposit_id)
+
+    setConfirmLoading(false)
+    setConfirmingDeposit(null)
+    fetchDeposits(manager?.company_id ?? "")
   }
 
   function handleAvatarClick() {
@@ -403,6 +494,27 @@ export default function StationManagerDashboard() {
           {isLow && <p style={{ margin: "8px 0 0", fontSize: fontSize.sm, color: "#f5a623", fontWeight: 600 }}>⚠️ Below threshold (₦{lowThreshold.toLocaleString()})</p>}
         </div>
 
+        {/* Pending Deposits */}
+        {deposits.length > 0 && (
+          <div style={{ marginBottom: 24 }}>
+            <h3 style={{ margin: "0 0 12px", fontSize: fontSize.base, fontWeight: 700, color: "#0f172a" }}>Pending Top-ups</h3>
+            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+              {deposits.map(d => (
+                <div key={d.deposit_id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", background: "#fffbeb", border: "1px solid #fde68a", borderRadius: 12, padding: "14px 18px" }}>
+                  <div>
+                    <p style={{ margin: 0, fontWeight: 700, fontSize: fontSize.lg, color: "#0f172a" }}>₦{d.amount.toLocaleString()}</p>
+                    {d.note && <p style={{ margin: "4px 0 0", fontSize: fontSize.sm, color: "#64748b" }}>{d.note}</p>}
+                    <p style={{ margin: "4px 0 0", fontSize: fontSize.xs, color: "#94a3b8" }}>{new Date(d.deposited_at).toLocaleString()}</p>
+                  </div>
+                  <button onClick={() => setConfirmingDeposit(d.deposit_id)} style={{ padding: "10px 18px", background: "#0070f3", color: "white", border: "none", borderRadius: 8, cursor: "pointer", fontWeight: 700, fontSize: fontSize.sm, whiteSpace: "nowrap", transition: "opacity 0.2s" }} onMouseEnter={e => e.currentTarget.style.opacity = "0.9"} onMouseLeave={e => e.currentTarget.style.opacity = "1"}>
+                    Confirm Receipt
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
         {/* Filter pills */}
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 20, alignItems: "center" }}>
           {filters.map(f => {
@@ -415,7 +527,7 @@ export default function StationManagerDashboard() {
           })}
           <div style={{ flex: 1 }} />
           {lastUpdated && <span style={{ fontSize: fontSize.xs, color: "#94a3b8", whiteSpace: "nowrap" }}>Updated {lastUpdated.toLocaleTimeString()}</span>}
-          <button onClick={() => { fetchCompanyData(manager?.company_id ?? ""); fetchATFs(manager?.company_id ?? "") }} style={{ padding: "6px 12px", fontSize: fontSize.xs, cursor: "pointer", borderRadius: 8, border: "1px solid #e2e8f0", background: "white", color: "#64748b", transition: "all 0.2s", fontWeight: 600 }} onMouseEnter={e => { e.currentTarget.style.background = "#f8fafc"; e.currentTarget.style.borderColor = "#cbd5e1" }} onMouseLeave={e => { e.currentTarget.style.background = "white"; e.currentTarget.style.borderColor = "#e2e8f0" }}>
+          <button onClick={() => { fetchCompanyData(manager?.company_id ?? ""); fetchATFs(manager?.company_id ?? ""); fetchDeposits(manager?.company_id ?? "") }} style={{ padding: "6px 12px", fontSize: fontSize.xs, cursor: "pointer", borderRadius: 8, border: "1px solid #e2e8f0", background: "white", color: "#64748b", transition: "all 0.2s", fontWeight: 600 }} onMouseEnter={e => { e.currentTarget.style.background = "#f8fafc"; e.currentTarget.style.borderColor = "#cbd5e1" }} onMouseLeave={e => { e.currentTarget.style.background = "white"; e.currentTarget.style.borderColor = "#e2e8f0" }}>
             Refresh
           </button>
         </div>
@@ -577,6 +689,67 @@ export default function StationManagerDashboard() {
                 {invalidateLoading ? <><Icon icon="mdi:loading" width={16} style={{ animation: "spin 1s linear infinite" }} /> Invalidating...</> : "Confirm Invalidate"}
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Confirm / Decline Deposit Modal */}
+      {confirmingDeposit && (
+        <div style={modalOverlay}>
+          <div onClick={e => e.stopPropagation()} style={modalBox}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
+              <h3 style={{ margin: 0, color: "#0f172a", fontSize: fontSize.xl, fontWeight: 700 }}>Confirm Top-up</h3>
+              <button onClick={() => setConfirmingDeposit(null)} style={{ background: "none", border: "none", color: "#94a3b8", cursor: "pointer", padding: 4, minHeight: 40, minWidth: 40, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+              </button>
+            </div>
+            {(() => {
+              const d = deposits.find(x => x.deposit_id === confirmingDeposit)
+              if (!d) return null
+              return (
+                <>
+                  <p style={{ margin: "0 0 28px", color: "#64748b", fontSize: fontSize.sm, lineHeight: 1.6 }}>
+                    Did you receive <strong style={{ color: "#0f172a", fontSize: fontSize.base }}>₦{d.amount.toLocaleString()}</strong>
+                    {d.note ? <> for <em>"{d.note}"</em></> : ""}?
+                  </p>
+                  <div style={{ display: "flex", flexDirection: isMobile ? "column-reverse" : "row", gap: 10 }}>
+                    <button
+                      onClick={() => declineDeposit(d)}
+                      disabled={confirmLoading}
+                      style={{
+                        flex: 1, padding: "14px 16px", minHeight: 48,
+                        background: "#fef2f2", color: "#ef4444",
+                        border: "1.5px solid #fecaca", borderRadius: 10,
+                        cursor: confirmLoading ? "not-allowed" : "pointer",
+                        fontWeight: 700, fontSize: fontSize.md,
+                        opacity: confirmLoading ? 0.5 : 1,
+                        transition: "all 0.2s"
+                      }}
+                      onMouseEnter={e => { if (!confirmLoading) { e.currentTarget.style.background = "#fee2e2"; e.currentTarget.style.borderColor = "#fca5a5" } }}
+                      onMouseLeave={e => { if (!confirmLoading) { e.currentTarget.style.background = "#fef2f2"; e.currentTarget.style.borderColor = "#fecaca" } }}
+                    >
+                      Decline
+                    </button>
+                    <button
+                      onClick={() => confirmDeposit(d)}
+                      disabled={confirmLoading}
+                      style={{
+                        flex: 1, padding: "14px 16px", minHeight: 48,
+                        background: "#16a34a", color: "white",
+                        border: "none", borderRadius: 10,
+                        cursor: confirmLoading ? "not-allowed" : "pointer",
+                        fontWeight: 700, fontSize: fontSize.md,
+                        opacity: confirmLoading ? 0.6 : 1,
+                        transition: "all 0.2s",
+                        display: "flex", alignItems: "center", justifyContent: "center", gap: 8
+                      }}
+                    >
+                      {confirmLoading ? <><Icon icon="mdi:loading" width={16} style={{ animation: "spin 1s linear infinite" }} /> Processing...</> : "Confirm"}
+                    </button>
+                  </div>
+                </>
+              )
+            })()}
           </div>
         </div>
       )}

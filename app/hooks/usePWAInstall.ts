@@ -5,7 +5,7 @@ const STORAGE_KEY = 'kbnl_pwa_prompted';
 const FIRST_LOGIN_KEY = 'kbnl_first_login';
 
 export function usePWAInstall() {
-  const [hasBeenPrompted, setHasBeenPrompted] = useState(true);
+  const [hasBeenPrompted, setHasBeenPrompted] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [session, setSession] = useState<any>(null);
 

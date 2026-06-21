@@ -4,6 +4,7 @@ import { useState, useRef } from "react"
 import ModernInput from "@/components/ModernInput"
 import { supabase } from "@/lib/supabase"
 
+const TRUCK_SIZES = ["20", "40/45", "Dina", "Tricycle"]
 const truckStatuses = ["Empty", "Loaded", "Undergoing Repairs", "Decommissioned"]
 
 export default function AddTruck() {
@@ -12,6 +13,8 @@ export default function AddTruck() {
   const [truckModel, setTruckModel] = useState("")
   const [capacity, setCapacity] = useState("")
   const [tonnage, setTonnage] = useState("")
+  const [truckSize, setTruckSize] = useState("")
+  const [customTruckSize, setCustomTruckSize] = useState("")
   const [status, setStatus] = useState("Empty")
   const [message, setMessage] = useState("")
   const [submitting, setSubmitting] = useState(false)
@@ -40,6 +43,8 @@ export default function AddTruck() {
     if (!truckModel.trim()) return setMessage("Truck model is required")
     if (!capacity) return setMessage("Capacity is required")
     if (!tonnage) return setMessage("Tonnage is required")
+    const finalTruckSize = truckSize === "Create new size" ? customTruckSize.trim() : truckSize
+    if (!finalTruckSize) return setMessage("Truck size is required")
 
     setSubmitting(true)
 
@@ -49,6 +54,7 @@ export default function AddTruck() {
       truck_model: truckModel,
       capacity: parseInt(capacity),
       tonnage: parseFloat(tonnage),
+      truck_size: finalTruckSize,
       status,
     }])
 
@@ -64,6 +70,8 @@ export default function AddTruck() {
       setTruckModel("")
       setCapacity("")
       setTonnage("")
+      setTruckSize("")
+      setCustomTruckSize("")
       setStatus("Empty")
     }
   }
@@ -145,6 +153,33 @@ export default function AddTruck() {
           onKeyDown={(e) => { if (e.key === "Enter") statusRef.current?.focus() }}
           style={fieldStyle}
         />
+      </div>
+
+      <div style={{ marginBottom: 16 }}>
+        <label style={{ fontWeight: "bold", display: "block", marginBottom: 6 }}>
+          Truck Size *
+        </label>
+        <ModernInput
+          as="select"
+          value={truckSize}
+          onChange={(e) => { setTruckSize(e.target.value); setMessage("") }}
+          style={fieldStyle}
+        >
+          <option value="">Select truck size</option>
+          {TRUCK_SIZES.map((s) => (
+            <option key={s} value={s}>{s}</option>
+          ))}
+          <option value="Create new size">Create new size…</option>
+        </ModernInput>
+        {truckSize === "Create new size" && (
+          <ModernInput
+            type="text"
+            placeholder="Enter new size"
+            value={customTruckSize}
+            onChange={(e) => { setCustomTruckSize(e.target.value); setMessage("") }}
+            style={{ ...fieldStyle, marginTop: 8 }}
+          />
+        )}
       </div>
 
       <div style={{ marginBottom: 24 }}>

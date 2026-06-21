@@ -21,6 +21,8 @@ type Trip = {
   loaded_quantity: number
   trip_status: string
   atc: string | null
+  amount_charged: number | null
+  payment_mode: string | null
 }
 type Stop = {
   stop_id: string
@@ -28,7 +30,16 @@ type Stop = {
   quantity_offloaded: number
   stop_time: string
 }
-type Truck = { plate_number: string; kbnl_truck_no: string }
+type Truck = { plate_number: string; kbnl_truck_no: string; truck_size: string | null }
+type LoadMoreEntry = {
+  id: string
+  quantity: number
+  loading_point_type: string
+  loading_point_name: string
+  product: string
+  created_at: string
+}
+
 type ATF = {
   request_id: string
   atf_code: string | null
@@ -45,14 +56,14 @@ type ATF = {
 type ViewType = "dashboard" | "start-trip" | "active-trip" | "log-stop" | "fuel"
 
 const LOADING_POINT_MAP: Record<string, string[]> = {
-  Factory: ["Lafarge (Unicem)", "Dangote BOCO"],
-  Depot: ["Calabar Mini Depot", "Ikom Mini Depot", "Ogoja Warehouse", "Uyo Depot"],
+  Factory: ["Lafarge Mfamosing", "Lafarge Uyo Warehouse"],
+  Depot: ["Calabar Mini Depot", "Ikom Mini Depot", "Ogoja Depot", "Uyo Depot"],
   Outlet: ["Brooks Outlet", "Urua Ekpa Outlet", "Urua Nyemeiko Outlet", "Reserve Store", "E1 Outlet", "Ogoja Outlet"],
 }
 
 const FACTORY_PRODUCTS: Record<string, string[]> = {
-  "Lafarge (Unicem)": ["Classic", "Supaset"],
-  "Dangote BOCO": ["Falcon", "3X"],
+  "Lafarge Mfamosing": ["Classic", "Supaset"],
+  "Lafarge Uyo Warehouse": ["Falcon", "3X"],
 }
 
 const COMPLAINT_TYPES = [
@@ -104,6 +115,7 @@ export default function DriverDashboard() {
   const [message, setMessage] = useState("")
 
   // ATF
+  const [loadMoreEntries, setLoadMoreEntries] = useState<LoadMoreEntry[]>([])
   const [atfs, setAtfs] = useState<ATF[]>([])
   const [activeATF, setActiveATF] = useState<ATF | null>(null)
   const [confirmingATF, setConfirmingATF] = useState(false)
@@ -143,12 +155,15 @@ export default function DriverDashboard() {
   const [loadMoreSubmitting, setLoadMoreSubmitting] = useState(false)
 
   // Start trip
+  const [truckSize, setTruckSize] = useState("")
   const [plateNumber, setPlateNumber] = useState("")
   const [loadingPointCategory, setLoadingPointCategory] = useState("")
   const [loadingPointName, setLoadingPointName] = useState("")
   const [product, setProduct] = useState("")
   const [loadedQuantity, setLoadedQuantity] = useState("")
   const [atc, setAtc] = useState("")
+  const [amountCharged, setAmountCharged] = useState("")
+  const [paymentMode, setPaymentMode] = useState("")
   const [trucks, setTrucks] = useState<Truck[]>([])
   const [allTrucks, setAllTrucks] = useState<Truck[]>([])
   const [productOptions, setProductOptions] = useState<string[]>([])
@@ -197,7 +212,10 @@ export default function DriverDashboard() {
 
     if (tripData) {
       setActiveTrip(tripData)
-      await fetchStops(tripData.trip_id, tripData.loaded_quantity)
+      await Promise.all([
+        fetchStops(tripData.trip_id, tripData.loaded_quantity),
+        fetchLoadMoreEntries(tripData.trip_id),
+      ])
     }
 
     const { data: activePlates } = await supabase
@@ -205,7 +223,7 @@ export default function DriverDashboard() {
     const usedPlates = activePlates?.map(t => t.plate_number) || []
 
     const { data: trucksData } = await supabase
-      .from("Trucks").select("plate_number, kbnl_truck_no").eq("status", "Empty")
+      .from("Trucks").select("plate_number, kbnl_truck_no, truck_size").eq("status", "Empty")
     const available = (trucksData || []).filter(t => !usedPlates.includes(t.plate_number))
     setTrucks(available)
     setAllTrucks(trucksData || [])
@@ -266,6 +284,16 @@ export default function DriverDashboard() {
     } catch (error) {
       console.warn('[fetchStops] Network error, keeping local state', error)
     }
+  }
+
+  async function fetchLoadMoreEntries(tripId: string) {
+    const { data } = await supabase
+      .from("trip_load_more")
+      .select("id, quantity, loading_point_type, loading_point_name, product, created_at")
+      .eq("trip_id", tripId)
+      .order("created_at", { ascending: false })
+
+    setLoadMoreEntries(data || [])
   }
 
   async function handleConfirmReceipt() {
@@ -363,7 +391,7 @@ export default function DriverDashboard() {
   }
 
   function handleCategoryChange(cat: string) {
-    setLoadingPointCategory(cat); setLoadingPointName(""); setProduct(""); setAtc(""); setMessage("")
+    setLoadingPointCategory(cat); setLoadingPointName(""); setProduct(""); setAtc(""); setAmountCharged(""); setPaymentMode(""); setMessage("")
   }
 
   function handleLoadingPointNameChange(name: string) {
@@ -380,14 +408,18 @@ export default function DriverDashboard() {
     setLoadMoreProductOptions(allProducts)
   }
 
-  const showATC = loadingPointCategory === "Factory"
+  const isDinaOrTricycle = truckSize === "Dina" || truckSize === "Tricycle"
+  const showATC = loadingPointCategory === "Factory" && !isDinaOrTricycle
   const availableLocations = LOADING_POINT_MAP[loadingPointCategory] || []
 
   async function handleStartTrip() {
+    if (!truckSize) return setMessage("Select a truck size")
     if (!plateNumber) return setMessage("Select a plate number")
     if (!loadingPointCategory) return setMessage("Select a loading point type")
     if (!loadingPointName) return setMessage("Select a loading point")
     if (showATC && !atc.trim()) return setMessage("ATC number is required")
+    if (isDinaOrTricycle && !amountCharged) return setMessage("Enter amount charged")
+    if (isDinaOrTricycle && !paymentMode) return setMessage("Select payment mode")
     if (!product) return setMessage("Select a product")
     if (!loadedQuantity) return setMessage("Enter no. of bags")
 
@@ -395,7 +427,10 @@ export default function DriverDashboard() {
     const { data, error } = await supabase.from("Trips").insert([{
       driver_id: driver?.driver_id, plate_number: plateNumber, product,
       material_centre: loadingPointName, loaded_quantity: parseInt(loadedQuantity),
-      ATC: showATC ? atc.trim() : null, trip_status: "In transit",
+      ATC: showATC ? atc.trim() : null,
+      amount_charged: isDinaOrTricycle ? parseFloat(amountCharged) : null,
+      payment_mode: isDinaOrTricycle ? paymentMode : null,
+      trip_status: "In transit",
     }]).select().single()
 
     if (error || !data) { setMessage("Failed to start trip"); setSubmitting(false); return }
@@ -505,10 +540,25 @@ export default function DriverDashboard() {
       return
     }
 
+    const moreCat = loadMoreCategory
+    const moreLoc = loadMoreLocationName
+    const moreProd = loadMoreProduct
+
     setActiveTrip({ ...activeTrip, loaded_quantity: newTotal }); setRemaining(remaining + qty)
     setShowLoadMoreModal(false); setLoadMoreQty(""); setLoadMoreCategory("")
     setLoadMoreLocationName(""); setLoadMoreProduct(""); setLoadMoreProductOptions([]); setLoadMoreError("")
-    
+
+    if (!result.offline && navigator.onLine && activeTrip) {
+      await supabase.from("trip_load_more").insert([{
+        trip_id: activeTrip.trip_id,
+        quantity: qty,
+        loading_point_type: moreCat,
+        loading_point_name: moreLoc,
+        product: moreProd,
+      }])
+      await fetchLoadMoreEntries(activeTrip.trip_id)
+    }
+
     if (result.offline) {
       setMessage("✓ Saved offline. Will update when you are connected.")
     }
@@ -685,7 +735,7 @@ export default function DriverDashboard() {
               onMouseLeave={e => { e.currentTarget.style.background = "#fff8e1"; e.currentTarget.style.borderColor = "#f8ad5c" }}
             >
               <Icon icon="mdi:alert-circle-outline" width={16} />
-              {!isMobile && "Issue"}
+              {!isMobile && "Report"}
             </button>
             <button
               onClick={async () => { await supabase.auth.signOut(); window.location.href = "/login" }}
@@ -870,13 +920,25 @@ export default function DriverDashboard() {
 
             <div style={{ maxWidth: 480 }}>
               <div style={{ marginBottom: 16 }}>
+                <label style={labelStyle}>Truck Size *</label>
+                <div style={{ position: "relative" }}>
+                  <ModernInput as="select" value={truckSize} onChange={e => { setTruckSize(e.target.value); setPlateNumber(""); setMessage("") }} style={inputStyle}>
+                    <option value="">Select truck size</option>
+                    <option value="20">20</option>
+                    <option value="40/45">40/45</option>
+                    <option value="Dina">Dina</option>
+                    <option value="Tricycle">Tricycle</option>
+                  </ModernInput>
+                </div>
+              </div>
+
+              <div style={{ marginBottom: 16 }}>
                 <label style={labelStyle}>Plate Number *</label>
                 <div style={{ position: "relative" }}>
                   <ModernInput as="select" value={plateNumber} onChange={e => { setPlateNumber(e.target.value); setMessage("") }} style={inputStyle}>
                     <option value="">Select plate number</option>
-                    {trucks.map(t => <option key={t.plate_number} value={t.plate_number}>{t.plate_number}{t.kbnl_truck_no ? ` · #${t.kbnl_truck_no}` : ""}</option>)}
+                    {trucks.filter(t => !truckSize || t.truck_size === truckSize).map(t => <option key={t.plate_number} value={t.plate_number}>{t.plate_number}{t.kbnl_truck_no ? ` · #${t.kbnl_truck_no}` : ""}</option>)}
                   </ModernInput>
-                  
                 </div>
               </div>
 
@@ -885,9 +947,8 @@ export default function DriverDashboard() {
                 <div style={{ position: "relative" }}>
                   <ModernInput as="select" value={loadingPointCategory} onChange={e => handleCategoryChange(e.target.value)} style={inputStyle}>
                     <option value="">Select loading point</option>
-                    {Object.keys(LOADING_POINT_MAP).map(cat => <option key={cat} value={cat}>{cat}</option>)}
+                    {Object.keys(LOADING_POINT_MAP).filter(cat => !isDinaOrTricycle || cat !== "Factory").map(cat => <option key={cat} value={cat}>{cat}</option>)}
                   </ModernInput>
-                  
                 </div>
               </div>
 
@@ -909,6 +970,26 @@ export default function DriverDashboard() {
                   <label style={labelStyle}>ATC Number *</label>
                   <ModernInput type="text" placeholder="Enter ATC number" value={atc} onChange={e => { setAtc(e.target.value); setMessage("") }} onKeyDown={e => { if (e.key === "Enter") loadedQtyRef.current?.focus() }} style={inputStyle} />
                 </div>
+              )}
+
+              {isDinaOrTricycle && loadingPointName && (
+                <>
+                  <div style={{ marginBottom: 16 }}>
+                    <label style={labelStyle}>Amount Charged (₦) *</label>
+                    <ModernInput type="number" placeholder="e.g. 5000" value={amountCharged} onChange={e => { setAmountCharged(e.target.value); setMessage("") }} style={inputStyle} />
+                  </div>
+                  <div style={{ marginBottom: 16 }}>
+                    <label style={labelStyle}>Payment Mode *</label>
+                    <div style={{ position: "relative" }}>
+                      <ModernInput as="select" value={paymentMode} onChange={e => { setPaymentMode(e.target.value); setMessage("") }} style={inputStyle}>
+                        <option value="">Select payment mode</option>
+                        <option value="Cash">Cash</option>
+                        <option value="Transfer">Transfer</option>
+                        <option value="POS">POS</option>
+                      </ModernInput>
+                    </div>
+                  </div>
+                </>
               )}
 
               {loadingPointName && (
@@ -963,6 +1044,8 @@ export default function DriverDashboard() {
                   { label: "Product", value: activeTrip.product },
                   { label: "Loading Point", value: activeTrip.material_centre },
                   { label: "Loaded", value: `${activeTrip.loaded_quantity} bags` },
+                  ...(activeTrip.amount_charged ? [{ label: "Amount Charged", value: `₦${activeTrip.amount_charged.toLocaleString()}` }] : []),
+                  ...(activeTrip.payment_mode ? [{ label: "Payment Mode", value: activeTrip.payment_mode }] : []),
                 ].map(({ label, value }) => (
                   <div key={label}>
                     <p style={{ margin: 0, fontSize: fontSize.xs, color: "#94a3b8", textTransform: "uppercase", letterSpacing: 0.5, fontWeight: 600 }}>{label}</p>
@@ -1008,6 +1091,30 @@ export default function DriverDashboard() {
                           <p style={{ margin: 0, fontWeight: 700, fontSize: fontSize.base, color: "#0070f3" }}>{stop.quantity_offloaded}</p>
                           <p style={{ margin: "2px 0 0", color: "#94a3b8", fontSize: fontSize.xs }}>bags</p>
                         </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {loadMoreEntries.length > 0 && (
+              <div style={{ marginBottom: 24 }}>
+                <p style={{ fontWeight: 700, marginBottom: 12, fontSize: fontSize.base, color: "#0f172a" }}>Additional Loads ({loadMoreEntries.length})</p>
+                <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                  {loadMoreEntries.map((entry) => (
+                    <div key={entry.id} style={{ background: "#fffbeb", border: "1px solid #fde68a", borderRadius: 10, padding: "12px 16px", boxShadow: "0 1px 3px rgba(0,0,0,0.05)" }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                          <div style={{ width: 32, height: 32, borderRadius: 8, background: "#fffbeb", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                            <Icon icon="mdi:package-variant-closed" width={16} color="#f59e0b" />
+                          </div>
+                          <div>
+                            <p style={{ margin: 0, fontWeight: 700, fontSize: fontSize.sm, color: "#0f172a" }}>{entry.loading_point_name}</p>
+                            <p style={{ margin: "2px 0 0", color: "#64748b", fontSize: fontSize.sm }}>{entry.loading_point_type} — {entry.product}</p>
+                          </div>
+                        </div>
+                        <p style={{ margin: 0, fontWeight: 700, fontSize: fontSize.base, color: "#f59e0b" }}>+{entry.quantity}</p>
                       </div>
                     </div>
                   ))}

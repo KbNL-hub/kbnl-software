@@ -549,7 +549,7 @@ lib/
     "column_name": "material_centre",
     "data_type": "USER-DEFINED",
     "is_nullable": "NO",
-    "column_default": "'Lafarge (Unicem)'::\"Centres\"",
+    "column_default": "'Lafarge Mfamosing'::\"Centres\"",
     "key_type": ""
   },
   {
@@ -2198,9 +2198,9 @@ lib/
 ---
 
 ## Loading Points
-Factory: Lafarge (Unicem) → [Classic, Supaset]
-Dangote BOCO → [Falcon, 3X]
-Depot:   Calabar Mini Depot, Ikom Mini Depot, Ogoja Warehouse, Uyo Depot, Calabar Warehouse
+Factory: Lafarge Mfamosing → [Classic, Supaset]
+Lafarge Uyo Warehouse → [Falcon, 3X]
+Depot:   Calabar Mini Depot, Ikom Mini Depot, Ogoja Depot, Uyo Depot, Calabar Warehouse
 Outlet:  Brooks Outlet, Urua Ekpa Outlet, Urua Nyemeiko Outlet, Reserve Store, E1 Outlet, Ogoja Outlet
 Factory → ATC required. Factory products restricted by source.
 Depot/Outlet → all products available.

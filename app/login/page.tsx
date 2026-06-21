@@ -69,7 +69,7 @@ export default function LoginPage() {
     } else if (profile.role === "Driver") {
       router.push("/driver")
     } else if (profile.role === "Broker") {
-      router.push("/broker")
+      router.push("/admin")
     } else if (profile.role === "StationManager") {
       router.push("/station-manager")
     } else if (profile.role === "TruckOfficer") {
@@ -216,7 +216,7 @@ export default function LoginPage() {
             margin: "0 0 8px 0",
             letterSpacing: "-0.5px",
           }}>
-            KbNL
+            K<span style={{ fontSize: 16 }}>b</span>NL
           </h1>
           <p style={{
             fontSize: 14,

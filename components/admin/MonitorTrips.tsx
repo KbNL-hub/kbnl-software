@@ -30,6 +30,15 @@ type Discrepancy = {
   reported_at: string
 }
 
+type LoadMoreEntry = {
+  id: string
+  quantity: number
+  loading_point_type: string
+  loading_point_name: string
+  product: string
+  created_at: string
+}
+
 type Trip = {
   trip_id: string
   plate_number: string
@@ -44,10 +53,14 @@ type Trip = {
   stop_count: number
   stops: Stop[]
   discrepancies: Discrepancy[]
+  load_more_entries: LoadMoreEntry[]
   trip_status: string
   atc: string | null
+  amount_charged: number | null
+  payment_mode: string | null
   created_at: string
   completed_at: string | null
+  isDD?: boolean
 }
 
 type ViewMode = "card" | "table"
@@ -114,8 +127,9 @@ export default function MonitorTrips() {
   const [selectedDriver, setSelectedDriver] = useState<Pick<Trip, "driver_name" | "driver_phone" | "driver_status"> | null>(null)
   const [selectedStops, setSelectedStops] = useState<Stop[] | null>(null)
   const [selectedDiscrepancies, setSelectedDiscrepancies] = useState<Discrepancy[]>([])
+  const [selectedLoadMore, setSelectedLoadMore] = useState<LoadMoreEntry[]>([])
   const [selectedPlate, setSelectedPlate] = useState("")
-  const [selectedTrip, setSelectedTrip] = useState<Pick<Trip, "trip_id" | "plate_number" | "atc" | "trip_status"> | null>(null)
+  const [selectedTrip, setSelectedTrip] = useState<Pick<Trip, "trip_id" | "plate_number" | "atc" | "amount_charged" | "payment_mode" | "trip_status"> | null>(null)
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null)
   const [endingTrip, setEndingTrip] = useState<string | null>(null)
   const [endTripError, setEndTripError] = useState<string | null>(null)
@@ -132,7 +146,7 @@ export default function MonitorTrips() {
       .select("*")
       .order("created_at", { ascending: false })
 
-    if (error || !tripsData) return
+    if (error || !tripsData) return []
 
     const enriched = await Promise.all(
       tripsData.map(async (trip) => {
@@ -206,6 +220,15 @@ export default function MonitorTrips() {
           .order("reported_at", { ascending: true })
 
         const discrepancies: Discrepancy[] = discRaw || []
+
+        const { data: loadMoreRaw } = await supabase
+          .from("trip_load_more")
+          .select("id, quantity, loading_point_type, loading_point_name, product, created_at")
+          .eq("trip_id", trip.trip_id)
+          .order("created_at", { ascending: false })
+
+        const load_more_entries: LoadMoreEntry[] = loadMoreRaw || []
+
         const totalOffloaded = stops.reduce((sum, s) => sum + s.quantity_offloaded, 0)
         const totalShortage = discrepancies.reduce((sum, d) => sum + (d.shortage || 0), 0)
 
@@ -223,22 +246,141 @@ export default function MonitorTrips() {
           stop_count: stops.length,
           stops,
           discrepancies,
+          load_more_entries,
           trip_status: trip.trip_status,
           atc: trip.ATC ?? null,
+          amount_charged: trip.amount_charged ?? null,
+          payment_mode: trip.payment_mode ?? null,
           created_at: trip.created_at,
           completed_at: trip.trip_status === "Completed" ? trip.updated_at ?? null : null,
         }
       })
     )
 
-    setTrips(enriched)
+    return enriched
+  }
+
+  async function fetchDdTrips() {
+    const { data: ddTripsData, error } = await supabase
+      .from("dd_trips")
+      .select("*")
+      .order("created_at", { ascending: false })
+
+    if (error || !ddTripsData) return []
+
+    const ddTrips: Trip[] = await Promise.all(
+      ddTripsData.map(async (ddTrip) => {
+        const { data: stopsRaw } = await supabase
+          .from("Stops")
+          .select("stop_id, quantity_offloaded, latitude, longitude, stop_time, stop_location, broker_id, customer_id, confirmed, disputed, dispute_reason, store_name, stop_type")
+          .eq("trip_id", ddTrip.dd_trip_id)
+          .order("stop_time", { ascending: true })
+
+        const stops: Stop[] = await Promise.all(
+          (stopsRaw || []).map(async (stop) => {
+            let broker_name = null
+            let customer_name = null
+
+            if (stop.stop_type === "customer") {
+              const { data: broker } = await supabase
+                .from("Brokers")
+                .select("broker_name")
+                .eq("broker_id", stop.broker_id)
+                .single()
+              broker_name = broker?.broker_name ?? "Unknown"
+
+              if (stop.customer_id) {
+                const { data: customerData } = await supabase
+                  .from("Customers")
+                  .select("full_name")
+                  .eq("customer_id", stop.customer_id)
+                  .single()
+                customer_name = customerData?.full_name ?? "Not provided"
+              } else {
+                customer_name = "Not provided"
+              }
+            }
+
+            const { data: confirmation } = await supabase
+              .from("Stop_Confirmations")
+              .select("price_per_bag")
+              .eq("stop_id", stop.stop_id)
+              .single()
+
+            return {
+              stop_id: stop.stop_id,
+              stop_type: stop.stop_type,
+              broker_name,
+              customer_name,
+              quantity_offloaded: stop.quantity_offloaded,
+              latitude: stop.latitude,
+              longitude: stop.longitude,
+              stop_time: stop.stop_time,
+              stop_location: stop.stop_location,
+              store_name: stop.store_name ?? null,
+              confirmed: stop.confirmed,
+              disputed: stop.disputed,
+              dispute_reason: stop.dispute_reason,
+              price_per_bag: confirmation?.price_per_bag ?? null,
+            }
+          })
+        )
+
+        const { data: loadMoreRaw } = await supabase
+          .from("trip_load_more")
+          .select("id, quantity, loading_point_type, loading_point_name, product, created_at")
+          .eq("trip_id", ddTrip.dd_trip_id)
+          .order("created_at", { ascending: false })
+
+        const load_more_entries: LoadMoreEntry[] = loadMoreRaw || []
+
+        const totalOffloaded = stops.reduce((sum, s) => sum + s.quantity_offloaded, 0)
+
+        return {
+          trip_id: ddTrip.dd_trip_id,
+          plate_number: ddTrip.plate_number,
+          driver_id: "",
+          driver_name: ddTrip.driver_name ?? "DD Driver",
+          driver_phone: ddTrip.driver_phone ?? "—",
+          driver_status: "Active",
+          product: ddTrip.product,
+          material_centre: ddTrip.loading_point,
+          loaded_quantity: ddTrip.loaded_quantity,
+          remaining: ddTrip.loaded_quantity - totalOffloaded,
+          stop_count: stops.length,
+          stops,
+          discrepancies: [],
+          load_more_entries,
+          trip_status: ddTrip.trip_status,
+          atc: ddTrip.atc ?? null,
+          amount_charged: null,
+          payment_mode: null,
+          created_at: ddTrip.created_at,
+          completed_at: ddTrip.trip_status === "Completed" ? ddTrip.updated_at ?? null : null,
+          isDD: true,
+        }
+      })
+    )
+
+    return ddTrips
+  }
+
+  async function loadAll() {
+    const [normal, dd] = await Promise.all([
+      fetchTrips().catch(() => []),
+      fetchDdTrips().catch(() => [])
+    ])
+    const allTrips = [...normal, ...dd]
+    if (allTrips.length > 0) {
+      setTrips(allTrips)
+    }
     setLastUpdated(new Date())
     setLoading(false)
   }
 
   useEffect(() => {
-    fetchTrips()
-    const interval = setInterval(fetchTrips, 30000)
+    loadAll()
+    const interval = setInterval(loadAll, 30000)
     return () => clearInterval(interval)
   }, [])
 
@@ -264,7 +406,7 @@ export default function MonitorTrips() {
     setEndingTrip(null)
     setSelectedStops(null)
     setSelectedTrip(null)
-    fetchTrips()
+    loadAll()
   }
 
   const filteredTrips = filterStatus === "All"
@@ -279,6 +421,7 @@ export default function MonitorTrips() {
     setSelectedDriver(null)
     setSelectedStops(null)
     setSelectedDiscrepancies([])
+    setSelectedLoadMore([])
     setEndTripError(null)
     setEndingTrip(null)
   }
@@ -345,7 +488,7 @@ export default function MonitorTrips() {
             </div>
           )}
           <button
-            onClick={fetchTrips}
+            onClick={loadAll}
             style={{
               padding: "8px 12px",
               background: "white",
@@ -435,9 +578,12 @@ export default function MonitorTrips() {
                   <div key={trip.trip_id} style={{ background: "white", borderRadius: 12, padding: 20, border: "1px solid #e2e8f0", boxShadow: "0 1px 3px rgba(0, 0, 0, 0.05)", transition: "all 0.2s ease" }} onMouseEnter={e => !isMobile && (e.currentTarget.style.boxShadow = "0 4px 12px rgba(0, 0, 0, 0.08)", e.currentTarget.style.borderColor = "#cbd5e1")} onMouseLeave={e => !isMobile && (e.currentTarget.style.boxShadow = "0 1px 3px rgba(0, 0, 0, 0.05)", e.currentTarget.style.borderColor = "#e2e8f0")}>
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 16 }}>
                       <div>
-                        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
-                          <h3 style={{ margin: 0, color: "#0f172a", fontSize: fontSize.lg, fontWeight: 700 }}>{trip.plate_number}</h3>
-                        </div>
+                          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+                            <h3 style={{ margin: 0, color: "#0f172a", fontSize: fontSize.lg, fontWeight: 700 }}>{trip.plate_number}</h3>
+                            {trip.isDD && (
+                              <span style={{ fontSize: 10, padding: "2px 8px", borderRadius: 12, background: "#f3e5f5", color: "#7c3aed", fontWeight: 700, border: "1px solid #d8b4fe" }}>DD</span>
+                            )}
+                          </div>
                         <p style={{ margin: 0, color: "#0070f3", fontSize: fontSize.sm, cursor: "pointer", textDecoration: "underline", fontWeight: 500 }} onClick={() => setSelectedDriver({ driver_name: trip.driver_name, driver_phone: trip.driver_phone, driver_status: trip.driver_status })}>
                           {trip.driver_name}
                         </p>
@@ -451,6 +597,8 @@ export default function MonitorTrips() {
                       <p style={{ margin: 0, fontSize: fontSize.sm, color: "#475569" }}><span style={{ color: "#94a3b8", width: 70, display: "inline-block" }}>Product:</span> <span style={{ fontWeight: 500 }}>{trip.product}</span></p>
                       <p style={{ margin: 0, fontSize: fontSize.sm, color: "#475569" }}><span style={{ color: "#94a3b8", width: 70, display: "inline-block" }}>Centre:</span> {trip.material_centre}</p>
                       <p style={{ margin: 0, fontSize: fontSize.sm, color: "#475569" }}><span style={{ color: "#94a3b8", width: 70, display: "inline-block" }}>ATC:</span> {trip.atc || "N/A"}</p>
+                      {trip.amount_charged && <p style={{ margin: 0, fontSize: fontSize.sm, color: "#475569" }}><span style={{ color: "#94a3b8", width: 70, display: "inline-block" }}>Charged:</span> ₦{trip.amount_charged.toLocaleString()}</p>}
+                      {trip.payment_mode && <p style={{ margin: 0, fontSize: fontSize.sm, color: "#475569" }}><span style={{ color: "#94a3b8", width: 70, display: "inline-block" }}>Payment:</span> {trip.payment_mode}</p>}
                     </div>
 
                     <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 16 }}>
@@ -473,7 +621,7 @@ export default function MonitorTrips() {
                       </div>
                       
                       <button
-                        onClick={() => { setSelectedStops(trip.stops); setSelectedDiscrepancies(trip.discrepancies); setSelectedPlate(trip.plate_number); setSelectedTrip({ trip_id: trip.trip_id, plate_number: trip.plate_number, atc: trip.atc, trip_status: trip.trip_status }); setEndTripError(null) }}
+                        onClick={() => { setSelectedStops(trip.stops); setSelectedDiscrepancies(trip.discrepancies); setSelectedLoadMore(trip.load_more_entries); setSelectedPlate(trip.plate_number); setSelectedTrip({ trip_id: trip.trip_id, plate_number: trip.plate_number, atc: trip.atc, amount_charged: trip.amount_charged, payment_mode: trip.payment_mode, trip_status: trip.trip_status }); setEndTripError(null) }}
                         style={{ padding: "8px 16px", background: "#f0f7ff", color: "#0070f3", border: "1px solid #bfdbfe", borderRadius: 8, cursor: "pointer", fontWeight: 600, fontSize: fontSize.sm, transition: "all 0.2s" }}
                         onMouseEnter={e => { e.currentTarget.style.background = "#e0efff" }}
                         onMouseLeave={e => { e.currentTarget.style.background = "#f0f7ff" }}
@@ -498,6 +646,8 @@ export default function MonitorTrips() {
                     <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: fontSize.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px" }}>Product</th>
                     <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: fontSize.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px" }}>Centre</th>
                     <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: fontSize.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px" }}>ATC</th>
+                    <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: fontSize.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px" }}>Charged</th>
+                    <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: fontSize.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px" }}>Payment</th>
                     <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: fontSize.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px" }}>Loaded</th>
                     <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: fontSize.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px" }}>Remaining</th>
                     <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: fontSize.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px" }}>Stops</th>
@@ -513,16 +663,21 @@ export default function MonitorTrips() {
 
                     return (
                       <tr key={trip.trip_id} style={{ borderBottom: "1px solid #e2e8f0", transition: "background 0.2s ease" }} onMouseEnter={e => e.currentTarget.style.background = "#f8fafc"} onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
-                        <td style={{ padding: "12px 16px", color: "#0f172a", fontSize: fontSize.base, fontWeight: 600 }}>{trip.plate_number}</td>
+                        <td style={{ padding: "12px 16px", color: "#0f172a", fontSize: fontSize.base, fontWeight: 600 }}>
+                          {trip.plate_number}
+                          {trip.isDD && <span style={{ marginLeft: 8, fontSize: 10, padding: "2px 8px", borderRadius: 12, background: "#f3e5f5", color: "#7c3aed", fontWeight: 700, border: "1px solid #d8b4fe" }}>DD</span>}
+                        </td>
                         <td style={{ padding: "12px 16px", color: "#0070f3", fontSize: fontSize.base, cursor: "pointer", textDecoration: "underline" }} onClick={() => setSelectedDriver({ driver_name: trip.driver_name, driver_phone: trip.driver_phone, driver_status: trip.driver_status })}>
                           {trip.driver_name}
                         </td>
                         <td style={{ padding: "12px 16px", color: "#0f172a", fontSize: fontSize.base }}>{trip.product}</td>
                         <td style={{ padding: "12px 16px", color: "#64748b", fontSize: fontSize.sm }}>{trip.material_centre}</td>
                         <td style={{ padding: "12px 16px", color: "#64748b", fontSize: fontSize.sm }}>{trip.atc || "N/A"}</td>
+                        <td style={{ padding: "12px 16px", color: "#059669", fontSize: fontSize.base, fontWeight: 500 }}>{trip.amount_charged ? `₦${trip.amount_charged.toLocaleString()}` : "—"}</td>
+                        <td style={{ padding: "12px 16px", color: "#64748b", fontSize: fontSize.sm }}>{trip.payment_mode || "—"}</td>
                         <td style={{ padding: "12px 16px", color: "#0f172a", fontSize: fontSize.base, fontWeight: 500 }}>{trip.loaded_quantity}</td>
                         <td style={{ padding: "12px 16px", color: trip.remaining === 0 ? "#ef4444" : trip.remaining < trip.loaded_quantity * 0.2 ? "#f5a623" : "#16a34a", fontSize: fontSize.base, fontWeight: 600 }}>{trip.remaining}</td>
-                        <td style={{ padding: "12px 16px", cursor: "pointer" }} onClick={() => { setSelectedStops(trip.stops); setSelectedDiscrepancies(trip.discrepancies); setSelectedPlate(trip.plate_number); setSelectedTrip({ trip_id: trip.trip_id, plate_number: trip.plate_number, atc: trip.atc, trip_status: trip.trip_status }); setEndTripError(null) }}>
+                        <td style={{ padding: "12px 16px", cursor: "pointer" }} onClick={() => { setSelectedStops(trip.stops); setSelectedDiscrepancies(trip.discrepancies); setSelectedLoadMore(trip.load_more_entries); setSelectedPlate(trip.plate_number); setSelectedTrip({ trip_id: trip.trip_id, plate_number: trip.plate_number, atc: trip.atc, amount_charged: trip.amount_charged, payment_mode: trip.payment_mode, trip_status: trip.trip_status }); setEndTripError(null) }}>
                           <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
                             <span style={{ color: "#0070f3", fontSize: fontSize.sm, fontWeight: 500, textDecoration: "underline" }}>{trip.stop_count} {trip.stop_count === 1 ? "stop" : "stops"}</span>
                             {confirmed > 0 && <div style={{ display: "flex", alignItems: "center", gap: 2, padding: "2px 6px", background: "#f0fdf4", borderRadius: 12 }}><Icon icon="mdi:check-circle" width="12" height="12" style={{ color: "#16a34a" }} /><span style={{ fontSize: 10, color: "#16a34a", fontWeight: "bold" }}>{confirmed}</span></div>}
@@ -590,8 +745,15 @@ export default function MonitorTrips() {
                 </div>
 
                 {selectedTrip?.atc && (
-                  <div style={{ background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 8, padding: "12px 14px", marginBottom: 16 }}>
+                  <div style={{ background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 8, padding: "12px 14px", marginBottom: 8 }}>
                     <p style={{ margin: 0, fontSize: fontSize.sm, color: "#0f172a" }}><strong>ATC:</strong> {selectedTrip.atc}</p>
+                  </div>
+                )}
+
+                {selectedTrip?.amount_charged && (
+                  <div style={{ background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: 8, padding: "12px 14px", marginBottom: 16, display: "flex", gap: 24 }}>
+                    <p style={{ margin: 0, fontSize: fontSize.sm, color: "#0f172a" }}><strong>Amount Charged:</strong> ₦{selectedTrip.amount_charged.toLocaleString()}</p>
+                    <p style={{ margin: 0, fontSize: fontSize.sm, color: "#0f172a" }}><strong>Payment Mode:</strong> {selectedTrip.payment_mode}</p>
                   </div>
                 )}
 
@@ -631,7 +793,7 @@ export default function MonitorTrips() {
                           <div style={{ marginTop: 10, padding: 12, background: "#fff5f5", borderRadius: 6, border: "1px solid #fecaca" }}>
                             <p style={{ margin: "0 0 6px 0", fontSize: fontSize.xs, color: "#ef4444", fontWeight: 600 }}>Dispute Reason:</p>
                             <p style={{ margin: "0 0 10px 0", fontSize: fontSize.sm, color: "#7f1d1d" }}>{stop.dispute_reason}</p>
-                            <ReassignBroker stopId={stop.stop_id} onReassigned={fetchTrips} />
+                            <ReassignBroker stopId={stop.stop_id} onReassigned={loadAll} />
                           </div>
                         )}
 
@@ -651,6 +813,25 @@ export default function MonitorTrips() {
                         <p style={{ margin: "10px 0 0 0", color: "#94a3b8", fontSize: fontSize.xs }}>{new Date(d.reported_at).toLocaleString()}</p>
                       </div>
                     ))}
+
+                    {selectedLoadMore.length > 0 && (
+                      <>
+                        <p style={{ fontWeight: 700, margin: "16px 0 12px 0", fontSize: fontSize.base, color: "#0f172a" }}>Additional Loads ({selectedLoadMore.length})</p>
+                        {selectedLoadMore.map((entry) => (
+                          <div key={entry.id} style={{ padding: 14, border: "1px solid #fde68a", borderRadius: 8, background: "#fffbeb" }}>
+                            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+                              <div>
+                                <p style={{ margin: "0 0 4px 0", fontWeight: 600, fontSize: fontSize.sm, color: "#0f172a" }}>{entry.loading_point_name}</p>
+                                <span style={{ fontSize: fontSize.xs, padding: "3px 8px", borderRadius: 4, background: "#fef3c7", color: "#b45309" }}>{entry.loading_point_type}</span>
+                              </div>
+                              <p style={{ margin: 0, fontWeight: 700, fontSize: fontSize.base, color: "#f59e0b" }}>+{entry.quantity}</p>
+                            </div>
+                            <p style={{ margin: "8px 0 0 0", color: "#475569", fontSize: fontSize.sm }}><strong>Product:</strong> <span style={{ color: "#0f172a" }}>{entry.product}</span></p>
+                            <p style={{ margin: "6px 0 0 0", color: "#94a3b8", fontSize: fontSize.xs }}>{new Date(entry.created_at).toLocaleString()}</p>
+                          </div>
+                        ))}
+                      </>
+                    )}
                   </div>
                 )}
 

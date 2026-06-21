@@ -13,9 +13,10 @@ export default function PWAInstallPrompt() {
   const deferredPrompt = useRef<BeforeInstallPromptEvent | null>(null);
   const { hasBeenPrompted, markAsPrompted } = usePWAInstall();
   const [isInstalled, setIsInstalled] = useState(false);
+  const promptedRef = useRef(hasBeenPrompted);
+  promptedRef.current = hasBeenPrompted;
 
   useEffect(() => {
-    // Check if app is already installed
     if (window.matchMedia('(display-mode: standalone)').matches) {
       setIsInstalled(true);
       return;
@@ -24,11 +25,8 @@ export default function PWAInstallPrompt() {
     const handleBeforeInstallPrompt = (e: Event) => {
       e.preventDefault();
       deferredPrompt.current = e as BeforeInstallPromptEvent;
-
-      // Only show if user hasn't been prompted before
-      if (!hasBeenPrompted) {
+      if (!promptedRef.current) {
         setShowPrompt(true);
-        // Mark as prompted immediately
         markAsPrompted();
       }
     };
@@ -45,7 +43,7 @@ export default function PWAInstallPrompt() {
       window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
       window.removeEventListener('appinstalled', handleAppInstalled);
     };
-  }, [hasBeenPrompted, markAsPrompted]);
+  }, [markAsPrompted]);
 
   const handleInstall = async () => {
     if (!deferredPrompt.current) return;

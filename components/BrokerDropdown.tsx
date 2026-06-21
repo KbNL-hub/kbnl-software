@@ -1,14 +1,15 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import ModernInput from "@/components/ModernInput"
 import { supabase } from "@/lib/supabase"
 import { getCachedBrokers, cacheBrokers } from '@/lib/offline/tripsDb'
 
-type Broker = { broker_id: string; broker_name: string }
+type Broker = { broker_id: string; broker_name: string; phone_number?: string | null }
 type Props = { onSelect: (broker: Broker) => void }
 
 export default function BrokerDropdown({ onSelect }: Props) {
+  const containerRef = useRef<HTMLDivElement>(null)
   const [brokers, setBrokers] = useState<Broker[]>([])
   const [search, setSearch] = useState("")
   const [selected, setSelected] = useState<Broker | null>(null)
@@ -34,7 +35,7 @@ export default function BrokerDropdown({ onSelect }: Props) {
           // Try online fetch first
           const { data, error } = await supabase
             .from("Brokers")
-            .select("broker_id, broker_name")
+            .select("broker_id, broker_name, phone_number")
             .order("broker_name", { ascending: true })
           
           if (!error && data) {
@@ -69,6 +70,17 @@ export default function BrokerDropdown({ onSelect }: Props) {
     loadBrokers()
   }, [isOnline])
 
+  useEffect(() => {
+    if (!open) return
+    function handleClick(e: MouseEvent) {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        setOpen(false)
+      }
+    }
+    document.addEventListener("mousedown", handleClick)
+    return () => document.removeEventListener("mousedown", handleClick)
+  }, [open])
+
   const filtered = brokers.filter(b => b.broker_name.toLowerCase().includes(search.toLowerCase()))
 
   function handleSelect(broker: Broker) {
@@ -79,7 +91,7 @@ export default function BrokerDropdown({ onSelect }: Props) {
   }
 
   return (
-    <div style={{ fontFamily: "Arial" }}>
+    <div ref={containerRef} style={{ fontFamily: "Arial" }}>
       <div style={{ position: "relative", width: "100%" }}>
         <ModernInput
           type="text"
@@ -108,7 +120,7 @@ export default function BrokerDropdown({ onSelect }: Props) {
           </div>
         )}
 
-        {open && search && filtered.length > 0 && (
+        {open && filtered.length > 0 && (
           <ul style={{
             position: "absolute", top: "100%", left: 0, right: 0,
             background: "white", border: "1.5px solid #ccc", borderTop: "none",
@@ -124,7 +136,8 @@ export default function BrokerDropdown({ onSelect }: Props) {
                 onMouseEnter={e => (e.currentTarget.style.background = "#f0f7ff")}
                 onMouseLeave={e => (e.currentTarget.style.background = "white")}
               >
-                {broker.broker_name}
+                <div style={{ fontWeight: 500 }}>{broker.broker_name}</div>
+                {broker.phone_number && <div style={{ fontSize: 12, color: "#94a3b8", marginTop: 2 }}>{broker.phone_number}</div>}
               </li>
             ))}
           </ul>

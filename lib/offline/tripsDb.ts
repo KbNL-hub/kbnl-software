@@ -17,6 +17,7 @@ interface PendingTripAction {
 interface CachedBroker {
   broker_id: string;
   broker_name: string;
+  phone_number?: string;
 }
 
 interface CachedCustomer {
