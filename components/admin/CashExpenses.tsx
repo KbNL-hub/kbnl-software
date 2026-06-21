@@ -129,8 +129,8 @@ export default function CashExpenses() {
         }
       }
 
-      // Fetch office clerks
-      const { data: clerks } = await supabase.from("office_clerks").select("clerk_id, full_name")
+      // Fetch cash officers
+      const { data: clerks } = await supabase.from("cash_officers").select("clerk_id, full_name")
       const cMap: Record<string, string> = {}
       clerks?.forEach(c => { cMap[c.clerk_id] = c.full_name })
       setClerksMap(cMap)
@@ -852,7 +852,7 @@ export default function CashExpenses() {
             </div>
             
             <p style={{ color: "#64748b", fontSize: fontSize.sm, marginBottom: 24, lineHeight: 1.5 }}>
-              Provide a reason for rejecting this expense. This will be visible to the office clerk who submitted the request.
+              Provide a reason for rejecting this expense. This will be visible to the cash officer who submitted the request.
             </p>
 
             <div style={{ marginBottom: 24 }}>

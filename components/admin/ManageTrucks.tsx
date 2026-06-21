@@ -9,11 +9,13 @@ type Truck = {
   truck_model: string
   capacity: number
   tonnage: number
+  truck_size: string | null
   status: string
 }
 
 type ViewMode = "card" | "table"
 
+const TRUCK_SIZES = ["20", "40/45", "Dina", "Tricycle"]
 const truckStatuses = ["Empty", "Loaded", "Undergoing Repairs", "Decommissioned"]
 
 function useBreakpoint() {
@@ -75,6 +77,7 @@ export default function ManageTrucks() {
   const [editModel, setEditModel] = useState("")
   const [editCapacity, setEditCapacity] = useState("")
   const [editTonnage, setEditTonnage] = useState("")
+  const [editTruckSize, setEditTruckSize] = useState("")
   const [editStatus, setEditStatus] = useState("")
   const [deletingPlate, setDeletingPlate] = useState<string | null>(null)
   const [message, setMessage] = useState("")
@@ -105,6 +108,7 @@ export default function ManageTrucks() {
     setEditModel(truck.truck_model)
     setEditCapacity(truck.capacity.toString())
     setEditTonnage(truck.tonnage?.toString() ?? "")
+    setEditTruckSize(truck.truck_size ?? "")
     setEditStatus(truck.status)
     setMessage("")
   }
@@ -131,6 +135,7 @@ export default function ManageTrucks() {
         truck_model: editModel,
         capacity: parseInt(editCapacity),
         tonnage: parseFloat(editTonnage),
+        truck_size: editTruckSize || null,
         status: editStatus,
       })
       .eq("plate_number", editingTruck.plate_number)
@@ -311,6 +316,12 @@ export default function ManageTrucks() {
                         <p style={{ margin: "0 0 4px 0", color: "#94a3b8", fontSize: fontSize.xs }}>Tonnage</p>
                         <p style={{ margin: 0, color: "#0f172a", fontSize: fontSize.lg, fontWeight: 600 }}>{truck.tonnage ?? "—"} T</p>
                       </div>
+                      {truck.truck_size && (
+                        <div>
+                          <p style={{ margin: "0 0 4px 0", color: "#94a3b8", fontSize: fontSize.xs }}>Size</p>
+                          <p style={{ margin: 0, color: "#0f172a", fontSize: fontSize.lg, fontWeight: 600 }}>{truck.truck_size}</p>
+                        </div>
+                      )}
                     </div>
 
                     <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
@@ -344,6 +355,7 @@ export default function ManageTrucks() {
                   <tr style={{ background: "#f8fafc", borderBottom: "1px solid #e2e8f0" }}>
                     <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: fontSize.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px" }}>Truck</th>
                     <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: fontSize.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px" }}>Model</th>
+                    <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: fontSize.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px" }}>Size</th>
                     <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: fontSize.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px" }}>Capacity</th>
                     <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: fontSize.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px" }}>Tonnage</th>
                     <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: fontSize.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px" }}>Status</th>
@@ -360,6 +372,7 @@ export default function ManageTrucks() {
                           <div style={{ fontSize: fontSize.xs, color: "#94a3b8", marginTop: 2 }}>#{truck.kbnl_truck_no}</div>
                         </td>
                         <td style={{ padding: "12px 16px", color: "#0f172a", fontSize: fontSize.base }}>{truck.truck_model}</td>
+                        <td style={{ padding: "12px 16px", color: "#64748b", fontSize: fontSize.sm }}>{truck.truck_size || "—"}</td>
                         <td style={{ padding: "12px 16px", color: "#0f172a", fontSize: fontSize.base, fontWeight: 500 }}>{truck.capacity}</td>
                         <td style={{ padding: "12px 16px", color: "#0f172a", fontSize: fontSize.base, fontWeight: 500 }}>{truck.tonnage ?? "—"}</td>
                         <td style={{ padding: "12px 16px" }}>
@@ -405,7 +418,7 @@ export default function ManageTrucks() {
           <style>{`@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } } @keyframes slideUp { from { transform: translateY(20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }`}</style>
           <div
             onClick={e => e.stopPropagation()}
-            style={{ background: "white", borderRadius: isMobile ? "20px 20px 0 0" : 12, padding: isMobile ? "28px 20px" : 32, width: "100%", maxWidth: 440, maxHeight: isMobile ? "90vh" : "auto", overflowY: "auto", boxShadow: "0 25px 50px -12px rgba(0, 0, 0, 0.25)", animation: "slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1)" }}
+            style={{ background: "white", borderRadius: isMobile ? "20px 20px 0 0" : 12, padding: isMobile ? "28px 20px" : 32, width: "100%", maxWidth: 440, maxHeight: "90vh", overflowY: "auto", boxShadow: "0 25px 50px -12px rgba(0, 0, 0, 0.25)", animation: "slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1)" }}
           >
 
             {editingTruck && (
@@ -436,6 +449,16 @@ export default function ManageTrucks() {
                   <div>
                     <label style={{ display: "block", marginBottom: 6, color: "#475569", fontSize: fontSize.sm, fontWeight: 500 }}>Tonnage *</label>
                     <input ref={tonnageRef} type="number" step="0.1" value={editTonnage} onChange={(e) => { setEditTonnage(e.target.value); setMessage("") }} style={inputStyle} />
+                  </div>
+
+                  <div>
+                    <label style={{ display: "block", marginBottom: 6, color: "#475569", fontSize: fontSize.sm, fontWeight: 500 }}>Truck Size</label>
+                    <select value={editTruckSize} onChange={(e) => setEditTruckSize(e.target.value)} style={{ ...inputStyle, appearance: "none", paddingRight: 32, backgroundImage: "url('data:image/svg+xml;charset=UTF-8,%3csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 24 24%22 fill=%22none%22 stroke=%22%23171717%22 stroke-width=%222%22%3e%3cpolyline points=%226 9 12 15 18 9%22%3e%3c/polyline%3e%3c/svg%3e')", backgroundRepeat: "no-repeat", backgroundPosition: "right 12px center", backgroundSize: "16px" }}>
+                      <option value="">No size</option>
+                      {TRUCK_SIZES.map((s) => (
+                        <option key={s} value={s}>{s}</option>
+                      ))}
+                    </select>
                   </div>
 
                   <div>

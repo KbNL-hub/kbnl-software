@@ -485,7 +485,7 @@ export default function TruckOfficerDashboard() {
     padding: isMobile ? "28px 20px" : 32,
     width: "100%",
     maxWidth: 480,
-    maxHeight: isMobile ? "90vh" : "auto",
+    maxHeight: "90vh",
     overflowY: "auto",
     boxShadow: "0 25px 50px -12px rgba(0, 0, 0, 0.25)"
   }

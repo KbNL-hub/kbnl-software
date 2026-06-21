@@ -4,7 +4,7 @@ import { useEffect, useState, useRef } from "react"
 import { useRouter } from "next/navigation"
 import { supabase } from "@/lib/supabase"
 import { Icon } from "@iconify/react"
-import OfficeClerkPanel from "@/components/OfficeClerkPanel"
+import CashOfficerPanel from "@/components/CashOfficerPanel"
 
 type Clerk = { clerk_id: string; full_name: string; office_name: string; profile_picture_url?: string }
 
@@ -37,7 +37,7 @@ const fontSize = {
   "3xl": 28
 }
 
-export default function OfficeClerkDashboard() {
+export default function CashOfficerDashboard() {
   const { isMobile, isDesktop } = useBreakpoint()
   const router = useRouter()
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -68,11 +68,11 @@ export default function OfficeClerkDashboard() {
     // Verify role
     const { data: profile } = await supabase
       .from("Profiles").select("role").eq("user_id", session.user.id).single()
-    if (profile?.role !== "OfficeClerk") { router.push("/login"); return }
+    if (profile?.role !== "CashOfficer") { router.push("/login"); return }
 
     // Fetch clerk profile
     const { data: clerkData } = await supabase
-      .from("office_clerks")
+      .from("cash_officers")
       .select("clerk_id, full_name, office_name, profile_picture_url")
       .eq("clerk_id", session.user.id)
       .single()
@@ -156,7 +156,7 @@ export default function OfficeClerkDashboard() {
 
       // Update clerk profile
       const { error: updateError } = await supabase
-        .from("office_clerks")
+        .from("cash_officers")
         .update({ profile_picture_url: publicUrl })
         .eq("clerk_id", clerk.clerk_id)
 
@@ -272,7 +272,7 @@ export default function OfficeClerkDashboard() {
       {/* Main Content */}
       <div style={{ padding: isMobile ? "16px" : "32px", maxWidth: 1200, margin: "0 auto" }}>
         <div style={{ marginBottom: 40 }}>
-          <OfficeClerkPanel 
+          <CashOfficerPanel 
             clerkId={clerk?.clerk_id || ""} 
             officeName={clerk?.office_name || ""} 
             fullName={clerk?.full_name || ""} 
@@ -285,7 +285,7 @@ export default function OfficeClerkDashboard() {
       {/* Profile Picture Upload Modal */}
       {showPictureModal && (
         <div onClick={() => { setShowPictureModal(false); setSelectedFile(null); setPicturePreview(null); setPictureError("") }} style={{ position: "fixed", inset: 0, background: "rgba(15, 23, 42, 0.6)", backdropFilter: "blur(4px)", display: "flex", alignItems: isMobile ? "flex-end" : "center", justifyContent: "center", zIndex: 100, padding: isMobile ? 0 : 24 }}>
-          <div onClick={e => e.stopPropagation()} style={{ background: "white", borderRadius: isMobile ? "20px 20px 0 0" : 12, padding: isMobile ? "28px 20px" : 32, width: "100%", maxWidth: 420, maxHeight: isMobile ? "90vh" : "auto", overflowY: "auto", boxShadow: "0 25px 50px -12px rgba(0, 0, 0, 0.25)" }}>
+          <div onClick={e => e.stopPropagation()} style={{ background: "white", borderRadius: isMobile ? "20px 20px 0 0" : 12, padding: isMobile ? "28px 20px" : 32, width: "100%", maxWidth: 420, maxHeight: "90vh", overflowY: "auto", boxShadow: "0 25px 50px -12px rgba(0, 0, 0, 0.25)" }}>
             <h3 style={{ margin: "0 0 6px 0", fontSize: fontSize.xl, fontWeight: 700, color: "#0f172a" }}>Update Profile Picture</h3>
             <p style={{ margin: "0 0 20px 0", fontSize: fontSize.sm, color: "#64748b" }}>Click to upload or drag and drop. PNG, JPG up to 1MB.</p>
 

@@ -9,12 +9,12 @@ files = [
     Path("app/store-officer/page.tsx"),
     Path("app/truck-admin/page.tsx"),
     Path("app/truck-officer/page.tsx"),
-    Path("components/admin/OfficeClerks.tsx"),
+    Path("components/admin/CashOfficers.tsx"),
     Path("components/admin/StationManagers.tsx"),
     Path("components/admin/StoreOfficers.tsx"),
     Path("components/admin/TruckAdmins.tsx"),
     Path("components/admin/TruckOfficers.tsx"),
-    Path("components/OfficeClerkPanel.tsx"),
+    Path("components/CashOfficerPanel.tsx"),
 ]
 
 import_stmt = 'import ModernInput from "@/components/ModernInput"\n'

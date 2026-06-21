@@ -29,7 +29,6 @@ export default function BrokerCreditsView() {
   const [credits, setCredits] = useState<CreditEntry[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState("")
-  const [showHistory, setShowHistory] = useState(false)
   const [viewMode, setViewMode] = useState<ViewMode>("card")
 
   useEffect(() => { fetchCredits() }, [])
@@ -72,9 +71,7 @@ export default function BrokerCreditsView() {
     .filter(c => c.status === "Active")
     .reduce((sum, c) => sum + Number(c.amount), 0)
 
-  const displayedCredits = credits.filter(c =>
-    showHistory ? c.status === "Cleared" : c.status === "Active"
-  )
+  const displayedCredits = credits
 
   const tblHeadStyle: React.CSSProperties = {
     padding: "12px 16px", fontWeight: 600, fontSize: fontSize.xs,
@@ -115,7 +112,7 @@ export default function BrokerCreditsView() {
       {/* Header row */}
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16, flexWrap: "wrap", gap: 8 }}>
         <h2 style={{ fontSize: fontSize.lg, color: "#171717", margin: 0 }}>
-          {showHistory ? "Credit History" : "Active Credits"}
+          Credits
         </h2>
         {credits.length > 0 && (
           <div style={{ display: "flex", background: "white", border: "1px solid #e2e8f0", borderRadius: 8, padding: 4, gap: 0 }}>
@@ -147,40 +144,14 @@ export default function BrokerCreditsView() {
         )}
       </div>
 
-      {/* Active/History toggle pills — always visible */}
-      <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
-        <button
-          onClick={() => setShowHistory(false)}
-          style={{
-            padding: "8px 14px", borderRadius: 20, fontSize: fontSize.sm, cursor: "pointer",
-            border: showHistory ? "1.5px solid #e2e8f0" : "1.5px solid #0070f3",
-            background: showHistory ? "white" : "#eff6ff",
-            color: showHistory ? "#64748b" : "#0070f3",
-            fontWeight: showHistory ? 500 : 600, transition: "all 0.2s ease",
-          }}
-        >
-          Active ({credits.filter(c => c.status === "Active").length})
-        </button>
-        <button
-          onClick={() => setShowHistory(true)}
-          style={{
-            padding: "8px 14px", borderRadius: 20, fontSize: fontSize.sm, cursor: "pointer",
-            border: showHistory ? "1.5px solid #16a34a" : "1.5px solid #e2e8f0",
-            background: showHistory ? "#f0fdf4" : "white",
-            color: showHistory ? "#16a34a" : "#64748b",
-            fontWeight: showHistory ? 600 : 500, transition: "all 0.2s ease",
-          }}
-        >
-          History ({credits.filter(c => c.status === "Cleared").length})
-        </button>
-      </div>
+
 
       {/* Content */}
       {displayedCredits.length === 0 ? (
         <div style={{ textAlign: "center", padding: "60px 20px", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", width: "100%", boxSizing: "border-box" }}>
           <Icon icon="mdi:credit-card-off" width={48} color="#d1d5db" />
           <p style={{ color: "#9ca3af", fontSize: 15, margin: "12px 0 0 0" }}>
-            {showHistory ? "No cleared credits" : "No active credits"}
+            No credits
           </p>
         </div>
       ) : viewMode === "card" ? (
@@ -194,12 +165,11 @@ export default function BrokerCreditsView() {
                   <span>{new Date(c.created_at).toLocaleDateString()}</span>
                 </div>
               </div>
-              {showHistory && c.status === "Cleared" && (
+              {c.status === "Cleared" ? (
                 <span style={{ padding: "4px 10px", borderRadius: 999, fontSize: fontSize.xs, fontWeight: "bold", background: "#f0fdf4", color: "#16a34a", whiteSpace: "nowrap" }}>
                   Cleared
                 </span>
-              )}
-              {!showHistory && c.status === "Active" && (
+              ) : (
                 <span style={{ padding: "4px 10px", borderRadius: 999, fontSize: fontSize.xs, fontWeight: "bold", background: "#f0f7ff", color: "#0070f3", whiteSpace: "nowrap" }}>
                   Active
                 </span>

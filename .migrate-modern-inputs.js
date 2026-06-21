@@ -9,12 +9,12 @@ const files = [
   'app/store-officer/page.tsx',
   'app/truck-admin/page.tsx',
   'app/truck-officer/page.tsx',
-  'components/admin/OfficeClerks.tsx',
+  'components/admin/CashOfficers.tsx',
   'components/admin/StationManagers.tsx',
   'components/admin/StoreOfficers.tsx',
   'components/admin/TruckAdmins.tsx',
   'components/admin/TruckOfficers.tsx',
-  'components/OfficeClerkPanel.tsx',
+  'components/CashOfficerPanel.tsx',
 ]
 
 const importStatement = 'import ModernInput from "@/components/ModernInput"\n'

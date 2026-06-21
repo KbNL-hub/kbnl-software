@@ -18,7 +18,7 @@
 ---
 
 ## Roles
-Admin, Driver, Broker, StationManager, TruckOfficer, TruckAdmin, StoreOfficer, OfficeClerk
+Admin, Driver, Broker, StationManager, TruckOfficer, TruckAdmin, StoreOfficer, CashOfficer
 - Login routing: each role → /[role-slug]
 - Auth callback sets status → Active for non-Admin/Broker roles
 - Invite flow: /api/invite-user handles all roles
@@ -46,7 +46,7 @@ components/
     TruckOfficers.tsx, TruckAdmins.tsx, StoreOfficers.tsx
     Reports.tsx, Complaints.tsx, CashTransactions.tsx, CustomerPayments.tsx
     DataTable.tsx, DateRangeSelector.tsx, EmptyState.tsx, ExportActions.tsx, LoadingState.tsx
-    OfficeClerks.tsx, QuickFilterPills.tsx, ReassignBroker.tsx, ReportCard.tsx
+    CashOfficers.tsx, QuickFilterPills.tsx, ReassignBroker.tsx, ReportCard.tsx
     ReportModal.tsx, Tricycles.tsx, 
   BrokerDropdown.tsx
   BuyDiesel.tsx  ← BEING REPLACED by ATF flow
@@ -54,7 +54,7 @@ components/
   CustomerPayments.tsx
   ModernInput.tsx
   PWAInstallPrompt.tsx
-  OfficeClerkPanel.tsx  ← Reusable cash expenses panel (used by /office-clerk and /broker dual-role)
+  CashOfficerPanel.tsx  ← Reusable cash expenses panel (used by /cash-officer and /broker dual-role)
   StopForm.tsx
   SplashScreen.tsx
   TripOfflineIndicator.tsx
@@ -99,7 +99,7 @@ lib/
 - `truck_officers` — manager_id (FK auth.users), full_name, phone_number, status
 - `truck_admins` — admin_id (FK auth.users), full_name, phone_number, status
 - `store_officers` — officer_id (FK auth.users), full_name, phone_number, store_name, status
-- `office_clerks` — clerk_id (FK auth.users), full_name, phone_number, office_name, status ← NEW
+- `cash_officers` — clerk_id (FK auth.users), full_name, phone_number, office_name, status ← NEW
 
 ### Store / Sales
 - `store_stock` — stock_id, store_name, product, balance, updated_at
@@ -1505,7 +1505,7 @@ lib/
     "key_type": ""
   },
   {
-    "table_name": "office_clerks",
+    "table_name": "cash_officers",
     "column_name": "clerk_id",
     "data_type": "uuid",
     "is_nullable": "NO",
@@ -1513,7 +1513,7 @@ lib/
     "key_type": "PK"
   },
   {
-    "table_name": "office_clerks",
+    "table_name": "cash_officers",
     "column_name": "clerk_id",
     "data_type": "uuid",
     "is_nullable": "NO",
@@ -1521,7 +1521,7 @@ lib/
     "key_type": "FK"
   },
   {
-    "table_name": "office_clerks",
+    "table_name": "cash_officers",
     "column_name": "full_name",
     "data_type": "character varying",
     "is_nullable": "NO",
@@ -1529,7 +1529,7 @@ lib/
     "key_type": ""
   },
   {
-    "table_name": "office_clerks",
+    "table_name": "cash_officers",
     "column_name": "phone_number",
     "data_type": "character varying",
     "is_nullable": "YES",
@@ -1537,7 +1537,7 @@ lib/
     "key_type": ""
   },
   {
-    "table_name": "office_clerks",
+    "table_name": "cash_officers",
     "column_name": "office_name",
     "data_type": "character varying",
     "is_nullable": "NO",
@@ -1545,7 +1545,7 @@ lib/
     "key_type": ""
   },
   {
-    "table_name": "office_clerks",
+    "table_name": "cash_officers",
     "column_name": "status",
     "data_type": "character varying",
     "is_nullable": "NO",
@@ -1553,7 +1553,7 @@ lib/
     "key_type": ""
   },
   {
-    "table_name": "office_clerks",
+    "table_name": "cash_officers",
     "column_name": "created_at",
     "data_type": "timestamp with time zone",
     "is_nullable": "YES",
@@ -1561,7 +1561,7 @@ lib/
     "key_type": ""
   },
   {
-    "table_name": "office_clerks",
+    "table_name": "cash_officers",
     "column_name": "profile_picture_url",
     "data_type": "text",
     "is_nullable": "YES",
@@ -2241,8 +2241,8 @@ One ATF per truck at a time (blocked if open ATF exists for that truck)
 ## Cash Transactions (NEW — COMPLETED)
 - 4 offices: Uyo, Ikom, Calabar, Ogoja
 - Each has own balance (seeded to DB)
-- OfficeClerk role logs pending expenses with breakdown of items/amounts and running total
-- OfficeClerk dashboard supports logging, details view, and cancellation of pending expenses
+- CashOfficer role logs pending expenses with breakdown of items/amounts and running total
+- CashOfficer dashboard supports logging, details view, and cancellation of pending expenses
 - Admin dashboard features Cash Transactions management, office selector, and read-only vs admin assignment controls
 - Admin can deposit cash (add balance) and authorise/reject pending expenses for their assigned office
 - Authorisation decreases office cash balance; rejection requires reason logging
@@ -2250,14 +2250,14 @@ One ATF per truck at a time (blocked if open ATF exists for that truck)
 
 ---
 
-## Dual Broker/OfficeClerk Role (NEW — COMPLETED)
-- A single user can be both a Broker and an Office Clerk without needing two accounts
-- Primary role stays `Broker` in Profiles table; a matching record in `office_clerks` enables the dual role
-- Admin invite flow: inviting an OfficeClerk with an existing Broker's email inserts an `office_clerks` record with `status: Active` (no duplicate auth invite)
-- Cash Expenses UI extracted into reusable `components/OfficeClerkPanel.tsx` (accepts clerkId, officeName, fullName props)
-- `/office-clerk` page imports OfficeClerkPanel (standalone clerks)
-- `/broker` page checks `office_clerks` on init; if record found, shows a toggle button in the header: "💼 Cash Expenses" / "📦 My Stops"
-- Toggling switches between the Broker stops view and the full OfficeClerkPanel (log expenses, view history, cancel pending)
+## Dual Broker/CashOfficer Role (NEW — COMPLETED)
+- A single user can be both a Broker and a Cash Officer without needing two accounts
+- Primary role stays `Broker` in Profiles table; a matching record in `cash_officers` enables the dual role
+- Admin invite flow: inviting an CashOfficer with an existing Broker's email inserts an `cash_officers` record with `status: Active` (no duplicate auth invite)
+- Cash Expenses UI extracted into reusable `components/CashOfficerPanel.tsx` (accepts clerkId, officeName, fullName props)
+- `/cash-officer` page imports CashOfficerPanel (standalone clerks)
+- `/broker` page checks `cash_officers` on init; if record found, shows a toggle button in the header: "💼 Cash Expenses" / "📦 My Stops"
+- Toggling switches between the Broker stops view and the full CashOfficerPanel (log expenses, view history, cancel pending)
 - Container width adapts: 520px for stops, 1000px for expenses table
 
 ---

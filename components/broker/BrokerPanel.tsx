@@ -8,9 +8,11 @@ import { useBreakpoint } from "@/app/hooks/useBreakpoint"
 import MyStops from "@/components/broker/MyStops"
 import BrokerPayments from "@/components/broker/CustomerPayments"
 import BrokerCreditsView from "@/components/broker/BrokerCreditsView"
-import OfficeClerkPanel from "@/components/OfficeClerkPanel"
+import BrokerActiveTrips from "@/components/broker/BrokerActiveTrips"
+import CashOfficerPanel from "@/components/CashOfficerPanel"
 
 const BASE_NAV_ITEMS = [
+  { label: "Active Trips",        key: "trips",    icon: "mdi:truck-fast" },
   { label: "My Stops",            key: "stops",    icon: "mdi:truck-delivery" },
   { label: "Customer Payments",   key: "payments", icon: "mdi:cash-register" },
   { label: "My Credits",          key: "credits",  icon: "mdi:credit-card" },
@@ -74,7 +76,7 @@ export default function BrokerPanel({ userProfile }: Props) {
   useEffect(() => {
     ;(async () => {
       const { data: clerkRecord } = await supabase
-        .from("office_clerks").select("office_name")
+        .from("cash_officers").select("office_name")
         .eq("clerk_id", userProfile.user_id).eq("status", "Active").single()
       if (clerkRecord) {
         setIsDualRole(true)
@@ -164,11 +166,12 @@ export default function BrokerPanel({ userProfile }: Props) {
 
   function renderContent() {
     switch (active) {
+      case "trips":     return <BrokerActiveTrips />
       case "stops":     return <MyStops />
       case "payments":  return <BrokerPayments />
       case "credits":   return <BrokerCreditsView />
       case "expenses":  return (
-        <OfficeClerkPanel
+        <CashOfficerPanel
           clerkId={userProfile.user_id}
           officeName={clerkOfficeName}
           fullName={userProfile.full_name}
@@ -245,7 +248,7 @@ export default function BrokerPanel({ userProfile }: Props) {
     padding: isMobile ? "28px 20px" : 32,
     width: "100%",
     maxWidth: 480,
-    maxHeight: isMobile ? "90vh" : "auto",
+    maxHeight: "90vh",
     overflowY: "auto",
     boxShadow: "0 25px 50px -12px rgba(0, 0, 0, 0.25)"
   }
@@ -309,7 +312,7 @@ export default function BrokerPanel({ userProfile }: Props) {
                   {userProfile.full_name}
                 </h1>
                 <p style={{ margin: 0, fontSize: 12, color: "rgba(255,255,255,0.7)" }}>
-                  {isDualRole ? `${clerkOfficeName} Clerk & Broker` : "Broker"}
+                  {isDualRole ? `${clerkOfficeName} Cash Officer & Broker` : "Broker"}
                 </p>
               </div>
             </div>

@@ -22,7 +22,7 @@ import TruckAdmins from "@/components/admin/TruckAdmins"
 import Reports from "@/components/admin/Reports"
 import Complaints from "@/components/admin/Complaints"
 import StoreOfficers from "@/components/admin/StoreOfficers"
-import OfficeClerks from "@/components/admin/OfficeClerks"
+import CashOfficers from "@/components/admin/CashOfficers"
 import CashExpenses from "@/components/admin/CashExpenses"
 import CustomerPaymentsAdmin from "@/components/admin/CustomerPaymentsAdmin"
 import BrokerCredits from "@/components/admin/BrokerCredits"
@@ -36,13 +36,13 @@ const NAV_ITEMS = [
   { label: "Manage Drivers",    key: "manage-drivers",      icon: "mdi:account-group" },
   { label: "Monitor Trips",     key: "monitor-trips",       icon: "streamline-ultimate:trip-road-bold" },
   { label: "Complaints",        key: "complaints",          icon: "mdi:alert-circle" },
-  { label: "Diesel Manager",    key: "diesel-manager",      icon: "mdi:gas-station" },
   { label: "Station Managers",  key: "station-managers",    icon: "mdi:person-tie" },
+  { label: "Diesel Manager",    key: "diesel-manager",      icon: "mdi:gas-station" },
   { label: "Truck Officers",    key: "truck-officers",      icon: "wpf:maintenance" },
   { label: "Truck Admins",      key: "truck-admins",        icon: "mdi:person-star" },
   { label: "Tricycles",         key: "tricycles",           icon: "mdi:rickshaw" },
   { label: "Store Officers",    key: "store-officers",      icon: "mdi:storefront" },
-  { label: "Office Clerks",     key: "office-clerks",       icon: "mdi:account-tie" },
+  { label: "Cash Officers",     key: "cash-officers",       icon: "mdi:account-tie" },
   { label: "Cash Expenses",     key: "cash-expenses",       icon: "mdi:cash-multiple" },
   { label: "Customer Payments", key: "customer-payments",   icon: "mdi:cash-register" },
   { label: "Credit",            key: "credit",              icon: "mdi:credit-card-outline" },
@@ -157,13 +157,13 @@ export default function AdminPanel({ userProfile }: Props) {
       case "manage-drivers":     return <ManageDrivers />
       case "monitor-trips":      return <MonitorTrips />
       case "complaints":         return <Complaints />
-      case "diesel-manager":     return <DieselManager />
       case "station-managers":   return <StationManagers />
+      case "diesel-manager":     return <DieselManager />
       case "truck-officers":     return <TruckOfficers />
       case "truck-admins":       return <TruckAdmins />
       case "tricycles":          return <Tricycles />
       case "store-officers":     return <StoreOfficers />
-      case "office-clerks":      return <OfficeClerks />
+      case "cash-officers":      return <CashOfficers />
       case "cash-expenses":      return <CashExpenses />
       case "customer-payments":  return <CustomerPaymentsAdmin />
       case "credit":             return <BrokerCredits />

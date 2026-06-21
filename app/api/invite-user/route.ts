@@ -21,8 +21,8 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Store is required for Store Officer" }, { status: 400 })
   }
 
-  if (role === "OfficeClerk" && !officeName) {
-    return NextResponse.json({ error: "Office is required for Office Clerk" }, { status: 400 })
+  if (role === "CashOfficer" && !officeName) {
+    return NextResponse.json({ error: "Office is required for Cash Officer" }, { status: 400 })
   }
 
   const { data: userList, error: listError } = await supabaseAdmin.auth.admin.listUsers()
@@ -142,11 +142,11 @@ export async function POST(req: Request) {
     }
   }
 
-  if (role === "OfficeClerk") {
+  if (role === "CashOfficer") {
     if (!officeName) {
-      return NextResponse.json({ error: "Office name is required for Office Clerk" }, { status: 400 })
+      return NextResponse.json({ error: "Office name is required for Cash Officer" }, { status: 400 })
     }
-    const { error: ocError } = await supabaseAdmin.from("office_clerks").insert([{
+    const { error: ocError } = await supabaseAdmin.from("cash_officers").insert([{
       clerk_id: userId,
       full_name: fullName,
       phone_number: phoneNumber || null,
@@ -154,7 +154,7 @@ export async function POST(req: Request) {
       status: existingUser ? "Active" : "Invited"
     }])
     if (ocError) {
-      return NextResponse.json({ error: "Invite sent but office clerk record failed" }, { status: 500 })
+      return NextResponse.json({ error: "Invite sent but Cash Officer record failed" }, { status: 500 })
     }
   }
 

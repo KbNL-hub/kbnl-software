@@ -329,7 +329,7 @@ const [viewMode, setViewMode] = useState<ViewMode>("card")
 3. Truck Officers (same as brokers)
 4. Truck Admins (same as brokers)
 5. Store Officers (same as brokers)
-6. Office Clerks (same as brokers)
+6. Cash Officers (same as brokers)
 7. Manage Trucks (add filter pills: All black, Empty green, Loaded blue, Repairs yellow, Decommissioned red) - DONE
 8. Manage Drivers (same card/table structure) - DONE
 9. Monitor Trucks (card/table, filter pills) - DONE

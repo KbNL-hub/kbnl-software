@@ -31,7 +31,7 @@ type ExpenseItem = {
   amount: number
 }
 
-export default function OfficeClerkPanel({ clerkId, officeName, fullName }: Props) {
+export default function CashOfficerPanel({ clerkId, officeName, fullName }: Props) {
   const [officeBalance, setOfficeBalance] = useState<number>(0)
   const [expenses, setExpenses] = useState<CashExpense[]>([])
   const [loading, setLoading] = useState(true)

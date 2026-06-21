@@ -6,7 +6,7 @@ import { supabase } from "@/lib/supabase"
 import { formatAmount, parseAmount } from "@/lib/formatAmount"
 import ModernInput from "@/components/ModernInput"
 import CustomerSelector from "@/components/CustomerSelector"
-import OfficeClerkPanel from "@/components/OfficeClerkPanel"
+import CashOfficerPanel from "@/components/CashOfficerPanel"
 import CustomerPayments from "@/components/CustomerPayments"
 import { useBreakpoint } from "@/app/hooks/useBreakpoint"
 
@@ -134,7 +134,7 @@ export default function BrokerDashboard() {
     }
 
     const { data: clerkRecord } = await supabase
-      .from("office_clerks").select("office_name")
+      .from("cash_officers").select("office_name")
       .eq("clerk_id", user.id).eq("status", "Active").single()
 
     if (clerkRecord) {
@@ -461,7 +461,7 @@ export default function BrokerDashboard() {
                 {broker?.full_name}
               </h1>
               <p style={{ margin: "2px 0 0", fontSize: fontSize.sm, color: "#64748b" }}>
-                {isDualRole ? clerkOfficeName + " Clerk & Broker" : "Broker"}
+                {isDualRole ? clerkOfficeName + " Cash Officer & Broker" : "Broker"}
               </p>
             </div>
           </div>
@@ -528,7 +528,7 @@ export default function BrokerDashboard() {
           {/* ── Expenses View ── */}
           {activeView === "expenses" && isDualRole && brokerId && (
             <div style={{ padding: isMobile ? "16px 0" : "20px 0" }}>
-              <OfficeClerkPanel
+              <CashOfficerPanel
                 clerkId={brokerId}
                 officeName={clerkOfficeName}
                 fullName={broker?.full_name || ""}
@@ -830,7 +830,7 @@ export default function BrokerDashboard() {
       {/* Profile Picture Upload Modal */}
       {showPictureModal && (
         <div onClick={() => { setShowPictureModal(false); setSelectedFile(null); setPicturePreview(null); setPictureError("") }} style={{ position: "fixed", inset: 0, background: "rgba(15, 23, 42, 0.6)", backdropFilter: "blur(4px)", display: "flex", alignItems: isMobile ? "flex-end" : "center", justifyContent: "center", zIndex: 100, padding: isMobile ? 0 : 24 }}>
-          <div onClick={e => e.stopPropagation()} style={{ background: "white", borderRadius: isMobile ? "20px 20px 0 0" : 12, padding: isMobile ? "28px 20px" : 32, width: "100%", maxWidth: 420, maxHeight: isMobile ? "90vh" : "auto", overflowY: "auto", boxShadow: "0 25px 50px -12px rgba(0, 0, 0, 0.25)" }}>
+          <div onClick={e => e.stopPropagation()} style={{ background: "white", borderRadius: isMobile ? "20px 20px 0 0" : 12, padding: isMobile ? "28px 20px" : 32, width: "100%", maxWidth: 420, maxHeight: "90vh", overflowY: "auto", boxShadow: "0 25px 50px -12px rgba(0, 0, 0, 0.25)" }}>
             <h3 style={{ margin: "0 0 6px 0", fontSize: fontSize.xl, fontWeight: 700, color: "#0f172a" }}>Update Profile Picture</h3>
             <p style={{ margin: "0 0 20px 0", fontSize: fontSize.sm, color: "#64748b" }}>Click to upload or drag and drop. PNG, JPG up to 1MB.</p>
 

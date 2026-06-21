@@ -4,7 +4,7 @@ import { useState, useEffect, useRef } from "react"
 import { supabase } from "@/lib/supabase"
 import ModernInput from "@/components/ModernInput"
 
-type OfficeClerk = {
+type CashOfficer = {
   clerk_id: string
   full_name: string
   phone_number: string | null
@@ -47,14 +47,14 @@ const fontSize = {
   "3xl": 28,
 }
 
-export default function OfficeClerks() {
+export default function CashOfficers() {
   const { isMobile, isDesktop } = useBreakpoint()
-  const [clerks, setClerks] = useState<OfficeClerk[]>([])
+  const [clerks, setClerks] = useState<CashOfficer[]>([])
   const [loading, setLoading] = useState(true)
   const [viewMode, setViewMode] = useState<ViewMode>("card")
   const [showInviteModal, setShowInviteModal] = useState(false)
   const [deletingId, setDeletingId] = useState<string | null>(null)
-  const [editingClerk, setEditingClerk] = useState<OfficeClerk | null>(null)
+  const [editingClerk, setEditingClerk] = useState<CashOfficer | null>(null)
 
   // Invite form
   const [fullName, setFullName] = useState("")
@@ -78,7 +78,7 @@ export default function OfficeClerks() {
   async function fetchClerks() {
     setLoading(true)
     const { data } = await supabase
-      .from("office_clerks")
+      .from("cash_officers")
       .select("clerk_id, full_name, phone_number, office_name, status")
       .order("full_name", { ascending: true })
     setClerks(data || [])
@@ -105,7 +105,7 @@ export default function OfficeClerks() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         email, fullName, phoneNumber,
-        role: "OfficeClerk",
+        role: "CashOfficer",
         officeName,
       }),
     })
@@ -124,7 +124,7 @@ export default function OfficeClerks() {
 
     setSubmitting(true)
     const { error } = await supabase
-      .from("office_clerks")
+      .from("cash_officers")
       .update({ full_name: editName, phone_number: editPhone || null })
       .eq("clerk_id", editingClerk.clerk_id)
 
@@ -136,7 +136,7 @@ export default function OfficeClerks() {
 
   async function handleDelete(clerkId: string) {
     setSubmitting(true)
-    const { error } = await supabase.from("office_clerks").delete().eq("clerk_id", clerkId)
+    const { error } = await supabase.from("cash_officers").delete().eq("clerk_id", clerkId)
     setSubmitting(false)
 
     if (error) {
@@ -204,7 +204,7 @@ export default function OfficeClerks() {
               letterSpacing: "-0.5px",
             }}
           >
-            Office Clerks
+            Cash Officers
           </h1>
           <p
             style={{
@@ -213,7 +213,7 @@ export default function OfficeClerks() {
               fontSize: fontSize.base,
             }}
           >
-            Manage office clerks and their assigned locations.
+            Manage cash officers and their assigned locations.
           </p>
         </div>
 
@@ -381,7 +381,7 @@ export default function OfficeClerks() {
               fontWeight: 600,
             }}
           >
-            No office clerks yet
+            No cash officers yet
           </h3>
           <p
             style={{
@@ -393,7 +393,7 @@ export default function OfficeClerks() {
               marginRight: "auto",
             }}
           >
-            Get started by adding a new office clerk. You'll manage their contact info and office assignment here.
+            Get started by adding a new cash officer. You'll manage their contact info and office assignment here.
           </p>
           <button
             onClick={() => {
@@ -681,7 +681,7 @@ export default function OfficeClerks() {
             style={{
               background: "white", borderRadius: isMobile ? "20px 20px 0 0" : 12,
               padding: isMobile ? "28px 20px" : 32, width: "100%", maxWidth: 420,
-              maxHeight: isMobile ? "90vh" : "auto", overflowY: "auto",
+              maxHeight: "90vh", overflowY: "auto",
               boxShadow: "0 25px 50px -12px rgba(0, 0, 0, 0.25)",
               animation: "slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1)",
             }}
@@ -691,7 +691,7 @@ export default function OfficeClerks() {
               <>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24 }}>
                   <h3 style={{ margin: 0, color: "#0f172a", fontSize: fontSize.xl, fontWeight: 700 }}>
-                    Add Office Clerk
+                    Add Cash Officer
                   </h3>
                   <button
                     onClick={closeModals}
@@ -821,10 +821,10 @@ export default function OfficeClerks() {
                     </svg>
                   </div>
                   <h3 style={{ margin: "0 0 12px", color: "#0f172a", fontSize: fontSize.xl, fontWeight: 700 }}>
-                    Delete Office Clerk
+                    Delete Cash Officer
                   </h3>
                   <p style={{ margin: "0 0 20px", color: "#64748b", fontSize: fontSize.base, lineHeight: 1.5 }}>
-                    Are you sure you want to delete this office clerk? This action cannot be undone and will permanently remove their data.
+                    Are you sure you want to delete this cash officer? This action cannot be undone and will permanently remove their data.
                   </p>
 
                   {message && (

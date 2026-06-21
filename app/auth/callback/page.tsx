@@ -87,9 +87,9 @@ export default function SetPassword() {
         .eq("officer_id", userId)
     }
 
-    if (profile?.role === "OfficeClerk") {
+    if (profile?.role === "CashOfficer") {
       await supabase
-        .from("office_clerks")
+        .from("cash_officers")
         .update({ status: "Active" })
         .eq("clerk_id", userId)
     }

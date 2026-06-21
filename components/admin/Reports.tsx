@@ -65,9 +65,28 @@ type TruckFuel = {
   confirmed_at: string
 }
 
+type BrokerSummary = {
+  broker_id: string
+  broker_name: string
+  stops_count: number
+  total_bags: number
+  total_revenue: number
+}
+
+type BrokerStop = {
+  stop_id: string
+  plate_number: string
+  customer_name: string | null
+  quantity_offloaded: number
+  price_per_bag: number | null
+  revenue: number
+  stop_time: string
+}
+
 type DrillDown =
   | { kind: "driver"; driver: DriverSummary; trips: DriverTrip[] }
   | { kind: "truck"; truck: TruckSummary; maintenance: TruckMaintenance[]; fuel: TruckFuel[] }
+  | { kind: "broker"; broker: BrokerSummary; stops: BrokerStop[] }
 
 type ViewMode = "card" | "table"
 
@@ -135,7 +154,7 @@ function downloadXLSX(filename: string, rows: Record<string, unknown>[], sheetNa
 export default function Reports() {
   const [isMobile, setIsMobile] = useState(false)
   const [isDesktop, setIsDesktop] = useState(true)
-  const [section, setSection] = useState<"drivers" | "trucks">("drivers")
+  const [section, setSection] = useState<"drivers" | "trucks" | "brokers">("drivers")
   const [fromDate, setFromDate] = useState("")
   const [toDate, setToDate] = useState("")
   const [dateError, setDateError] = useState("")
@@ -146,6 +165,7 @@ export default function Reports() {
 
   const [driverSummaries, setDriverSummaries] = useState<DriverSummary[]>([])
   const [truckSummaries, setTruckSummaries] = useState<TruckSummary[]>([])
+  const [brokerSummaries, setBrokerSummaries] = useState<BrokerSummary[]>([])
   const [drillDown, setDrillDown] = useState<DrillDown | null>(null)
   const [drillLoading, setDrillLoading] = useState(false)
 
@@ -196,7 +216,8 @@ export default function Reports() {
     setDrillDown(null)
 
     if (section === "drivers") await fetchDriverReports()
-    else await fetchTruckReports()
+    else if (section === "trucks") await fetchTruckReports()
+    else await fetchBrokerReports()
 
     setLoading(false)
     setHasLoaded(true)
@@ -416,6 +437,107 @@ export default function Reports() {
     setDrillLoading(false)
   }
 
+  // ── Broker reports ────────────────────────────────────────────────────────
+  async function fetchBrokerReports() {
+    const { from, to } = getRange()
+
+    const { data: brokers } = await supabase
+      .from("Brokers")
+      .select("broker_id, broker_name")
+      .order("broker_name", { ascending: true })
+
+    if (!brokers) return
+
+    const summaries: BrokerSummary[] = await Promise.all(brokers.map(async (b) => {
+      const { data: stops } = await supabase
+        .from("Stops")
+        .select("stop_id, quantity_offloaded")
+        .eq("broker_id", b.broker_id)
+        .eq("confirmed", true)
+        .gte("stop_time", from)
+        .lte("stop_time", to)
+
+      const stopIds = (stops || []).map(s => s.stop_id)
+      let total_revenue = 0
+
+      if (stopIds.length > 0) {
+        const { data: confirmations } = await supabase
+          .from("Stop_Confirmations")
+          .select("stop_id, price_per_bag")
+          .in("stop_id", stopIds)
+
+        const priceMap: Record<string, number> = {}
+        if (confirmations) {
+          for (const c of confirmations) {
+            priceMap[c.stop_id] = c.price_per_bag ?? 0
+          }
+        }
+
+        for (const stop of stops || []) {
+          const price = priceMap[stop.stop_id] ?? 0
+          total_revenue += stop.quantity_offloaded * price
+        }
+      }
+
+      const stops_count = (stops || []).length
+      const total_bags = (stops || []).reduce((sum, s) => sum + s.quantity_offloaded, 0)
+
+      return {
+        broker_id: b.broker_id,
+        broker_name: b.broker_name,
+        stops_count,
+        total_bags,
+        total_revenue,
+      }
+    }))
+
+    setBrokerSummaries(summaries.filter(b => b.stops_count > 0))
+  }
+
+  async function fetchBrokerDrillDown(broker: BrokerSummary) {
+    setDrillLoading(true)
+    const { from, to } = getRange()
+
+    const { data: stopsRaw } = await supabase
+      .from("Stops")
+      .select("stop_id, trip_id, quantity_offloaded, stop_time")
+      .eq("broker_id", broker.broker_id)
+      .eq("confirmed", true)
+      .gte("stop_time", from)
+      .lte("stop_time", to)
+      .order("stop_time", { ascending: false })
+
+    const stops: BrokerStop[] = await Promise.all((stopsRaw || []).map(async (s) => {
+      const { data: trip } = await supabase
+        .from("Trips")
+        .select("plate_number")
+        .eq("trip_id", s.trip_id)
+        .single()
+
+      const { data: confirmation } = await supabase
+        .from("Stop_Confirmations")
+        .select("price_per_bag")
+        .eq("stop_id", s.stop_id)
+        .single()
+
+      const price = confirmation?.price_per_bag ?? 0
+      const revenue = s.quantity_offloaded * price
+
+      return {
+        stop_id: s.stop_id,
+        plate_number: trip?.plate_number ?? "—",
+        customer_name: null,
+        quantity_offloaded: s.quantity_offloaded,
+        price_per_bag: price,
+        revenue,
+        stop_time: s.stop_time,
+      }
+    }))
+
+    setDrillDown({ kind: "broker", broker, stops })
+    setDrillLoading(false)
+  }
+
   // ── Export helpers ────────────────────────────────────────────────────────
   function exportDriverSummary(format: "csv" | "xlsx") {
     const rows = driverSummaries.map((d) => ({
@@ -490,6 +612,31 @@ export default function Reports() {
     }
   }
 
+  function exportBrokerSummary(format: "csv" | "xlsx") {
+    const rows = brokerSummaries.map((b) => ({
+      Broker: b.broker_name,
+      "Confirmed Stops": b.stops_count,
+      "Total Bags Sold": b.total_bags,
+      "Total Revenue (₦)": b.total_revenue,
+    }))
+    format === "csv" ? downloadCSV("broker_summary.csv", rows) : downloadXLSX("broker_summary.xlsx", rows, "Broker Summary")
+  }
+
+  function exportBrokerDetail(format: "csv" | "xlsx") {
+    if (drillDown?.kind !== "broker") return
+    const rows = drillDown.stops.map((s) => ({
+      "Stop ID": s.stop_id,
+      Plate: s.plate_number,
+      "Bags Offloaded": s.quantity_offloaded,
+      "Price per Bag (₦)": s.price_per_bag ?? 0,
+      "Revenue (₦)": s.revenue,
+      Date: new Date(s.stop_time).toLocaleDateString(),
+    }))
+    format === "csv"
+      ? downloadCSV(`${drillDown.broker.broker_name}_stops.csv`, rows)
+      : downloadXLSX(`${drillDown.broker.broker_name}_stops.xlsx`, rows, "Stop Detail")
+  }
+
   // ── Render ────────────────────────────────────────────────────────────────
   return (
     <div style={{ minHeight: "100vh", background: "#f8fafc", padding: isMobile ? "16px" : "32px", fontFamily: "'Inter', sans-serif" }}>
@@ -499,13 +646,13 @@ export default function Reports() {
           Reports
         </h1>
         <p style={{ margin: "8px 0 0", color: "#64748b", fontSize: fontSize.base }}>
-          {section === "drivers" ? "Driver performance metrics and trip summaries" : "Truck health, maintenance, and fuel analytics"}
+           {section === "drivers" ? "Driver performance metrics and trip summaries" : section === "trucks" ? "Truck health, maintenance, and fuel analytics" : "Broker sales and revenue summaries"}
         </p>
       </div>
 
       {/* Section Tabs */}
       <div style={{ display: "flex", gap: 8, marginBottom: 24 }}>
-        {(["drivers", "trucks"] as const).map((s) => (
+        {(["drivers", "trucks", "brokers"] as const).map((s) => (
           <button
             key={s}
             onClick={() => {
@@ -537,7 +684,7 @@ cursor: "pointer",
               }
             }}
           >
-            {s === "drivers" ? "Driver Performance" : "Truck Health"}
+            {s === "drivers" ? "Driver Performance" : s === "trucks" ? "Truck Health" : "Broker Sales"}
           </button>
         ))}
       </div>
@@ -835,6 +982,154 @@ cursor: loading ? "not-allowed" : "pointer",
                 ]}
                 rows={drillDown.trips}
                 rowKey={(row) => row.trip_id}
+              />
+            )}
+          </ReportModal>
+        </div>
+      )}
+
+      {/* Broker Reports */}
+      {!loading && hasLoaded && section === "brokers" && (
+        <div>
+          {brokerSummaries.length === 0 ? (
+            <EmptyState icon="🤝" title="No data available" description="No brokers with confirmed stops found in this period." />
+          ) : (
+            <div>
+              <div style={{ display: "flex", flexDirection: isMobile ? "column" : "row", justifyContent: "space-between", alignItems: isMobile ? "flex-start" : "center", gap: 12, marginBottom: 16 }}>
+                <div>
+                  <h2 style={{ margin: 0, color: "#0f172a", fontSize: fontSize.lg, fontWeight: 600 }}>Broker Summary</h2>
+                  <p style={{ margin: "4px 0 0", color: "#64748b", fontSize: fontSize.sm }}>{brokerSummaries.length} brokers</p>
+                </div>
+                <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+                  <div style={{ display: "flex", background: "white", border: "1px solid #e2e8f0", borderRadius: 8, padding: 4, gap: 0 }}>
+                    <button
+                      onClick={() => setViewMode("card")}
+                      style={{
+                        padding: "8px 12px", background: viewMode === "card" ? "#0070f3" : "transparent",
+                        color: viewMode === "card" ? "white" : "#64748b", border: "none", borderRadius: 6,
+                        cursor: "pointer", fontSize: fontSize.xs, fontWeight: 600,
+                        minWidth: 44, height: 40, display: "flex", alignItems: "center", justifyContent: "center",
+                      }}
+                    >
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M3 3h8v8H3V3zm10 0h8v8h-8V3zM3 13h8v8H3v-8zm10 0h8v8h-8v-8z" /></svg>
+                    </button>
+                    <button
+                      onClick={() => setViewMode("table")}
+                      style={{
+                        padding: "8px 12px", background: viewMode === "table" ? "#0070f3" : "transparent",
+                        color: viewMode === "table" ? "white" : "#64748b", border: "none", borderRadius: 6,
+                        cursor: "pointer", fontSize: fontSize.xs, fontWeight: 600,
+                        minWidth: 44, height: 40, display: "flex", alignItems: "center", justifyContent: "center",
+                      }}
+                    >
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M3 4h18v2H3V4zm0 7h18v2H3v-2zm0 7h18v2H3v-2z" /></svg>
+                    </button>
+                  </div>
+                  <ExportActions onExportCSV={() => exportBrokerSummary("csv")} onExportXLSX={() => exportBrokerSummary("xlsx")} />
+                </div>
+              </div>
+
+              {viewMode === "card" ? (
+                <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(auto-fill, minmax(320px, 1fr))", gap: 12 }}>
+                  {brokerSummaries.map((broker) => (
+                    <ReportCard key={broker.broker_id}>
+                      <div>
+                        <div style={{ marginBottom: 12 }}>
+                          <h3 style={{ margin: 0, color: "#0f172a", fontSize: fontSize.lg, fontWeight: 600 }}>{broker.broker_name}</h3>
+                        </div>
+                        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, padding: "12px 0", borderTop: "1px solid #f1f5f9", borderBottom: "1px solid #f1f5f9" }}>
+                          <ReportCardField label="Confirmed Stops" value={broker.stops_count} />
+                          <ReportCardField label="Bags Sold" value={broker.total_bags} />
+                          <ReportCardField label="Revenue" value={`₦${broker.total_revenue.toLocaleString()}`} />
+                        </div>
+                        <button
+                          onClick={() => fetchBrokerDrillDown(broker)}
+                          style={{
+                            width: "100%", marginTop: 12, padding: "10px 14px",
+                            background: "#0070f3", color: "white", border: "none", borderRadius: 8,
+                            cursor: "pointer", fontWeight: 600, fontSize: fontSize.md, minHeight: 40,
+                          }}
+                          onMouseEnter={(e) => e.currentTarget.style.background = "#0057c7"}
+                          onMouseLeave={(e) => e.currentTarget.style.background = "#0070f3"}
+                        >
+                          View Stops
+                        </button>
+                      </div>
+                    </ReportCard>
+                  ))}
+                </div>
+              ) : (
+                <DataTable
+                  columns={[
+                    { key: "broker_name", label: "Broker" },
+                    { key: "stops_count", label: "Confirmed Stops" },
+                    { key: "total_bags", label: "Bags Sold" },
+                    {
+                      key: "total_revenue",
+                      label: "Revenue",
+                      render: (value) => `₦${(value as number).toLocaleString()}`,
+                    },
+                    {
+                      key: "actions",
+                      label: "Actions",
+                      render: (_value, broker: BrokerSummary) => (
+                        <button
+                          onClick={() => fetchBrokerDrillDown(broker)}
+                          style={{
+                            padding: "6px 10px", background: "white", color: "#0070f3",
+                            border: "1px solid #e2e8f0", borderRadius: 6, cursor: "pointer",
+                            fontWeight: 500, fontSize: fontSize.xs,
+                          }}
+                          onMouseEnter={(e) => e.currentTarget.style.background = "#eff6ff"}
+                          onMouseLeave={(e) => e.currentTarget.style.background = "white"}
+                        >
+                          View Stops
+                        </button>
+                      ),
+                    },
+                  ]}
+                  rows={brokerSummaries}
+                  rowKey={(row) => row.broker_id}
+                />
+              )}
+            </div>
+          )}
+
+          <ReportModal
+            isOpen={drillDown?.kind === "broker" && !drillLoading}
+            onClose={() => setDrillDown(null)}
+            title={`${drillDown?.kind === "broker" ? drillDown.broker.broker_name : ""} — Stop Details`}
+            subtitle={drillDown?.kind === "broker" ? `${drillDown.stops.length} confirmed stops in period` : ""}
+            isMobile={isMobile}
+            actions={
+              drillDown?.kind === "broker" ? (
+                <ExportActions onExportCSV={() => exportBrokerDetail("csv")} onExportXLSX={() => exportBrokerDetail("xlsx")} />
+              ) : null
+            }
+          >
+            {drillDown?.kind === "broker" && (
+              <DataTable
+                columns={[
+                  {
+                    key: "stop_time",
+                    label: "Date",
+                    render: (value) => new Date(value).toLocaleDateString(),
+                  },
+                  { key: "plate_number", label: "Plate" },
+                  { key: "quantity_offloaded", label: "Bags" },
+                  {
+                    key: "price_per_bag",
+                    label: "Price/Bag",
+                    render: (value) => `₦${((value as number) ?? 0).toLocaleString()}`,
+                  },
+                  {
+                    key: "revenue",
+                    label: "Revenue",
+                    render: (value) => `₦${(value as number).toLocaleString()}`,
+                  },
+                ]}
+                rows={drillDown.stops}
+                rowKey={(row) => row.stop_id}
               />
             )}
           </ReportModal>

@@ -169,7 +169,7 @@ export default function AddTruck() {
           {TRUCK_SIZES.map((s) => (
             <option key={s} value={s}>{s}</option>
           ))}
-          <option value="Create new size">Create new size…</option>
+          <option style = {{ color: "#0070f3", fontWeight: "bold", borderTop: "1px solid #eee" }} value="Create new size">Add new size…</option>
         </ModernInput>
         {truckSize === "Create new size" && (
           <ModernInput

@@ -635,7 +635,7 @@ export default function DriverDashboard() {
     padding: isMobile ? "28px 20px" : 32,
     width: "100%",
     maxWidth: 480,
-    maxHeight: isMobile ? "90vh" : "auto",
+    maxHeight: "90vh",
     overflowY: "auto",
     boxShadow: "0 25px 50px -12px rgba(0, 0, 0, 0.25)"
   }
@@ -784,9 +784,14 @@ export default function DriverDashboard() {
         {/* ── Fuel View ── */}
         {view === "fuel" && (
           <div>
-            <button onClick={() => navigateTo("dashboard")} style={{ background: "none", border: "none", color: "#0070f3", cursor: "pointer", marginBottom: 20, padding: 0, fontSize: fontSize.base, display: "flex", alignItems: "center", gap: 4, fontWeight: 600, transition: "all 0.2s" }} onMouseEnter={e => e.currentTarget.style.opacity = "0.8"} onMouseLeave={e => e.currentTarget.style.opacity = "1"}>
-              <Icon icon="mdi:arrow-left" width={18} /> Back
-            </button>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 20 }}>
+              <button onClick={() => navigateTo("dashboard")} style={{ background: "none", border: "none", color: "#0070f3", cursor: "pointer", padding: 0, fontSize: fontSize.base, display: "flex", alignItems: "center", gap: 4, fontWeight: 600, transition: "all 0.2s" }} onMouseEnter={e => e.currentTarget.style.opacity = "0.8"} onMouseLeave={e => e.currentTarget.style.opacity = "1"}>
+                <Icon icon="mdi:arrow-left" width={18} /> Back
+              </button>
+              <button onClick={() => driver && fetchATFs(driver.driver_id)} style={{ padding: "8px 12px", background: "white", color: "#64748b", border: "1px solid #e2e8f0", borderRadius: 8, cursor: "pointer", fontSize: fontSize.xs, fontWeight: 500, minHeight: 40, minWidth: 40, display: "flex", alignItems: "center", justifyContent: "center", transition: "all 0.2s" }} title="Refresh" onMouseEnter={e => { e.currentTarget.style.background = "#f8fafc"; e.currentTarget.style.borderColor = "#cbd5e1" }} onMouseLeave={e => { e.currentTarget.style.background = "white"; e.currentTarget.style.borderColor = "#e2e8f0" }}>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36M20.49 15a9 9 0 0 1-14.85 3.36"/></svg>
+              </button>
+            </div>
             <h2 style={{ marginBottom: 8, color: "#0f172a", fontSize: isMobile ? fontSize["2xl"] : fontSize.xl, fontWeight: 700 }}>Fuel</h2>
             <p style={{ margin: "0 0 24px", fontSize: fontSize.sm, color: "#64748b" }}>
               Your Truck Officer initiates fuel requests on your behalf.
@@ -1046,6 +1051,7 @@ export default function DriverDashboard() {
                   { label: "Loaded", value: `${activeTrip.loaded_quantity} bags` },
                   ...(activeTrip.amount_charged ? [{ label: "Amount Charged", value: `₦${activeTrip.amount_charged.toLocaleString()}` }] : []),
                   ...(activeTrip.payment_mode ? [{ label: "Payment Mode", value: activeTrip.payment_mode }] : []),
+                  ...(loadMoreEntries.length > 0 ? [{ label: "Extra Loads", value: loadMoreEntries.map(e => `${e.product} @ ${e.loading_point_name} (+${e.quantity})`).join("; ") }] : []),
                 ].map(({ label, value }) => (
                   <div key={label}>
                     <p style={{ margin: 0, fontSize: fontSize.xs, color: "#94a3b8", textTransform: "uppercase", letterSpacing: 0.5, fontWeight: 600 }}>{label}</p>

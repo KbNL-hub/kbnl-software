@@ -54,18 +54,13 @@ function useBreakpoint() {
 
 type Mode = "mdd" | "dd"
 
-const LOADING_POINT_MAP: Record<string, string[]> = {
-  Factory: ["Lafarge Mfamosing", "Lafarge Uyo Warehouse"],
-  Depot: ["Calabar Mini Depot", "Ikom Mini Depot", "Ogoja Depot", "Uyo Depot"],
-  Outlet: ["Brooks Outlet", "Urua Ekpa Outlet", "Urua Nyemeiko Outlet", "Reserve Store", "E1 Outlet", "Ogoja Outlet"],
-}
+const DD_LOADING_POINTS = ["BUA", "Dangote", "Lafarge"]
 
-const FACTORY_PRODUCTS: Record<string, string[]> = {
-  "Lafarge Mfamosing": ["Classic", "Supaset"],
-  "Lafarge Uyo Warehouse": ["Falcon", "3X"],
+const PRODUCT_BY_LOADING_POINT: Record<string, string[]> = {
+  Lafarge: ["Supaset", "Supafix", "Classic"],
+  Dangote: ["3X", "Falcon"],
+  BUA:     ["BUA Cement"],
 }
-
-const ALL_PRODUCTS = ["BUA Cement", "3X", "Falcon", "Classic", "Supafix", "Supaset"]
 
 const fontSize = {
   xs: 12,
@@ -109,7 +104,6 @@ export default function MonitorTrucks() {
   const [ddPlate, setDdPlate] = useState("")
   const [ddDriver, setDdDriver] = useState("")
   const [ddPhone, setDdPhone] = useState("")
-  const [ddLoadCat, setDdLoadCat] = useState("")
   const [ddLoadName, setDdLoadName] = useState("")
   const [ddProduct, setDdProduct] = useState("")
   const [ddQty, setDdQty] = useState("")
@@ -352,14 +346,6 @@ export default function MonitorTrucks() {
     setDdNewPoint("")
   }
 
-  function ddHandleCategoryChange(cat: string) {
-    setDdLoadCat(cat)
-    setDdLoadName("")
-    setDdProduct("")
-    setDdAtc("")
-    setDdMessage("")
-  }
-
   function ddHandleLoadNameChange(name: string) {
     setDdLoadName(name)
     setDdProduct("")
@@ -370,9 +356,8 @@ export default function MonitorTrucks() {
   async function ddHandleSubmit() {
     if (!ddPlate.trim()) return ddSetMsg("Truck number is required", "error")
     if (!ddDriver.trim()) return ddSetMsg("Driver name is required", "error")
-    if (!ddLoadCat) return ddSetMsg("Select a loading point type", "error")
     if (!ddLoadName) return ddSetMsg("Select a loading point", "error")
-    if (ddLoadCat === "Factory" && !ddAtc.trim()) return ddSetMsg("ATC number is required for factory loading", "error")
+    if (!ddAtc.trim()) return ddSetMsg("ATC number is required", "error")
     if (!ddProduct) return ddSetMsg("Select a product", "error")
     const qty = parseInt(ddQty, 10)
     if (!ddQty || isNaN(qty) || qty <= 0) return ddSetMsg("Enter a valid number of bags", "error")
@@ -383,23 +368,38 @@ export default function MonitorTrucks() {
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) { ddSetMsg("Not authenticated", "error"); setDdSubmitting(false); return }
 
-    const { error } = await supabase.from("dd_trips").insert([{
+    const { data: ddData, error } = await supabase.from("dd_trips").insert([{
       plate_number: ddPlate.trim().toUpperCase(),
       driver_name: ddDriver.trim(),
       driver_phone: ddPhone.trim() || null,
       product: ddProduct,
       loading_point: ddLoadName,
       loaded_quantity: qty,
-      atc: ddLoadCat === "Factory" ? ddAtc.trim() : null,
+      atc: ddAtc.trim(),
       created_by: user.id,
-    }])
+    }]).select()
 
     setDdSubmitting(false)
     if (error) return ddSetMsg(error.message, "error")
+    if (!ddData || ddData.length === 0) return ddSetMsg("Failed to create trip", "error")
+
+    // Insert into Trips too so Stops FK constraint (Stop_trip_id_fkey) is satisfied
+    const tripId = ddData[0].dd_trip_id
+    const { error: tripError } = await supabase.from("Trips").insert([{
+      trip_id: tripId,
+      plate_number: ddPlate.trim().toUpperCase(),
+      product: ddProduct,
+      material_centre: ddLoadName,
+      loaded_quantity: qty,
+      ATC: ddAtc.trim(),
+      trip_status: "In transit",
+    }])
+
+    if (tripError) console.error("Trips mirror insert failed:", tripError)
 
     ddSetMsg("Trip recorded successfully!", "success")
     setDdPlate(""); setDdDriver(""); setDdPhone("")
-    setDdLoadCat(""); setDdLoadName(""); setDdProduct("")
+    setDdLoadName(""); setDdProduct("")
     setDdQty(""); setDdAtc("")
     setShowDdForm(false)
     fetchDdTrips()
@@ -410,11 +410,7 @@ export default function MonitorTrucks() {
     setDdMessageType(type)
   }
 
-  const showDdAtc = ddLoadCat === "Factory"
-  const ddAvailableLocations = LOADING_POINT_MAP[ddLoadCat] || []
-  const ddProductOptions = ddLoadCat === "Factory" && ddLoadName
-    ? (FACTORY_PRODUCTS[ddLoadName] || [])
-    : ALL_PRODUCTS
+  const ddProductOptions = ddLoadName ? PRODUCT_BY_LOADING_POINT[ddLoadName] ?? [] : []
 
   const filterOptions = ["All", "In transit", "On hold"]
   const ddFilterOptions = ["All", "In transit", "On hold", "Completed"]
@@ -720,7 +716,7 @@ export default function MonitorTrucks() {
           {editingRoute && (
             <div onClick={closeRouteEditor} style={{ position: "fixed", inset: 0, background: "rgba(15, 23, 42, 0.6)", backdropFilter: "blur(4px)", display: "flex", alignItems: isMobile ? "flex-end" : "center", justifyContent: "center", zIndex: 100, padding: isMobile ? 0 : 24, animation: "fadeIn 0.2s ease-out" }}>
               <style>{`@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } } @keyframes slideUp { from { transform: translateY(20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }`}</style>
-              <div onClick={e => e.stopPropagation()} style={{ background: "white", borderRadius: isMobile ? "20px 20px 0 0" : 12, padding: isMobile ? "28px 20px" : 32, width: "100%", maxWidth: 440, maxHeight: isMobile ? "90vh" : "auto", overflowY: "auto", boxShadow: "0 25px 50px -12px rgba(0, 0, 0, 0.25)", animation: "slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1)" }}>
+              <div onClick={e => e.stopPropagation()} style={{ background: "white", borderRadius: isMobile ? "20px 20px 0 0" : 12, padding: isMobile ? "28px 20px" : 32, width: "100%", maxWidth: 440, maxHeight: "90vh", overflowY: "auto", boxShadow: "0 25px 50px -12px rgba(0, 0, 0, 0.25)", animation: "slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1)" }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 24 }}>
                   <div>
                     <h3 style={{ margin: "0 0 4px 0", color: "#0f172a", fontSize: fontSize.xl, fontWeight: 700 }}>
@@ -1081,22 +1077,13 @@ export default function MonitorTrucks() {
                 </div>
 
                 <div style={{ marginBottom: 16 }}>
-                  <label style={labelStyle}>Loading Point Type *</label>
-                  <ModernInput as="select" value={ddLoadCat} onChange={e => ddHandleCategoryChange(e.target.value)} options={Object.keys(LOADING_POINT_MAP)}>
+                  <label style={labelStyle}>Loading Point *</label>
+                  <ModernInput as="select" value={ddLoadName} onChange={e => ddHandleLoadNameChange(e.target.value)} options={DD_LOADING_POINTS}>
                     <option value="">Select loading point</option>
                   </ModernInput>
                 </div>
 
-                {ddLoadCat && (
-                  <div style={{ marginBottom: 16 }}>
-                    <label style={labelStyle}>{ddLoadCat} *</label>
-                    <ModernInput as="select" value={ddLoadName} onChange={e => ddHandleLoadNameChange(e.target.value)} options={ddAvailableLocations}>
-                      <option value="">Select {ddLoadCat.toLowerCase()}</option>
-                    </ModernInput>
-                  </div>
-                )}
-
-                {showDdAtc && ddLoadName && (
+                {ddLoadName && (
                   <div style={{ marginBottom: 16 }}>
                     <label style={labelStyle}>ATC Number *</label>
                     <ModernInput placeholder="Enter ATC number" value={ddAtc} onChange={e => { setDdAtc(e.target.value); setDdMessage("") }} onKeyDown={e => { if (e.key === "Enter") ddQtyRef.current?.focus() }} />
@@ -1160,7 +1147,7 @@ export default function MonitorTrucks() {
           {/* ── Edit Route Modal ── */}
           {editingDdTrip && (
             <div onClick={closeDdRouteEditor} style={{ position: "fixed", inset: 0, background: "rgba(15, 23, 42, 0.6)", backdropFilter: "blur(4px)", display: "flex", alignItems: isMobile ? "flex-end" : "center", justifyContent: "center", zIndex: 100, padding: isMobile ? 0 : 24, animation: "fadeIn 0.2s ease-out" }}>
-              <div onClick={e => e.stopPropagation()} style={{ background: "white", borderRadius: isMobile ? "20px 20px 0 0" : 12, padding: isMobile ? "28px 20px" : 32, width: "100%", maxWidth: 440, maxHeight: isMobile ? "90vh" : "auto", overflowY: "auto", boxShadow: "0 25px 50px -12px rgba(0, 0, 0, 0.25)", animation: "slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1)" }}>
+              <div onClick={e => e.stopPropagation()} style={{ background: "white", borderRadius: isMobile ? "20px 20px 0 0" : 12, padding: isMobile ? "28px 20px" : 32, width: "100%", maxWidth: 440, maxHeight: "90vh", overflowY: "auto", boxShadow: "0 25px 50px -12px rgba(0, 0, 0, 0.25)", animation: "slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1)" }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 24 }}>
                   <div>
                     <h3 style={{ margin: "0 0 4px 0", color: "#0f172a", fontSize: fontSize.xl, fontWeight: 700 }}>

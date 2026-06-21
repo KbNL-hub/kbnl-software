@@ -114,7 +114,7 @@ export default function StoreOfficerDashboard() {
   const [salePayment, setSalePayment] = useState("")
   const [saleError, setSaleError] = useState("")
   const [saleLoading, setSaleLoading] = useState(false)
-  const [saleType, setSaleType] = useState<"direct" | "tricycle">("direct")
+  const [saleType, setSaleType] = useState<"self" | "tricycle" | "truck">("self")
   const [tricycles, setTricycles] = useState<{ tricycle_id: string; tricycle_number: string }[]>([])
   const [saleTricycleId, setSaleTricycleId] = useState("")
   const [tricycleSearch, setTricycleSearch] = useState("")
@@ -124,6 +124,7 @@ export default function StoreOfficerDashboard() {
   const [brokerSearch, setBrokerSearch] = useState("")
   const [brokerDropOpen, setBrokerDropOpen] = useState(false)
   const [isBrokerLinked, setIsBrokerLinked] = useState(false)
+  const [saleDate, setSaleDate] = useState(new Date().toISOString().split("T")[0])
 
   const [salesFilter, setSalesFilter] = useState("All")
 
@@ -377,13 +378,14 @@ export default function StoreOfficerDashboard() {
     
     if (!salePayment) return setSaleError("Select a payment mode")
     if (saleType === "tricycle" && !saleTricycleId) return setSaleError("Select a tricycle")
-  
+    if (!saleDate) return setSaleError("Select a sale date")
+
     // Broker-linked validation
     if (isBrokerLinked) {
       if (!saleBroker) return setSaleError("Select a broker")
-      if (!saleCustomer || !saleCustomer.full_name.trim()) return setSaleError("Customer name is required for broker-linked sales")
-    } else {
-      // Direct sale: all lines must have price
+    }
+    // Self / Truck / non-broker tricycle: all lines must have price
+    if (!isBrokerLinked) {
       if (saleLines.some(l => !l.price_per_bag)) return setSaleError("Enter a price per bag for each line")
       if (saleLines.some(l => parseAmount(l.price_per_bag) <= 0)) return setSaleError("Enter valid prices")
     }
@@ -416,6 +418,7 @@ export default function StoreOfficerDashboard() {
         tricycle_id: saleType === "tricycle" ? saleTricycleId : null,
         broker_id: isBrokerLinked ? saleBroker?.broker_id : null,
         status: isBrokerLinked ? "Pending" : "Confirmed",
+        sold_at: saleDate,
       }))
   
       const { error: saleErr } = await supabase.from("store_sales").insert(salesToInsert)
@@ -444,12 +447,13 @@ export default function StoreOfficerDashboard() {
       setSaleCustomer(null)
       setSalePayment("")
       setSaleError("")
-      setSaleType("direct")
+      setSaleType("self")
       setSaleTricycleId("")
       setTricycleSearch("")
       setIsBrokerLinked(false)
       setSaleBroker(null)
       setBrokerSearch("")
+      setSaleDate(new Date().toISOString().split("T")[0])
   
       await Promise.all([fetchSales(officer.officer_id), fetchStock(officer.store_name)])
     } catch (err) {
@@ -869,17 +873,26 @@ export default function StoreOfficerDashboard() {
                   )}
 
                   {/* Sale Type */}
-                  {sale.sale_type === "tricycle" && (
-                    <div style={{ background: "#eff6ff", borderRadius: 8, padding: "10px 12px", marginBottom: 10, border: "1px solid #bfdbfe" }}>
-                      <p style={{ margin: 0, fontSize: fontSize.xs, color: "#94a3b8" }}>Sale Type</p>
-                      <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 4 }}>
-                        <Icon icon="mdi:rickshaw" width={18} height={18} color="#0070f3" />
-                        <p style={{ margin: 0, fontWeight: 600, fontSize: fontSize.base, color: "#0070f3" }}>
-                          {sale.tricycle_number || "Tricycle"}
-                        </p>
+                  {(() => {
+                    const saleTypeConfig: Record<string, { label: string; icon: string; bg: string; border: string; color: string }> = {
+                      self: { label: "Self", icon: "mdi:account", bg: "#f0fdf4", border: "#bbf7d0", color: "#16a34a" },
+                      tricycle: { label: sale.tricycle_number || "Tricycle", icon: "mdi:rickshaw", bg: "#eff6ff", border: "#bfdbfe", color: "#0070f3" },
+                      truck: { label: "Truck", icon: "mdi:truck", bg: "#fefce8", border: "#fde68a", color: "#ca8a04" },
+                    }
+                    const cfg = saleTypeConfig[sale.sale_type]
+                    if (!cfg) return null
+                    return (
+                      <div style={{ background: cfg.bg, borderRadius: 8, padding: "10px 12px", marginBottom: 10, border: `1px solid ${cfg.border}` }}>
+                        <p style={{ margin: 0, fontSize: fontSize.xs, color: "#94a3b8" }}>Sale Type</p>
+                        <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 4 }}>
+                          <Icon icon={cfg.icon} width={18} height={18} color={cfg.color} />
+                          <p style={{ margin: 0, fontWeight: 600, fontSize: fontSize.base, color: cfg.color }}>
+                            {cfg.label}
+                          </p>
+                        </div>
                       </div>
-                    </div>
-                  )}
+                    )
+                  })()}
 
                   <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                     {sale.lines.map(line => (
@@ -936,7 +949,7 @@ export default function StoreOfficerDashboard() {
       {/* Confirm Supply Modal */}
       {confirmingStop && (
         <div onClick={() => { setConfirmingStop(null); setSupplyLines([{ product: "", quantity: "" }]); setConfirmError("") }} style={{ position: "fixed", inset: 0, background: "rgba(15, 23, 42, 0.6)", backdropFilter: "blur(4px)", display: "flex", alignItems: isMobile ? "flex-end" : "center", justifyContent: "center", zIndex: 100, padding: isMobile ? 0 : 24 }}>
-          <div onClick={e => e.stopPropagation()} style={{ background: "white", borderRadius: isMobile ? "20px 20px 0 0" : 12, padding: isMobile ? "28px 20px" : 32, width: "100%", maxWidth: 480, maxHeight: isMobile ? "90vh" : "auto", overflowY: "auto", boxShadow: "0 25px 50px -12px rgba(0, 0, 0, 0.25)" }}>
+          <div onClick={e => e.stopPropagation()} style={{ background: "white", borderRadius: isMobile ? "20px 20px 0 0" : 12, padding: isMobile ? "28px 20px" : 32, width: "100%", maxWidth: 480, maxHeight: "90vh", overflowY: "auto", boxShadow: "0 25px 50px -12px rgba(0, 0, 0, 0.25)" }}>
             <h3 style={{ margin: "0 0 6px 0", fontSize: fontSize.xl, fontWeight: 700, color: "#0f172a" }}>Confirm Supply</h3>
             <p style={{ color: "#94a3b8", fontSize: fontSize.sm, margin: "0 0 4px 0" }}>
               {confirmingStop.plate_number} · {confirmingStop.driver_name}
@@ -1006,14 +1019,15 @@ export default function StoreOfficerDashboard() {
           setSaleCustomer(null)
           setSalePayment("")
           setSaleError("")
-          setSaleType("direct")
+          setSaleType("self")
           setSaleTricycleId("")
           setTricycleSearch("")
           setIsBrokerLinked(false)
           setSaleBroker(null)
           setBrokerSearch("")
+          setSaleDate(new Date().toISOString().split("T")[0])
         }} style={{ position: "fixed", inset: 0, background: "rgba(15, 23, 42, 0.6)", backdropFilter: "blur(4px)", display: "flex", alignItems: isMobile ? "flex-end" : "center", justifyContent: "center", zIndex: 100, padding: isMobile ? 0 : 24 }}>
-          <div onClick={e => e.stopPropagation()} style={{ background: "white", borderRadius: isMobile ? "20px 20px 0 0" : 12, padding: isMobile ? "28px 20px" : 32, width: "100%", maxWidth: 600, maxHeight: isMobile ? "90vh" : "auto", overflowY: "auto", boxShadow: "0 25px 50px -12px rgba(0, 0, 0, 0.25)" }}>
+          <div onClick={e => e.stopPropagation()} style={{ background: "white", borderRadius: isMobile ? "20px 20px 0 0" : 12, padding: isMobile ? "28px 20px" : 32, width: "100%", maxWidth: 600, maxHeight: "90vh", overflowY: "auto", boxShadow: "0 25px 50px -12px rgba(0, 0, 0, 0.25)" }}>
             <h3 style={{ margin: "0 0 20px 0", fontSize: fontSize.xl, fontWeight: 700, color: "#0f172a" }}>Log Sales</h3>
       
             {/* Broker Linked Toggle */}
@@ -1064,7 +1078,7 @@ export default function StoreOfficerDashboard() {
                       style={{ padding: "10px 12px", borderRadius: 6, border: "1px solid #e0e0e0", fontSize: fontSize.sm, boxSizing: "border-box", minHeight: 44 }}
                     />
       
-                    {/* Price (only for direct sales) */}
+                    {/* Price (self / truck / non-broker tricycle) */}
                     {!isBrokerLinked && (
                       <ModernInput
                         type="text"
@@ -1134,28 +1148,26 @@ export default function StoreOfficerDashboard() {
               </div>
             )}
       
-            {/* Customer Name (required for broker-linked) */}
-            {isBrokerLinked && (
-              <div style={{ marginBottom: 16 }}>
-                <label style={{ display: "block", fontWeight: 600, marginBottom: 6, fontSize: fontSize.sm, color: "#475569" }}>Customer Name *</label>
-                <CustomerSelector 
-                  onSelect={(c: any) => { setSaleCustomer(c); setSaleError("") }} 
-                  allowUnsavedNew={true}
-                  initialValue={saleCustomer?.full_name || ""}
-                />
-                {saleCustomer && (
-                  <div style={{ marginTop: 8, padding: "8px 12px", background: "#eff6ff", borderRadius: 6, fontSize: fontSize.sm, color: "#0070f3", fontWeight: 500 }}>
-                    Selected: {saleCustomer.full_name}
-                  </div>
-                )}
-              </div>
-            )}
+            {/* Customer Name (optional) */}
+            <div style={{ marginBottom: 16 }}>
+              <label style={{ display: "block", fontWeight: 600, marginBottom: 6, fontSize: fontSize.sm, color: "#475569" }}>Customer Name <span style={{ fontWeight: 400, color: "#94a3b8" }}>(optional)</span></label>
+              <CustomerSelector 
+                onSelect={(c: any) => { setSaleCustomer(c); setSaleError("") }} 
+                allowUnsavedNew={true}
+                initialValue={saleCustomer?.full_name || ""}
+              />
+              {saleCustomer && (
+                <div style={{ marginTop: 8, padding: "8px 12px", background: "#eff6ff", borderRadius: 6, fontSize: fontSize.sm, color: "#0070f3", fontWeight: 500 }}>
+                  Selected: {saleCustomer.full_name}
+                </div>
+              )}
+            </div>
       
             {/* Sale Type */}
             <div style={{ marginBottom: 16 }}>
               <label style={{ display: "block", fontWeight: 600, marginBottom: 6, fontSize: fontSize.sm, color: "#475569" }}>Sale Type</label>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-                {(["direct", "tricycle"] as const).map(type => (
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8 }}>
+                {(["self", "tricycle", "truck"] as const).map(type => (
                   <button
                     key={type}
                     onClick={() => { setSaleType(type); setSaleTricycleId(""); setSaleError("") }}
@@ -1174,12 +1186,23 @@ export default function StoreOfficerDashboard() {
                     onMouseEnter={e => { if (saleType !== type) { e.currentTarget.style.borderColor = "#cbd5e1"; e.currentTarget.style.background = "#f8fafc" } }}
                     onMouseLeave={e => { if (saleType !== type) { e.currentTarget.style.borderColor = "#e2e8f0"; e.currentTarget.style.background = "white" } }}
                   >
-                    {type === "direct" ? "Direct" : "Tricycle"}
+                    {type === "self" ? "Self" : type === "truck" ? "Truck" : "Tricycle"}
                   </button>
                 ))}
               </div>
             </div>
-      
+
+            {/* Sale Date */}
+            <div style={{ marginBottom: 16 }}>
+              <label style={{ display: "block", fontWeight: 600, marginBottom: 6, fontSize: fontSize.sm, color: "#475569" }}>Date of Sale</label>
+              <ModernInput
+                type="date"
+                value={saleDate}
+                onChange={e => { setSaleDate(e.target.value); setSaleError("") }}
+                style={{ width: "100%", padding: "10px 12px", borderRadius: 6, border: "1px solid #e0e0e0", fontSize: fontSize.base, boxSizing: "border-box", minHeight: 44 }}
+              />
+            </div>
+
             {/* Tricycle Selection */}
             {saleType === "tricycle" && (
               <div style={{ marginBottom: 16, position: "relative" }}>
@@ -1243,12 +1266,13 @@ export default function StoreOfficerDashboard() {
                 setSaleCustomer(null)
                 setSalePayment("")
                 setSaleError("")
-                setSaleType("direct")
+                setSaleType("self")
                 setSaleTricycleId("")
                 setTricycleSearch("")
                 setIsBrokerLinked(false)
                 setSaleBroker(null)
                 setBrokerSearch("")
+                setSaleDate(new Date().toISOString().split("T")[0])
               }} style={{ padding: "12px 16px", background: "white", border: "1px solid #cbd5e1", color: "#475569", borderRadius: 8, cursor: "pointer", fontWeight: 600, fontSize: fontSize.md, minHeight: 44 }}>Cancel</button>
               <button onClick={handleLogSale} disabled={saleLoading} style={{ padding: "12px 16px", background: "#0070f3", color: "white", border: "none", borderRadius: 8, cursor: saleLoading ? "not-allowed" : "pointer", fontWeight: 600, fontSize: fontSize.md, opacity: saleLoading ? 0.7 : 1, minHeight: 44 }}>
                 {saleLoading ? "Logging..." : `Log ${saleLines.filter(l => l.product).length} Sale(s)`}
@@ -1261,7 +1285,7 @@ export default function StoreOfficerDashboard() {
       {/* Profile Picture Upload Modal */}
       {showPictureModal && (
         <div onClick={() => { setShowPictureModal(false); setSelectedFile(null); setPicturePreview(null); setPictureError("") }} style={{ position: "fixed", inset: 0, background: "rgba(15, 23, 42, 0.6)", backdropFilter: "blur(4px)", display: "flex", alignItems: isMobile ? "flex-end" : "center", justifyContent: "center", zIndex: 100, padding: isMobile ? 0 : 24 }}>
-          <div onClick={e => e.stopPropagation()} style={{ background: "white", borderRadius: isMobile ? "20px 20px 0 0" : 12, padding: isMobile ? "28px 20px" : 32, width: "100%", maxWidth: 420, maxHeight: isMobile ? "90vh" : "auto", overflowY: "auto", boxShadow: "0 25px 50px -12px rgba(0, 0, 0, 0.25)" }}>
+          <div onClick={e => e.stopPropagation()} style={{ background: "white", borderRadius: isMobile ? "20px 20px 0 0" : 12, padding: isMobile ? "28px 20px" : 32, width: "100%", maxWidth: 420, maxHeight: "90vh", overflowY: "auto", boxShadow: "0 25px 50px -12px rgba(0, 0, 0, 0.25)" }}>
             <h3 style={{ margin: "0 0 6px 0", fontSize: fontSize.xl, fontWeight: 700, color: "#0f172a" }}>Update Profile Picture</h3>
             <p style={{ margin: "0 0 20px 0", fontSize: fontSize.sm, color: "#64748b" }}>Click to upload or drag and drop. PNG, JPG up to 1MB.</p>
 
