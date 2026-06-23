@@ -44,21 +44,6 @@ export default function BrokerCredits() {
   const [amountInput, setAmountInput] = useState("")
   const [viewMode, setViewMode] = useState<ViewMode>("card")
 
-  useEffect(() => { fetchBrokerTotals() }, [])
-
-  useEffect(() => {
-    const interval = setInterval(() => {
-      if (view === "detail" && selectedBroker) {
-        fetchBrokerCredits(selectedBroker.broker_id)
-      } else {
-        fetchBrokerTotals()
-      }
-    }, 30000)
-    return () => clearInterval(interval)
-  }, [view, selectedBroker?.broker_id, fetchBrokerCredits, fetchBrokerTotals])
-
-  const companyTotal = brokerTotals.reduce((sum, b) => sum + b.total_credit, 0)
-
   const fetchBrokerTotals = useCallback(async () => {
     setLoading(true)
     const { data: brokers } = await supabase
@@ -97,6 +82,21 @@ export default function BrokerCredits() {
     if (data) setCredits(data)
     setLoading(false)
   }, [])
+
+  useEffect(() => { fetchBrokerTotals() }, [])
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      if (view === "detail" && selectedBroker) {
+        fetchBrokerCredits(selectedBroker.broker_id)
+      } else {
+        fetchBrokerTotals()
+      }
+    }, 30000)
+    return () => clearInterval(interval)
+  }, [view, selectedBroker?.broker_id, fetchBrokerCredits, fetchBrokerTotals])
+
+  const companyTotal = brokerTotals.reduce((sum, b) => sum + b.total_credit, 0)
 
   function openBrokerDetail(broker: Broker) {
     setSelectedBroker(broker)
