@@ -3,7 +3,6 @@
 import { useState, useEffect } from "react"
 import { supabase } from "@/lib/supabase"
 import { Icon } from "@iconify/react"
-import ReportModal from "@/components/ReportModal"
 
 type Complaint = {
   complaint_id: string
@@ -38,14 +37,7 @@ const fontSize = { xs: 12, sm: 13, base: 14, md: 15, lg: 16, xl: 20, "2xl": 24, 
 
 const filters = ["All", "Unresolved", "Resolved"]
 
-type Props = {
-  userProfile?: {
-    user_id: string
-    role: string
-  }
-}
-
-export default function Complaints({ userProfile }: Props) {
+export default function Complaints() {
   const { isMobile, isDesktop } = useBreakpoint()
   const [complaints, setComplaints] = useState<Complaint[]>([])
   const [loading, setLoading] = useState(true)
@@ -53,7 +45,6 @@ export default function Complaints({ userProfile }: Props) {
   const [viewMode, setViewMode] = useState<ViewMode>("card")
   const [resolving, setResolving] = useState<string | null>(null)
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null)
-  const [showReportModal, setShowReportModal] = useState(false)
 
   useEffect(() => {
     fetchComplaints()
@@ -62,25 +53,21 @@ export default function Complaints({ userProfile }: Props) {
   }, [])
 
   async function fetchComplaints() {
-    const { data: raw } = await supabase
-      .from("driver_complaints")
-      .select("complaint_id, driver_id, plate_number, complaint_type, notes, reported_at, resolved, trip_id")
-      .order("reported_at", { ascending: false })
+    const [driverRes, reportRes] = await Promise.all([
+      supabase.from("driver_complaints").select("complaint_id, driver_id, plate_number, complaint_type, notes, reported_at, resolved, trip_id").order("reported_at", { ascending: false }),
+      supabase.from("reports").select("*").order("created_at", { ascending: false }),
+    ])
 
-    if (!raw) return
-
-    const enriched = await Promise.all(raw.map(async (c) => {
-      const { data: driver } = await supabase
-        .from("Drivers").select("full_name").eq("driver_id", c.driver_id).single()
-
-      const { data: truck } = await supabase
-        .from("Trucks").select("kbnl_truck_no").eq("plate_number", c.plate_number).single()
-
+    const driverComplaints = await Promise.all((driverRes.data || []).map(async (c) => {
+      const [driverRes, truckRes] = await Promise.all([
+        supabase.from("Drivers").select("full_name").eq("driver_id", c.driver_id).single(),
+        supabase.from("Trucks").select("kbnl_truck_no").eq("plate_number", c.plate_number).single(),
+      ])
       return {
         complaint_id: c.complaint_id,
-        driver_name: driver?.full_name ?? "Unknown",
+        driver_name: driverRes.data?.full_name ?? "Unknown",
         plate_number: c.plate_number,
-        kbnl_truck_no: truck?.kbnl_truck_no ?? null,
+        kbnl_truck_no: truckRes.data?.kbnl_truck_no ?? null,
         complaint_type: c.complaint_type,
         notes: c.notes,
         reported_at: c.reported_at,
@@ -89,24 +76,40 @@ export default function Complaints({ userProfile }: Props) {
       }
     }))
 
-    setComplaints(enriched)
+    const reportComplaints = await Promise.all((reportRes.data || []).map(async (r: any) => {
+      const { data: profile } = await supabase.from("Profiles").select("full_name").eq("user_id", r.user_id).single()
+      return {
+        complaint_id: `report-${r.id}`,
+        driver_name: profile?.full_name ?? "Unknown",
+        plate_number: r.role,
+        kbnl_truck_no: null,
+        complaint_type: "User Report",
+        notes: r.message,
+        reported_at: r.created_at,
+        resolved: false,
+        trip_id: null,
+      }
+    }))
+
+    const merged = [...driverComplaints, ...reportComplaints].sort(
+      (a, b) => new Date(b.reported_at).getTime() - new Date(a.reported_at).getTime()
+    )
+
+    setComplaints(merged)
     setLastUpdated(new Date())
     setLoading(false)
   }
 
-  async function handleResolve(complaint_id: string) {
-    setResolving(complaint_id)
-    const { error } = await supabase
-      .from("driver_complaints")
-      .update({ resolved: true })
-      .eq("complaint_id", complaint_id)
-
-    if (error) {
-      console.error("Resolve error:", error)
-      setResolving(null)
-      return
+  async function handleResolve(id: string) {
+    setResolving(id)
+    if (id.startsWith("report-")) {
+      const reportId = id.replace("report-", "")
+      const { error } = await supabase.from("reports").delete().eq("id", reportId)
+      if (error) console.error("Resolve report error:", error)
+    } else {
+      const { error } = await supabase.from("driver_complaints").update({ resolved: true }).eq("complaint_id", id)
+      if (error) console.error("Resolve complaint error:", error)
     }
-
     setResolving(null)
     fetchComplaints()
   }
@@ -144,12 +147,7 @@ export default function Complaints({ userProfile }: Props) {
             </div>
           )}
 
-          {userProfile && (
-            <button onClick={() => setShowReportModal(true)} style={{ padding: "10px 16px", background: "#fff8e1", color: "#f5a623", border: "1.5px solid #fde68a", borderRadius: 8, cursor: "pointer", fontWeight: 600, fontSize: fontSize.sm, transition: "all 0.2s ease", display: "flex", alignItems: "center", gap: 6, minHeight: 40 }} onMouseEnter={e => { e.currentTarget.style.background = "#fff0e1"; e.currentTarget.style.borderColor = "#f8ad5c" }} onMouseLeave={e => { e.currentTarget.style.background = "#fff8e1"; e.currentTarget.style.borderColor = "#fde68a" }}>
-              <Icon icon="mdi:alert-circle-outline" width={16} />
-              Submit Report
-            </button>
-          )}
+
           <button onClick={fetchComplaints} style={{ padding: "10px 16px", background: "white", color: "#0070f3", border: "1px solid #e2e8f0", borderRadius: 8, cursor: "pointer", fontWeight: 500, fontSize: fontSize.sm, transition: "all 0.2s ease", display: "flex", alignItems: "center", gap: 6, minHeight: 40 }} onMouseEnter={e => { e.currentTarget.style.background = "#f8fafc"; e.currentTarget.style.borderColor = "#0070f3" }} onMouseLeave={e => { e.currentTarget.style.background = "white"; e.currentTarget.style.borderColor = "#e2e8f0" }}>
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M23 4v6h-6" /><path d="M1 20v-6h6" /><path d="M3.51 9a9 9 0 0 1 14.85-3.36M20.49 15a9 9 0 0 1-14.85 3.36" /></svg>
             Refresh
@@ -353,14 +351,6 @@ export default function Complaints({ userProfile }: Props) {
         </>
       )}
 
-      {userProfile && (
-        <ReportModal
-          isOpen={showReportModal}
-          onClose={() => setShowReportModal(false)}
-          userId={userProfile.user_id}
-          userRole={userProfile.role}
-        />
-      )}
     </div>
   )
 }

@@ -367,6 +367,10 @@ export default function CustomerPaymentsAdmin() {
                   <p style={{ margin: "0 0 4px 0", color: "#94a3b8", fontSize: fontSize.xs }}>Broker</p>
                   <p style={{ margin: 0, color: "#0f172a", fontSize: fontSize.base, fontWeight: 500 }}>{profilesMap[p.broker_id] || "Unknown"}</p>
                 </div>
+                <div>
+                  <p style={{ margin: "0 0 4px 0", color: "#94a3b8", fontSize: fontSize.xs }}>Depositor</p>
+                  <p style={{ margin: 0, color: "#0f172a", fontSize: fontSize.base, fontWeight: 500 }}>{p.depositor_name || "—"}</p>
+                </div>
               </div>
 
               <p style={{ margin: "12px 0 0 0", color: "#94a3b8", fontSize: fontSize.xs }}>{new Date(p.payment_date).toLocaleDateString()}</p>
@@ -393,6 +397,7 @@ export default function CustomerPaymentsAdmin() {
                 <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: fontSize.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px" }}>Date</th>
                 <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: fontSize.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px" }}>Broker</th>
                 <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: fontSize.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px" }}>Customer</th>
+                <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: fontSize.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px" }}>Depositor</th>
                 <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: fontSize.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px" }}>Bank</th>
                 <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: fontSize.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px" }}>Amount</th>
                 <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: fontSize.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px" }}>Status</th>
@@ -408,6 +413,7 @@ export default function CustomerPaymentsAdmin() {
                     <div style={{ color: "#0f172a", fontSize: fontSize.base, fontWeight: 500 }}>{p.customer_name}</div>
                     {!p.customer_id && <span style={{ fontSize: fontSize.xs, padding: "2px 6px", background: "#fef3c7", color: "#92400e", borderRadius: 4, fontWeight: "bold", marginTop: 2, display: "inline-block" }}>NEW</span>}
                   </td>
+                  <td style={{ padding: "12px 16px", color: "#475569", fontSize: fontSize.sm }}>{p.depositor_name || "—"}</td>
                   <td style={{ padding: "12px 16px", color: "#64748b", fontSize: fontSize.sm }}>{p.bank_name}</td>
                   <td style={{ padding: "12px 16px", color: "#0f172a", fontSize: fontSize.base, fontWeight: 600 }}>₦{p.amount.toLocaleString()}</td>
                   <td style={{ padding: "12px 16px" }}>
@@ -456,6 +462,10 @@ export default function CustomerPaymentsAdmin() {
                 <div>
                   <p style={{ margin: "0 0 4px 0", color: "#94a3b8", fontSize: fontSize.xs }}>Customer</p>
                   <p style={{ margin: 0, fontSize: fontSize.base, fontWeight: 600, color: "#0f172a" }}>{selectedPayment.customer_name}</p>
+                </div>
+                <div>
+                  <p style={{ margin: "0 0 4px 0", color: "#94a3b8", fontSize: fontSize.xs }}>Depositor</p>
+                  <p style={{ margin: 0, fontSize: fontSize.base, fontWeight: 600, color: "#0f172a" }}>{selectedPayment.depositor_name || "—"}</p>
                 </div>
                 <div>
                   <p style={{ margin: "0 0 4px 0", color: "#94a3b8", fontSize: fontSize.xs }}>Broker</p>

@@ -21,6 +21,7 @@ import TruckOfficers from "@/components/admin/TruckOfficers"
 import TruckAdmins from "@/components/admin/TruckAdmins"
 import Reports from "@/components/admin/Reports"
 import Complaints from "@/components/admin/Complaints"
+import ReportModal from "@/components/ReportModal"
 import StoreOfficers from "@/components/admin/StoreOfficers"
 import CashOfficers from "@/components/admin/CashOfficers"
 import CashExpenses from "@/components/admin/CashExpenses"
@@ -74,6 +75,7 @@ export default function AdminPanel({ userProfile }: Props) {
   const [active, setActive] = useState("")
   const [sidebarOpen, setSidebarOpen] = useState(true)
   const [drawerOpen, setDrawerOpen] = useState(false)
+  const [showReportModal, setShowReportModal] = useState(false)
   const bannerRef = useRef<HTMLDivElement>(null)
   const [bannerHeight, setBannerHeight] = useState(64)
 
@@ -156,7 +158,7 @@ export default function AdminPanel({ userProfile }: Props) {
       case "manage-trucks":      return <ManageTrucks />
       case "manage-drivers":     return <ManageDrivers />
       case "monitor-trips":      return <MonitorTrips />
-      case "complaints":         return <Complaints userProfile={userProfile} />
+      case "complaints":         return <Complaints />
       case "station-managers":   return <StationManagers />
       case "diesel-manager":     return <DieselManager />
       case "truck-officers":     return <TruckOfficers />
@@ -301,26 +303,52 @@ export default function AdminPanel({ userProfile }: Props) {
                 <p style={{ margin: 0, fontSize: 12, color: "rgba(255,255,255,0.7)" }}>{roleDisplay}</p>
               </div>
             </div>
-            {isNarrow && (
+            <div style={{ display: "flex", alignItems: "center", gap: isMobile ? 8 : 12 }}>
               <button
-                onClick={() => setDrawerOpen(true)}
+                onClick={() => setShowReportModal(true)}
                 style={{
-                  background: "transparent",
-                  border: "none",
-                  color: "rgba(255,255,255,0.6)",
-                  cursor: "pointer",
-                  padding: "8px",
+                  padding: "8px 14px",
+                  background: "rgba(245, 166, 35, 0.15)",
+                  color: "#f5a623",
+                  border: "1px solid rgba(245, 166, 35, 0.3)",
                   borderRadius: 8,
+                  cursor: "pointer",
+                  fontWeight: 600,
+                  fontSize: isMobile ? 12 : 13,
                   display: "flex",
                   alignItems: "center",
+                  gap: 6,
+                  minHeight: 36,
                   transition: "all 0.2s",
+                  whiteSpace: "nowrap",
                 }}
-                onMouseEnter={e => { e.currentTarget.style.background = "rgba(255,255,255,0.1)"; e.currentTarget.style.color = "#fff" }}
-                onMouseLeave={e => { e.currentTarget.style.background = "transparent"; e.currentTarget.style.color = "rgba(255,255,255,0.6)" }}
+                onMouseEnter={e => { e.currentTarget.style.background = "rgba(245, 166, 35, 0.25)"; e.currentTarget.style.borderColor = "rgba(245, 166, 35, 0.5)" }}
+                onMouseLeave={e => { e.currentTarget.style.background = "rgba(245, 166, 35, 0.15)"; e.currentTarget.style.borderColor = "rgba(245, 166, 35, 0.3)" }}
               >
-                <Icon icon="mdi:menu" width={22} />
+                <Icon icon="mdi:alert-circle-outline" width={isMobile ? 14 : 16} />
+                {!isMobile && "Submit Report"}
               </button>
-            )}
+              {isNarrow && (
+                <button
+                  onClick={() => setDrawerOpen(true)}
+                  style={{
+                    background: "transparent",
+                    border: "none",
+                    color: "rgba(255,255,255,0.6)",
+                    cursor: "pointer",
+                    padding: "8px",
+                    borderRadius: 8,
+                    display: "flex",
+                    alignItems: "center",
+                    transition: "all 0.2s",
+                  }}
+                  onMouseEnter={e => { e.currentTarget.style.background = "rgba(255,255,255,0.1)"; e.currentTarget.style.color = "#fff" }}
+                  onMouseLeave={e => { e.currentTarget.style.background = "transparent"; e.currentTarget.style.color = "rgba(255,255,255,0.6)" }}
+                >
+                  <Icon icon="mdi:menu" width={22} />
+                </button>
+              )}
+            </div>
           </div>
         </div>
 
@@ -560,6 +588,13 @@ export default function AdminPanel({ userProfile }: Props) {
           </div>
         </div>
       </div>
+
+      <ReportModal
+        isOpen={showReportModal}
+        onClose={() => setShowReportModal(false)}
+        userId={userProfile.user_id}
+        userRole={userProfile.role}
+      />
     </>
   )
 }
