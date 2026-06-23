@@ -114,37 +114,52 @@ export default function BrokerCreditsView() {
         <h2 style={{ fontSize: fontSize.lg, color: "#171717", margin: 0 }}>
           Credits
         </h2>
-        {credits.length > 0 && (
-          <div style={{ display: "flex", background: "white", border: "1px solid #e2e8f0", borderRadius: 8, padding: 4, gap: 0 }}>
-            <button
-              onClick={() => setViewMode("card")}
-              style={{
-                padding: "8px 12px", background: viewMode === "card" ? "#0070f3" : "transparent",
-                color: viewMode === "card" ? "white" : "#64748b", border: "none", borderRadius: 6,
-                cursor: "pointer", fontSize: fontSize.xs, fontWeight: 600, transition: "all 0.2s ease",
-                minWidth: 44, height: 40, display: "flex", alignItems: "center", justifyContent: "center",
-              }}
-              title="Card view"
-            >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M3 3h8v8H3V3zm10 0h8v8h-8V3zM3 13h8v8H3v-8zm10 0h8v8h-8v-8z"/></svg>
-            </button>
-            <button
-              onClick={() => setViewMode("table")}
-              style={{
-                padding: "8px 12px", background: viewMode === "table" ? "#0070f3" : "transparent",
-                color: viewMode === "table" ? "white" : "#64748b", border: "none", borderRadius: 6,
-                cursor: "pointer", fontSize: fontSize.xs, fontWeight: 600, transition: "all 0.2s ease",
-                minWidth: 44, height: 40, display: "flex", alignItems: "center", justifyContent: "center",
-              }}
-              title="Table view"
-            >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M3 4h18v2H3V4zm0 7h18v2H3v-2zm0 7h18v2H3v-2z"/></svg>
-            </button>
-          </div>
-        )}
+        <div style={{ display: "flex", gap: 8 }}>
+          <button
+            onClick={fetchCredits}
+            disabled={loading}
+            style={{
+              padding: "8px 12px", background: "white", color: "#64748b", border: "1px solid #e2e8f0",
+              borderRadius: 8, cursor: loading ? "not-allowed" : "pointer", fontSize: fontSize.xs,
+              fontWeight: 500, minHeight: 40, minWidth: 40, display: "flex", alignItems: "center",
+              justifyContent: "center", transition: "all 0.2s", opacity: loading ? 0.5 : 1,
+            }}
+            title="Refresh"
+          >
+            <Icon icon="mdi:refresh" width={16} style={{ animation: loading ? "spin 0.8s linear infinite" : "none" }} />
+          </button>
+          {credits.length > 0 && (
+            <div style={{ display: "flex", background: "white", border: "1px solid #e2e8f0", borderRadius: 8, padding: 4, gap: 0 }}>
+              <button
+                onClick={() => setViewMode("card")}
+                style={{
+                  padding: "8px 12px", background: viewMode === "card" ? "#0070f3" : "transparent",
+                  color: viewMode === "card" ? "white" : "#64748b", border: "none", borderRadius: 6,
+                  cursor: "pointer", fontSize: fontSize.xs, fontWeight: 600, transition: "all 0.2s ease",
+                  minWidth: 44, height: 40, display: "flex", alignItems: "center", justifyContent: "center",
+                }}
+                title="Card view"
+              >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M3 3h8v8H3V3zm10 0h8v8h-8V3zM3 13h8v8H3v-8zm10 0h8v8h-8v-8z"/></svg>
+              </button>
+              <button
+                onClick={() => setViewMode("table")}
+                style={{
+                  padding: "8px 12px", background: viewMode === "table" ? "#0070f3" : "transparent",
+                  color: viewMode === "table" ? "white" : "#64748b", border: "none", borderRadius: 6,
+                  cursor: "pointer", fontSize: fontSize.xs, fontWeight: 600, transition: "all 0.2s ease",
+                  minWidth: 44, height: 40, display: "flex", alignItems: "center", justifyContent: "center",
+                }}
+                title="Table view"
+              >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M3 4h18v2H3V4zm0 7h18v2H3v-2zm0 7h18v2H3v-2z"/></svg>
+              </button>
+            </div>
+          )}
+        </div>
       </div>
 
-
+      <style>{`@keyframes spin { to { transform: rotate(360deg) } }`}</style>
 
       {/* Content */}
       {displayedCredits.length === 0 ? (

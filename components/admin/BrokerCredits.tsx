@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useCallback, useEffect, useState } from "react"
 import { supabase } from "@/lib/supabase"
 import { Icon } from "@iconify/react"
 import CustomerSelector from "@/components/CustomerSelector"
@@ -46,9 +46,20 @@ export default function BrokerCredits() {
 
   useEffect(() => { fetchBrokerTotals() }, [])
 
+  useEffect(() => {
+    const interval = setInterval(() => {
+      if (view === "detail" && selectedBroker) {
+        fetchBrokerCredits(selectedBroker.broker_id)
+      } else {
+        fetchBrokerTotals()
+      }
+    }, 30000)
+    return () => clearInterval(interval)
+  }, [view, selectedBroker?.broker_id, fetchBrokerCredits, fetchBrokerTotals])
+
   const companyTotal = brokerTotals.reduce((sum, b) => sum + b.total_credit, 0)
 
-  async function fetchBrokerTotals() {
+  const fetchBrokerTotals = useCallback(async () => {
     setLoading(true)
     const { data: brokers } = await supabase
       .from("Brokers")
@@ -73,9 +84,9 @@ export default function BrokerCredits() {
     }))
     setBrokerTotals(totals)
     setLoading(false)
-  }
+  }, [])
 
-  async function fetchBrokerCredits(brokerId: string) {
+  const fetchBrokerCredits = useCallback(async (brokerId: string) => {
     setLoading(true)
     const { data } = await supabase
       .from("broker_credits")
@@ -85,7 +96,7 @@ export default function BrokerCredits() {
 
     if (data) setCredits(data)
     setLoading(false)
-  }
+  }, [])
 
   function openBrokerDetail(broker: Broker) {
     setSelectedBroker(broker)
@@ -179,6 +190,7 @@ export default function BrokerCredits() {
 
   return (
     <div style={{ padding: "24px 16px", maxWidth: 960, margin: "0 auto" }}>
+      <style>{`@keyframes spin { to { transform: rotate(360deg) } }`}</style>
       <div style={{ background: "#171717", borderRadius: 16, padding: "24px 20px", marginBottom: 24, color: "white" }}>
         <p style={{ fontSize: fontSize.base, opacity: 0.7, margin: 0, marginBottom: 4 }}>
           {view === "detail" && selectedBroker
@@ -194,34 +206,49 @@ export default function BrokerCredits() {
         <>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16, flexWrap: "wrap", gap: 8 }}>
             <h2 style={{ fontSize: fontSize.lg, color: "#171717", margin: 0 }}>Brokers</h2>
-            {brokerTotals.length > 0 && (
-              <div style={{ display: "flex", background: "white", border: "1px solid #e2e8f0", borderRadius: 8, padding: 4, gap: 0 }}>
-                <button
-                  onClick={() => setViewMode("card")}
-                  style={{
-                    padding: "8px 12px", background: viewMode === "card" ? "#0070f3" : "transparent",
-                    color: viewMode === "card" ? "white" : "#64748b", border: "none", borderRadius: 6,
-                    cursor: "pointer", fontSize: fontSize.xs, fontWeight: 600, transition: "all 0.2s ease",
-                    minWidth: 44, height: 40, display: "flex", alignItems: "center", justifyContent: "center",
-                  }}
-                  title="Card view"
-                >
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M3 3h8v8H3V3zm10 0h8v8h-8V3zM3 13h8v8H3v-8zm10 0h8v8h-8v-8z"/></svg>
-                </button>
-                <button
-                  onClick={() => setViewMode("table")}
-                  style={{
-                    padding: "8px 12px", background: viewMode === "table" ? "#0070f3" : "transparent",
-                    color: viewMode === "table" ? "white" : "#64748b", border: "none", borderRadius: 6,
-                    cursor: "pointer", fontSize: fontSize.xs, fontWeight: 600, transition: "all 0.2s ease",
-                    minWidth: 44, height: 40, display: "flex", alignItems: "center", justifyContent: "center",
-                  }}
-                  title="Table view"
-                >
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M3 4h18v2H3V4zm0 7h18v2H3v-2zm0 7h18v2H3v-2z"/></svg>
-                </button>
-              </div>
-            )}
+            <div style={{ display: "flex", gap: 8 }}>
+              <button
+                onClick={fetchBrokerTotals}
+                disabled={loading}
+                style={{
+                  padding: "8px 12px", background: "white", color: "#64748b", border: "1px solid #e2e8f0",
+                  borderRadius: 8, cursor: loading ? "not-allowed" : "pointer", fontSize: fontSize.xs,
+                  fontWeight: 500, minHeight: 40, minWidth: 40, display: "flex", alignItems: "center",
+                  justifyContent: "center", transition: "all 0.2s", opacity: loading ? 0.5 : 1,
+                }}
+                title="Refresh"
+              >
+                <Icon icon="mdi:refresh" width={16} style={{ animation: loading ? "spin 0.8s linear infinite" : "none" }} />
+              </button>
+              {brokerTotals.length > 0 && (
+                <div style={{ display: "flex", background: "white", border: "1px solid #e2e8f0", borderRadius: 8, padding: 4, gap: 0 }}>
+                  <button
+                    onClick={() => setViewMode("card")}
+                    style={{
+                      padding: "8px 12px", background: viewMode === "card" ? "#0070f3" : "transparent",
+                      color: viewMode === "card" ? "white" : "#64748b", border: "none", borderRadius: 6,
+                      cursor: "pointer", fontSize: fontSize.xs, fontWeight: 600, transition: "all 0.2s ease",
+                      minWidth: 44, height: 40, display: "flex", alignItems: "center", justifyContent: "center",
+                    }}
+                    title="Card view"
+                  >
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M3 3h8v8H3V3zm10 0h8v8h-8V3zM3 13h8v8H3v-8zm10 0h8v8h-8v-8z"/></svg>
+                  </button>
+                  <button
+                    onClick={() => setViewMode("table")}
+                    style={{
+                      padding: "8px 12px", background: viewMode === "table" ? "#0070f3" : "transparent",
+                      color: viewMode === "table" ? "white" : "#64748b", border: "none", borderRadius: 6,
+                      cursor: "pointer", fontSize: fontSize.xs, fontWeight: 600, transition: "all 0.2s ease",
+                      minWidth: 44, height: 40, display: "flex", alignItems: "center", justifyContent: "center",
+                    }}
+                    title="Table view"
+                  >
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M3 4h18v2H3V4zm0 7h18v2H3v-2zm0 7h18v2H3v-2z"/></svg>
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
 
           {loading && brokerTotals.length === 0 ? (
@@ -311,6 +338,19 @@ export default function BrokerCredits() {
               <h2 style={{ fontSize: fontSize.lg, color: "#171717", margin: 0 }}>{selectedBroker.broker_name}</h2>
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+              <button
+                onClick={() => selectedBroker && fetchBrokerCredits(selectedBroker.broker_id)}
+                disabled={loading}
+                style={{
+                  padding: "8px 12px", background: "white", color: "#64748b", border: "1px solid #e2e8f0",
+                  borderRadius: 8, cursor: loading ? "not-allowed" : "pointer", fontSize: fontSize.xs,
+                  fontWeight: 500, minHeight: 40, minWidth: 40, display: "flex", alignItems: "center",
+                  justifyContent: "center", transition: "all 0.2s", opacity: loading ? 0.5 : 1,
+                }}
+                title="Refresh"
+              >
+                <Icon icon="mdi:refresh" width={16} style={{ animation: loading ? "spin 0.8s linear infinite" : "none" }} />
+              </button>
               {credits.length > 0 && (
                 <div style={{ display: "flex", background: "white", border: "1px solid #e2e8f0", borderRadius: 8, padding: 4, gap: 0 }}>
                   <button

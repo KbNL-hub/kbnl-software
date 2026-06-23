@@ -2,6 +2,8 @@
 
 import { useState, useEffect } from "react"
 import { supabase } from "@/lib/supabase"
+import { Icon } from "@iconify/react"
+import ReportModal from "@/components/ReportModal"
 
 type Complaint = {
   complaint_id: string
@@ -36,7 +38,14 @@ const fontSize = { xs: 12, sm: 13, base: 14, md: 15, lg: 16, xl: 20, "2xl": 24, 
 
 const filters = ["All", "Unresolved", "Resolved"]
 
-export default function Complaints() {
+type Props = {
+  userProfile?: {
+    user_id: string
+    role: string
+  }
+}
+
+export default function Complaints({ userProfile }: Props) {
   const { isMobile, isDesktop } = useBreakpoint()
   const [complaints, setComplaints] = useState<Complaint[]>([])
   const [loading, setLoading] = useState(true)
@@ -44,6 +53,7 @@ export default function Complaints() {
   const [viewMode, setViewMode] = useState<ViewMode>("card")
   const [resolving, setResolving] = useState<string | null>(null)
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null)
+  const [showReportModal, setShowReportModal] = useState(false)
 
   useEffect(() => {
     fetchComplaints()
@@ -134,6 +144,12 @@ export default function Complaints() {
             </div>
           )}
 
+          {userProfile && (
+            <button onClick={() => setShowReportModal(true)} style={{ padding: "10px 16px", background: "#fff8e1", color: "#f5a623", border: "1.5px solid #fde68a", borderRadius: 8, cursor: "pointer", fontWeight: 600, fontSize: fontSize.sm, transition: "all 0.2s ease", display: "flex", alignItems: "center", gap: 6, minHeight: 40 }} onMouseEnter={e => { e.currentTarget.style.background = "#fff0e1"; e.currentTarget.style.borderColor = "#f8ad5c" }} onMouseLeave={e => { e.currentTarget.style.background = "#fff8e1"; e.currentTarget.style.borderColor = "#fde68a" }}>
+              <Icon icon="mdi:alert-circle-outline" width={16} />
+              Submit Report
+            </button>
+          )}
           <button onClick={fetchComplaints} style={{ padding: "10px 16px", background: "white", color: "#0070f3", border: "1px solid #e2e8f0", borderRadius: 8, cursor: "pointer", fontWeight: 500, fontSize: fontSize.sm, transition: "all 0.2s ease", display: "flex", alignItems: "center", gap: 6, minHeight: 40 }} onMouseEnter={e => { e.currentTarget.style.background = "#f8fafc"; e.currentTarget.style.borderColor = "#0070f3" }} onMouseLeave={e => { e.currentTarget.style.background = "white"; e.currentTarget.style.borderColor = "#e2e8f0" }}>
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M23 4v6h-6" /><path d="M1 20v-6h6" /><path d="M3.51 9a9 9 0 0 1 14.85-3.36M20.49 15a9 9 0 0 1-14.85 3.36" /></svg>
             Refresh
@@ -335,6 +351,15 @@ export default function Complaints() {
             </div>
           )}
         </>
+      )}
+
+      {userProfile && (
+        <ReportModal
+          isOpen={showReportModal}
+          onClose={() => setShowReportModal(false)}
+          userId={userProfile.user_id}
+          userRole={userProfile.role}
+        />
       )}
     </div>
   )

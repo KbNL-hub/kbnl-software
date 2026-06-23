@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from "react"
 import { Icon } from "@iconify/react"
 import { supabase } from "@/lib/supabase"
+import ReportModal from "@/components/ReportModal"
 import { formatAmount, parseAmount } from "@/lib/formatAmount"
 import ModernInput from "@/components/ModernInput"
 import CustomerSelector from "@/components/CustomerSelector"
@@ -94,6 +95,7 @@ export default function BrokerDashboard() {
 
   // Profile picture upload states
   const [showPictureModal, setShowPictureModal] = useState(false)
+  const [showReportModal, setShowReportModal] = useState(false)
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
   const [picturePreview, setPicturePreview] = useState<string | null>(null)
   const [pictureLoading, setPictureLoading] = useState(false)
@@ -465,14 +467,25 @@ export default function BrokerDashboard() {
               </p>
             </div>
           </div>
-          <button
-            onClick={async () => { await supabase.auth.signOut(); window.location.href = "/login" }}
-            style={{ padding: "8px 16px", background: "rgba(239, 68, 68, 0.05)", color: "#ef4444", border: "1.5px solid #fecaca", borderRadius: 6, cursor: "pointer", fontSize: fontSize.sm, fontWeight: 600, transition: "all 0.2s", minHeight: 40, whiteSpace: "nowrap" }}
-            onMouseEnter={e => { e.currentTarget.style.background = "rgba(239, 68, 68, 0.1)"; e.currentTarget.style.borderColor = "#fca5a5" }}
-            onMouseLeave={e => { e.currentTarget.style.background = "rgba(239, 68, 68, 0.05)"; e.currentTarget.style.borderColor = "#fecaca" }}
-          >
-            Logout
-          </button>
+          <div style={{ display: "flex", gap: 8 }}>
+            <button
+              onClick={() => setShowReportModal(true)}
+              style={{ padding: "8px 14px", background: "#fff8e1", color: "#f5a623", border: "1.5px solid #f8ad5c", borderRadius: 8, cursor: "pointer", fontSize: fontSize.sm, minHeight: 40, fontWeight: 600, display: "flex", alignItems: "center", gap: 6, transition: "all 0.2s", whiteSpace: "nowrap" }}
+              onMouseEnter={e => { e.currentTarget.style.background = "#fff0e1"; e.currentTarget.style.borderColor = "#f8ad5c" }}
+              onMouseLeave={e => { e.currentTarget.style.background = "#fff8e1"; e.currentTarget.style.borderColor = "#f8ad5c" }}
+            >
+              <Icon icon="mdi:alert-circle-outline" width={16} />
+              {!isMobile && "Report"}
+            </button>
+            <button
+              onClick={async () => { await supabase.auth.signOut(); window.location.href = "/login" }}
+              style={{ padding: "8px 16px", background: "rgba(239, 68, 68, 0.05)", color: "#ef4444", border: "1.5px solid #fecaca", borderRadius: 6, cursor: "pointer", fontSize: fontSize.sm, fontWeight: 600, transition: "all 0.2s", minHeight: 40, whiteSpace: "nowrap" }}
+              onMouseEnter={e => { e.currentTarget.style.background = "rgba(239, 68, 68, 0.1)"; e.currentTarget.style.borderColor = "#fca5a5" }}
+              onMouseLeave={e => { e.currentTarget.style.background = "rgba(239, 68, 68, 0.05)"; e.currentTarget.style.borderColor = "#fecaca" }}
+            >
+              Logout
+            </button>
+          </div>
         </div>
       </div>
 
@@ -930,6 +943,13 @@ export default function BrokerDashboard() {
       )}
 
       <style>{`@keyframes spin { from { transform: rotate(0deg) } to { transform: rotate(360deg) } }`}</style>
+
+      <ReportModal
+        isOpen={showReportModal}
+        onClose={() => setShowReportModal(false)}
+        userId={broker?.broker_id || ""}
+        userRole="Broker"
+      />
     </div>
   )
 }

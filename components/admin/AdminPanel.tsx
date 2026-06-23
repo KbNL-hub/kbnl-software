@@ -156,7 +156,7 @@ export default function AdminPanel({ userProfile }: Props) {
       case "manage-trucks":      return <ManageTrucks />
       case "manage-drivers":     return <ManageDrivers />
       case "monitor-trips":      return <MonitorTrips />
-      case "complaints":         return <Complaints />
+      case "complaints":         return <Complaints userProfile={userProfile} />
       case "station-managers":   return <StationManagers />
       case "diesel-manager":     return <DieselManager />
       case "truck-officers":     return <TruckOfficers />

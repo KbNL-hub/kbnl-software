@@ -62,8 +62,8 @@ const LOADING_POINT_MAP: Record<string, string[]> = {
 }
 
 const FACTORY_PRODUCTS: Record<string, string[]> = {
-  "Lafarge Mfamosing": ["Classic", "Supaset"],
-  "Lafarge Uyo Warehouse": ["Falcon", "3X"],
+  "Lafarge Mfamosing": ["Classic", "Supaset", "Supafix"],
+  "Lafarge Uyo Warehouse": ["Classic", "Supaset", "Supafix"],
 }
 
 const COMPLAINT_TYPES = [
@@ -89,8 +89,6 @@ const fontSize = {
   "2xl": 24,
   "3xl": 28
 }
-
-export const dynamic = "force-dynamic"
 
 export default function DriverDashboard() {
   const router = useRouter()
@@ -134,6 +132,7 @@ export default function DriverDashboard() {
   const [discCaked, setDiscCaked] = useState("")
   const [discNotes, setDiscNotes] = useState("")
   const [discDropLocation, setDiscDropLocation] = useState("")
+  const [discCustomDropLocation, setDiscCustomDropLocation] = useState("")
   const [discError, setDiscError] = useState("")
   const [discSubmitting, setDiscSubmitting] = useState(false)
 
@@ -469,6 +468,7 @@ export default function DriverDashboard() {
       if (caked === 0) return setDiscError("Enter caked bags count")
       if (caked < 0) return setDiscError("Values cannot be negative")
       if (!discDropLocation) return setDiscError("Select a drop location")
+      if (discDropLocation === "Other" && !discCustomDropLocation.trim()) return setDiscError("Enter a drop location")
     }
 
     setDiscSubmitting(true)
@@ -480,7 +480,7 @@ export default function DriverDashboard() {
       caked_bags: discrepancyType === 'caked' ? caked : 0,
       discrepancy_type: discrepancyType,
       notes: discNotes.trim() || null,
-      drop_location: discrepancyType === 'caked' ? discDropLocation : null,
+      drop_location: discrepancyType === 'caked' ? (discDropLocation === "Other" ? discCustomDropLocation.trim() : discDropLocation) : null,
     }
 
     const result = await submitAction(
@@ -499,7 +499,7 @@ export default function DriverDashboard() {
 
     setShowDiscrepancyModal(false)
     setDiscrepancyType('shortage')
-    setDiscShortage(""); setDiscCaked(""); setDiscNotes(""); setDiscDropLocation(""); setDiscError("")
+    setDiscShortage(""); setDiscCaked(""); setDiscNotes(""); setDiscDropLocation(""); setDiscCustomDropLocation(""); setDiscError("")
     
     if (result.offline) {
       setMessage("✓ Report saved offline. Will sync when connected.")
@@ -1384,7 +1384,7 @@ export default function DriverDashboard() {
 
       {/* Discrepancy */}
       {showDiscrepancyModal && (
-        <div onClick={() => { setShowDiscrepancyModal(false); setDiscrepancyType('shortage'); setDiscShortage(""); setDiscCaked(""); setDiscNotes(""); setDiscDropLocation(""); setDiscError("") }} style={modalOverlay}>
+        <div onClick={() => { setShowDiscrepancyModal(false); setDiscrepancyType('shortage'); setDiscShortage(""); setDiscCaked(""); setDiscNotes(""); setDiscDropLocation(""); setDiscCustomDropLocation(""); setDiscError("") }} style={modalOverlay}>
           <div onClick={e => e.stopPropagation()} style={modalBox}>
             <h3 style={{ marginBottom: 4, color: "#0f172a", fontSize: fontSize.xl, fontWeight: 700 }}>Report Discrepancy</h3>
             <p style={{ color: "#64748b", fontSize: fontSize.sm, marginBottom: 20 }}>Remaining: <strong style={{ color: "#0f172a" }}>{remaining} bags</strong></p>
@@ -1422,11 +1422,17 @@ export default function DriverDashboard() {
                 <div style={{ marginBottom: 16 }}>
                   <label style={labelStyle}>Drop Location *</label>
                   <div style={{ position: "relative" }}>
-                    <ModernInput as="select" value={discDropLocation} onChange={e => { setDiscDropLocation(e.target.value); setDiscError("") }} style={inputStyle}>
+                    <ModernInput as="select" value={discDropLocation} onChange={e => { setDiscDropLocation(e.target.value); setDiscCustomDropLocation(""); setDiscError("") }} style={inputStyle}>
                       <option value="">Select location</option>
                       {allStoreLocations.map(loc => <option key={loc} value={loc}>{loc}</option>)}
+                      <option value="Other">Other</option>
                     </ModernInput>
                   </div>
+                  {discDropLocation === "Other" && (
+                    <div style={{ marginTop: 8 }}>
+                      <ModernInput type="text" placeholder="Enter drop location" aria-label="Custom drop location" value={discCustomDropLocation} onChange={e => { setDiscCustomDropLocation(e.target.value); setDiscError("") }} style={inputStyle} />
+                    </div>
+                  )}
                 </div>
               </>
             )}
@@ -1439,7 +1445,7 @@ export default function DriverDashboard() {
             {discError && <div style={{ padding: 12, background: "#fef2f2", borderLeft: "4px solid #ef4444", borderRadius: 4, marginBottom: 16, color: "#b91c1c", fontSize: fontSize.sm, fontWeight: 600 }}>{discError}</div>}
 
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-              <button onClick={() => { setShowDiscrepancyModal(false); setDiscrepancyType('shortage'); setDiscShortage(""); setDiscCaked(""); setDiscNotes(""); setDiscDropLocation(""); setDiscError("") }} style={{ padding: "12px 16px", background: "white", border: "1px solid #cbd5e1", color: "#475569", borderRadius: 8, cursor: "pointer", fontSize: fontSize.md, minHeight: 44, fontWeight: 700 }}>Cancel</button>
+              <button onClick={() => { setShowDiscrepancyModal(false); setDiscrepancyType('shortage'); setDiscShortage(""); setDiscCaked(""); setDiscNotes(""); setDiscDropLocation(""); setDiscCustomDropLocation(""); setDiscError("") }} style={{ padding: "12px 16px", background: "white", border: "1px solid #cbd5e1", color: "#475569", borderRadius: 8, cursor: "pointer", fontSize: fontSize.md, minHeight: 44, fontWeight: 700 }}>Cancel</button>
               <button onClick={handleReportDiscrepancy} disabled={discSubmitting} style={{ padding: "12px 16px", background: "#f5a623", color: "white", border: "none", borderRadius: 8, cursor: discSubmitting ? "not-allowed" : "pointer", fontWeight: 700, fontSize: fontSize.md, minHeight: 44, opacity: discSubmitting ? 0.7 : 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
                 {discSubmitting ? <><Icon icon="mdi:loading" width={16} style={{ animation: "spin 1s linear infinite" }} /> Submitting…</> : "Submit Report"}
               </button>

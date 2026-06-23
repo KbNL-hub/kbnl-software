@@ -6,6 +6,7 @@ import { supabase } from "@/lib/supabase"
 import { formatAmount, parseAmount } from "@/lib/formatAmount"
 import { Icon } from "@iconify/react"
 import CustomerSelector from "@/components/CustomerSelector"
+import ReportModal from "@/components/ReportModal"
 import ModernInput from "@/components/ModernInput"
 
 type Officer = { officer_id: string; full_name: string; store_name: string; profile_picture_url?: string }
@@ -32,7 +33,7 @@ type Sale = {
   total_amount: number | null
   customer_name: string | null
   payment_mode: string
-  sale_type: string
+  delivery_mode: string
   tricycle_number: string | null
   sold_at: string
   broker_id: string | null
@@ -44,7 +45,7 @@ type GroupedSale = {
   group_id: string
   customer_name: string | null
   payment_mode: string
-  sale_type: string
+  delivery_mode: string
   tricycle_number: string | null
   sold_at: string
   broker_id: string | null
@@ -114,7 +115,7 @@ export default function StoreOfficerDashboard() {
   const [salePayment, setSalePayment] = useState("")
   const [saleError, setSaleError] = useState("")
   const [saleLoading, setSaleLoading] = useState(false)
-  const [saleType, setSaleType] = useState<"self" | "tricycle" | "truck">("self")
+  const [deliveryMode, setDeliveryMode] = useState<"self" | "tricycle" | "truck">("self")
   const [tricycles, setTricycles] = useState<{ tricycle_id: string; tricycle_number: string }[]>([])
   const [saleTricycleId, setSaleTricycleId] = useState("")
   const [tricycleSearch, setTricycleSearch] = useState("")
@@ -126,10 +127,17 @@ export default function StoreOfficerDashboard() {
   const [isBrokerLinked, setIsBrokerLinked] = useState(false)
   const [saleDate, setSaleDate] = useState(new Date().toISOString().split("T")[0])
 
+  function saleDateWithTime(dateStr: string) {
+    const now = new Date()
+    const [y, m, d] = dateStr.split("-").map(Number)
+    return new Date(y, m - 1, d, now.getHours(), now.getMinutes(), now.getSeconds()).toISOString()
+  }
+
   const [salesFilter, setSalesFilter] = useState("All")
 
   // Profile picture upload states
   const [showPictureModal, setShowPictureModal] = useState(false)
+  const [showReportModal, setShowReportModal] = useState(false)
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
   const [picturePreview, setPicturePreview] = useState<string | null>(null)
   const [pictureLoading, setPictureLoading] = useState(false)
@@ -228,7 +236,7 @@ export default function StoreOfficerDashboard() {
   async function fetchSales(officerId: string) {
     const { data } = await supabase
       .from("store_sales")
-      .select("sale_id, product, quantity, price_per_bag, total_amount, customer_name, payment_mode, sale_type, tricycle_id, sold_at, broker_id, status")
+      .select("sale_id, product, quantity, price_per_bag, total_amount, customer_name, payment_mode, delivery_mode, tricycle_id, sold_at, broker_id, status")
       .eq("officer_id", officerId)
       .order("sold_at", { ascending: false })
 
@@ -377,7 +385,7 @@ export default function StoreOfficerDashboard() {
     if (saleLines.some(l => !l.quantity || parseInt(l.quantity) <= 0)) return setSaleError("Enter a valid quantity for each line")
     
     if (!salePayment) return setSaleError("Select a payment mode")
-    if (saleType === "tricycle" && !saleTricycleId) return setSaleError("Select a tricycle")
+    if (deliveryMode === "tricycle" && !saleTricycleId) return setSaleError("Select a tricycle")
     if (!saleDate) return setSaleError("Select a sale date")
 
     // Broker-linked validation
@@ -414,11 +422,11 @@ export default function StoreOfficerDashboard() {
         price_per_bag: isBrokerLinked ? null : parseAmount(line.price_per_bag),
         customer_name: saleCustomer?.full_name.trim() || null,
         payment_mode: salePayment,
-        sale_type: saleType,
-        tricycle_id: saleType === "tricycle" ? saleTricycleId : null,
+        delivery_mode: deliveryMode,
+        tricycle_id: deliveryMode === "tricycle" ? saleTricycleId : null,
         broker_id: isBrokerLinked ? saleBroker?.broker_id : null,
         status: isBrokerLinked ? "Pending" : "Confirmed",
-        sold_at: saleDate,
+        sold_at: saleDateWithTime(saleDate),
       }))
   
       const { error: saleErr } = await supabase.from("store_sales").insert(salesToInsert)
@@ -447,7 +455,7 @@ export default function StoreOfficerDashboard() {
       setSaleCustomer(null)
       setSalePayment("")
       setSaleError("")
-      setSaleType("self")
+      setDeliveryMode("self")
       setSaleTricycleId("")
       setTricycleSearch("")
       setIsBrokerLinked(false)
@@ -549,7 +557,7 @@ export default function StoreOfficerDashboard() {
       sale.sold_at,
       sale.customer_name ?? "",
       sale.payment_mode,
-      sale.sale_type,
+      sale.delivery_mode,
       sale.tricycle_number ?? "",
       sale.broker_id ?? "",
       sale.status,
@@ -565,7 +573,7 @@ export default function StoreOfficerDashboard() {
       group_id: groupId,
       customer_name: sale.customer_name,
       payment_mode: sale.payment_mode,
-      sale_type: sale.sale_type,
+      delivery_mode: sale.delivery_mode,
       tricycle_number: sale.tricycle_number,
       sold_at: sale.sold_at,
       broker_id: sale.broker_id,
@@ -669,14 +677,25 @@ export default function StoreOfficerDashboard() {
               </p>
             </div>
           </div>
-          <button
-            onClick={async () => { await supabase.auth.signOut(); router.push("/login") }}
-            style={{ padding: "8px 16px", background: "rgba(239, 68, 68, 0.05)", color: "#ef4444", border: "1.5px solid #fecaca", borderRadius: 6, cursor: "pointer", fontSize: fontSize.sm, fontWeight: 600, transition: "all 0.2s", minHeight: 40, whiteSpace: "nowrap" }}
-            onMouseEnter={e => { e.currentTarget.style.background = "rgba(239, 68, 68, 0.1)"; e.currentTarget.style.borderColor = "#fca5a5" }}
-            onMouseLeave={e => { e.currentTarget.style.background = "rgba(239, 68, 68, 0.05)"; e.currentTarget.style.borderColor = "#fecaca" }}
-          >
-            Logout
-          </button>
+          <div style={{ display: "flex", gap: 8 }}>
+            <button
+              onClick={() => setShowReportModal(true)}
+              style={{ padding: "8px 14px", background: "#fff8e1", color: "#f5a623", border: "1.5px solid #f8ad5c", borderRadius: 8, cursor: "pointer", fontSize: fontSize.sm, minHeight: 40, fontWeight: 600, display: "flex", alignItems: "center", gap: 6, transition: "all 0.2s", whiteSpace: "nowrap" }}
+              onMouseEnter={e => { e.currentTarget.style.background = "#fff0e1"; e.currentTarget.style.borderColor = "#f8ad5c" }}
+              onMouseLeave={e => { e.currentTarget.style.background = "#fff8e1"; e.currentTarget.style.borderColor = "#f8ad5c" }}
+            >
+              <Icon icon="mdi:alert-circle-outline" width={16} />
+              {!isMobile && "Report"}
+            </button>
+            <button
+              onClick={async () => { await supabase.auth.signOut(); router.push("/login") }}
+              style={{ padding: "8px 16px", background: "rgba(239, 68, 68, 0.05)", color: "#ef4444", border: "1.5px solid #fecaca", borderRadius: 6, cursor: "pointer", fontSize: fontSize.sm, fontWeight: 600, transition: "all 0.2s", minHeight: 40, whiteSpace: "nowrap" }}
+              onMouseEnter={e => { e.currentTarget.style.background = "rgba(239, 68, 68, 0.1)"; e.currentTarget.style.borderColor = "#fca5a5" }}
+              onMouseLeave={e => { e.currentTarget.style.background = "rgba(239, 68, 68, 0.05)"; e.currentTarget.style.borderColor = "#fecaca" }}
+            >
+              Logout
+            </button>
+          </div>
         </div>
       </div>
 
@@ -872,18 +891,18 @@ export default function StoreOfficerDashboard() {
                     </div>
                   )}
 
-                  {/* Sale Type */}
+                  {/* Delivery Mode */}
                   {(() => {
-                    const saleTypeConfig: Record<string, { label: string; icon: string; bg: string; border: string; color: string }> = {
+                    const deliveryModeConfig: Record<string, { label: string; icon: string; bg: string; border: string; color: string }> = {
                       self: { label: "Self", icon: "mdi:account", bg: "#f0fdf4", border: "#bbf7d0", color: "#16a34a" },
                       tricycle: { label: sale.tricycle_number || "Tricycle", icon: "mdi:rickshaw", bg: "#eff6ff", border: "#bfdbfe", color: "#0070f3" },
                       truck: { label: "Truck", icon: "mdi:truck", bg: "#fefce8", border: "#fde68a", color: "#ca8a04" },
                     }
-                    const cfg = saleTypeConfig[sale.sale_type]
+                    const cfg = deliveryModeConfig[sale.delivery_mode]
                     if (!cfg) return null
                     return (
                       <div style={{ background: cfg.bg, borderRadius: 8, padding: "10px 12px", marginBottom: 10, border: `1px solid ${cfg.border}` }}>
-                        <p style={{ margin: 0, fontSize: fontSize.xs, color: "#94a3b8" }}>Sale Type</p>
+                        <p style={{ margin: 0, fontSize: fontSize.xs, color: "#94a3b8" }}>Delivery Mode</p>
                         <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 4 }}>
                           <Icon icon={cfg.icon} width={18} height={18} color={cfg.color} />
                           <p style={{ margin: 0, fontWeight: 600, fontSize: fontSize.base, color: cfg.color }}>
@@ -1019,7 +1038,7 @@ export default function StoreOfficerDashboard() {
           setSaleCustomer(null)
           setSalePayment("")
           setSaleError("")
-          setSaleType("self")
+          setDeliveryMode("self")
           setSaleTricycleId("")
           setTricycleSearch("")
           setIsBrokerLinked(false)
@@ -1163,28 +1182,28 @@ export default function StoreOfficerDashboard() {
               )}
             </div>
       
-            {/* Sale Type */}
+            {/* Delivery Mode */}
             <div style={{ marginBottom: 16 }}>
-              <label style={{ display: "block", fontWeight: 600, marginBottom: 6, fontSize: fontSize.sm, color: "#475569" }}>Sale Type</label>
+              <label style={{ display: "block", fontWeight: 600, marginBottom: 6, fontSize: fontSize.sm, color: "#475569" }}>Delivery Mode</label>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8 }}>
                 {(["self", "tricycle", "truck"] as const).map(type => (
                   <button
                     key={type}
-                    onClick={() => { setSaleType(type); setSaleTricycleId(""); setSaleError("") }}
+                    onClick={() => { setDeliveryMode(type); setSaleTricycleId(""); setSaleError("") }}
                     style={{
                       padding: "10px 12px",
                       borderRadius: 8,
                       cursor: "pointer",
-                      border: `1.5px solid ${saleType === type ? "#0070f3" : "#e2e8f0"}`,
-                      background: saleType === type ? "#0070f3" : "white",
-                      color: saleType === type ? "white" : "#64748b",
-                      fontWeight: saleType === type ? 600 : 500,
+                      border: `1.5px solid ${deliveryMode === type ? "#0070f3" : "#e2e8f0"}`,
+                      background: deliveryMode === type ? "#0070f3" : "white",
+                      color: deliveryMode === type ? "white" : "#64748b",
+                      fontWeight: deliveryMode === type ? 600 : 500,
                       fontSize: fontSize.sm,
                       minHeight: 44,
                       transition: "all 0.2s"
                     }}
-                    onMouseEnter={e => { if (saleType !== type) { e.currentTarget.style.borderColor = "#cbd5e1"; e.currentTarget.style.background = "#f8fafc" } }}
-                    onMouseLeave={e => { if (saleType !== type) { e.currentTarget.style.borderColor = "#e2e8f0"; e.currentTarget.style.background = "white" } }}
+                    onMouseEnter={e => { if (deliveryMode !== type) { e.currentTarget.style.borderColor = "#cbd5e1"; e.currentTarget.style.background = "#f8fafc" } }}
+                    onMouseLeave={e => { if (deliveryMode !== type) { e.currentTarget.style.borderColor = "#e2e8f0"; e.currentTarget.style.background = "white" } }}
                   >
                     {type === "self" ? "Self" : type === "truck" ? "Truck" : "Tricycle"}
                   </button>
@@ -1204,7 +1223,7 @@ export default function StoreOfficerDashboard() {
             </div>
 
             {/* Tricycle Selection */}
-            {saleType === "tricycle" && (
+            {deliveryMode === "tricycle" && (
               <div style={{ marginBottom: 16, position: "relative" }}>
                 <label style={{ display: "block", fontWeight: 600, marginBottom: 6, fontSize: fontSize.sm, color: "#475569" }}>Tricycle *</label>
                 {tricycles.length === 0
@@ -1266,7 +1285,7 @@ export default function StoreOfficerDashboard() {
                 setSaleCustomer(null)
                 setSalePayment("")
                 setSaleError("")
-                setSaleType("self")
+                setDeliveryMode("self")
                 setSaleTricycleId("")
                 setTricycleSearch("")
                 setIsBrokerLinked(false)
@@ -1382,6 +1401,13 @@ export default function StoreOfficerDashboard() {
           </div>
         </div>
       )}
+
+      <ReportModal
+        isOpen={showReportModal}
+        onClose={() => setShowReportModal(false)}
+        userId={officer?.officer_id || ""}
+        userRole="StoreOfficer"
+      />
     </div>
   )
 }

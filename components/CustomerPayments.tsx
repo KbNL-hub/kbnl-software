@@ -79,13 +79,14 @@ export default function CustomerPayments({ brokerId }: { brokerId: string }) {
     if (!bankName) return setMessage("Please select a bank")
     if (!paymentDate) return setMessage("Payment date is required")
     if (!selectedCustomer) return setMessage("Please select or add a customer")
+    if (!depositorName.trim()) return setMessage("Depositor's name is required")
     const parsedAmount = parseAmount(amount)
     if (isNaN(parsedAmount) || parsedAmount <= 0) return setMessage("Valid amount is required")
 
     setSubmitting(true); setMessage("")
     const payload = {
       broker_id: brokerId, bank_name: bankName, payment_date: paymentDate,
-      depositor_name: depositorName.trim() || null, amount: parsedAmount,
+      depositor_name: depositorName.trim(), amount: parsedAmount,
       customer_id: selectedCustomer.isNew ? null : selectedCustomer.customer_id,
       customer_name: selectedCustomer.full_name,
     }
@@ -283,7 +284,7 @@ export default function CustomerPayments({ brokerId }: { brokerId: string }) {
             </div>
 
             <div style={{ marginBottom: 16 }}>
-              <label style={{ display: "block", fontWeight: 600, marginBottom: 6, fontSize: fontSize.sm, color: "#475569" }}>Depositor's Name <span style={{ fontWeight: 400, color: "#94a3b8" }}>(Optional)</span></label>
+              <label style={{ display: "block", fontWeight: 600, marginBottom: 6, fontSize: fontSize.sm, color: "#475569" }}>Depositor's Name *</label>
               <input type="text" placeholder="Name of person who made the deposit" value={depositorName} onChange={e => setDepositorName(e.target.value)} style={{ width: "100%", padding: "12px 14px", borderRadius: 8, border: "1.5px solid #e2e8f0", fontSize: fontSize.base, background: "white", color: "#0f172a", minHeight: 48, boxSizing: "border-box" }} />
             </div>
 

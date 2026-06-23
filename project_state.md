@@ -105,7 +105,7 @@ lib/
 - `store_stock` — stock_id, store_name, product, balance, updated_at
 - `store_supply_confirmations` — confirmation_id, stop_id, officer_id, store_name, confirmed_at
 - `store_supply_lines` — line_id, confirmation_id, product, quantity
-- `store_sales` — sale_id, officer_id, store_name, product, quantity, price_per_bag, total_amount (generated), customer_name, payment_mode, sale_type (direct/tricycle), tricycle_id, sold_at
+- `store_sales` — sale_id, officer_id, store_name, product, quantity, price_per_bag, total_amount (generated), customer_name, payment_mode, delivery_mode (self/tricycle/truck), tricycle_id, sold_at
 - `tricycles` — tricycle_id, tricycle_number, store_name, created_at ← NEW
 
 ### Cash Transactions ← NEW
@@ -1802,7 +1802,7 @@ lib/
   },
   {
     "table_name": "store_sales",
-    "column_name": "sale_type",
+    "column_name": "delivery_mode",
     "data_type": "character varying",
     "is_nullable": "NO",
     "column_default": "'direct'::character varying",
@@ -2264,7 +2264,7 @@ One ATF per truck at a time (blocked if open ATF exists for that truck)
 
 ## Tricycles (NEW — COMPLETED)
 - Registered per store (tricycle_number, store_name)
-- Store sales now have sale_type: direct | tricycle
+- Store sales now have delivery_mode: direct | tricycle
 - Tricycle sales: same visibility as regular sales
 - Managed from admin panel (new section needed)
 

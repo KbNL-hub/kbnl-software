@@ -4,6 +4,7 @@ import ModernInput from "@/components/ModernInput";
 import SplashScreen from "@/components/SplashScreen";
 import { useState, useRef, useEffect } from "react"
 import { supabase } from "@/lib/supabase"
+import { Icon } from "@iconify/react"
 import { useRouter } from "next/navigation"
 
 export default function LoginPage() {
@@ -11,6 +12,7 @@ export default function LoginPage() {
   const [password, setPassword] = useState("")
   const [message, setMessage] = useState("")
   const [loading, setLoading] = useState(false)
+  const [showPassword, setShowPassword] = useState(false)
   const [showSplash, setShowSplash] = useState(true)
   const router = useRouter()
 
@@ -166,6 +168,40 @@ export default function LoginPage() {
         .message-container {
           animation: fadeIn 0.3s ease-out;
         }
+
+        /* Hide browser native password reveal */
+        input[type="password"]::-ms-reveal,
+        input[type="password"]::-ms-clear {
+          display: none;
+        }
+        input[type="password"]::-webkit-credentials-auto-fill-button {
+          display: none !important;
+        }
+
+        .password-wrapper {
+          position: relative;
+        }
+
+        .password-toggle {
+          position: absolute;
+          right: 12px;
+          top: 50%;
+          transform: translateY(-50%);
+          background: none;
+          border: none;
+          cursor: pointer;
+          padding: 4px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          color: #94a3b8;
+          transition: color 0.2s ease;
+          z-index: 1;
+        }
+
+        .password-toggle:hover {
+          color: #171717;
+        }
       `}</style>
 
       <div className="login-container" style={{
@@ -281,25 +317,39 @@ export default function LoginPage() {
             }}>
               Password
             </label>
-            <ModernInput
-              type="password"
-              ref={passwordInputRef}
-              placeholder="••••••••"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              onKeyDown={handleKeyDown}
-              style={{
-                width: "100%",
-                padding: "12px 16px",
-                boxSizing: "border-box",
-                fontSize: 16,
-                border: "1.5px solid #e5e5e5",
-                borderRadius: 10,
-                background: "#f9f9f9",
-                transition: "all 0.2s ease",
-              }}
-              data-modern-input="migrated"
-            />
+            <div className="password-wrapper">
+              <ModernInput
+                type={showPassword ? "text" : "password"}
+                ref={passwordInputRef}
+                placeholder="••••••••"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                onKeyDown={handleKeyDown}
+                style={{
+                  width: "100%",
+                  padding: "12px 48px 12px 16px",
+                  boxSizing: "border-box",
+                  fontSize: 16,
+                  border: "1.5px solid #e5e5e5",
+                  borderRadius: 10,
+                  background: "#f9f9f9",
+                  transition: "all 0.2s ease",
+                }}
+                data-modern-input="migrated"
+              />
+              <button
+                type="button"
+                className="password-toggle"
+                onClick={() => setShowPassword((prev) => !prev)}
+                aria-label={showPassword ? "Hide password" : "Show password"}
+              >
+                <Icon
+                  icon={showPassword ? "mdi:eye-off" : "mdi:eye"}
+                  width={20}
+                  height={20}
+                />
+              </button>
+            </div>
           </div>
 
           <button
