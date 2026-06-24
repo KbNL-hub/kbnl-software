@@ -35,7 +35,9 @@ type Sale = {
   payment_mode: string
   delivery_mode: string
   tricycle_number: string | null
+  truck_plate: string | null
   sold_at: string
+  created_at: string
   broker_id: string | null
   broker_name?: string | null
   status: string
@@ -47,6 +49,7 @@ type GroupedSale = {
   payment_mode: string
   delivery_mode: string
   tricycle_number: string | null
+  truck_plate: string | null
   sold_at: string
   broker_id: string | null
   broker_name?: string | null
@@ -120,6 +123,10 @@ export default function StoreOfficerDashboard() {
   const [saleTricycleId, setSaleTricycleId] = useState("")
   const [tricycleSearch, setTricycleSearch] = useState("")
   const [tricycleDropOpen, setTricycleDropOpen] = useState(false)
+  const [trucks, setTrucks] = useState<{ plate_number: string; kbnl_truck_no: string | null; truck_model: string | null }[]>([])
+  const [saleTruckPlate, setSaleTruckPlate] = useState("")
+  const [truckSearch, setTruckSearch] = useState("")
+  const [truckDropOpen, setTruckDropOpen] = useState(false)
   const [brokers, setBrokers] = useState<Broker[]>([])
   const [saleBroker, setSaleBroker] = useState<Broker | null>(null)
   const [brokerSearch, setBrokerSearch] = useState("")
@@ -134,6 +141,8 @@ export default function StoreOfficerDashboard() {
   }
 
   const [salesFilter, setSalesFilter] = useState("All")
+  const [salesDateFilter, setSalesDateFilter] = useState("")
+  const [salesSortByAdded, setSalesSortByAdded] = useState(true)
 
   // Profile picture upload states
   const [showPictureModal, setShowPictureModal] = useState(false)
@@ -177,6 +186,7 @@ export default function StoreOfficerDashboard() {
       fetchStock(officerData.store_name),
       fetchSales(officerData.officer_id),
       fetchTricycles(),
+      fetchTrucks(),
       fetchBrokers(),
     ])
     setLoading(false)
@@ -236,9 +246,8 @@ export default function StoreOfficerDashboard() {
   async function fetchSales(officerId: string) {
     const { data } = await supabase
       .from("store_sales")
-      .select("sale_id, product, quantity, price_per_bag, total_amount, customer_name, payment_mode, delivery_mode, tricycle_id, sold_at, broker_id, status")
+      .select("sale_id, product, quantity, price_per_bag, total_amount, customer_name, payment_mode, delivery_mode, tricycle_id, truck_plate, sold_at, created_at, broker_id, status")
       .eq("officer_id", officerId)
-      .order("sold_at", { ascending: false })
 
     if (!data) return
 
@@ -270,6 +279,14 @@ export default function StoreOfficerDashboard() {
       .select("tricycle_id, tricycle_number")
       .order("tricycle_number", { ascending: true })
     setTricycles(data || [])
+  }
+
+  async function fetchTrucks() {
+    const { data } = await supabase
+      .from("Trucks")
+      .select("plate_number, kbnl_truck_no, truck_model")
+      .order("plate_number", { ascending: true })
+    setTrucks(data || [])
   }
 
   async function fetchBrokers() {
@@ -386,6 +403,7 @@ export default function StoreOfficerDashboard() {
     
     if (!salePayment) return setSaleError("Select a payment mode")
     if (deliveryMode === "tricycle" && !saleTricycleId) return setSaleError("Select a tricycle")
+    if (deliveryMode === "truck" && !saleTruckPlate) return setSaleError("Select a truck")
     if (!saleDate) return setSaleError("Select a sale date")
 
     // Broker-linked validation
@@ -424,6 +442,7 @@ export default function StoreOfficerDashboard() {
         payment_mode: salePayment,
         delivery_mode: deliveryMode,
         tricycle_id: deliveryMode === "tricycle" ? saleTricycleId : null,
+        truck_plate: deliveryMode === "truck" ? saleTruckPlate : null,
         broker_id: isBrokerLinked ? saleBroker?.broker_id : null,
         status: isBrokerLinked ? "Pending" : "Confirmed",
         sold_at: saleDateWithTime(saleDate),
@@ -458,11 +477,13 @@ export default function StoreOfficerDashboard() {
       setDeliveryMode("self")
       setSaleTricycleId("")
       setTricycleSearch("")
+      setSaleTruckPlate("")
+      setTruckSearch("")
       setIsBrokerLinked(false)
       setSaleBroker(null)
       setBrokerSearch("")
       setSaleDate(new Date().toISOString().split("T")[0])
-  
+
       await Promise.all([fetchSales(officer.officer_id), fetchStock(officer.store_name)])
     } catch (err) {
       setSaleError("An error occurred")
@@ -584,7 +605,28 @@ export default function StoreOfficerDashboard() {
     return groups
   }, [])
 
-  const filteredSales = salesFilter === "All" ? groupedSales : groupedSales.filter(s => s.payment_mode === salesFilter)
+  const salesSortOptions = [
+    { label: "Most recent added", value: true },
+    { label: "By sale date", value: false },
+  ] as const
+
+  const filteredSales = groupedSales.filter(s => {
+    if (salesFilter !== "All" && s.payment_mode !== salesFilter) return false
+    if (salesDateFilter) {
+      const saleDate = s.sold_at.split("T")[0]
+      if (saleDate !== salesDateFilter) return false
+    }
+    return true
+  })
+  .sort((a, b) => {
+    if (salesSortByAdded) {
+      const aCreated = a.lines[0]?.created_at || a.sold_at
+      const bCreated = b.lines[0]?.created_at || b.sold_at
+      return bCreated.localeCompare(aCreated)
+    } else {
+      return b.sold_at.localeCompare(a.sold_at)
+    }
+  })
   const paymentFilters = PAYMENT_MODES.filter(mode => sales.some(sale => sale.payment_mode === mode))
 
   const getStatusColor = (status: string) => {
@@ -703,7 +745,12 @@ export default function StoreOfficerDashboard() {
 
         {/* Stock Summary */}
         <div style={{ background: "white", border: "1px solid #e2e8f0", borderRadius: 12, padding: isMobile ? 16 : 24, marginBottom: 24, boxShadow: "0 1px 3px rgba(0,0,0,0.05)" }}>
-          <p style={{ margin: "0 0 16px 0", fontWeight: 700, fontSize: fontSize.lg, color: "#0f172a" }}>Stock Balance</p>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+            <p style={{ margin: 0, fontWeight: 700, fontSize: fontSize.lg, color: "#0f172a" }}>Stock Balance</p>
+            <p style={{ margin: 0, fontWeight: 700, fontSize: fontSize.lg, color: "#0f172a" }}>
+              Total: <span style={{ color: "#0070f3" }}>{stock.reduce((sum, s) => sum + s.balance, 0).toLocaleString()}</span> <span style={{ fontSize: fontSize.sm, fontWeight: 500, color: "#64748b" }}>bags</span>
+            </p>
+          </div>
           {stock.length === 0
             ? <p style={{ color: "#64748b", fontSize: fontSize.base, margin: 0 }}>No stock recorded yet.</p>
             : (
@@ -805,7 +852,39 @@ export default function StoreOfficerDashboard() {
         {tab === "sales" && (
           <div>
             <div style={{ display: "flex", flexDirection: isMobile ? "column" : "row", justifyContent: "space-between", alignItems: isMobile ? "flex-start" : "center", gap: 12, marginBottom: 16 }}>
-              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+                <button
+                  onClick={() => setSalesSortByAdded(!salesSortByAdded)}
+                  style={{
+                    padding: "8px 12px",
+                    borderRadius: 8,
+                    fontSize: fontSize.xs,
+                    cursor: "pointer",
+                    border: `1.5px solid #e2e8f0`,
+                    background: "white",
+                    color: "#64748b",
+                    fontWeight: 500,
+                    minHeight: 40,
+                    whiteSpace: "nowrap",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 4,
+                  }}
+                >
+                  <Icon icon={salesSortByAdded ? "mdi:clock-outline" : "mdi:calendar"} width={14} />
+                  {salesSortByAdded ? "By date added" : "By sale date"}
+                </button>
+                <input
+                  type="date"
+                  value={salesDateFilter}
+                  onChange={e => setSalesDateFilter(e.target.value)}
+                  style={{ padding: "8px 12px", borderRadius: 8, border: `1.5px solid ${salesDateFilter ? "#0070f3" : "#e2e8f0"}`, fontSize: fontSize.sm, minHeight: 40, outline: "none", cursor: "pointer", background: salesDateFilter ? "rgba(0, 112, 243, 0.05)" : "white", color: "#0f172a" }}
+                />
+                {salesDateFilter && (
+                  <button onClick={() => setSalesDateFilter("")} style={{ background: "none", border: "none", cursor: "pointer", color: "#ef4444", fontSize: fontSize.sm, padding: "4px 8px", fontWeight: 600 }}>
+                    ✕ Clear
+                  </button>
+                )}
                 {["All", ...paymentFilters].map(f => (
                   <button
                     key={f}
@@ -896,7 +975,7 @@ export default function StoreOfficerDashboard() {
                     const deliveryModeConfig: Record<string, { label: string; icon: string; bg: string; border: string; color: string }> = {
                       self: { label: "Self", icon: "mdi:account", bg: "#f0fdf4", border: "#bbf7d0", color: "#16a34a" },
                       tricycle: { label: sale.tricycle_number || "Tricycle", icon: "mdi:rickshaw", bg: "#eff6ff", border: "#bfdbfe", color: "#0070f3" },
-                      truck: { label: "Truck", icon: "mdi:truck", bg: "#fefce8", border: "#fde68a", color: "#ca8a04" },
+                      truck: { label: sale.truck_plate || "Truck", icon: "mdi:truck", bg: "#fefce8", border: "#fde68a", color: "#ca8a04" },
                     }
                     const cfg = deliveryModeConfig[sale.delivery_mode]
                     if (!cfg) return null
@@ -1041,6 +1120,8 @@ export default function StoreOfficerDashboard() {
           setDeliveryMode("self")
           setSaleTricycleId("")
           setTricycleSearch("")
+          setSaleTruckPlate("")
+          setTruckSearch("")
           setIsBrokerLinked(false)
           setSaleBroker(null)
           setBrokerSearch("")
@@ -1189,7 +1270,7 @@ export default function StoreOfficerDashboard() {
                 {(["self", "tricycle", "truck"] as const).map(type => (
                   <button
                     key={type}
-                    onClick={() => { setDeliveryMode(type); setSaleTricycleId(""); setSaleError("") }}
+                    onClick={() => { setDeliveryMode(type); setSaleTricycleId(""); setSaleTruckPlate(""); setTruckSearch(""); setSaleError("") }}
                     style={{
                       padding: "10px 12px",
                       borderRadius: 8,
@@ -1209,17 +1290,6 @@ export default function StoreOfficerDashboard() {
                   </button>
                 ))}
               </div>
-            </div>
-
-            {/* Sale Date */}
-            <div style={{ marginBottom: 16 }}>
-              <label style={{ display: "block", fontWeight: 600, marginBottom: 6, fontSize: fontSize.sm, color: "#475569" }}>Date of Sale</label>
-              <ModernInput
-                type="date"
-                value={saleDate}
-                onChange={e => { setSaleDate(e.target.value); setSaleError("") }}
-                style={{ width: "100%", padding: "10px 12px", borderRadius: 6, border: "1px solid #e0e0e0", fontSize: fontSize.base, boxSizing: "border-box", minHeight: 44 }}
-              />
             </div>
 
             {/* Tricycle Selection */}
@@ -1262,6 +1332,62 @@ export default function StoreOfficerDashboard() {
               </div>
             )}
       
+            {/* Truck Selection */}
+            {deliveryMode === "truck" && (
+              <div style={{ marginBottom: 16, position: "relative" }}>
+                <label style={{ display: "block", fontWeight: 600, marginBottom: 6, fontSize: fontSize.sm, color: "#475569" }}>Truck *</label>
+                {trucks.length === 0
+                  ? <p style={{ fontSize: fontSize.sm, color: "#94a3b8", margin: 0 }}>No trucks available.</p>
+                  : (
+                    <div style={{ position: "relative" }}>
+                      <ModernInput
+                        type="text"
+                        placeholder="Search truck…"
+                        value={truckSearch}
+                        onChange={e => { setTruckSearch(e.target.value); setTruckDropOpen(true) }}
+                        onFocus={() => setTruckDropOpen(true)}
+                        onBlur={() => setTimeout(() => setTruckDropOpen(false), 150)}
+                        style={{ width: "100%", padding: "10px 12px", borderRadius: 6, border: "1px solid #e0e0e0", fontSize: fontSize.base, boxSizing: "border-box", minHeight: 44 }}
+                      />
+                      {truckDropOpen && (
+                        <ul style={{ position: "absolute", top: "calc(100% + 4px)", left: 0, right: 0, background: "white", border: "1px solid #e2e8f0", borderRadius: 8, listStyle: "none", margin: 0, padding: 4, maxHeight: 200, overflowY: "auto", zIndex: 50, boxShadow: "0 4px 12px rgba(0,0,0,0.1)" }}>
+                          {trucks
+                            .filter(t => t.plate_number.toLowerCase().includes(truckSearch.toLowerCase()) || (t.kbnl_truck_no || "").toLowerCase().includes(truckSearch.toLowerCase()))
+                            .map(t => (
+                              <li
+                                key={t.plate_number}
+                                onMouseDown={() => { setSaleTruckPlate(t.plate_number); setTruckSearch(`${t.plate_number}${t.kbnl_truck_no ? ` · #${t.kbnl_truck_no}` : ""}`); setTruckDropOpen(false); setSaleError("") }}
+                                style={{ padding: "10px 12px", cursor: "pointer", fontSize: fontSize.base, background: saleTruckPlate === t.plate_number ? "#eff6ff" : "white", borderRadius: 6, transition: "all 0.2s" }}
+                                onMouseEnter={e => { if (saleTruckPlate !== t.plate_number) e.currentTarget.style.background = "#f8fafc" }}
+                                onMouseLeave={e => { e.currentTarget.style.background = saleTruckPlate === t.plate_number ? "#eff6ff" : "white" }}
+                              >
+                                {t.plate_number}{t.kbnl_truck_no ? ` · #${t.kbnl_truck_no}` : ""}
+                              </li>
+                            ))}
+                        </ul>
+                      )}
+                    </div>
+                  )
+                }
+                {saleTruckPlate && (
+                  <div style={{ marginTop: 8, padding: "8px 12px", background: "#fefce8", borderRadius: 6, fontSize: fontSize.sm, color: "#ca8a04", fontWeight: 500, border: "1px solid #fde68a" }}>
+                    Selected: {saleTruckPlate}
+                  </div>
+                )}
+              </div>
+            )}
+      
+            {/* Sale Date */}
+            <div style={{ marginBottom: 16 }}>
+              <label style={{ display: "block", fontWeight: 600, marginBottom: 6, fontSize: fontSize.sm, color: "#475569" }}>Date of Sale</label>
+              <ModernInput
+                type="date"
+                value={saleDate}
+                onChange={e => { setSaleDate(e.target.value); setSaleError("") }}
+                style={{ width: "100%", padding: "10px 12px", borderRadius: 6, border: "1px solid #e0e0e0", fontSize: fontSize.base, boxSizing: "border-box", minHeight: 44 }}
+              />
+            </div>
+
             {/* Payment Mode */}
             <div style={{ marginBottom: 24 }}>
               <label style={{ display: "block", fontWeight: 600, marginBottom: 6, fontSize: fontSize.sm, color: "#475569" }}>Payment Mode *</label>
@@ -1288,6 +1414,8 @@ export default function StoreOfficerDashboard() {
                 setDeliveryMode("self")
                 setSaleTricycleId("")
                 setTricycleSearch("")
+                setSaleTruckPlate("")
+                setTruckSearch("")
                 setIsBrokerLinked(false)
                 setSaleBroker(null)
                 setBrokerSearch("")

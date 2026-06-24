@@ -135,9 +135,30 @@ export default function AdminPanel({ userProfile }: Props) {
 
   const visibleAlerts = lowBalanceCompanies.filter(c => !dismissedAlerts.has(c.company_id))
 
+  // Sync initial section from URL
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    const section = params.get('section')
+    const validKeys = NAV_ITEMS.map(n => n.key)
+    if (section && validKeys.includes(section)) setActive(section)
+  }, [])
+
+  // Handle browser back/forward between sections
+  useEffect(() => {
+    const handlePopState = () => {
+      const params = new URLSearchParams(window.location.search)
+      const section = params.get('section')
+      const validKeys = NAV_ITEMS.map(n => n.key)
+      if (section && validKeys.includes(section)) setActive(section)
+    }
+    window.addEventListener('popstate', handlePopState)
+    return () => window.removeEventListener('popstate', handlePopState)
+  }, [])
+
   function navigate(key: string) {
     setActive(key)
     if (isNarrow) setDrawerOpen(false)
+    window.history.pushState(null, '', `${window.location.pathname}?section=${key}`)
   }
 
   async function handleLogout() {

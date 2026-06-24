@@ -86,7 +86,7 @@ export default function Complaints() {
         complaint_type: "User Report",
         notes: r.message,
         reported_at: r.created_at,
-        resolved: false,
+        resolved: r.resolved ?? false,
         trip_id: null,
       }
     }))
@@ -104,7 +104,7 @@ export default function Complaints() {
     setResolving(id)
     if (id.startsWith("report-")) {
       const reportId = id.replace("report-", "")
-      const { error } = await supabase.from("reports").delete().eq("id", reportId)
+      const { error } = await supabase.from("reports").update({ resolved: true }).eq("id", reportId)
       if (error) console.error("Resolve report error:", error)
     } else {
       const { error } = await supabase.from("driver_complaints").update({ resolved: true }).eq("complaint_id", id)

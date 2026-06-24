@@ -55,6 +55,7 @@ export default function ReportModal({ isOpen, onClose, userId, userRole }: Repor
         user_id: userId,
         role: userRole,
         message: message.trim(),
+        resolved: false,
       }])
 
       if (insertError) {

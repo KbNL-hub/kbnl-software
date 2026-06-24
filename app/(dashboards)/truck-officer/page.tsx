@@ -750,7 +750,7 @@ export default function TruckOfficerDashboard() {
                 onMouseEnter={e => { if (assignedTrucks.length > 0) e.currentTarget.style.opacity = "0.9" }}
                 onMouseLeave={e => { if (assignedTrucks.length > 0) e.currentTarget.style.opacity = "1" }}
               >
-                <Icon icon="mdi:plus" width={16} /> Log Expense
+                <Icon icon="mdi:plus" width={16} /> Log Consumption
               </button>
             </div>
             {fuelExpenses.length === 0 && <p style={{ color: "#64748b", fontSize: fontSize.base }}>No fuel expenses logged yet.</p>}
@@ -1042,7 +1042,7 @@ export default function TruckOfficerDashboard() {
 
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
               <button onClick={() => { setShowFuelModal(false); setFuelPlate(""); setFuelTripId(""); setFuelTrips([]); setFuelLitres(""); setFuelNotes(""); setFuelError("") }} style={{ padding: "12px 16px", background: "white", border: "1px solid #cbd5e1", color: "#475569", borderRadius: 8, cursor: "pointer", fontWeight: 700, fontSize: fontSize.md, minHeight: 44 }}>Cancel</button>
-              <button onClick={handleLogFuelExpense} disabled={fuelLoading} style={{ padding: "12px 16px", background: "#0070f3", color: "white", border: "none", borderRadius: 8, cursor: fuelLoading ? "not-allowed" : "pointer", fontWeight: 700, fontSize: fontSize.md, minHeight: 44, opacity: fuelLoading ? 0.7 : 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>{fuelLoading ? <><Icon icon="mdi:loading" width={16} style={{ animation: "spin 1s linear infinite" }} /> Logging...</> : "Log Expense"}</button>
+              <button onClick={handleLogFuelExpense} disabled={fuelLoading} style={{ padding: "12px 16px", background: "#0070f3", color: "white", border: "none", borderRadius: 8, cursor: fuelLoading ? "not-allowed" : "pointer", fontWeight: 700, fontSize: fontSize.md, minHeight: 44, opacity: fuelLoading ? 0.7 : 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>{fuelLoading ? <><Icon icon="mdi:loading" width={16} style={{ animation: "spin 1s linear infinite" }} /> Logging...</> : "Log Consumption"}</button>
             </div>
           </div>
         </div>

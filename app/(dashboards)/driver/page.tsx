@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect, useRef } from "react"
-import { useRouter, useSearchParams } from "next/navigation"
+
 import { Icon } from "@iconify/react"
 import { supabase } from "@/lib/supabase"
 import StopForm from "@/components/StopForm"
@@ -91,10 +91,7 @@ const fontSize = {
 }
 
 export default function DriverDashboard() {
-  const router = useRouter()
-  const searchParams = useSearchParams()
-  const initialView = searchParams.get('view') as ViewType | null || 'dashboard'
-  const [view, setView] = useState<ViewType>(initialView)
+  const [view, setView] = useState<ViewType>("dashboard")
   
   const bp = useBreakpoint()
   const isMobile = bp === "mobile"
@@ -190,9 +187,31 @@ export default function DriverDashboard() {
     return () => subscription.unsubscribe()
   }, [])
 
+  // Sync initial view from URL
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    const viewParam = params.get('view') as ViewType | null
+    if (viewParam && ["dashboard", "start-trip", "active-trip", "log-stop", "fuel"].includes(viewParam)) {
+      setView(viewParam)
+    }
+  }, [])
+
+  // Handle browser back/forward
+  useEffect(() => {
+    const handlePopState = () => {
+      const params = new URLSearchParams(window.location.search)
+      const viewParam = params.get('view') as ViewType | null
+      if (viewParam && ["dashboard", "start-trip", "active-trip", "log-stop", "fuel"].includes(viewParam)) {
+        setView(viewParam)
+      }
+    }
+    window.addEventListener('popstate', handlePopState)
+    return () => window.removeEventListener('popstate', handlePopState)
+  }, [])
+
   function navigateTo(newView: ViewType) {
     setView(newView)
-    router.push(`/driver?view=${newView}`, { scroll: false })
+    window.history.pushState(null, '', `/driver?view=${newView}`)
   }
 
   async function initDriver() {

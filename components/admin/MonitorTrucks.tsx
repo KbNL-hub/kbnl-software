@@ -268,6 +268,7 @@ export default function MonitorTrucks() {
   }
 
   async function fetchDdTrips() {
+    setDdMessage("")
     const { data, error } = await supabase
       .from("dd_trips")
       .select("*")
@@ -923,7 +924,7 @@ export default function MonitorTrucks() {
                         <p style={{ margin: 0, color: "#0f172a", fontSize: fontSize.base, fontWeight: 600 }}>{trip.loaded_quantity}</p>
                       </div>
                       <div>
-                        <p style={{ margin: "0 0 4px 0", color: "#94a3b8", fontSize: fontSize.xs }}>Loading Point</p>
+                        <p style={{ margin: "0 0 4px 0", color: "#94a3b8", fontSize: fontSize.xs }}>Haulage Company</p>
                         <p style={{ margin: 0, color: "#0f172a", fontSize: fontSize.sm }}>{trip.loading_point}</p>
                       </div>
                       <div>
@@ -994,7 +995,7 @@ export default function MonitorTrucks() {
                       <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: fontSize.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px" }}>Driver</th>
                       <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: fontSize.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px" }}>Product</th>
                       <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: fontSize.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px" }}>Bags</th>
-                      <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: fontSize.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px" }}>Loading Point</th>
+                      <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: fontSize.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px" }}>Haulage Company</th>
                       <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: fontSize.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px" }}>Status</th>
                       <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: fontSize.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px" }}>Route</th>
                       <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: fontSize.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px", textAlign: "right" }}>Actions</th>
@@ -1077,9 +1078,9 @@ export default function MonitorTrucks() {
                 </div>
 
                 <div style={{ marginBottom: 16 }}>
-                  <label style={labelStyle}>Loading Point *</label>
+                  <label style={labelStyle}>Haulage Company *</label>
                   <ModernInput as="select" value={ddLoadName} onChange={e => ddHandleLoadNameChange(e.target.value)} options={DD_LOADING_POINTS}>
-                    <option value="">Select loading point</option>
+                    <option value="">Select haulage company</option>
                   </ModernInput>
                 </div>
 

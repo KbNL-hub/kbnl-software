@@ -137,6 +137,7 @@ export default function BrokerPanel({ userProfile }: Props) {
   function navigate(key: string) {
     setActive(key)
     if (isNarrow) setDrawerOpen(false)
+    window.history.pushState(null, '', `${window.location.pathname}?section=${key}`)
   }
 
   async function handleLogout() {
@@ -153,6 +154,26 @@ export default function BrokerPanel({ userProfile }: Props) {
     }
     return BASE_NAV_ITEMS
   }, [isDualRole])
+
+  // Sync initial section from URL
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    const section = params.get('section')
+    const validKeys = NAV_ITEMS.map(n => n.key)
+    if (section && validKeys.includes(section)) setActive(section)
+  }, [NAV_ITEMS])
+
+  // Handle browser back/forward between sections
+  useEffect(() => {
+    const handlePopState = () => {
+      const params = new URLSearchParams(window.location.search)
+      const section = params.get('section')
+      const validKeys = NAV_ITEMS.map(n => n.key)
+      if (section && validKeys.includes(section)) setActive(section)
+    }
+    window.addEventListener('popstate', handlePopState)
+    return () => window.removeEventListener('popstate', handlePopState)
+  }, [NAV_ITEMS])
 
   const activeLabel = NAV_ITEMS.find(n => n.key === active)?.label ?? "Broker Panel"
 
