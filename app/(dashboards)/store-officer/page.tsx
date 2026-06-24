@@ -580,6 +580,7 @@ export default function StoreOfficerDashboard() {
       sale.payment_mode,
       sale.delivery_mode,
       sale.tricycle_number ?? "",
+      sale.truck_plate ?? "",
       sale.broker_id ?? "",
       sale.status,
     ].join("|")
@@ -596,6 +597,7 @@ export default function StoreOfficerDashboard() {
       payment_mode: sale.payment_mode,
       delivery_mode: sale.delivery_mode,
       tricycle_number: sale.tricycle_number,
+      truck_plate: sale.truck_plate,
       sold_at: sale.sold_at,
       broker_id: sale.broker_id,
       broker_name: sale.broker_name,
