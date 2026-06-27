@@ -38,6 +38,7 @@ export async function POST(req: NextRequest) {
         table: string
         data?: Record<string, unknown>
         filters?: Record<string, unknown>
+        conflict?: string
       }>
     }
 
