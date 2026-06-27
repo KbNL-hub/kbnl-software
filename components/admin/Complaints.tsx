@@ -2,7 +2,9 @@
 
 import { useState, useEffect } from "react"
 import { supabase } from "@/lib/supabase"
+import { apiMutate } from "@/lib/api-mutation"
 import { Icon } from "@iconify/react"
+import { usePermissions } from "@/lib/PermissionContext"
 
 type Complaint = {
   complaint_id: string
@@ -39,6 +41,8 @@ const filters = ["All", "Unresolved", "Resolved"]
 
 export default function Complaints() {
   const { isMobile, isDesktop } = useBreakpoint()
+  const { getAccess } = usePermissions()
+  const canEdit = getAccess("complaints").canEdit
   const [complaints, setComplaints] = useState<Complaint[]>([])
   const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState("Unresolved")
@@ -101,17 +105,23 @@ export default function Complaints() {
   }
 
   async function handleResolve(id: string) {
+    if (!canEdit) return
     setResolving(id)
-    if (id.startsWith("report-")) {
-      const reportId = id.replace("report-", "")
-      const { error } = await supabase.from("reports").update({ resolved: true }).eq("id", reportId)
-      if (error) console.error("Resolve report error:", error)
-    } else {
-      const { error } = await supabase.from("driver_complaints").update({ resolved: true }).eq("complaint_id", id)
-      if (error) console.error("Resolve complaint error:", error)
+    try {
+      if (id.startsWith("report-")) {
+        const reportId = id.replace("report-", "")
+        const { error } = await apiMutate("admin", { action: "update", table: "reports", data: { resolved: true }, filters: { id: reportId } })
+        if (error) console.error("Resolve report error:", error)
+      } else {
+        const { error } = await apiMutate("admin", { action: "update", table: "driver_complaints", data: { resolved: true }, filters: { complaint_id: id } })
+        if (error) console.error("Resolve complaint error:", error)
+      }
+      fetchComplaints()
+    } catch {
+      console.error("Network error resolving complaint")
+    } finally {
+      setResolving(null)
     }
-    setResolving(null)
-    fetchComplaints()
   }
 
   const filtered = filter === "All"
@@ -254,21 +264,21 @@ export default function Complaints() {
                   {!c.resolved && (
                     <button
                       onClick={() => handleResolve(c.complaint_id)}
-                      disabled={resolving === c.complaint_id}
+                      disabled={resolving === c.complaint_id || !canEdit}
                       style={{
                         padding: "8px 16px",
-                        background: "#0070f3",
+                        background: resolving === c.complaint_id || !canEdit ? "#94a3b8" : "#0070f3",
                         color: "white",
                         border: "none",
                         borderRadius: 6,
-                        cursor: resolving === c.complaint_id ? "not-allowed" : "pointer",
+                        cursor: resolving === c.complaint_id || !canEdit ? "not-allowed" : "pointer",
                         fontWeight: 600,
                         fontSize: fontSize.sm,
-                        opacity: resolving === c.complaint_id ? 0.7 : 1,
+                        opacity: resolving === c.complaint_id || !canEdit ? 0.7 : 1,
                         transition: "all 0.2s ease"
                       }}
-                      onMouseEnter={e => { if (!resolving) e.currentTarget.style.background = "#0070f3" }}
-                      onMouseLeave={e => { e.currentTarget.style.background = "#0070f3" }}
+                      onMouseEnter={e => { if (!resolving && canEdit) e.currentTarget.style.background = "#0070f3" }}
+                      onMouseLeave={e => { e.currentTarget.style.background = resolving === c.complaint_id || !canEdit ? "#94a3b8" : "#0070f3" }}
                     >
                       {resolving === c.complaint_id ? "Resolving..." : "Mark Resolved"}
                     </button>
@@ -317,17 +327,17 @@ export default function Complaints() {
                         {!c.resolved && (
                           <button
                             onClick={() => handleResolve(c.complaint_id)}
-                            disabled={resolving === c.complaint_id}
+                            disabled={resolving === c.complaint_id || !canEdit}
                             style={{
                               padding: "6px 12px",
-                              background: "#0070f3",
+                              background: resolving === c.complaint_id || !canEdit ? "#94a3b8" : "#0070f3",
                               color: "white",
                               border: "none",
                               borderRadius: 5,
-                              cursor: resolving === c.complaint_id ? "not-allowed" : "pointer",
+                              cursor: resolving === c.complaint_id || !canEdit ? "not-allowed" : "pointer",
                               fontWeight: 500,
                               fontSize: fontSize.xs,
-                              opacity: resolving === c.complaint_id ? 0.7 : 1,
+                              opacity: resolving === c.complaint_id || !canEdit ? 0.7 : 1,
                               transition: "all 0.2s ease",
                               minHeight: 32,
                               minWidth: 32,
@@ -335,8 +345,8 @@ export default function Complaints() {
                               alignItems: "center",
                               justifyContent: "center"
                             }}
-                            onMouseEnter={e => { if (!resolving) e.currentTarget.style.background = "#2f855a" }}
-                            onMouseLeave={e => { e.currentTarget.style.background = "#2f855a" }}
+                            onMouseEnter={e => { if (!resolving && canEdit) e.currentTarget.style.background = "#0070f3" }}
+                            onMouseLeave={e => { e.currentTarget.style.background = resolving === c.complaint_id || !canEdit ? "#94a3b8" : "#0070f3" }}
                           >
                             Resolve
                           </button>

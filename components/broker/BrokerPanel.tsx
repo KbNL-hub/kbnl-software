@@ -4,6 +4,8 @@ import { useState, useEffect, useRef, useMemo } from "react"
 import { useRouter } from "next/navigation"
 import { Icon } from "@iconify/react"
 import { supabase } from "@/lib/supabase"
+import { apiMutate } from "@/lib/api-mutation"
+import RoleSwitcher from "@/components/RoleSwitcher"
 import { useBreakpoint } from "@/app/hooks/useBreakpoint"
 import MyStops from "@/components/broker/MyStops"
 import BrokerPayments from "@/components/broker/CustomerPayments"
@@ -114,15 +116,24 @@ export default function BrokerPanel({ userProfile }: Props) {
       const fileExt = selectedFile.name.split(".").pop()
       const fileName = `${userProfile.user_id}-${Date.now()}.${fileExt}`
       const filePath = `${userProfile.user_id}/${fileName}`
+
+      const { error: uploadError } = await supabase.storage.from("profile-pictures").upload(filePath, selectedFile, { upsert: false })
+      if (uploadError) { setPictureError("Upload failed"); setPictureLoading(false); return }
+      const { data: { publicUrl } } = supabase.storage.from("profile-pictures").getPublicUrl(filePath)
+
+      const { error: updateError } = await apiMutate("admin", { action: "update", table: "Brokers", data: { profile_picture_url: publicUrl }, filters: { broker_id: userProfile.user_id } })
+      if (updateError) {
+        await supabase.storage.from("profile-pictures").remove([filePath])
+        setPictureError("Failed to save profile")
+        setPictureLoading(false)
+        return
+      }
+
       if (profilePicUrl) {
         const oldPath = profilePicUrl.split("/").slice(-2).join("/")
         await supabase.storage.from("profile-pictures").remove([oldPath])
       }
-      const { error: uploadError } = await supabase.storage.from("profile-pictures").upload(filePath, selectedFile, { upsert: false })
-      if (uploadError) { setPictureError("Upload failed"); setPictureLoading(false); return }
-      const { data: { publicUrl } } = supabase.storage.from("profile-pictures").getPublicUrl(filePath)
-      const { error: updateError } = await supabase.from("Brokers").update({ profile_picture_url: publicUrl }).eq("broker_id", userProfile.user_id)
-      if (updateError) { setPictureError("Failed to save profile"); setPictureLoading(false); return }
+
       setProfilePicUrl(publicUrl)
       setPictureLoading(false)
       setShowPictureModal(false)
@@ -160,7 +171,7 @@ export default function BrokerPanel({ userProfile }: Props) {
     const params = new URLSearchParams(window.location.search)
     const section = params.get('section')
     const validKeys = NAV_ITEMS.map(n => n.key)
-    if (section && validKeys.includes(section)) setActive(section)
+    setActive(section && validKeys.includes(section) ? section : "")
   }, [NAV_ITEMS])
 
   // Handle browser back/forward between sections
@@ -169,7 +180,7 @@ export default function BrokerPanel({ userProfile }: Props) {
       const params = new URLSearchParams(window.location.search)
       const section = params.get('section')
       const validKeys = NAV_ITEMS.map(n => n.key)
-      if (section && validKeys.includes(section)) setActive(section)
+      setActive(section && validKeys.includes(section) ? section : "")
     }
     window.addEventListener('popstate', handlePopState)
     return () => window.removeEventListener('popstate', handlePopState)
@@ -332,9 +343,7 @@ export default function BrokerPanel({ userProfile }: Props) {
                 <h1 style={{ margin: 0, fontSize: isMobile ? 15 : 18, fontWeight: 700, color: "#fff" }}>
                   {userProfile.full_name}
                 </h1>
-                <p style={{ margin: 0, fontSize: 12, color: "rgba(255,255,255,0.7)" }}>
-                  {isDualRole ? `${clerkOfficeName} Cash Officer & Broker` : "Broker"}
-                </p>
+                <RoleSwitcher currentRole={userProfile.role} style={{ margin: 0, fontSize: 12, color: "rgba(255,255,255,0.7)" }} />
               </div>
             </div>
             {isNarrow && (

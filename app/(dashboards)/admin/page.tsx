@@ -38,7 +38,7 @@ export default function AdminDashboard() {
 
         const { data: profile, error: profileError } = await supabase
           .from("Profiles")
-          .select("user_id, role, full_name")
+          .select("user_id, role, full_name, profile_picture_url")
           .eq("user_id", session.user.id)
           .single()
 
@@ -48,15 +48,29 @@ export default function AdminDashboard() {
           return
         }
 
-        const authorizedRoles = ["Admin", "Broker", "TruckAdmin"]
-        if (!authorizedRoles.includes(profile.role)) {
+        // Check UserRoles for admin dashboard access
+        const { data: userRoles } = await supabase
+          .from("UserRoles")
+          .select("role")
+          .eq("user_id", session.user.id)
+
+        let roles = userRoles?.map(r => r.role) || []
+        // Fall back to Profiles.role for legacy users without UserRoles entries
+        if (roles.length === 0) {
+          roles = [profile.role]
+        }
+        const dashboardRoles = ["SuperAdmin", "Supervisor", "CashAuthorizer", "TruckAdmin", "DeskOfficer", "ATCOfficer", "Admin", "Broker"]
+        const dashboardRole = dashboardRoles.find(r => roles.includes(r))
+        const hasAdminAccess = Boolean(dashboardRole)
+
+        if (!hasAdminAccess) {
           setError("You do not have permission to access this dashboard")
           setLoading(false)
           return
         }
 
-        let profilePictureUrl: string | undefined
-        if (profile.role === "Broker") {
+        let profilePictureUrl: string | undefined = profile.profile_picture_url
+        if (dashboardRole === "Broker") {
           const { data: brokerData } = await supabase
             .from("brokers")
             .select("profile_picture_url")
@@ -65,7 +79,7 @@ export default function AdminDashboard() {
           if (brokerData?.profile_picture_url) profilePictureUrl = brokerData.profile_picture_url
         }
 
-        setUserProfile({ ...profile, profile_picture_url: profilePictureUrl })
+        setUserProfile({ ...profile, role: dashboardRole!, profile_picture_url: profilePictureUrl })
         setLoading(false)
       } catch (err) {
         console.error("Init error:", err)
@@ -124,7 +138,11 @@ export default function AdminDashboard() {
   const renderDashboard = () => {
     switch (userProfile.role) {
       case "Admin":
-      case "TruckAdmin":
+      case "SuperAdmin":
+      case "Supervisor":
+      case "CashAuthorizer":
+      case "DeskOfficer":
+      case "ATCOfficer":
         return <AdminPanel userProfile={userProfile} />
       case "Broker":
         return <BrokerPanel userProfile={userProfile} />

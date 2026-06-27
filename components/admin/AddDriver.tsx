@@ -2,13 +2,19 @@
 import ModernInput from "@/components/ModernInput";
 
 import { useState, useRef } from "react"
+import InviteSuccessCard from "@/components/admin/InviteSuccessCard"
+import { usePermissions } from "@/lib/PermissionContext"
 
 export default function AddDriver() {
+  const { getAccess } = usePermissions()
+  const canEdit = getAccess("add-driver").canEdit
+
   const [fullName, setFullName] = useState("")
   const [phoneNumber, setPhoneNumber] = useState("")
   const [email, setEmail] = useState("")
   const [message, setMessage] = useState("")
   const [submitting, setSubmitting] = useState(false)
+  const [inviteResult, setInviteResult] = useState<{ tempPassword: string; email: string } | null>(null)
 
   const phoneRef = useRef<HTMLInputElement>(null)
   const emailRef = useRef<HTMLInputElement>(null)
@@ -19,24 +25,39 @@ export default function AddDriver() {
 
     setSubmitting(true)
 
-    const res = await fetch("/api/invite-user", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email, fullName, phoneNumber, role: "Driver" }),
-    })
+    try {
+      const res = await fetch("/api/invite-user", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, fullName, phoneNumber, role: "Driver" }),
+      })
 
-    const result = await res.json()
-    setSubmitting(false)
+      const result = await res.json()
 
-    if (!res.ok) {
-      setMessage("Failed: " + result.error)
-      return
+      if (!res.ok) {
+        setMessage("Failed: " + result.error)
+        return
+      }
+
+      setInviteResult({ tempPassword: result.tempPassword, email })
+      setMessage("")
+    } catch {
+      setMessage("Network error, please try again")
+    } finally {
+      setSubmitting(false)
     }
+  }
 
-    setMessage("✅ Driver invited successfully")
-    setFullName("")
-    setPhoneNumber("")
-    setEmail("")
+  if (inviteResult) {
+    return (
+      <div style={{ maxWidth: 400 }}>
+        <InviteSuccessCard
+          tempPassword={inviteResult.tempPassword}
+          email={inviteResult.email}
+          onClose={() => { setInviteResult(null); setFullName(""); setPhoneNumber(""); setEmail("") }}
+        />
+      </div>
+    )
   }
 
   return (
@@ -53,7 +74,8 @@ export default function AddDriver() {
           onChange={(e) => { setFullName(e.target.value); setMessage("") }}
           onKeyDown={(e) => { if (e.key === "Enter") phoneRef.current?.focus() }}
           style={{ width: "100%", padding: 10, boxSizing: "border-box" }}
-          data-modern-input="migrated" />
+          data-modern-input="migrated"
+          readOnly={!canEdit} />
       </div>
       <div style={{ marginBottom: 16 }}>
         <label style={{ fontWeight: "bold", display: "block", marginBottom: 6 }}>
@@ -67,7 +89,8 @@ export default function AddDriver() {
           onChange={(e) => { setPhoneNumber(e.target.value); setMessage("") }}
           onKeyDown={(e) => { if (e.key === "Enter") emailRef.current?.focus() }}
           style={{ width: "100%", padding: 10, boxSizing: "border-box" }}
-          data-modern-input="migrated" />
+          data-modern-input="migrated"
+          readOnly={!canEdit} />
       </div>
       <div style={{ marginBottom: 24 }}>
         <label style={{ fontWeight: "bold", display: "block", marginBottom: 6 }}>
@@ -81,15 +104,16 @@ export default function AddDriver() {
           onChange={(e) => { setEmail(e.target.value); setMessage("") }}
           onKeyDown={(e) => { if (e.key === "Enter") handleSubmit() }}
           style={{ width: "100%", padding: 10, boxSizing: "border-box" }}
-          data-modern-input="migrated" />
+          data-modern-input="migrated"
+          readOnly={!canEdit} />
       </div>
       <button
         onClick={handleSubmit}
-        disabled={submitting}
+        disabled={submitting || !canEdit}
         style={{
-          width: "100%", padding: "12px 0", background: "#0070f3",
+          width: "100%", padding: "12px 0", background: submitting || !canEdit ? "#94a3b8" : "#0070f3",
           color: "white", border: "none", borderRadius: 6,
-          fontSize: 16, cursor: submitting ? "not-allowed" : "pointer"
+          fontSize: 16, cursor: submitting || !canEdit ? "not-allowed" : "pointer"
         }}
       >
         {submitting ? "Sending Invite..." : "Add Driver"}

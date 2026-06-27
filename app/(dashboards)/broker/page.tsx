@@ -3,6 +3,8 @@
 import { useState, useEffect, useRef } from "react"
 import { Icon } from "@iconify/react"
 import { supabase } from "@/lib/supabase"
+import { apiMutate } from "@/lib/api-mutation"
+import RoleSwitcher from "@/components/RoleSwitcher"
 import ReportModal from "@/components/ReportModal"
 import { formatAmount, parseAmount } from "@/lib/formatAmount"
 import ModernInput from "@/components/ModernInput"
@@ -289,9 +291,11 @@ export default function BrokerDashboard() {
     if (!user) return
 
     setSubmitting(true)
-    const { error } = await supabase.from("Stops").update({
-      disputed: true, dispute_reason: disputeReason, disputed_by: user.id,
-    }).eq("stop_id", disputingStop.stop_id)
+    const { error } = await apiMutate("trips", {
+      action: "update", table: "Stops",
+      data: { disputed: true, dispute_reason: disputeReason, disputed_by: user.id },
+      filters: { stop_id: disputingStop.stop_id },
+    })
     setSubmitting(false)
 
     if (error) { setMessage("Failed to dispute stop"); return }
@@ -308,16 +312,18 @@ export default function BrokerDashboard() {
     setSubmitting(true)
     const customerIdToSave = selectedCustomer?.customer_id ?? selectedStop.customer_id
 
-    const { error: stopError } = await supabase.from("Stops").update({
-      confirmed: true, customer_id: customerIdToSave, updated_by: user.id,
-    }).eq("stop_id", selectedStop.stop_id)
+    const { error: stopError } = await apiMutate("trips", {
+      action: "update", table: "Stops",
+      data: { confirmed: true, customer_id: customerIdToSave, updated_by: user.id },
+      filters: { stop_id: selectedStop.stop_id },
+    })
 
     if (stopError) { setMessage("Failed to confirm stop"); setSubmitting(false); return }
 
-    const { error: confirmError } = await supabase.from("Stop_Confirmations").insert([{
-      stop_id: selectedStop.stop_id, broker_id: brokerId,
-      customer_id: customerIdToSave, price_per_bag: parseAmount(pricePerBag),
-    }])
+    const { error: confirmError } = await apiMutate("trips", {
+      action: "insert", table: "Stop_Confirmations",
+      data: { stop_id: selectedStop.stop_id, broker_id: brokerId, customer_id: customerIdToSave, price_per_bag: parseAmount(pricePerBag) },
+    })
 
     setSubmitting(false)
     if (confirmError) { setMessage("Stop updated but confirmation record failed"); return }
@@ -462,9 +468,7 @@ export default function BrokerDashboard() {
               <h1 style={{ margin: 0, fontSize: isMobile ? fontSize.lg : fontSize.xl, fontWeight: 700, color: "#0070f3" }}>
                 {broker?.full_name}
               </h1>
-              <p style={{ margin: "2px 0 0", fontSize: fontSize.sm, color: "#64748b" }}>
-                {isDualRole ? clerkOfficeName + " Cash Officer & Broker" : "Broker"}
-              </p>
+              <RoleSwitcher currentRole="Broker" style={{ margin: "2px 0 0", fontSize: fontSize.sm, color: "#64748b" }} />
             </div>
           </div>
           <div style={{ display: "flex", gap: 8 }}>

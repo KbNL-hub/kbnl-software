@@ -2,7 +2,9 @@
 
 import { useState, useEffect } from "react"
 import { supabase } from "@/lib/supabase"
+import { apiMutate } from "@/lib/api-mutation"
 import { Icon } from "@iconify/react"
+import { usePermissions } from "@/lib/PermissionContext"
 
 type Payment = {
   payment_id: string
@@ -52,6 +54,8 @@ const fontSize = {
 }
 
 export default function CustomerPaymentsAdmin() {
+  const { getAccess } = usePermissions()
+  const canEdit = getAccess("customer-payments").canEdit
   const { isMobile, isDesktop } = useBreakpoint()
   const [payments, setPayments] = useState<Payment[]>([])
   const [profilesMap, setProfilesMap] = useState<Record<string, string>>({})
@@ -101,6 +105,7 @@ export default function CustomerPaymentsAdmin() {
   }
 
   async function handlePost() {
+    if (!canEdit) return
     if (!selectedPayment) return
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return
@@ -108,50 +113,51 @@ export default function CustomerPaymentsAdmin() {
     setSubmitting(true)
     setErrorMsg("")
 
-    let finalCustomerId = selectedPayment.customer_id
+    try {
+      let finalCustomerId = selectedPayment.customer_id
+      let createdCustomer = false
 
-    if (!finalCustomerId) {
-      if (!newCustomerId.trim()) {
-        setErrorMsg("Please assign a Customer ID for this new customer.")
-        setSubmitting(false)
-        return
-      }
-      
-      finalCustomerId = newCustomerId.trim()
-      
-      const { error: customerError } = await supabase
-        .from("Customers")
-        .insert([{
-          customer_id: finalCustomerId,
-          full_name: selectedPayment.customer_name,
-          phone_number: selectedPayment.phone_number || null
-        }])
+      if (!finalCustomerId) {
+        if (!newCustomerId.trim()) {
+          setErrorMsg("Please assign a Customer ID for this new customer.")
+          return
+        }
         
-      if (customerError) {
-        setErrorMsg("Failed to create customer: " + customerError.message)
-        setSubmitting(false)
+        finalCustomerId = newCustomerId.trim()
+        
+        const { error: customerError } = await apiMutate("finance", {
+          action: "insert", table: "Customers",
+          data: { customer_id: finalCustomerId, full_name: selectedPayment.customer_name, phone_number: selectedPayment.phone_number || null }
+        })
+
+        if (customerError) {
+          setErrorMsg("Failed to create customer: " + customerError)
+          return
+        }
+        createdCustomer = true
+      }
+
+      const { error: paymentError } = await apiMutate("finance", {
+        action: "update", table: "customer_payments",
+        data: { status: "Posted", customer_id: finalCustomerId, posted_by: user.id, posted_at: new Date().toISOString() },
+        filters: { payment_id: selectedPayment.payment_id },
+      })
+
+      if (paymentError) {
+        if (createdCustomer) {
+          await supabase.from("Customers").delete().eq("customer_id", finalCustomerId)
+        }
+        setErrorMsg("Failed to post: " + paymentError)
         return
       }
+
+      setShowPostModal(false)
+      fetchPayments()
+    } catch {
+      setErrorMsg("Network error, please try again")
+    } finally {
+      setSubmitting(false)
     }
-
-    const { error: paymentError } = await supabase
-      .from("customer_payments")
-      .update({
-        status: "Posted",
-        customer_id: finalCustomerId,
-        posted_by: user.id,
-        posted_at: new Date().toISOString()
-      })
-      .eq("payment_id", selectedPayment.payment_id)
-
-    setSubmitting(false)
-    if (paymentError) {
-      setErrorMsg("Failed to post: " + paymentError.message)
-      return
-    }
-
-    setShowPostModal(false)
-    fetchPayments()
   }
 
   const filteredBrokers = brokersList.filter(b => b.broker_name.toLowerCase().includes(brokerSearch.toLowerCase()))
@@ -376,7 +382,7 @@ export default function CustomerPaymentsAdmin() {
               <p style={{ margin: "12px 0 0 0", color: "#94a3b8", fontSize: fontSize.xs }}>{new Date(p.payment_date).toLocaleDateString()}</p>
 
               {p.status === "Pending" && (
-                <button onClick={() => openPostModal(p)} style={{ width: "100%", marginTop: 12, padding: "10px 14px", background: "#0070f3", color: "white", border: "none", borderRadius: 8, cursor: "pointer", fontWeight: 600, fontSize: fontSize.md, minHeight: 40 }}>
+                <button onClick={() => { if (!canEdit) return; openPostModal(p) }} style={{ width: "100%", marginTop: 12, padding: "10px 14px", background: canEdit ? "#0070f3" : "#94a3b8", color: "white", border: "none", borderRadius: 8, cursor: canEdit ? "pointer" : "not-allowed", fontWeight: 600, fontSize: fontSize.md, minHeight: 40 }}>
                   Review & Post
                 </button>
               )}
@@ -423,7 +429,7 @@ export default function CustomerPaymentsAdmin() {
                   </td>
                   <td style={{ padding: "12px 16px", textAlign: "right" }}>
                     {p.status === "Pending" ? (
-                      <button onClick={() => openPostModal(p)} style={{ padding: "6px 10px", background: "#0070f3", color: "white", border: "none", borderRadius: 6, cursor: "pointer", fontSize: fontSize.sm, fontWeight: 600, minHeight: 32 }}>
+                      <button onClick={() => { if (!canEdit) return; openPostModal(p) }} style={{ padding: "6px 10px", background: canEdit ? "#0070f3" : "#94a3b8", color: "white", border: "none", borderRadius: 6, cursor: canEdit ? "pointer" : "not-allowed", fontSize: fontSize.sm, fontWeight: 600, minHeight: 32 }}>
                         Post
                       </button>
                     ) : (
@@ -483,7 +489,7 @@ export default function CustomerPaymentsAdmin() {
                   Assign an alphanumeric Customer ID to create their profile.
                 </p>
                 <label style={{ display: "block", fontWeight: 600, marginBottom: 6, fontSize: fontSize.sm, color: "#1e40af" }}>Customer ID *</label>
-                <input type="text" placeholder="e.g. CUST-1049" value={newCustomerId} onChange={e => { setNewCustomerId(e.target.value); setErrorMsg("") }} style={{ width: "100%", padding: "10px 12px", borderRadius: 6, border: "1px solid #bfdbfe", boxSizing: "border-box", fontSize: fontSize.base }} autoFocus />
+                <input type="text" placeholder="e.g. CUST-1049" value={newCustomerId} onChange={e => { setNewCustomerId(e.target.value); setErrorMsg("") }} readOnly={!canEdit} style={{ width: "100%", padding: "10px 12px", borderRadius: 6, border: "1px solid #bfdbfe", boxSizing: "border-box", fontSize: fontSize.base }} autoFocus />
               </div>
             )}
 
@@ -493,7 +499,7 @@ export default function CustomerPaymentsAdmin() {
               <button onClick={() => setShowPostModal(false)} style={{ padding: "12px 16px", background: "white", color: "#475569", border: "1px solid #cbd5e1", borderRadius: 8, cursor: "pointer", fontWeight: 600, fontSize: fontSize.md, minHeight: 44 }}>
                 Cancel
               </button>
-              <button onClick={handlePost} disabled={submitting} style={{ padding: "12px 16px", background: "#0070f3", color: "white", border: "none", borderRadius: 8, cursor: submitting ? "not-allowed" : "pointer", fontWeight: 600, fontSize: fontSize.md, opacity: submitting ? 0.7 : 1, minHeight: 44, display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
+              <button onClick={handlePost} disabled={submitting || !canEdit} style={{ padding: "12px 16px", background: submitting || !canEdit ? "#94a3b8" : "#0070f3", color: "white", border: "none", borderRadius: 8, cursor: submitting || !canEdit ? "not-allowed" : "pointer", fontWeight: 600, fontSize: fontSize.md, opacity: submitting ? 0.7 : 1, minHeight: 44, display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
                 {submitting ? <Icon icon="mdi:loading" width="16" height="16" style={{ animation: "spin 1s linear infinite" }} /> : <Icon icon="mdi:check-circle" width="16" height="16" />}
                 {submitting ? "Processing..." : "Confirm & Post"}
               </button>

@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react"
 import { Icon } from "@iconify/react"
 import { supabase } from "@/lib/supabase"
+import { apiMutate } from "@/lib/api-mutation"
 import { formatAmount, parseAmount } from "@/lib/formatAmount"
 import { useBreakpoint } from "@/app/hooks/useBreakpoint"
 import CustomerSelector from "./CustomerSelector"
@@ -92,12 +93,13 @@ export default function CustomerPayments({ brokerId }: { brokerId: string }) {
     }
 
     if (editingPayment) {
-      const { error } = await supabase.from("customer_payments").update(payload).eq("payment_id", editingPayment.payment_id)
-      if (error) setMessage("Failed to update: " + error.message)
+      const { data, error } = await apiMutate<unknown[]>("finance", { action: "update", table: "customer_payments", data: payload, filters: { payment_id: editingPayment.payment_id, status: "Pending" } })
+      if (error) setMessage("Failed to update: " + error)
+      else if (data && data.length === 0) setMessage("This payment has already been posted and can no longer be edited.")
       else { setShowModal(false); fetchPayments() }
     } else {
-      const { error } = await supabase.from("customer_payments").insert([payload])
-      if (error) setMessage("Failed to log: " + error.message)
+      const { error } = await apiMutate("finance", { action: "insert", table: "customer_payments", data: payload })
+      if (error) setMessage("Failed to log: " + error)
       else { setShowModal(false); fetchPayments() }
     }
     setSubmitting(false)

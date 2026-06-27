@@ -1,7 +1,8 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useState, useMemo } from "react"
 import { supabase } from "@/lib/supabase"
+import { apiMutate } from "@/lib/api-mutation"
 import { formatAmount, parseAmount } from "@/lib/formatAmount"
 
 type Props = {
@@ -10,11 +11,22 @@ type Props = {
   fullName: string
 }
 
+type CashDeposit = {
+  deposit_id: string
+  office_name: string
+  amount: number
+  note: string | null
+  deposited_by: string
+  created_at: string
+}
+
 type CashExpense = {
   expense_id: string
+  clerk_id: string
   title: string
   total_amount: number
   status: "Pending" | "Authorised" | "Rejected"
+  authorised_by: string | null
   rejection_reason: string | null
   created_at: string
   resolved_at: string | null
@@ -34,6 +46,7 @@ type ExpenseItem = {
 export default function CashOfficerPanel({ clerkId, officeName, fullName }: Props) {
   const [officeBalance, setOfficeBalance] = useState<number>(0)
   const [expenses, setExpenses] = useState<CashExpense[]>([])
+  const [deposits, setDeposits] = useState<CashDeposit[]>([])
   const [loading, setLoading] = useState(true)
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null)
   const [filter, setFilter] = useState("All")
@@ -62,6 +75,7 @@ export default function CashOfficerPanel({ clerkId, officeName, fullName }: Prop
     const interval = setInterval(() => {
       fetchOfficeBalance()
       fetchExpenses()
+      fetchDeposits()
     }, 30000)
     return () => clearInterval(interval)
   }, [clerkId, officeName])
@@ -70,7 +84,8 @@ export default function CashOfficerPanel({ clerkId, officeName, fullName }: Prop
     setLoading(true)
     await Promise.all([
       fetchOfficeBalance(),
-      fetchExpenses()
+      fetchExpenses(),
+      fetchDeposits()
     ])
     setLoading(false)
   }
@@ -85,13 +100,41 @@ export default function CashOfficerPanel({ clerkId, officeName, fullName }: Prop
     setLastUpdated(new Date())
   }
 
+  const balanceMap = useMemo(() => {
+    const map: Record<string, number> = {}
+    const records: { id: string; amount: number; created_at: string }[] = [
+      ...expenses.filter(e => e.status === "Authorised").map(e => ({
+        id: e.expense_id, amount: e.total_amount, created_at: e.created_at
+      })),
+      ...deposits.map(d => ({
+        id: d.deposit_id, amount: -d.amount, created_at: d.created_at
+      })),
+    ]
+    records.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+    let running = officeBalance
+    for (const rec of records) {
+      map[rec.id] = running
+      running += rec.amount
+    }
+    return map
+  }, [expenses, deposits, officeBalance])
+
   async function fetchExpenses() {
     const { data } = await supabase
       .from("cash_expenses")
       .select("*")
-      .eq("clerk_id", clerkId)
+      .eq("office_name", officeName)
       .order("created_at", { ascending: false })
     if (data) setExpenses(data)
+  }
+
+  async function fetchDeposits() {
+    const { data } = await supabase
+      .from("cash_deposits")
+      .select("*")
+      .eq("office_name", officeName)
+      .order("created_at", { ascending: false })
+    if (data) setDeposits(data)
   }
 
   function handleAddItem() {
@@ -141,41 +184,47 @@ export default function CashOfficerPanel({ clerkId, officeName, fullName }: Prop
     setSubmitLoading(true)
     setErrorMsg("")
 
-    const { data: expData, error: expError } = await supabase
-      .from("cash_expenses")
-      .insert([{
+    const { data: expData, error: expError } = await apiMutate("finance", {
+      action: "insert", table: "cash_expenses",
+      data: {
         office_name: officeName,
         clerk_id: clerkId,
         title: expenseTitle.trim(),
         total_amount: runningTotal,
         status: "Pending"
-      }])
-      .select()
-      .single()
+      },
+    })
 
     if (expError) {
       setSubmitLoading(false)
-      setErrorMsg("Failed to create expense: " + expError.message)
+      setErrorMsg("Failed to create expense: " + expError)
       return
     }
 
-    const expenseId = expData.expense_id
+    const expenseData = Array.isArray(expData) ? expData[0] : expData as { expense_id: string }
+    const expenseId = expenseData.expense_id
     const itemsToInsert = validatedItems.map(it => ({
       expense_id: expenseId,
       item_name: it.item_name,
       amount: it.amount
     }))
 
-    const { error: itemsError } = await supabase
-      .from("cash_expense_items")
-      .insert(itemsToInsert)
+    let itemsError: string | null = null
+    for (const item of itemsToInsert) {
+      const { error } = await apiMutate("finance", {
+        action: "insert", table: "cash_expense_items", data: item,
+      })
+      if (error) { itemsError = error; break }
+    }
 
-    setSubmitLoading(false)
     if (itemsError) {
-      setErrorMsg("Expense created but failed to save individual items: " + itemsError.message)
-      fetchExpenses()
+      await apiMutate("finance", { action: "delete", table: "cash_expenses", filters: { expense_id: expenseId } })
+      setSubmitLoading(false)
+      setErrorMsg("Failed to save individual items: " + itemsError)
       return
     }
+
+    setSubmitLoading(false)
 
     setSuccessMsg("Expense logged successfully!")
     setShowLogModal(false)
@@ -184,7 +233,8 @@ export default function CashOfficerPanel({ clerkId, officeName, fullName }: Prop
     
     await Promise.all([
       fetchOfficeBalance(),
-      fetchExpenses()
+      fetchExpenses(),
+      fetchDeposits()
     ])
 
     setTimeout(() => setSuccessMsg(""), 3000)
@@ -205,12 +255,25 @@ export default function CashOfficerPanel({ clerkId, officeName, fullName }: Prop
     if (!confirm("Are you sure you want to cancel and delete this pending expense?")) return
 
     setLoading(true)
-    await supabase.from("cash_expense_items").delete().eq("expense_id", expenseId)
-    await supabase.from("cash_expenses").delete().eq("expense_id", expenseId)
+    setErrorMsg("")
+    const { error: itemsError } = await apiMutate("finance", { action: "delete", table: "cash_expense_items", filters: { expense_id: expenseId } })
+
+    if (itemsError) {
+      setErrorMsg("Failed to delete expense items: " + itemsError)
+      setLoading(false)
+      return
+    }
+
+    const { error: expError } = await apiMutate("finance", { action: "delete", table: "cash_expenses", filters: { expense_id: expenseId } })
+
+    if (expError) {
+      setErrorMsg("Failed to delete expense: " + expError)
+    }
 
     await Promise.all([
       fetchOfficeBalance(),
-      fetchExpenses()
+      fetchExpenses(),
+      fetchDeposits()
     ])
     setLoading(false)
   }
@@ -271,6 +334,12 @@ export default function CashOfficerPanel({ clerkId, officeName, fullName }: Prop
         </button>
       </div>
 
+      {errorMsg && (
+        <div style={{ padding: "12px 16px", background: "#fff5f5", border: "1px solid #fed7d7", color: "#c53030", borderRadius: 8, marginBottom: 24, fontWeight: "bold" }}>
+          {errorMsg}
+        </div>
+      )}
+
       {/* Expense History Table */}
       <div style={{ background: "white", borderRadius: 12, border: "1px solid #eee", padding: 24 }}>
         <h3 style={{ margin: "0 0 20px" }}>My Logged Expenses</h3>
@@ -299,11 +368,11 @@ export default function CashOfficerPanel({ clerkId, officeName, fullName }: Prop
 
         {loading ? (
           <p style={{ color: "#888", textAlign: "center", padding: "40px 0" }}>Loading expenses...</p>
-        ) : expenses.filter(e => filter === "All" || e.status === filter).length === 0 ? (
+        ) : expenses.filter(e => e.clerk_id === clerkId && (filter === "All" || e.status === filter)).length === 0 ? (
           <p style={{ color: "#888", textAlign: "center", padding: "40px 0" }}>No {filter === "All" ? "" : filter.toLowerCase()} expenses found.</p>
         ) : (
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: "16px" }}>
-            {expenses.filter(e => filter === "All" || e.status === filter).map((exp) => {
+            {expenses.filter(e => e.clerk_id === clerkId && (filter === "All" || e.status === filter)).map((exp) => {
               let statusBg = "#eee"
               let statusColor = "#666"
               if (exp.status === "Pending") { statusBg = "#ebf8ff"; statusColor = "#2b6cb0" }
@@ -324,6 +393,11 @@ export default function CashOfficerPanel({ clerkId, officeName, fullName }: Prop
                       <span style={{ fontSize: 14, color: "#666" }}>₦</span>
                       {exp.total_amount.toLocaleString()}
                     </div>
+                    {exp.status === "Authorised" && balanceMap[exp.expense_id] !== undefined && (
+                      <span style={{ marginTop: 4, fontSize: 11, fontWeight: 600, color: "#16a34a", background: "#f0fdf4", padding: "2px 8px", borderRadius: 4, display: "inline-block" }}>
+                        Balance after: ₦{balanceMap[exp.expense_id].toLocaleString()}
+                      </span>
+                    )}
                   </div>
                   
                   {exp.status === "Rejected" && exp.rejection_reason && (

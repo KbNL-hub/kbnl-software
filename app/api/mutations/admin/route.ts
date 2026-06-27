@@ -1,0 +1,105 @@
+import { createClient } from "@supabase/supabase-js"
+import { NextRequest, NextResponse } from "next/server"
+
+const supabaseAdmin = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!,
+)
+
+const ALLOWED_TABLES = ["tricycles", "reports", "driver_complaints", "truck_officers", "truck_admins", "cash_officers", "store_officers", "Brokers", "Profiles", "Drivers", "station_managers", "desk_officers", "atc_officers"] as const
+
+async function authorizeUser(token: string) {
+  const { data: { user }, error } = await supabaseAdmin.auth.getUser(token)
+  if (error || !user) return null
+  return user
+}
+
+function buildError(msg: string, status: number) {
+  return NextResponse.json({ error: msg }, { status })
+}
+
+export async function POST(req: NextRequest) {
+  const authHeader = req.headers.get("Authorization")
+  if (!authHeader?.startsWith("Bearer ")) return buildError("Unauthorized", 401)
+
+  const user = await authorizeUser(authHeader.slice(7))
+  if (!user) return buildError("Unauthorized", 401)
+
+  try {
+    const body = await req.json()
+    const { action, table, data, filters, conflict } = body as {
+      action: string
+      table: string
+      data?: Record<string, unknown>
+      filters?: Record<string, unknown>
+      conflict?: string
+    }
+
+    if (!ALLOWED_TABLES.includes(table as any)) {
+      return buildError(`Table "${table}" is not supported by this endpoint`, 400)
+    }
+
+    if (!["insert", "update", "delete", "upsert"].includes(action)) {
+      return buildError(`Invalid action "${action}"`, 400)
+    }
+
+    switch (action) {
+      case "insert": {
+        if (!data) return buildError("data is required for insert", 400)
+        const { data: result, error } = await supabaseAdmin.from(table).insert([data]).select()
+        if (error) {
+          console.error("Mutation failed", error)
+          return buildError("Mutation failed", 500)
+        }
+        return NextResponse.json({ data: result })
+      }
+
+      case "upsert": {
+        if (!data) return buildError("data is required for upsert", 400)
+        const upsertOptions = conflict ? { onConflict: conflict } : {}
+        const { data: result, error } = await supabaseAdmin.from(table).upsert([data], upsertOptions).select()
+        if (error) {
+          console.error("Mutation failed", error)
+          return buildError("Mutation failed", 500)
+        }
+        return NextResponse.json({ data: result })
+      }
+
+      case "update": {
+        if (!data) return buildError("data is required for update", 400)
+        if (!filters || Object.keys(filters).length === 0) {
+          return buildError("filters are required for update", 400)
+        }
+        let query = supabaseAdmin.from(table).update(data)
+        for (const [key, value] of Object.entries(filters)) {
+          query = query.eq(key, value)
+        }
+        const { data: result, error } = await query.select()
+        if (error) {
+          console.error("Mutation failed", error)
+          return buildError("Mutation failed", 500)
+        }
+        return NextResponse.json({ data: result })
+      }
+
+      case "delete": {
+        if (!filters || Object.keys(filters).length === 0) {
+          return buildError("filters are required for delete", 400)
+        }
+        let query = supabaseAdmin.from(table).delete()
+        for (const [key, value] of Object.entries(filters)) {
+          query = query.eq(key, value)
+        }
+        const { data: result, error } = await query.select()
+        if (error) {
+          console.error("Mutation failed", error)
+          return buildError("Mutation failed", 500)
+        }
+        return NextResponse.json({ data: result })
+      }
+    }
+  } catch (err) {
+    console.error("Mutation error", err)
+    return buildError("Internal server error", 500)
+  }
+}

@@ -3,6 +3,8 @@
 import { useEffect, useState, useRef } from "react"
 import { useRouter } from "next/navigation"
 import { supabase } from "@/lib/supabase"
+import { apiMutate } from "@/lib/api-mutation"
+import RoleSwitcher from "@/components/RoleSwitcher"
 import { formatAmount, parseAmount } from "@/lib/formatAmount"
 import ModernInput from "@/components/ModernInput"
 import { Icon } from "@iconify/react"
@@ -17,9 +19,26 @@ type AssignedTruck = {
   fuel_balance: number
 }
 
+type MaintenanceDeposit = {
+  deposit_id: string
+  amount: number
+  note: string | null
+  deposited_by: string
+  created_at: string
+}
+
+type BulkProcurement = {
+  procurement_id: string
+  item_name: string
+  total_amount: number
+  notes: string | null
+  logged_at: string
+}
+
 type MaintenanceReport = {
   report_id: string
   plate_number: string
+  manager_id: string
   maintenance_type: string
   maintenance_location: string | null
   amount: number
@@ -117,6 +136,9 @@ export default function TruckOfficerDashboard() {
   const [officer, setOfficer] = useState<TruckOfficer | null>(null)
   const [assignedTrucks, setAssignedTrucks] = useState<AssignedTruck[]>([])
   const [reports, setReports] = useState<MaintenanceReport[]>([])
+  const [procurements, setProcurements] = useState<BulkProcurement[]>([])
+  const [deposits, setDeposits] = useState<MaintenanceDeposit[]>([])
+  const [balanceMap, setBalanceMap] = useState<Record<string, number>>({})
   const [fuelExpenses, setFuelExpenses] = useState<FuelExpense[]>([])
   const [atfs, setAtfs] = useState<ATF[]>([])
   const [maintenanceBalance, setMaintenanceBalance] = useState<number | null>(null)
@@ -182,14 +204,21 @@ export default function TruckOfficerDashboard() {
       const user = session.user
 
       const { data: profile } = await supabase
-        .from("Profiles").select("role").eq("user_id", user.id).single()
-      if (profile?.role !== "TruckOfficer") { router.push("/login"); return }
+        .from("Profiles").select("full_name").eq("user_id", user.id).single()
 
       const { data: manager } = await supabase
-        .from("truck_officers").select("manager_id, full_name, profile_picture_url").eq("manager_id", user.id).single()
-      if (!manager) { router.push("/login"); return }
+        .from("truck_officers")
+        .select("manager_id, full_name, profile_picture_url")
+        .eq("manager_id", user.id)
+        .single()
 
-      setOfficer(manager)
+      if (!manager) {
+        router.push("/login")
+        return
+      }
+
+      const managerId = manager.manager_id
+      setOfficer({ ...manager, full_name: profile?.full_name ?? manager.full_name })
 
       const { data: drivers } = await supabase
         .from("Drivers").select("driver_id, full_name").eq("status", "Active").order("full_name")
@@ -200,11 +229,13 @@ export default function TruckOfficerDashboard() {
       setFuelCompanies(companies || [])
 
       await Promise.all([
-        fetchTrucks(manager.manager_id),
-        fetchReports(manager.manager_id),
-        fetchFuelExpenses(manager.manager_id),
+        fetchTrucks(managerId),
+        fetchReports(managerId),
+        fetchProcurements(),
+        fetchDeposits(),
+        fetchFuelExpenses(managerId),
         fetchMaintenanceBalance(),
-        fetchATFs(manager.manager_id),
+        fetchATFs(managerId),
       ])
       setLoading(false)
     }
@@ -215,6 +246,8 @@ export default function TruckOfficerDashboard() {
     if (!officer) return
     const interval = setInterval(() => {
       fetchReports(officer.manager_id)
+      fetchProcurements()
+      fetchDeposits()
       fetchFuelExpenses(officer.manager_id)
       fetchMaintenanceBalance()
       fetchATFs(officer.manager_id)
@@ -242,14 +275,23 @@ export default function TruckOfficerDashboard() {
     setAssignedTrucks(trucks || [])
   }
 
-  async function fetchReports(mId: string) {
+  async function fetchReports(_mId: string) {
     const { data } = await supabase
       .from("maintenance_reports")
-      .select("report_id, plate_number, maintenance_type, maintenance_location, amount, notes, status, rejection_reason, reported_at")
-      .eq("manager_id", mId)
+      .select("report_id, plate_number, manager_id, maintenance_type, maintenance_location, amount, notes, status, rejection_reason, reported_at")
       .order("reported_at", { ascending: false })
     setReports(data || [])
     setLastUpdated(new Date())
+  }
+
+  async function fetchProcurements() {
+    const { data } = await supabase.from("bulk_procurement").select("*").order("logged_at", { ascending: false })
+    if (data) setProcurements(data)
+  }
+
+  async function fetchDeposits() {
+    const { data } = await supabase.from("maintenance_deposits").select("*").order("created_at", { ascending: false })
+    if (data) setDeposits(data)
   }
 
   async function fetchFuelExpenses(mId: string) {
@@ -329,11 +371,6 @@ export default function TruckOfficerDashboard() {
       const fileName = `${officer.manager_id}-${Date.now()}.${fileExt}`
       const filePath = `${officer.manager_id}/${fileName}`
 
-      if (officer.profile_picture_url) {
-        const oldPath = officer.profile_picture_url.split("/").slice(-2).join("/")
-        await supabase.storage.from("profile-pictures").remove([oldPath])
-      }
-
       const { error: uploadError } = await supabase.storage
         .from("profile-pictures")
         .upload(filePath, selectedFile, { upsert: false })
@@ -349,7 +386,17 @@ export default function TruckOfficerDashboard() {
         .update({ profile_picture_url: publicUrl })
         .eq("manager_id", officer.manager_id)
 
-      if (updateError) { setPictureError("Failed to save profile"); setPictureLoading(false); return }
+      if (updateError) {
+        await supabase.storage.from("profile-pictures").remove([filePath])
+        setPictureError("Failed to save profile")
+        setPictureLoading(false)
+        return
+      }
+
+      if (officer.profile_picture_url) {
+        const oldPath = officer.profile_picture_url.split("/").slice(-2).join("/")
+        await supabase.storage.from("profile-pictures").remove([oldPath])
+      }
 
       setOfficer({ ...officer, profile_picture_url: publicUrl })
 
@@ -382,11 +429,15 @@ export default function TruckOfficerDashboard() {
     if (!logAmount || parseAmount(logAmount) <= 0) return setLogError("Enter a valid amount")
 
     setLogLoading(true)
-    const { error } = await supabase.from("maintenance_reports").insert([{
-      manager_id: officer?.manager_id, plate_number: logPlate, maintenance_type: finalType,
-      maintenance_location: logLocation.trim(), amount: parseAmount(logAmount),
-      notes: logNotes.trim() || null,
-    }])
+    const { error } = await apiMutate("maintenance", {
+      action: "insert",
+      table: "maintenance_reports",
+      data: {
+        manager_id: officer?.manager_id, plate_number: logPlate, maintenance_type: finalType,
+        maintenance_location: logLocation.trim(), amount: parseAmount(logAmount),
+        notes: logNotes.trim() || null,
+      },
+    })
     setLogLoading(false)
     if (error) { setLogError("Failed to log report"); return }
     setShowLogModal(false)
@@ -401,17 +452,42 @@ export default function TruckOfficerDashboard() {
     if (!fuelLitres || isNaN(litres) || litres <= 0) return setFuelError("Enter valid litres")
     const truck = assignedTrucks.find(t => t.plate_number === fuelPlate)
     if (!truck) return setFuelError("Truck not found")
-    if (litres > truck.fuel_balance) return setFuelError(`Only ${truck.fuel_balance}L available for this truck`)
 
     setFuelLoading(true)
-    const { error: expenseError } = await supabase.from("truck_fuel_expenses").insert([{
-      manager_id: officer?.manager_id, plate_number: fuelPlate, trip_id: fuelTripId,
-      litres, notes: fuelNotes.trim() || null,
-    }])
+
+    const { data: freshTruck } = await supabase
+      .from("Trucks")
+      .select("fuel_balance")
+      .eq("plate_number", fuelPlate)
+      .single()
+
+    const freshBalance = freshTruck?.fuel_balance ?? 0
+    if (litres > freshBalance) {
+      setFuelError(`Only ${freshBalance}L available for this truck`)
+      setFuelLoading(false)
+      return
+    }
+
+    const { error: expenseError } = await apiMutate("fuel", {
+      action: "insert",
+      table: "truck_fuel_expenses",
+      data: {
+        manager_id: officer?.manager_id, plate_number: fuelPlate, trip_id: fuelTripId,
+        litres, notes: fuelNotes.trim() || null,
+      },
+    })
     if (expenseError) { setFuelError("Failed to log fuel expense"); setFuelLoading(false); return }
 
-    const newBalance = truck.fuel_balance - litres
-    await supabase.from("Trucks").update({ fuel_balance: newBalance }).eq("plate_number", fuelPlate)
+    const { error: truckError } = await apiMutate("trips", {
+      action: "update", table: "Trucks",
+      data: { fuel_balance: freshBalance - litres },
+      filters: { plate_number: fuelPlate },
+    })
+    if (truckError) {
+      setFuelError("Expense logged but truck balance update failed. Contact support.")
+      setFuelLoading(false)
+      return
+    }
 
     setFuelLoading(false)
     setShowFuelModal(false)
@@ -420,6 +496,13 @@ export default function TruckOfficerDashboard() {
       await fetchTrucks(officer.manager_id)
       await fetchFuelExpenses(officer.manager_id)
     }
+  }
+
+  function generateATFCode() {
+    const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+    let code = ""
+    for (let i = 0; i < 8; i++) code += chars[Math.floor(Math.random() * chars.length)]
+    return code
   }
 
   async function handleInitiateATF() {
@@ -438,28 +521,62 @@ export default function TruckOfficerDashboard() {
     if (existing) return setAtfError("This truck already has an open ATF. Wait for it to be resolved first.")
 
     setAtfLoading(true)
-    const { error } = await supabase.from("fuel_requests").insert([{
-      plate_number: atfPlate,
-      driver_id: atfDriverId,
-      company_id: atfCompanyId,
-      litres: parseFloat(atfLitres),
-      initiated_by: officer?.manager_id,
-      atf_status: "Pending",
-    }])
+    const atf_code = generateATFCode()
+    const { error } = await apiMutate("fuel", {
+      action: "insert",
+      table: "fuel_requests",
+      data: {
+        atf_code,
+        plate_number: atfPlate,
+        driver_id: atfDriverId,
+        company_id: atfCompanyId,
+        litres: parseFloat(atfLitres),
+        initiated_by: officer?.manager_id,
+        atf_status: "Pending",
+      },
+    })
     setAtfLoading(false)
-    if (error) { setAtfError("Failed to initiate ATF"); return }
+    if (error) {
+      if (error.toLowerCase().includes("duplicate") || error.toLowerCase().includes("unique")) {
+        setAtfError("This truck already has an open ATF or code collision occurred. Try again.")
+        return
+      }
+      setAtfError("Failed to initiate ATF")
+      return
+    }
 
     setShowATFModal(false)
     setAtfPlate(""); setAtfDriverId(""); setAtfLitres(""); setAtfCompanyId(""); setAtfError("")
     if (officer) fetchATFs(officer.manager_id)
   }
 
-  const filteredReports = filter === "All" ? reports : reports.filter(r => r.status === filter)
-  const chevron = (
-    <Icon icon="mdi:chevron-down" width={18} color="#aaa"
-      style={{ position: "absolute", right: 12, top: "50%", transform: "translateY(-50%)", pointerEvents: "none" }}
-    />
-  )
+  useEffect(() => {
+    const map: Record<string, number> = {}
+    const records: { id: string; type: "deduction"; amount: number; created_at: string }[] = [
+      ...reports.filter(r => r.status === "Validated").map(r => ({
+        id: r.report_id, type: "deduction" as const, amount: r.amount, created_at: r.reported_at
+      })),
+      ...procurements.map(p => ({
+        id: p.procurement_id, type: "deduction" as const, amount: p.total_amount, created_at: p.logged_at
+      })),
+      ...deposits.map(d => ({
+        id: d.deposit_id, type: "deduction" as const, amount: -d.amount, created_at: d.created_at
+      })),
+    ]
+    records.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+
+    let running = maintenanceBalance ?? 0
+    for (const rec of records) {
+      if (rec.type === "deduction") {
+        map[rec.id] = running
+        running += rec.amount
+      }
+    }
+    setBalanceMap(map)
+  }, [reports, procurements, deposits, maintenanceBalance])
+
+  const myReports = reports.filter(r => r.manager_id === officer?.manager_id)
+  const filteredReports = filter === "All" ? myReports : myReports.filter(r => r.status === filter)
 
   const inputStyle: React.CSSProperties = {
     width: "100%", padding: "10px 12px", paddingRight: 36,
@@ -572,9 +689,7 @@ export default function TruckOfficerDashboard() {
               <h1 style={{ margin: 0, fontSize: isMobile ? fontSize.lg : fontSize.xl, fontWeight: 700, color: "#0070f3" }}>
                 {officer?.full_name}
               </h1>
-              <p style={{ margin: "2px 0 0", fontSize: fontSize.sm, color: "#64748b" }}>
-                Truck Officer
-              </p>
+              <RoleSwitcher currentRole="TruckOfficer" style={{ margin: "2px 0 0", fontSize: fontSize.sm, color: "#64748b" }} />
             </div>
           </div>
           <div style={{ display: "flex", gap: 8 }}>
@@ -723,6 +838,11 @@ export default function TruckOfficerDashboard() {
                     <div style={{ background: "#f8fafc", borderRadius: 8, padding: "10px 12px", marginBottom: 12, border: "1px solid #e2e8f0" }}>
                       <p style={{ margin: 0, fontSize: fontSize.xs, color: "#94a3b8" }}>Amount</p>
                       <p style={{ margin: "2px 0 0", fontWeight: 700, color: "#0070f3", fontSize: fontSize.base }}>₦{r.amount.toLocaleString()}</p>
+                      {r.status === "Validated" && balanceMap[r.report_id] !== undefined && (
+                        <span style={{ marginTop: 4, fontSize: fontSize.xs, fontWeight: 600, color: "#16a34a", background: "#f0fdf4", padding: "2px 8px", borderRadius: 4, display: "inline-block" }}>
+                          Balance after: ₦{balanceMap[r.report_id].toLocaleString()}
+                        </span>
+                      )}
                     </div>
                     {r.notes && <p style={{ margin: "0 0 8px 0", fontSize: fontSize.sm, color: "#64748b" }}><strong>Notes:</strong> {r.notes}</p>}
                     {r.status === "Rejected" && r.rejection_reason && (
@@ -936,7 +1056,6 @@ export default function TruckOfficerDashboard() {
                   <option value="">Select truck</option>
                   {assignedTrucks.map(t => <option key={t.plate_number} value={t.plate_number}>{t.plate_number}{t.kbnl_truck_no ? ` · #${t.kbnl_truck_no}` : ""} — {t.truck_model}</option>)}
                 </ModernInput>
-                {chevron}
               </div>
             </div>
 
@@ -998,7 +1117,6 @@ export default function TruckOfficerDashboard() {
                     </option>
                   ))}
                 </ModernInput>
-                {chevron}
               </div>
             </div>
 
@@ -1020,7 +1138,6 @@ export default function TruckOfficerDashboard() {
                         </option>
                       ))}
                     </ModernInput>
-                    {chevron}
                   </div>
                 )}
               </div>
@@ -1062,7 +1179,6 @@ export default function TruckOfficerDashboard() {
                   <option value="">Select truck</option>
                   {assignedTrucks.map(t => <option key={t.plate_number} value={t.plate_number}>{t.plate_number}{t.kbnl_truck_no ? ` · #${t.kbnl_truck_no}` : ""} — ⛽ {t.fuel_balance}L</option>)}
                 </ModernInput>
-                {chevron}
               </div>
             </div>
 
@@ -1073,7 +1189,6 @@ export default function TruckOfficerDashboard() {
                   <option value="">Select driver</option>
                   {allDrivers.map(d => <option key={d.driver_id} value={d.driver_id}>{d.full_name}</option>)}
                 </ModernInput>
-                {chevron}
               </div>
             </div>
 
@@ -1084,7 +1199,6 @@ export default function TruckOfficerDashboard() {
                   <option value="">Select station</option>
                   {fuelCompanies.map(c => <option key={c.company_id} value={c.company_id}>{c.company_name}</option>)}
                 </ModernInput>
-                {chevron}
               </div>
             </div>
 

@@ -3,6 +3,8 @@
 import { useState, useEffect, useRef } from "react"
 import { supabase } from "@/lib/supabase"
 import ModernInput from "@/components/ModernInput"
+import InviteSuccessCard from "@/components/admin/InviteSuccessCard"
+import { usePermissions } from "@/lib/PermissionContext"
 
 type Broker = {
   broker_id: string
@@ -45,6 +47,8 @@ const fontSize = {
 
 export default function ManageBrokers() {
   const { isMobile, isDesktop } = useBreakpoint()
+  const { getAccess } = usePermissions()
+  const canEdit = getAccess("manage-brokers").canEdit
   const [brokers, setBrokers] = useState<Broker[]>([])
   const [loading, setLoading] = useState(true)
   const [viewMode, setViewMode] = useState<ViewMode>("card")
@@ -60,6 +64,7 @@ export default function ManageBrokers() {
   const [editPhone, setEditPhone] = useState("")
   const [message, setMessage] = useState("")
   const [submitting, setSubmitting] = useState(false)
+  const [inviteResult, setInviteResult] = useState<{ tempPassword: string; email: string } | null>(null)
 
   const phoneRef = useRef<HTMLInputElement>(null)
   const emailRef = useRef<HTMLInputElement>(null)
@@ -87,6 +92,7 @@ export default function ManageBrokers() {
     setEditName("")
     setEditPhone("")
     setMessage("")
+    setInviteResult(null)
   }
 
   async function handleInvite() {
@@ -95,63 +101,78 @@ export default function ManageBrokers() {
 
     setSubmitting(true)
 
-    const res = await fetch("/api/invite-user", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email, fullName, phoneNumber, role: "Broker" }),
-    })
+    try {
+      const res = await fetch("/api/invite-user", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, fullName, phoneNumber, role: "Broker" }),
+      })
 
-    const result = await res.json()
-    setSubmitting(false)
+      const result = await res.json()
 
-    if (!res.ok) {
-      setMessage("Failed: " + result.error)
-      return
+      if (!res.ok) {
+        setMessage("Failed: " + result.error)
+        return
+      }
+
+      setInviteResult({ tempPassword: result.tempPassword, email })
+      fetchBrokers()
+    } catch {
+      setMessage("Network error, please try again")
+    } finally {
+      setSubmitting(false)
     }
-
-    closeModals()
-    fetchBrokers()
   }
 
   async function handleUpdate() {
+    if (!canEdit) return
     if (!editingBroker) return
     if (!editName.trim()) return setMessage("Name is required")
 
     setSubmitting(true)
 
-    const { error } = await supabase
-      .from("Brokers")
-      .update({ broker_name: editName, phone_number: editPhone || null })
-      .eq("broker_id", editingBroker.broker_id)
+    try {
+      const { error } = await supabase
+        .from("Brokers")
+        .update({ broker_name: editName, phone_number: editPhone || null })
+        .eq("broker_id", editingBroker.broker_id)
 
-    setSubmitting(false)
+      if (error) {
+        setMessage("Failed to update broker")
+        return
+      }
 
-    if (error) {
-      setMessage("Failed to update broker")
-      return
+      closeModals()
+      fetchBrokers()
+    } catch {
+      setMessage("Network error, please try again")
+    } finally {
+      setSubmitting(false)
     }
-
-    closeModals()
-    fetchBrokers()
   }
 
   async function handleDelete(broker_id: string) {
+    if (!canEdit) return
     setSubmitting(true)
 
-    const { error } = await supabase
-      .from("Brokers")
-      .delete()
-      .eq("broker_id", broker_id)
+    try {
+      const { error } = await supabase
+        .from("Brokers")
+        .delete()
+        .eq("broker_id", broker_id)
 
-    setSubmitting(false)
+      if (error) {
+        setMessage("Failed to delete broker")
+        return
+      }
 
-    if (error) {
-      setMessage("Failed to delete broker")
-      return
+      closeModals()
+      fetchBrokers()
+    } catch {
+      setMessage("Network error, please try again")
+    } finally {
+      setSubmitting(false)
     }
-
-    closeModals()
-    fetchBrokers()
   }
 
   const inputStyle: React.CSSProperties = {
@@ -234,13 +255,14 @@ export default function ManageBrokers() {
           {/* Add Button */}
           <button
             onClick={() => setShowInviteModal(true)}
+            disabled={!canEdit}
             style={{
               padding: isMobile ? "10px 16px" : "12px 20px",
-              background: "#0070f3",
+              background: !canEdit ? "#94a3b8" : "#0070f3",
               color: "white",
               border: "none",
               borderRadius: 8,
-              cursor: "pointer",
+              cursor: !canEdit ? "not-allowed" : "pointer",
               fontWeight: 600,
               fontSize: fontSize.md,
               flex: isMobile ? 1 : "0 0 auto",
@@ -281,9 +303,10 @@ export default function ManageBrokers() {
           <p style={{ color: "#64748b", fontSize: fontSize.base, margin: "0 0 24px", maxWidth: 400, marginLeft: "auto", marginRight: "auto" }}>Get started by adding a new broker to the system. You'll be able to manage their contact information here.</p>
           <button
             onClick={() => setShowInviteModal(true)}
-            style={{ padding: "10px 20px", background: "white", color: "#0f172a", border: "1px solid #cbd5e1", borderRadius: 8, cursor: "pointer", fontWeight: 500, fontSize: fontSize.base, transition: "all 0.2s ease" }}
-            onMouseEnter={e => e.currentTarget.style.background = "#f8fafc"}
-            onMouseLeave={e => e.currentTarget.style.background = "white"}
+            disabled={!canEdit}
+            style={{ padding: "10px 20px", background: !canEdit ? "#94a3b8" : "white", color: !canEdit ? "white" : "#0f172a", border: "1px solid #cbd5e1", borderRadius: 8, cursor: !canEdit ? "not-allowed" : "pointer", fontWeight: 500, fontSize: fontSize.base, transition: "all 0.2s ease" }}
+            onMouseEnter={e => { if (canEdit) e.currentTarget.style.background = "#f8fafc" }}
+            onMouseLeave={e => { if (canEdit) e.currentTarget.style.background = "white" }}
           >
             Add First Broker
           </button>
@@ -316,17 +339,19 @@ export default function ManageBrokers() {
                         setEditPhone(broker.phone_number || "")
                         setMessage("")
                       }}
-                      style={{ flex: 1, padding: "8px 12px", cursor: "pointer", borderRadius: 6, border: "1px solid #e2e8f0", color: "#0070f3", background: "#f0f7ff", fontSize: fontSize.sm, fontWeight: 500, transition: "all 0.2s" }}
-                      onMouseEnter={e => { e.currentTarget.style.background = "#e0efff"; e.currentTarget.style.borderColor = "#0070f3" }}
-                      onMouseLeave={e => { e.currentTarget.style.background = "#f0f7ff"; e.currentTarget.style.borderColor = "#e2e8f0" }}
+                      disabled={!canEdit}
+                      style={{ flex: 1, padding: "8px 12px", cursor: !canEdit ? "not-allowed" : "pointer", borderRadius: 6, border: "1px solid #e2e8f0", color: "#0070f3", background: !canEdit ? "#94a3b8" : "#f0f7ff", fontSize: fontSize.sm, fontWeight: 500, transition: "all 0.2s" }}
+                      onMouseEnter={e => { if (canEdit) { e.currentTarget.style.background = "#e0efff"; e.currentTarget.style.borderColor = "#0070f3" } }}
+                      onMouseLeave={e => { if (canEdit) { e.currentTarget.style.background = "#f0f7ff"; e.currentTarget.style.borderColor = "#e2e8f0" } }}
                     >
                       Edit
                     </button>
                     <button
                       onClick={() => { setDeletingId(broker.broker_id); setMessage("") }}
-                      style={{ flex: 1, padding: "8px 12px", cursor: "pointer", borderRadius: 6, border: "1px solid #fee2e2", color: "#ef4444", background: "#fef2f2", fontSize: fontSize.sm, fontWeight: 500, transition: "all 0.2s" }}
-                      onMouseEnter={e => { e.currentTarget.style.background = "#fee2e2" }}
-                      onMouseLeave={e => { e.currentTarget.style.background = "#fef2f2" }}
+                      disabled={!canEdit}
+                      style={{ flex: 1, padding: "8px 12px", cursor: !canEdit ? "not-allowed" : "pointer", borderRadius: 6, border: "1px solid #fee2e2", color: "#ef4444", background: !canEdit ? "#94a3b8" : "#fef2f2", fontSize: fontSize.sm, fontWeight: 500, transition: "all 0.2s" }}
+                      onMouseEnter={e => { if (canEdit) e.currentTarget.style.background = "#fee2e2" }}
+                      onMouseLeave={e => { if (canEdit) e.currentTarget.style.background = "#fef2f2" }}
                     >
                       Delete
                     </button>
@@ -370,17 +395,19 @@ export default function ManageBrokers() {
                               setEditPhone(broker.phone_number || "")
                               setMessage("")
                             }}
-                            style={{ padding: "6px 10px", cursor: "pointer", borderRadius: 5, border: "1px solid #e2e8f0", color: "#0070f3", background: "#f0f7ff", fontSize: fontSize.sm, fontWeight: 500, transition: "all 0.2s", minHeight: 32, minWidth: 32, display: "flex", alignItems: "center", justifyContent: "center" }}
-                            onMouseEnter={e => { e.currentTarget.style.background = "#e0efff"; e.currentTarget.style.borderColor = "#0070f3" }}
-                            onMouseLeave={e => { e.currentTarget.style.background = "#f0f7ff"; e.currentTarget.style.borderColor = "#e2e8f0" }}
+                            disabled={!canEdit}
+                            style={{ padding: "6px 10px", cursor: !canEdit ? "not-allowed" : "pointer", borderRadius: 5, border: "1px solid #e2e8f0", color: "#0070f3", background: !canEdit ? "#94a3b8" : "#f0f7ff", fontSize: fontSize.sm, fontWeight: 500, transition: "all 0.2s", minHeight: 32, minWidth: 32, display: "flex", alignItems: "center", justifyContent: "center" }}
+                            onMouseEnter={e => { if (canEdit) { e.currentTarget.style.background = "#e0efff"; e.currentTarget.style.borderColor = "#0070f3" } }}
+                            onMouseLeave={e => { if (canEdit) { e.currentTarget.style.background = "#f0f7ff"; e.currentTarget.style.borderColor = "#e2e8f0" } }}
                           >
                             Edit
                           </button>
                           <button
                             onClick={() => { setDeletingId(broker.broker_id); setMessage("") }}
-                            style={{ padding: "6px 10px", cursor: "pointer", borderRadius: 5, border: "1px solid #fee2e2", color: "#ef4444", background: "#fef2f2", fontSize: fontSize.sm, fontWeight: 500, transition: "all 0.2s", minHeight: 32, minWidth: 32, display: "flex", alignItems: "center", justifyContent: "center" }}
-                            onMouseEnter={e => { e.currentTarget.style.background = "#fee2e2" }}
-                            onMouseLeave={e => { e.currentTarget.style.background = "#fef2f2" }}
+                            disabled={!canEdit}
+                            style={{ padding: "6px 10px", cursor: !canEdit ? "not-allowed" : "pointer", borderRadius: 5, border: "1px solid #fee2e2", color: "#ef4444", background: !canEdit ? "#94a3b8" : "#fef2f2", fontSize: fontSize.sm, fontWeight: 500, transition: "all 0.2s", minHeight: 32, minWidth: 32, display: "flex", alignItems: "center", justifyContent: "center" }}
+                            onMouseEnter={e => { if (canEdit) e.currentTarget.style.background = "#fee2e2" }}
+                            onMouseLeave={e => { if (canEdit) e.currentTarget.style.background = "#fef2f2" }}
                           >
                             Delete
                           </button>
@@ -404,58 +431,71 @@ export default function ManageBrokers() {
             {/* Invite Modal */}
             {showInviteModal && (
               <>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24 }}>
-                  <h3 style={{ margin: 0, color: "#0f172a", fontSize: fontSize.xl, fontWeight: 700 }}>Add New Broker</h3>
-                  <button onClick={closeModals} style={{ background: "none", border: "none", color: "#94a3b8", cursor: "pointer", padding: 0, width: 32, height: 32, display: "flex", alignItems: "center", justifyContent: "center", transition: "color 0.2s" }} onMouseEnter={e => e.currentTarget.style.color = "#64748b"} onMouseLeave={e => e.currentTarget.style.color = "#94a3b8"}><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
-                </div>
+                {inviteResult ? (
+                  <InviteSuccessCard
+                    tempPassword={inviteResult.tempPassword}
+                    email={inviteResult.email}
+                    onClose={() => { closeModals(); setInviteResult(null) }}
+                  />
+                ) : (
+                  <>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24 }}>
+                      <h3 style={{ margin: 0, color: "#0f172a", fontSize: fontSize.xl, fontWeight: 700 }}>Add New Broker</h3>
+                      <button onClick={closeModals} style={{ background: "none", border: "none", color: "#94a3b8", cursor: "pointer", padding: 0, width: 32, height: 32, display: "flex", alignItems: "center", justifyContent: "center", transition: "color 0.2s" }} onMouseEnter={e => e.currentTarget.style.color = "#64748b"} onMouseLeave={e => e.currentTarget.style.color = "#94a3b8"}><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+                    </div>
 
-                <div style={{ display: "flex", flexDirection: "column", gap: 14, marginBottom: 20 }}>
-                  <div>
-                    <label style={{ display: "block", marginBottom: 6, color: "#475569", fontSize: fontSize.sm, fontWeight: 500 }}>Full Name *</label>
-                    <ModernInput
-                      type="text"
-                      placeholder="e.g. John Doe"
-                      value={fullName}
-                      onChange={(e: any) => { setFullName(e.target.value); setMessage("") }}
-                      onKeyDown={(e: any) => { if (e.key === "Enter") phoneRef.current?.focus() }}
-                      style={inputStyle}
-                    />
-                  </div>
-                  <div>
-                    <label style={{ display: "block", marginBottom: 6, color: "#475569", fontSize: fontSize.sm, fontWeight: 500 }}>Phone Number</label>
-                    <ModernInput
-                      ref={phoneRef}
-                      type="text"
-                      placeholder="e.g. 08012345678"
-                      value={phoneNumber}
-                      onChange={(e: any) => { setPhoneNumber(e.target.value); setMessage("") }}
-                      onKeyDown={(e: any) => { if (e.key === "Enter") emailRef.current?.focus() }}
-                      style={inputStyle}
-                    />
-                  </div>
-                  <div>
-                    <label style={{ display: "block", marginBottom: 6, color: "#475569", fontSize: fontSize.sm, fontWeight: 500 }}>Email Address *</label>
-                    <ModernInput
-                      ref={emailRef}
-                      type="email"
-                      placeholder="e.g. broker@example.com"
-                      value={email}
-                      onChange={(e: any) => { setEmail(e.target.value); setMessage("") }}
-                      onKeyDown={(e: any) => { if (e.key === "Enter") handleInvite() }}
-                      style={inputStyle}
-                    />
-                  </div>
-                </div>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 14, marginBottom: 20 }}>
+                      <div>
+                        <label style={{ display: "block", marginBottom: 6, color: "#475569", fontSize: fontSize.sm, fontWeight: 500 }}>Full Name *</label>
+                        <ModernInput
+                          type="text"
+                          placeholder="e.g. John Doe"
+                          value={fullName}
+                          readOnly={!canEdit}
+                          onChange={(e: any) => { setFullName(e.target.value); setMessage("") }}
+                          onKeyDown={(e: any) => { if (e.key === "Enter") phoneRef.current?.focus() }}
+                          style={inputStyle}
+                        />
+                      </div>
+                      <div>
+                        <label style={{ display: "block", marginBottom: 6, color: "#475569", fontSize: fontSize.sm, fontWeight: 500 }}>Phone Number</label>
+                        <ModernInput
+                          ref={phoneRef}
+                          type="text"
+                          placeholder="e.g. 08012345678"
+                          value={phoneNumber}
+                          readOnly={!canEdit}
+                          onChange={(e: any) => { setPhoneNumber(e.target.value); setMessage("") }}
+                          onKeyDown={(e: any) => { if (e.key === "Enter") emailRef.current?.focus() }}
+                          style={inputStyle}
+                        />
+                      </div>
+                      <div>
+                        <label style={{ display: "block", marginBottom: 6, color: "#475569", fontSize: fontSize.sm, fontWeight: 500 }}>Email Address *</label>
+                        <ModernInput
+                          ref={emailRef}
+                          type="email"
+                          placeholder="e.g. broker@example.com"
+                          value={email}
+                          readOnly={!canEdit}
+                          onChange={(e: any) => { setEmail(e.target.value); setMessage("") }}
+                          onKeyDown={(e: any) => { if (e.key === "Enter") handleInvite() }}
+                          style={inputStyle}
+                        />
+                      </div>
+                    </div>
 
-                {message && <div style={{ padding: 12, background: "#fef2f2", borderLeft: "4px solid #ef4444", borderRadius: 4, marginBottom: 20, color: "#b91c1c", fontSize: fontSize.sm }}>{message}</div>}
+                    {message && <div style={{ padding: 12, background: "#fef2f2", borderLeft: "4px solid #ef4444", borderRadius: 4, marginBottom: 20, color: "#b91c1c", fontSize: fontSize.sm }}>{message}</div>}
 
-                <button
-                  onClick={handleInvite}
-                  disabled={submitting}
-                  style={{ width: "100%", padding: "12px 16px", background: "#0070f3", color: "white", border: "none", borderRadius: 8, cursor: submitting ? "not-allowed" : "pointer", fontWeight: 600, fontSize: fontSize.md, transition: "opacity 0.2s", opacity: submitting ? 0.7 : 1, minHeight: 44 }}
-                >
-                  {submitting ? "Sending Invite..." : "Send Invite"}
-                </button>
+                    <button
+                      onClick={handleInvite}
+                      disabled={submitting || !canEdit}
+                      style={{ width: "100%", padding: "12px 16px", background: submitting || !canEdit ? "#94a3b8" : "#0070f3", color: "white", border: "none", borderRadius: 8, cursor: submitting || !canEdit ? "not-allowed" : "pointer", fontWeight: 600, fontSize: fontSize.md, transition: "opacity 0.2s", opacity: submitting || !canEdit ? 0.7 : 1, minHeight: 44 }}
+                    >
+                      {submitting ? "Sending Invite..." : "Send Invite"}
+                    </button>
+                  </>
+                )}
               </>
             )}
 
@@ -473,6 +513,7 @@ export default function ManageBrokers() {
                     <ModernInput
                       type="text"
                       value={editName}
+                      readOnly={!canEdit}
                       onChange={(e: any) => { setEditName(e.target.value); setMessage("") }}
                       onKeyDown={(e: any) => { if (e.key === "Enter") editPhoneRef.current?.focus() }}
                       style={inputStyle}
@@ -484,6 +525,7 @@ export default function ManageBrokers() {
                       ref={editPhoneRef}
                       type="text"
                       value={editPhone}
+                      readOnly={!canEdit}
                       onChange={(e: any) => { setEditPhone(e.target.value); setMessage("") }}
                       onKeyDown={(e: any) => { if (e.key === "Enter") handleUpdate() }}
                       style={inputStyle}
@@ -495,8 +537,8 @@ export default function ManageBrokers() {
 
                 <button
                   onClick={handleUpdate}
-                  disabled={submitting}
-                  style={{ width: "100%", padding: "12px 16px", background: "#0070f3", color: "white", border: "none", borderRadius: 8, cursor: submitting ? "not-allowed" : "pointer", fontWeight: 600, fontSize: fontSize.md, transition: "opacity 0.2s", opacity: submitting ? 0.7 : 1, minHeight: 44 }}
+                  disabled={submitting || !canEdit}
+                  style={{ width: "100%", padding: "12px 16px", background: submitting || !canEdit ? "#94a3b8" : "#0070f3", color: "white", border: "none", borderRadius: 8, cursor: submitting || !canEdit ? "not-allowed" : "pointer", fontWeight: 600, fontSize: fontSize.md, transition: "opacity 0.2s", opacity: submitting || !canEdit ? 0.7 : 1, minHeight: 44 }}
                 >
                   {submitting ? "Saving..." : "Save Changes"}
                 </button>
@@ -526,9 +568,9 @@ export default function ManageBrokers() {
                     </button>
                     <button
                       onClick={() => handleDelete(deletingId)}
-                      disabled={submitting}
-                      style={{ padding: "12px 16px", background: "#ef4444", color: "white", border: "none", borderRadius: 8, cursor: submitting ? "not-allowed" : "pointer", fontWeight: 600, fontSize: fontSize.md, opacity: submitting ? 0.7 : 1, minHeight: 44, transition: "all 0.2s" }}
-                      onMouseEnter={e => { if (!submitting) e.currentTarget.style.background = "#dc2626" }}
+                      disabled={submitting || !canEdit}
+                      style={{ padding: "12px 16px", background: submitting || !canEdit ? "#94a3b8" : "#ef4444", color: "white", border: "none", borderRadius: 8, cursor: submitting || !canEdit ? "not-allowed" : "pointer", fontWeight: 600, fontSize: fontSize.md, opacity: submitting || !canEdit ? 0.7 : 1, minHeight: 44, transition: "all 0.2s" }}
+                      onMouseEnter={e => { if (!submitting && canEdit) e.currentTarget.style.background = "#dc2626" }}
                       onMouseLeave={e => { e.currentTarget.style.background = "#ef4444" }}
                     >
                       {submitting ? "Deleting..." : "Yes, Delete"}

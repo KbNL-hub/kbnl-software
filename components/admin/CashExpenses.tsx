@@ -1,14 +1,25 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useMemo } from "react"
 import { supabase } from "@/lib/supabase"
+import { apiMutate } from "@/lib/api-mutation"
 import { formatAmount, parseAmount } from "@/lib/formatAmount"
 import ModernInput from "@/components/ModernInput"
+import { usePermissions } from "@/lib/PermissionContext"
 
 type CashOffice = {
   office_id: string
   office_name: string
   current_balance: number
+}
+
+type CashDeposit = {
+  deposit_id: string
+  office_name: string
+  amount: number
+  note: string | null
+  deposited_by: string
+  created_at: string
 }
 
 type CashExpense = {
@@ -65,12 +76,15 @@ const fontSize = {
 }
 
 export default function CashExpenses() {
+  const { getAccess } = usePermissions()
+  const { canEdit, canAuthorize } = getAccess("cash-expenses")
   const { isMobile, isDesktop } = useBreakpoint()
   const [selectedOffice, setSelectedOffice] = useState<string>("Calabar")
   const [assignedOffice, setAssignedOffice] = useState<string | null>(null)
   const [adminUser, setAdminUser] = useState<any>(null)
   const [officeBalance, setOfficeBalance] = useState<number>(0)
   const [expenses, setExpenses] = useState<CashExpense[]>([])
+  const [deposits, setDeposits] = useState<CashDeposit[]>([])
   const [clerksMap, setClerksMap] = useState<Record<string, string>>({})
   const [adminsMap, setAdminsMap] = useState<Record<string, string>>({})
   const [loading, setLoading] = useState(true)
@@ -105,6 +119,7 @@ export default function CashExpenses() {
     if (selectedOffice) {
       fetchOfficeBalance()
       fetchExpenses()
+      fetchDeposits()
     }
   }, [selectedOffice])
 
@@ -169,6 +184,34 @@ export default function CashExpenses() {
     setExpenses(data || [])
   }
 
+  async function fetchDeposits() {
+    const { data } = await supabase
+      .from("cash_deposits")
+      .select("*")
+      .eq("office_name", selectedOffice)
+      .order("created_at", { ascending: false })
+    setDeposits(data || [])
+  }
+
+  const balanceMap = useMemo(() => {
+    const map: Record<string, number> = {}
+    const records: { id: string; amount: number; created_at: string }[] = [
+      ...expenses.filter(e => e.status === "Authorised").map(e => ({
+        id: e.expense_id, amount: e.total_amount, created_at: e.created_at
+      })),
+      ...deposits.map(d => ({
+        id: d.deposit_id, amount: -d.amount, created_at: d.created_at
+      })),
+    ]
+    records.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+    let running = officeBalance
+    for (const rec of records) {
+      map[rec.id] = running
+      running += rec.amount
+    }
+    return map
+  }, [expenses, deposits, officeBalance])
+
   async function fetchExpenseItems(expenseId: string) {
     if (expenseItems[expenseId]) return
     const { data } = await supabase
@@ -181,27 +224,35 @@ export default function CashExpenses() {
   }
 
   async function handleSaveAssignment() {
+    if (!canEdit) { setErrorMsg("You do not have permission to assign offices"); return }
     if (!newAssignedOffice) return
     if (!adminUser) return
 
     setSubmitting(true)
-    const { error } = await supabase
-      .from("admin_office_assignments")
-      .upsert({ admin_id: adminUser.id, office_name: newAssignedOffice })
+    setErrorMsg("")
 
-    setSubmitting(false)
-    if (error) {
-      setErrorMsg("Failed to assign office: " + error.message)
-      return
+    try {
+      const { error } = await apiMutate("finance", {
+        action: "upsert", table: "admin_office_assignments",
+        data: { admin_id: adminUser.id, office_name: newAssignedOffice },
+        conflict: "admin_id",
+      })
+
+      if (error) { setErrorMsg("Failed to assign office: " + error); return }
+      setAssignedOffice(newAssignedOffice)
+      setSelectedOffice(newAssignedOffice)
+      setShowAssignModal(false)
+      setMessage("Office assignment saved!")
+      setTimeout(() => setMessage(""), 3000)
+    } catch {
+      setErrorMsg("Network error, please try again")
+    } finally {
+      setSubmitting(false)
     }
-    setAssignedOffice(newAssignedOffice)
-    setSelectedOffice(newAssignedOffice)
-    setShowAssignModal(false)
-    setMessage("Office assignment saved!")
-    setTimeout(() => setMessage(""), 3000)
   }
 
   async function handleDeposit() {
+    if (!canEdit) { setErrorMsg("You do not have permission to deposit cash"); return }
     const parsed = parseAmount(depositAmount)
     if (isNaN(parsed) || parsed <= 0) {
       setErrorMsg("Please enter a valid amount")
@@ -212,54 +263,49 @@ export default function CashExpenses() {
     setSubmitting(true)
     setErrorMsg("")
 
-    // 1. Insert into cash_deposits
-    const { error: depError } = await supabase
-      .from("cash_deposits")
-      .insert({
-        office_name: selectedOffice,
-        amount: parsed,
-        note: depositNote || null,
-        deposited_by: adminUser.id
+    try {
+      // 1. Insert into cash_deposits
+      const { error: depError } = await apiMutate("finance", {
+        action: "insert", table: "cash_deposits",
+        data: { office_name: selectedOffice, amount: parsed, note: depositNote || null, deposited_by: adminUser.id },
       })
 
-    if (depError) {
-      setSubmitting(false)
-      setErrorMsg("Failed to log deposit: " + depError.message)
-      return
-    }
+      if (depError) { setErrorMsg("Failed to log deposit: " + depError); return }
 
-    // 2. Update cash_offices balance
-    const { error: balError } = await supabase
-      .rpc("increment_office_balance", {
-        o_name: selectedOffice,
-        amount_to_add: parsed
-      })
+      // 2. Update cash_offices balance
+      const { error: balError } = await supabase
+        .rpc("increment_office_balance", {
+          o_name: selectedOffice,
+          amount_to_add: parsed
+        })
 
-    // If RPC doesn't exist, we can fallback to direct update
-    if (balError) {
-      const newBal = officeBalance + parsed
-      const { error: directError } = await supabase
-        .from("cash_offices")
-        .update({ current_balance: newBal })
-        .eq("office_name", selectedOffice)
+      // If RPC doesn't exist, we can fallback to direct update
+      if (balError) {
+        const newBal = officeBalance + parsed
+        const { error: directError } = await apiMutate("finance", {
+          action: "update", table: "cash_offices",
+          data: { current_balance: newBal },
+          filters: { office_name: selectedOffice },
+        })
 
-      if (directError) {
-        setSubmitting(false)
-        setErrorMsg("Failed to update balance: " + directError.message)
-        return
+        if (directError) { setErrorMsg("Failed to update balance: " + directError); return }
       }
-    }
 
-    setSubmitting(false)
-    setDepositAmount("")
-    setDepositNote("")
-    setShowDepositModal(false)
-    setMessage("₦" + parsed.toLocaleString() + " deposited successfully!")
-    fetchOfficeBalance()
-    setTimeout(() => setMessage(""), 3000)
+      setDepositAmount("")
+      setDepositNote("")
+      setShowDepositModal(false)
+      setMessage("₦" + parsed.toLocaleString() + " deposited successfully!")
+      fetchOfficeBalance()
+      setTimeout(() => setMessage(""), 3000)
+    } catch {
+      setErrorMsg("Network error, please try again")
+    } finally {
+      setSubmitting(false)
+    }
   }
 
   async function handleAuthorise(expense: CashExpense) {
+    if (!canAuthorize) { setErrorMsg("You do not have permission to authorise expenses"); return }
     if (!adminUser) return
     if (officeBalance < expense.total_amount) {
       alert("Insufficient office balance to authorise this expense! Current balance is ₦" + officeBalance.toLocaleString() + " but expense total is ₦" + expense.total_amount.toLocaleString())
@@ -272,42 +318,42 @@ export default function CashExpenses() {
 
     setSubmitting(true)
 
-    // 1. Update expense status
-    const { error: expError } = await supabase
-      .from("cash_expenses")
-      .update({
-        status: "Authorised",
-        authorised_by: adminUser.id,
-        resolved_at: new Date().toISOString()
+    try {
+      // 1. Update expense status
+      const { error: expError } = await apiMutate("finance", {
+        action: "update", table: "cash_expenses",
+        data: { status: "Authorised", authorised_by: adminUser.id, resolved_at: new Date().toISOString() },
+        filters: { expense_id: expense.expense_id },
       })
-      .eq("expense_id", expense.expense_id)
 
-    if (expError) {
+      if (expError) { alert("Error authorising: " + expError); return }
+
+      // 2. Decrease office balance
+      const newBal = officeBalance - expense.total_amount
+      const { error: balError } = await apiMutate("finance", {
+        action: "update", table: "cash_offices",
+        data: { current_balance: newBal },
+        filters: { office_name: selectedOffice },
+      })
+
+      if (balError) {
+        alert("Expense authorised but failed to deduct balance: " + balError)
+      } else {
+        setMessage("Expense authorised and balance updated!")
+        setTimeout(() => setMessage(""), 3000)
+      }
+
+      fetchOfficeBalance()
+      fetchExpenses()
+    } catch {
+      setErrorMsg("Network error, please try again")
+    } finally {
       setSubmitting(false)
-      alert("Error authorising: " + expError.message)
-      return
     }
-
-    // 2. Decrease office balance
-    const newBal = officeBalance - expense.total_amount
-    const { error: balError } = await supabase
-      .from("cash_offices")
-      .update({ current_balance: newBal })
-      .eq("office_name", selectedOffice)
-
-    setSubmitting(false)
-    if (balError) {
-      alert("Expense authorised but failed to deduct balance: " + balError.message)
-    } else {
-      setMessage("Expense authorised and balance updated!")
-      setTimeout(() => setMessage(""), 3000)
-    }
-
-    fetchOfficeBalance()
-    fetchExpenses()
   }
 
   async function handleReject() {
+    if (!canAuthorize) { setErrorMsg("You do not have permission to reject expenses"); return }
     if (!rejectId) return
     if (!rejectionReason.trim()) {
       setErrorMsg("Please provide a rejection reason")
@@ -316,28 +362,27 @@ export default function CashExpenses() {
     if (!adminUser) return
 
     setSubmitting(true)
-    const { error } = await supabase
-      .from("cash_expenses")
-      .update({
-        status: "Rejected",
-        rejection_reason: rejectionReason,
-        authorised_by: adminUser.id,
-        resolved_at: new Date().toISOString()
+
+    try {
+      const { error } = await apiMutate("finance", {
+        action: "update", table: "cash_expenses",
+        data: { status: "Rejected", rejection_reason: rejectionReason, authorised_by: adminUser.id, resolved_at: new Date().toISOString() },
+        filters: { expense_id: rejectId },
       })
-      .eq("expense_id", rejectId)
 
-    setSubmitting(false)
-    if (error) {
-      setErrorMsg("Failed to reject expense: " + error.message)
-      return
+      if (error) { setErrorMsg("Failed to reject expense: " + error); return }
+
+      setShowRejectModal(false)
+      setRejectId(null)
+      setRejectionReason("")
+      setMessage("Expense rejected successfully.")
+      fetchExpenses()
+      setTimeout(() => setMessage(""), 3000)
+    } catch {
+      setErrorMsg("Network error, please try again")
+    } finally {
+      setSubmitting(false)
     }
-
-    setShowRejectModal(false)
-    setRejectId(null)
-    setRejectionReason("")
-    setMessage("Expense rejected successfully.")
-    fetchExpenses()
-    setTimeout(() => setMessage(""), 3000)
   }
 
   const isAssigned = selectedOffice === assignedOffice
@@ -474,17 +519,18 @@ export default function CashExpenses() {
 
         {isAssigned && (
           <button
-            onClick={() => { setShowDepositModal(true); setErrorMsg(""); setDepositAmount(""); setDepositNote("") }}
+            onClick={() => { if (!canEdit) return; setShowDepositModal(true); setErrorMsg(""); setDepositAmount(""); setDepositNote("") }}
+            disabled={!canEdit}
             style={{
               padding: "14px 28px",
-              background: "#0070f3",
+              background: !canEdit ? "#94a3b8" : "#0070f3",
               color: "white",
               border: "none",
               borderRadius: 12,
-              cursor: "pointer",
+              cursor: !canEdit ? "not-allowed" : "pointer",
               fontWeight: 600,
               fontSize: fontSize.md,
-              boxShadow: "0 4px 14px 0 rgba(0,112,243,0.39)",
+              boxShadow: !canEdit ? "none" : "0 4px 14px 0 rgba(0,112,243,0.39)",
               transition: "transform 0.2s, box-shadow 0.2s",
               display: "flex",
               alignItems: "center",
@@ -494,8 +540,8 @@ export default function CashExpenses() {
               position: "relative",
               zIndex: 1
             }}
-            onMouseEnter={e => { e.currentTarget.style.transform = "translateY(-2px)"; e.currentTarget.style.boxShadow = "0 6px 20px rgba(0,112,243,0.4)" }}
-            onMouseLeave={e => { e.currentTarget.style.transform = "translateY(0)"; e.currentTarget.style.boxShadow = "0 4px 14px 0 rgba(0,112,243,0.39)" }}
+            onMouseEnter={e => { if (!canEdit) return; e.currentTarget.style.transform = "translateY(-2px)"; e.currentTarget.style.boxShadow = "0 6px 20px rgba(0,112,243,0.4)" }}
+            onMouseLeave={e => { if (!canEdit) return; e.currentTarget.style.transform = "translateY(0)"; e.currentTarget.style.boxShadow = "0 4px 14px 0 rgba(0,112,243,0.39)" }}
           >
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
             Deposit Cash
@@ -626,6 +672,11 @@ export default function CashExpenses() {
                         <div style={{ fontSize: fontSize.lg, fontWeight: 700, color: "#0f172a", letterSpacing: "-0.5px" }}>
                           ₦{exp.total_amount.toLocaleString()}
                         </div>
+                        {exp.status === "Authorised" && balanceMap[exp.expense_id] !== undefined && (
+                          <p style={{ margin: "4px 0 0", fontSize: fontSize.xs, fontWeight: 600, color: "#16a34a", background: "#f0fdf4", padding: "2px 8px", borderRadius: 4, display: "inline-block" }}>
+                            Balance after: ₦{balanceMap[exp.expense_id].toLocaleString()}
+                          </p>
+                        )}
                         <span style={{ fontSize: fontSize.xs, color: "#0070f3", fontWeight: 500, display: "flex", alignItems: "center", gap: 4, justifyContent: isMobile ? "flex-start" : "flex-end", marginTop: 4 }}>
                           {isExpanded ? "Hide Details" : "View Details"}
                           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ transform: isExpanded ? "rotate(180deg)" : "rotate(0deg)", transition: "transform 0.2s" }}><polyline points="6 9 12 15 18 9"/></svg>
@@ -698,9 +749,9 @@ export default function CashExpenses() {
                             <div style={{ display: "flex", gap: 12, flexDirection: isMobile ? "column" : "row" }}>
                               <button
                                 onClick={() => handleAuthorise(exp)}
-                                disabled={submitting}
+                                disabled={submitting || !canAuthorize}
                                 style={{
-                                  flex: 1, padding: "12px", cursor: submitting ? "not-allowed" : "pointer", borderRadius: 8, border: "1px solid #16a34a", color: "white", background: "#16a34a", fontSize: fontSize.sm, fontWeight: 600, transition: "all 0.2s ease", display: "flex", justifyContent: "center", alignItems: "center", gap: 8, opacity: submitting ? 0.7 : 1
+                                  flex: 1, padding: "12px", cursor: submitting || !canAuthorize ? "not-allowed" : "pointer", borderRadius: 8, border: "1px solid #16a34a", color: "white", background: submitting || !canAuthorize ? "#94a3b8" : "#16a34a", fontSize: fontSize.sm, fontWeight: 600, transition: "all 0.2s ease", display: "flex", justifyContent: "center", alignItems: "center", gap: 8, opacity: submitting || !canAuthorize ? 0.7 : 1
                                 }}
                                 onMouseEnter={e => !submitting && (e.currentTarget.style.background = "#15803d")}
                                 onMouseLeave={e => !submitting && (e.currentTarget.style.background = "#16a34a")}
@@ -710,9 +761,9 @@ export default function CashExpenses() {
                               </button>
                               <button
                                 onClick={() => { setRejectId(exp.expense_id); setRejectionReason(""); setErrorMsg(""); setShowRejectModal(true) }}
-                                disabled={submitting}
+                                disabled={submitting || !canAuthorize}
                                 style={{
-                                  flex: 1, padding: "12px", cursor: submitting ? "not-allowed" : "pointer", borderRadius: 8, border: "1px solid #fecaca", color: "#ef4444", background: "white", fontSize: fontSize.sm, fontWeight: 600, transition: "all 0.2s ease", display: "flex", justifyContent: "center", alignItems: "center", gap: 8, opacity: submitting ? 0.7 : 1
+                                  flex: 1, padding: "12px", cursor: submitting || !canAuthorize ? "not-allowed" : "pointer", borderRadius: 8, border: "1px solid #fecaca", color: "#ef4444", background: submitting || !canAuthorize ? "#94a3b8" : "white", fontSize: fontSize.sm, fontWeight: 600, transition: "all 0.2s ease", display: "flex", justifyContent: "center", alignItems: "center", gap: 8, opacity: submitting || !canAuthorize ? 0.7 : 1
                                 }}
                                 onMouseEnter={e => !submitting && (e.currentTarget.style.background = "#fef2f2")}
                                 onMouseLeave={e => !submitting && (e.currentTarget.style.background = "white")}
@@ -776,8 +827,8 @@ export default function CashExpenses() {
               )}
               <button
                 onClick={handleSaveAssignment}
-                disabled={submitting || !newAssignedOffice}
-                style={{ flex: 2, padding: "12px", background: "#0070f3", border: "none", color: "white", borderRadius: 8, fontWeight: 600, cursor: submitting || !newAssignedOffice ? "not-allowed" : "pointer", fontSize: fontSize.md, opacity: submitting || !newAssignedOffice ? 0.7 : 1, transition: "opacity 0.2s" }}
+                disabled={submitting || !newAssignedOffice || !canEdit}
+                style={{ flex: 2, padding: "12px", background: submitting || !newAssignedOffice || !canEdit ? "#94a3b8" : "#0070f3", border: "none", color: "white", borderRadius: 8, fontWeight: 600, cursor: submitting || !newAssignedOffice || !canEdit ? "not-allowed" : "pointer", fontSize: fontSize.md, opacity: submitting || !newAssignedOffice || !canEdit ? 0.7 : 1, transition: "opacity 0.2s" }}
               >
                 {submitting ? "Saving..." : "Save Assignment"}
               </button>
@@ -830,8 +881,8 @@ export default function CashExpenses() {
               </button>
               <button
                 onClick={handleDeposit}
-                disabled={submitting}
-                style={{ flex: 1, padding: "12px", background: "#0070f3", border: "none", color: "white", borderRadius: 8, fontWeight: 600, cursor: submitting ? "not-allowed" : "pointer", fontSize: fontSize.md, opacity: submitting ? 0.7 : 1, transition: "opacity 0.2s" }}
+                disabled={submitting || !canEdit}
+                style={{ flex: 1, padding: "12px", background: submitting || !canEdit ? "#94a3b8" : "#0070f3", border: "none", color: "white", borderRadius: 8, fontWeight: 600, cursor: submitting || !canEdit ? "not-allowed" : "pointer", fontSize: fontSize.md, opacity: submitting || !canEdit ? 0.7 : 1, transition: "opacity 0.2s" }}
               >
                 {submitting ? "Processing..." : "Complete Deposit"}
               </button>

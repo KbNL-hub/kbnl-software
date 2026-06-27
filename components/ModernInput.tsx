@@ -16,8 +16,9 @@ type BaseProps = {
 }
 
 type InputProps = BaseProps &
-  React.InputHTMLAttributes<HTMLInputElement> & {
+  Omit<React.InputHTMLAttributes<HTMLInputElement>, "onChange"> & {
     as?: "input"
+    onChange?: React.ChangeEventHandler<HTMLInputElement>
   }
 
 type TextareaProps = BaseProps &
@@ -198,16 +199,28 @@ const ModernInput = forwardRef<HTMLElement, ModernInputProps>(
       )
     }
 
+    const inputProps = rest as React.InputHTMLAttributes<HTMLInputElement>
+    const { type: inputType, onChange: origOnChange, ...inputRest } = inputProps
+
+    const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+      if (inputType === "number" && e.target.value.startsWith("-")) {
+        return
+      }
+      origOnChange?.(e)
+    }
+
     return (
       <input
         ref={ref as React.Ref<HTMLInputElement>}
+        type={inputType}
         style={mergedStyle}
         className={className}
         value={value as string | number | undefined}
         defaultValue={defaultValue as string | number | undefined}
         onFocus={handleFocus}
         onBlur={handleBlur}
-        {...(rest as React.InputHTMLAttributes<HTMLInputElement>)}
+        onChange={handleChange}
+        {...inputRest}
       />
     )
   }

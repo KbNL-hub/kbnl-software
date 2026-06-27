@@ -15,20 +15,25 @@ export default function AuthenticatedLayout({
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // Get initial session
+    let resolved = false
+
     supabase.auth.getSession().then(({ data }) => {
-      setSession(data.session);
-      setLoading(false);
-    });
-
-    // Listen for auth state changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      (_event, session) => {
-        setSession(session);
+      if (data.session) {
+        setSession(data.session)
       }
-    );
+    })
 
-    return () => subscription?.unsubscribe();
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      (event, session) => {
+        setSession(session)
+        if (!resolved) {
+          resolved = true
+          setLoading(false)
+        }
+      }
+    )
+
+    return () => subscription?.unsubscribe()
   }, []);
 
   useEffect(() => {

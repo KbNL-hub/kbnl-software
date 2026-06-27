@@ -3,6 +3,8 @@
 import { useState, useEffect, useRef } from "react"
 import ModernInput from "@/components/ModernInput"
 import { supabase } from "@/lib/supabase"
+import { apiMutate } from "@/lib/api-mutation"
+import { usePermissions } from "@/lib/PermissionContext"
 
 type Tricycle = {
   tricycle_id: string
@@ -32,6 +34,8 @@ function useBreakpoint() {
 const fontSize = { xs: 12, sm: 13, base: 14, md: 15, lg: 16, xl: 20, "2xl": 24, "3xl": 28 }
 
 export default function ManageTricycles() {
+  const { getAccess } = usePermissions()
+  const canEdit = getAccess("tricycles").canEdit
   const { isMobile, isDesktop } = useBreakpoint()
   const [tricycles, setTricycles] = useState<Tricycle[]>([])
   const [loading, setLoading] = useState(true)
@@ -90,53 +94,84 @@ export default function ManageTricycles() {
   }
 
   async function handleAdd() {
+    if (!canEdit) return
     if (!tricycleNumber.trim()) return setMessage("Tricycle number is required")
     setSubmitting(true)
 
-    const { error } = await supabase.from("tricycles").insert([{
-      tricycle_number: tricycleNumber.trim().toUpperCase(),
-      assigned_to: assignedTo.trim() || null,
-      phone_number: phoneNumber.trim() || null,
-    }])
-    setSubmitting(false)
+    try {
+      const { error } = await apiMutate("admin", {
+        action: "insert",
+        table: "tricycles",
+        data: {
+          tricycle_number: tricycleNumber.trim().toUpperCase(),
+          assigned_to: assignedTo.trim() || null,
+          phone_number: phoneNumber.trim() || null,
+        },
+      })
 
-    if (error) {
-      setMessage(error.code === "23505" ? "That tricycle number already exists" : "Failed to add tricycle")
-      return
+      if (error) {
+        setMessage(error === "That tricycle number already exists" ? "That tricycle number already exists" : "Failed to add tricycle")
+        return
+      }
+      closeModals()
+      fetchTricycles()
+    } catch {
+      setMessage("Network error, please try again")
+    } finally {
+      setSubmitting(false)
     }
-    closeModals()
-    fetchTricycles()
   }
 
   async function handleUpdate() {
+    if (!canEdit) return
     if (!editingTricycle) return
     if (!editNumber.trim()) return setMessage("Tricycle number is required")
     setSubmitting(true)
 
-    const { error } = await supabase
-      .from("tricycles")
-      .update({
-        tricycle_number: editNumber.trim().toUpperCase(),
-        assigned_to: editAssignedTo.trim() || null,
-        phone_number: editPhoneNumber.trim() || null,
+    try {
+      const { error } = await apiMutate("admin", {
+        action: "update",
+        table: "tricycles",
+        data: {
+          tricycle_number: editNumber.trim().toUpperCase(),
+          assigned_to: editAssignedTo.trim() || null,
+          phone_number: editPhoneNumber.trim() || null,
+        },
+        filters: { tricycle_id: editingTricycle.tricycle_id },
       })
-      .eq("tricycle_id", editingTricycle.tricycle_id)
-    setSubmitting(false)
 
-    if (error) {
-      setMessage(error.code === "23505" ? "That tricycle number already exists" : "Failed to update")
-      return
+      if (error) {
+        setMessage(error === "That tricycle number already exists" ? "That tricycle number already exists" : "Failed to update")
+        return
+      }
+      closeModals()
+      fetchTricycles()
+    } catch {
+      setMessage("Network error, please try again")
+    } finally {
+      setSubmitting(false)
     }
-    closeModals()
-    fetchTricycles()
   }
 
   async function handleDelete(id: string) {
+    if (!canEdit) return
     setSubmitting(true)
-    await supabase.from("tricycles").delete().eq("tricycle_id", id)
-    setSubmitting(false)
-    closeModals()
-    fetchTricycles()
+
+    try {
+      const { error } = await apiMutate("admin", { action: "delete", table: "tricycles", filters: { tricycle_id: id } })
+
+      if (error) {
+        setMessage("Failed to delete tricycle")
+        return
+      }
+
+      closeModals()
+      fetchTricycles()
+    } catch {
+      setMessage("Network error, please try again")
+    } finally {
+      setSubmitting(false)
+    }
   }
 
   return (
@@ -163,7 +198,7 @@ export default function ManageTricycles() {
             </div>
           )}
 
-          <button onClick={() => { setShowAddModal(true); setMessage("") }} style={{ padding: isMobile ? "10px 16px" : "12px 20px", background: "#0070f3", color: "white", border: "none", borderRadius: 8, cursor: "pointer", fontWeight: 600, fontSize: fontSize.md, flex: isMobile ? 1 : "0 0 auto", boxShadow: "0 4px 12px rgba(0, 112, 243, 0.2)", transition: "all 0.2s ease", display: "flex", alignItems: "center", justifyContent: "center", gap: 6, minHeight: 40, whiteSpace: "nowrap" }} onMouseEnter={(e) => { if (!isMobile) e.currentTarget.style.transform = "translateY(-2px)" }} onMouseLeave={(e) => { if (!isMobile) e.currentTarget.style.transform = "none" }}>
+          <button onClick={() => { if (!canEdit) return; setShowAddModal(true); setMessage("") }} disabled={!canEdit} style={{ padding: isMobile ? "10px 16px" : "12px 20px", background: canEdit ? "#0070f3" : "#94a3b8", color: "white", border: "none", borderRadius: 8, cursor: canEdit ? "pointer" : "not-allowed", fontWeight: 600, fontSize: fontSize.md, flex: isMobile ? 1 : "0 0 auto", boxShadow: "0 4px 12px rgba(0, 112, 243, 0.2)", transition: "all 0.2s ease", display: "flex", alignItems: "center", justifyContent: "center", gap: 6, minHeight: 40, whiteSpace: "nowrap" }} onMouseEnter={(e) => { if (canEdit && !isMobile) e.currentTarget.style.transform = "translateY(-2px)" }} onMouseLeave={(e) => { if (canEdit && !isMobile) e.currentTarget.style.transform = "none" }}>
             <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2c5.5 0 10 4.5 10 10s-4.5 10-10 10S2 17.5 2 12 6.5 2 12 2m0 2c-4.4 0-8 3.6-8 8s3.6 8 8 8 8-3.6 8-8-3.6-8-8-8m3.5 9h-3v3h-1v-3h-3v-1h3v-3h1v3h3v1z" /></svg>
             Add Tricycle
           </button>
@@ -182,7 +217,7 @@ export default function ManageTricycles() {
           </div>
           <h3 style={{ margin: "0 0 8px", color: "#0f172a", fontSize: fontSize.xl, fontWeight: 600 }}>No tricycles yet</h3>
           <p style={{ color: "#64748b", fontSize: fontSize.base, margin: "0 0 24px", maxWidth: 400, marginLeft: "auto", marginRight: "auto" }}>Add tricycles to track your fleet and manage assignments.</p>
-          <button onClick={() => { setShowAddModal(true); setMessage("") }} style={{ padding: "10px 20px", background: "white", color: "#0f172a", border: "1px solid #cbd5e1", borderRadius: 8, cursor: "pointer", fontWeight: 500, fontSize: fontSize.base, transition: "all 0.2s ease" }} onMouseEnter={e => e.currentTarget.style.background = "#f8fafc"} onMouseLeave={e => e.currentTarget.style.background = "white"}>
+          <button onClick={() => { if (!canEdit) return; setShowAddModal(true); setMessage("") }} disabled={!canEdit} style={{ padding: "10px 20px", background: canEdit ? "white" : "#94a3b8", color: "#0f172a", border: "1px solid #cbd5e1", borderRadius: 8, cursor: canEdit ? "pointer" : "not-allowed", fontWeight: 500, fontSize: fontSize.base, transition: "all 0.2s ease" }} onMouseEnter={e => { if (canEdit) e.currentTarget.style.background = "#f8fafc" }} onMouseLeave={e => { if (canEdit) e.currentTarget.style.background = "white" }}>
             Add First Tricycle
           </button>
         </div>
@@ -223,10 +258,10 @@ export default function ManageTricycles() {
                   </div>
 
                   <div style={{ display: "flex", gap: 8 }}>
-                    <button onClick={() => { setEditingTricycle(t); setEditNumber(t.tricycle_number); setEditAssignedTo(t.assigned_to || ""); setEditPhoneNumber(t.phone_number || ""); setMessage("") }} style={{ flex: 1, padding: "8px 12px", cursor: "pointer", borderRadius: 6, border: "1px solid #e2e8f0", color: "#0070f3", background: "#f0f7ff", fontSize: fontSize.sm, fontWeight: 500, transition: "all 0.2s" }} onMouseEnter={e => { e.currentTarget.style.background = "#e0efff"; e.currentTarget.style.borderColor = "#0070f3" }} onMouseLeave={e => { e.currentTarget.style.background = "#f0f7ff"; e.currentTarget.style.borderColor = "#e2e8f0" }}>
+                    <button onClick={() => { if (!canEdit) return; setEditingTricycle(t); setEditNumber(t.tricycle_number); setEditAssignedTo(t.assigned_to || ""); setEditPhoneNumber(t.phone_number || ""); setMessage("") }} disabled={!canEdit} style={{ flex: 1, padding: "8px 12px", cursor: canEdit ? "pointer" : "not-allowed", borderRadius: 6, border: "1px solid #e2e8f0", color: canEdit ? "#0070f3" : "#94a3b8", background: canEdit ? "#f0f7ff" : "#e2e8f0", fontSize: fontSize.sm, fontWeight: 500, transition: "all 0.2s" }} onMouseEnter={e => { if (!canEdit) return; e.currentTarget.style.background = "#e0efff"; e.currentTarget.style.borderColor = "#0070f3" }} onMouseLeave={e => { if (!canEdit) return; e.currentTarget.style.background = "#f0f7ff"; e.currentTarget.style.borderColor = "#e2e8f0" }}>
                       Edit
                     </button>
-                    <button onClick={() => { setDeletingId(t.tricycle_id); setMessage("") }} style={{ flex: 1, padding: "8px 12px", cursor: "pointer", borderRadius: 6, border: "1px solid #fee2e2", color: "#ef4444", background: "#fef2f2", fontSize: fontSize.sm, fontWeight: 500, transition: "all 0.2s" }} onMouseEnter={e => { e.currentTarget.style.background = "#fee2e2" }} onMouseLeave={e => { e.currentTarget.style.background = "#fef2f2" }}>
+                    <button onClick={() => { if (!canEdit) return; setDeletingId(t.tricycle_id); setMessage("") }} disabled={!canEdit} style={{ flex: 1, padding: "8px 12px", cursor: canEdit ? "pointer" : "not-allowed", borderRadius: 6, border: "1px solid #fee2e2", color: canEdit ? "#ef4444" : "#94a3b8", background: canEdit ? "#fef2f2" : "#e2e8f0", fontSize: fontSize.sm, fontWeight: 500, transition: "all 0.2s" }} onMouseEnter={e => { if (!canEdit) return; e.currentTarget.style.background = "#fee2e2" }} onMouseLeave={e => { if (!canEdit) return; e.currentTarget.style.background = "#fef2f2" }}>
                       Delete
                     </button>
                   </div>
@@ -264,10 +299,10 @@ export default function ManageTricycles() {
                       </td>
                       <td style={{ padding: "12px 16px", textAlign: "right" }}>
                         <div style={{ display: "flex", gap: 6, justifyContent: "flex-end" }}>
-                          <button onClick={() => { setEditingTricycle(t); setEditNumber(t.tricycle_number); setEditAssignedTo(t.assigned_to || ""); setEditPhoneNumber(t.phone_number || ""); setMessage("") }} style={{ padding: "6px 10px", cursor: "pointer", borderRadius: 5, border: "1px solid #e2e8f0", color: "#0070f3", background: "#f0f7ff", fontSize: fontSize.sm, fontWeight: 500, transition: "all 0.2s", minHeight: 32, minWidth: 32, display: "flex", alignItems: "center", justifyContent: "center" }} onMouseEnter={e => { e.currentTarget.style.background = "#e0efff"; e.currentTarget.style.borderColor = "#0070f3" }} onMouseLeave={e => { e.currentTarget.style.background = "#f0f7ff"; e.currentTarget.style.borderColor = "#e2e8f0" }}>
+                          <button onClick={() => { if (!canEdit) return; setEditingTricycle(t); setEditNumber(t.tricycle_number); setEditAssignedTo(t.assigned_to || ""); setEditPhoneNumber(t.phone_number || ""); setMessage("") }} disabled={!canEdit} style={{ padding: "6px 10px", cursor: canEdit ? "pointer" : "not-allowed", borderRadius: 5, border: "1px solid #e2e8f0", color: canEdit ? "#0070f3" : "#94a3b8", background: canEdit ? "#f0f7ff" : "#e2e8f0", fontSize: fontSize.sm, fontWeight: 500, transition: "all 0.2s", minHeight: 32, minWidth: 32, display: "flex", alignItems: "center", justifyContent: "center" }} onMouseEnter={e => { if (!canEdit) return; e.currentTarget.style.background = "#e0efff"; e.currentTarget.style.borderColor = "#0070f3" }} onMouseLeave={e => { if (!canEdit) return; e.currentTarget.style.background = "#f0f7ff"; e.currentTarget.style.borderColor = "#e2e8f0" }}>
                             Edit
                           </button>
-                          <button onClick={() => { setDeletingId(t.tricycle_id); setMessage("") }} style={{ padding: "6px 10px", cursor: "pointer", borderRadius: 5, border: "1px solid #fee2e2", color: "#ef4444", background: "#fef2f2", fontSize: fontSize.sm, fontWeight: 500, transition: "all 0.2s", minHeight: 32, minWidth: 32, display: "flex", alignItems: "center", justifyContent: "center" }} onMouseEnter={e => { e.currentTarget.style.background = "#fee2e2" }} onMouseLeave={e => { e.currentTarget.style.background = "#fef2f2" }}>
+                          <button onClick={() => { if (!canEdit) return; setDeletingId(t.tricycle_id); setMessage("") }} disabled={!canEdit} style={{ padding: "6px 10px", cursor: canEdit ? "pointer" : "not-allowed", borderRadius: 5, border: "1px solid #fee2e2", color: canEdit ? "#ef4444" : "#94a3b8", background: canEdit ? "#fef2f2" : "#e2e8f0", fontSize: fontSize.sm, fontWeight: 500, transition: "all 0.2s", minHeight: 32, minWidth: 32, display: "flex", alignItems: "center", justifyContent: "center" }} onMouseEnter={e => { if (!canEdit) return; e.currentTarget.style.background = "#fee2e2" }} onMouseLeave={e => { if (!canEdit) return; e.currentTarget.style.background = "#fef2f2" }}>
                             Delete
                           </button>
                         </div>
@@ -295,19 +330,19 @@ export default function ManageTricycles() {
                 <div style={{ display: "flex", flexDirection: "column", gap: 14, marginBottom: 20 }}>
                   <div>
                     <label style={{ display: "block", marginBottom: 6, color: "#475569", fontSize: fontSize.sm, fontWeight: 500 }}>Tricycle Number *</label>
-                    <ModernInput ref={numberRef} type="text" placeholder="e.g. TRC-001" value={tricycleNumber} onChange={e => { setTricycleNumber(e.target.value); setMessage("") }} onKeyDown={e => { if (e.key === "Enter") handleAdd() }} style={fieldStyle} autoFocus />
+                    <ModernInput ref={numberRef} type="text" placeholder="e.g. TRC-001" value={tricycleNumber} onChange={e => { setTricycleNumber(e.target.value); setMessage("") }} onKeyDown={e => { if (e.key === "Enter") handleAdd() }} readOnly={!canEdit} style={fieldStyle} autoFocus />
                   </div>
                   <div>
                     <label style={{ display: "block", marginBottom: 6, color: "#475569", fontSize: fontSize.sm, fontWeight: 500 }}>Assigned To</label>
-                    <ModernInput type="text" placeholder="Full name of assignee" value={assignedTo} onChange={e => setAssignedTo(e.target.value)} style={fieldStyle} />
+                    <ModernInput type="text" placeholder="Full name of assignee" value={assignedTo} onChange={e => setAssignedTo(e.target.value)} readOnly={!canEdit} style={fieldStyle} />
                   </div>
                   <div>
                     <label style={{ display: "block", marginBottom: 6, color: "#475569", fontSize: fontSize.sm, fontWeight: 500 }}>Phone Number</label>
-                    <ModernInput type="tel" placeholder="e.g. 08012345678" value={phoneNumber} onChange={e => setPhoneNumber(e.target.value)} style={fieldStyle} />
+                    <ModernInput type="tel" placeholder="e.g. 08012345678" value={phoneNumber} onChange={e => setPhoneNumber(e.target.value)} readOnly={!canEdit} style={fieldStyle} />
                   </div>
                 </div>
                 {message && <div style={{ padding: 12, background: "#fef2f2", borderLeft: "4px solid #ef4444", borderRadius: 4, marginBottom: 20, color: "#b91c1c", fontSize: fontSize.sm }}>{message}</div>}
-                <button onClick={handleAdd} disabled={submitting} style={{ width: "100%", padding: "12px 16px", background: "#0070f3", color: "white", border: "none", borderRadius: 8, cursor: submitting ? "not-allowed" : "pointer", fontWeight: 600, fontSize: fontSize.md, transition: "opacity 0.2s", opacity: submitting ? 0.7 : 1, minHeight: 44 }}>
+                <button onClick={handleAdd} disabled={submitting || !canEdit} style={{ width: "100%", padding: "12px 16px", background: submitting || !canEdit ? "#94a3b8" : "#0070f3", color: "white", border: "none", borderRadius: 8, cursor: submitting || !canEdit ? "not-allowed" : "pointer", fontWeight: 600, fontSize: fontSize.md, transition: "opacity 0.2s", opacity: submitting ? 0.7 : 1, minHeight: 44 }}>
                   {submitting ? "Adding..." : "Add Tricycle"}
                 </button>
               </>
@@ -322,19 +357,19 @@ export default function ManageTricycles() {
                 <div style={{ display: "flex", flexDirection: "column", gap: 14, marginBottom: 20 }}>
                   <div>
                     <label style={{ display: "block", marginBottom: 6, color: "#475569", fontSize: fontSize.sm, fontWeight: 500 }}>Tricycle Number *</label>
-                    <ModernInput type="text" value={editNumber} onChange={e => { setEditNumber(e.target.value); setMessage("") }} style={fieldStyle} autoFocus />
+                    <ModernInput type="text" value={editNumber} onChange={e => { setEditNumber(e.target.value); setMessage("") }} readOnly={!canEdit} style={fieldStyle} autoFocus />
                   </div>
                   <div>
                     <label style={{ display: "block", marginBottom: 6, color: "#475569", fontSize: fontSize.sm, fontWeight: 500 }}>Assigned To</label>
-                    <ModernInput type="text" placeholder="Full name of assignee" value={editAssignedTo} onChange={e => setEditAssignedTo(e.target.value)} style={fieldStyle} />
+                    <ModernInput type="text" placeholder="Full name of assignee" value={editAssignedTo} onChange={e => setEditAssignedTo(e.target.value)} readOnly={!canEdit} style={fieldStyle} />
                   </div>
                   <div>
                     <label style={{ display: "block", marginBottom: 6, color: "#475569", fontSize: fontSize.sm, fontWeight: 500 }}>Phone Number</label>
-                    <ModernInput type="tel" placeholder="e.g. 08012345678" value={editPhoneNumber} onChange={e => setEditPhoneNumber(e.target.value)} style={fieldStyle} />
+                    <ModernInput type="tel" placeholder="e.g. 08012345678" value={editPhoneNumber} onChange={e => setEditPhoneNumber(e.target.value)} readOnly={!canEdit} style={fieldStyle} />
                   </div>
                 </div>
                 {message && <div style={{ padding: 12, background: "#fef2f2", borderLeft: "4px solid #ef4444", borderRadius: 4, marginBottom: 20, color: "#b91c1c", fontSize: fontSize.sm }}>{message}</div>}
-                <button onClick={handleUpdate} disabled={submitting} style={{ width: "100%", padding: "12px 16px", background: "#0070f3", color: "white", border: "none", borderRadius: 8, cursor: submitting ? "not-allowed" : "pointer", fontWeight: 600, fontSize: fontSize.md, transition: "opacity 0.2s", opacity: submitting ? 0.7 : 1, minHeight: 44 }}>
+                <button onClick={handleUpdate} disabled={submitting || !canEdit} style={{ width: "100%", padding: "12px 16px", background: submitting || !canEdit ? "#94a3b8" : "#0070f3", color: "white", border: "none", borderRadius: 8, cursor: submitting || !canEdit ? "not-allowed" : "pointer", fontWeight: 600, fontSize: fontSize.md, transition: "opacity 0.2s", opacity: submitting ? 0.7 : 1, minHeight: 44 }}>
                   {submitting ? "Saving..." : "Save Changes"}
                 </button>
               </>
@@ -353,7 +388,7 @@ export default function ManageTricycles() {
                     <button onClick={closeModals} style={{ padding: "12px 16px", background: "white", color: "#475569", border: "1px solid #cbd5e1", borderRadius: 8, cursor: "pointer", fontWeight: 600, fontSize: fontSize.md, minHeight: 44, transition: "all 0.2s" }} onMouseEnter={e => { e.currentTarget.style.background = "#f8fafc"; e.currentTarget.style.borderColor = "#0070f3"; e.currentTarget.style.color = "#0070f3" }} onMouseLeave={e => { e.currentTarget.style.background = "white"; e.currentTarget.style.borderColor = "#cbd5e1"; e.currentTarget.style.color = "#475569" }}>
                       Cancel
                     </button>
-                    <button onClick={() => handleDelete(deletingId)} disabled={submitting} style={{ padding: "12px 16px", background: "#ef4444", color: "white", border: "none", borderRadius: 8, cursor: submitting ? "not-allowed" : "pointer", fontWeight: 600, fontSize: fontSize.md, opacity: submitting ? 0.7 : 1, minHeight: 44, transition: "all 0.2s" }} onMouseEnter={e => { if (!submitting) e.currentTarget.style.background = "#dc2626" }} onMouseLeave={e => { e.currentTarget.style.background = "#ef4444" }}>
+                    <button onClick={() => handleDelete(deletingId)} disabled={submitting || !canEdit} style={{ padding: "12px 16px", background: submitting || !canEdit ? "#94a3b8" : "#ef4444", color: "white", border: "none", borderRadius: 8, cursor: submitting || !canEdit ? "not-allowed" : "pointer", fontWeight: 600, fontSize: fontSize.md, opacity: submitting ? 0.7 : 1, minHeight: 44, transition: "all 0.2s" }} onMouseEnter={e => { if (!submitting && canEdit) e.currentTarget.style.background = "#dc2626" }} onMouseLeave={e => { e.currentTarget.style.background = submitting || !canEdit ? "#94a3b8" : "#ef4444" }}>
                       {submitting ? "Deleting..." : "Yes, Delete"}
                     </button>
                   </div>

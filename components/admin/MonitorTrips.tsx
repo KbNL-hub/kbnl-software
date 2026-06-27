@@ -3,7 +3,9 @@
 import { useState, useEffect } from "react"
 import { Icon } from "@iconify/react"
 import { supabase } from "@/lib/supabase"
+import { apiMutate } from "@/lib/api-mutation"
 import ReassignBroker from "@/components/admin/ReassignBroker"
+import { usePermissions } from "@/lib/PermissionContext"
 
 type Stop = {
   stop_id: string
@@ -120,6 +122,8 @@ const filterOptions = ["Active", "All", "In transit", "On hold", "Completed", "D
 
 export default function MonitorTrips() {
   const { isMobile, isDesktop } = useBreakpoint()
+  const { getAccess } = usePermissions()
+  const canEdit = getAccess("monitor-trips").canEdit
   const [trips, setTrips] = useState<Trip[]>([])
   const [loading, setLoading] = useState(true)
   const [filterStatus, setFilterStatus] = useState("Active")
@@ -150,11 +154,13 @@ export default function MonitorTrips() {
 
     const enriched = await Promise.all(
       tripsData.map(async (trip) => {
-        const { data: driver } = await supabase
-          .from("Drivers")
-          .select("full_name, phone_number, status")
-          .eq("driver_id", trip.driver_id)
-          .single()
+        const { data: driver } = trip.driver_id
+          ? await supabase
+              .from("Drivers")
+              .select("full_name, phone_number, status")
+              .eq("driver_id", trip.driver_id)
+              .single()
+          : { data: null }
 
         const { data: stopsRaw } = await supabase
           .from("Stops")
@@ -370,10 +376,9 @@ export default function MonitorTrips() {
       fetchTrips().catch(() => []),
       fetchDdTrips().catch(() => [])
     ])
-    const allTrips = [...normal, ...dd]
-    if (allTrips.length > 0) {
-      setTrips(allTrips)
-    }
+    const ddTripIds = new Set(dd.map(t => t.trip_id))
+    const allTrips = [...normal.filter(t => !ddTripIds.has(t.trip_id)), ...dd]
+    setTrips(allTrips)
     setLastUpdated(new Date())
     setLoading(false)
   }
@@ -399,8 +404,10 @@ export default function MonitorTrips() {
     if (!endingTrip || !selectedTrip) return
     setEndTripLoading(true)
 
-    await supabase.from("Trips").update({ trip_status: "Completed" }).eq("trip_id", endingTrip)
-    await supabase.from("Trucks").update({ status: "Empty" }).eq("plate_number", selectedTrip.plate_number)
+    const r1 = await apiMutate("trips", { action: "update", table: "Trips", data: { trip_status: "Completed" }, filters: { trip_id: endingTrip } })
+    const r2 = await apiMutate("trips", { action: "update", table: "Trucks", data: { status: "Empty" }, filters: { plate_number: selectedTrip.plate_number } })
+    if (r1.error) console.error("EndTrip update Trips failed:", r1.error)
+    if (r2.error) console.error("EndTrip update Trucks failed:", r2.error)
 
     setEndTripLoading(false)
     setEndingTrip(null)
@@ -408,6 +415,8 @@ export default function MonitorTrips() {
     setSelectedTrip(null)
     loadAll()
   }
+
+  const disputedTripCount = trips.filter((t) => t.stops.some((s) => s.disputed)).length
 
   const filteredTrips = filterStatus === "All"
     ? trips
@@ -544,6 +553,14 @@ export default function MonitorTrips() {
               onMouseLeave={e => { if (!isActive) { e.currentTarget.style.background = "white"; e.currentTarget.style.borderColor = "#e2e8f0" } }}
             >
               {option}
+              {option === "Disputed" && !isActive && disputedTripCount > 0 && (
+                <span style={{ display: "inline-flex", marginLeft: 6, width: 8, height: 8, borderRadius: "50%", background: "#ef4444" }} />
+              )}
+              {option === "Disputed" && isActive && disputedTripCount > 0 && (
+                <span style={{ display: "inline-flex", marginLeft: 6, background: "#fef2f2", color: "#ef4444", borderRadius: 10, padding: "0 6px", fontSize: 11, fontWeight: 700, lineHeight: "18px", minWidth: 18, justifyContent: "center" }}>
+                  {disputedTripCount}
+                </span>
+              )}
             </button>
           )
         })}
@@ -855,7 +872,7 @@ export default function MonitorTrips() {
 
                 <div style={{ display: "grid", gridTemplateColumns: selectedTrip && (selectedTrip.trip_status === "In transit" || selectedTrip.trip_status === "On hold") ? "1fr 1fr" : "1fr", gap: 10 }}>
                   {selectedTrip && (selectedTrip.trip_status === "In transit" || selectedTrip.trip_status === "On hold") && (
-                    <button onClick={handleEndTripClick} style={{ padding: "12px 16px", background: "#fef2f2", color: "#ef4444", border: "1px solid #fecaca", borderRadius: 8, cursor: "pointer", fontWeight: 600, fontSize: fontSize.md, minHeight: 44, transition: "background 0.2s" }} onMouseEnter={e => e.currentTarget.style.background = "#fee2e2"} onMouseLeave={e => e.currentTarget.style.background = "#fef2f2"}>
+                    <button onClick={handleEndTripClick} disabled={!canEdit} style={{ padding: "12px 16px", background: !canEdit ? "#94a3b8" : "#fef2f2", color: !canEdit ? "white" : "#ef4444", border: "1px solid", borderColor: !canEdit ? "#94a3b8" : "#fecaca", borderRadius: 8, cursor: !canEdit ? "not-allowed" : "pointer", fontWeight: 600, fontSize: fontSize.md, minHeight: 44, transition: "background 0.2s" }} onMouseEnter={e => { if (canEdit) e.currentTarget.style.background = "#fee2e2" }} onMouseLeave={e => { if (canEdit) e.currentTarget.style.background = "#fef2f2" }}>
                       End Trip
                     </button>
                   )}
@@ -881,7 +898,7 @@ export default function MonitorTrips() {
               <button onClick={() => setEndingTrip(null)} disabled={endTripLoading} style={{ padding: "12px 16px", background: "white", color: "#475569", border: "1px solid #cbd5e1", borderRadius: 8, cursor: "pointer", fontWeight: 600, fontSize: fontSize.md, minHeight: 44, transition: "background 0.2s" }} onMouseEnter={e => e.currentTarget.style.background = "#f8fafc"} onMouseLeave={e => e.currentTarget.style.background = "white"}>
                 Cancel
               </button>
-              <button onClick={confirmEndTrip} disabled={endTripLoading} style={{ padding: "12px 16px", background: "#ef4444", color: "white", border: "none", borderRadius: 8, cursor: endTripLoading ? "not-allowed" : "pointer", fontWeight: 600, fontSize: fontSize.md, opacity: endTripLoading ? 0.7 : 1, minHeight: 44, transition: "background 0.2s" }} onMouseEnter={e => !endTripLoading && (e.currentTarget.style.background = "#dc2626")} onMouseLeave={e => !endTripLoading && (e.currentTarget.style.background = "#ef4444")}>
+              <button onClick={confirmEndTrip} disabled={endTripLoading || !canEdit} style={{ padding: "12px 16px", background: endTripLoading || !canEdit ? "#94a3b8" : "#ef4444", color: "white", border: "none", borderRadius: 8, cursor: endTripLoading || !canEdit ? "not-allowed" : "pointer", fontWeight: 600, fontSize: fontSize.md, opacity: endTripLoading || !canEdit ? 0.7 : 1, minHeight: 44, transition: "background 0.2s" }} onMouseEnter={e => !endTripLoading && canEdit && (e.currentTarget.style.background = "#dc2626")} onMouseLeave={e => !endTripLoading && canEdit && (e.currentTarget.style.background = "#ef4444")}>
                 {endTripLoading ? "Ending..." : "Yes, End Trip"}
               </button>
             </div>

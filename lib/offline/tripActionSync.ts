@@ -1,9 +1,6 @@
 "use client"
 
-// lib/offline/tripActionSync.ts
-// Automatically syncs pending trip actions when connection returns
-
-import { supabase } from '@/lib/supabase';
+import { apiMutate } from '@/lib/api-mutation';
 import {
   getPendingTripActions,
   markTripActionSynced,
@@ -20,10 +17,6 @@ interface SyncResult {
 export class TripActionSyncManager {
   private isSyncing = false;
 
-  /**
-   * Sync all pending trip actions
-   * Call this when connection returns
-   */
   async syncAll(): Promise<SyncResult[]> {
     if (this.isSyncing) {
       console.log('[TripSync] Already syncing, skipping...');
@@ -46,7 +39,6 @@ export class TripActionSyncManager {
         const result = await this.syncAction(action);
         results.push(result);
 
-        // Small delay between items
         await new Promise((resolve) => setTimeout(resolve, 100));
       }
 
@@ -57,9 +49,6 @@ export class TripActionSyncManager {
     }
   }
 
-  /**
-   * Sync a single action
-   */
   private async syncAction(action: {
     id: string;
     type: 'stop' | 'discrepancy' | 'load_more';
@@ -70,24 +59,28 @@ export class TripActionSyncManager {
 
       if (action.type === 'load_more') {
         const { trip_id, ...updateData } = action.data;
-        const { error } = await supabase
-          .from('Trips')
-          .update(updateData)
-          .eq('trip_id', trip_id);
-        
-        if (error) {
-          await updateTripActionError(action.id, error.message);
-          return { actionId: action.id, type: action.type, success: false, error: error.message };
-        }
-      } else {
-        // stops and discrepancies use INSERT
-        const { error } = await supabase
-          .from(this.getTableName(action.type))
-          .insert([action.data]);
+        const { error } = await apiMutate("trips", {
+          action: "update",
+          table: "Trips",
+          data: updateData,
+          filters: { trip_id },
+        })
 
         if (error) {
-          await updateTripActionError(action.id, error.message);
-          return { actionId: action.id, type: action.type, success: false, error: error.message };
+          await updateTripActionError(action.id, error);
+          return { actionId: action.id, type: action.type, success: false, error };
+        }
+      } else {
+        const table = action.type === 'stop' ? 'Stops' : 'trip_discrepancies'
+        const { error } = await apiMutate("trips", {
+          action: "insert",
+          table,
+          data: action.data,
+        })
+
+        if (error) {
+          await updateTripActionError(action.id, error);
+          return { actionId: action.id, type: action.type, success: false, error };
         }
       }
 
@@ -99,31 +92,10 @@ export class TripActionSyncManager {
       return { actionId: action.id, type: action.type, success: false, error: message };
     }
   }
-
-  /**
-   * Get table name for action type
-   */
-  private getTableName(type: 'stop' | 'discrepancy' | 'load_more'): string {
-    switch (type) {
-      case 'stop':
-        return 'Stops';
-      case 'discrepancy':
-        return 'trip_discrepancies';
-      case 'load_more':
-        return 'Trips'; // Load more updates the Trips table
-      default:
-        return '';
-    }
-  }
 }
 
-// Export singleton
 export const tripActionSyncManager = new TripActionSyncManager();
 
-/**
- * Initialize auto-sync on connection
- * Call this once in a useEffect at app load
- */
 export function initTripActionAutoSync() {
   window.addEventListener('online', async () => {
     console.log('[TripSync] Connection restored, syncing pending actions...');

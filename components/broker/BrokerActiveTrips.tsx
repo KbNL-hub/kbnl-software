@@ -40,7 +40,6 @@ type Trip = {
   loaded_quantity: number
   remaining: number
   stop_count: number
-  my_stop_count: number
   stops: Stop[]
   load_more_entries: LoadMoreEntry[]
   trip_status: string
@@ -103,18 +102,6 @@ export default function BrokerActiveTrips() {
       if (stopCounts) {
         for (const row of stopCounts) {
           countMap[row.trip_id] = Number(row.stop_count)
-        }
-      }
-
-      const { data: myStopsRaw } = await supabase
-        .from("Stops")
-        .select("trip_id, stop_id")
-        .in("trip_id", tripIds)
-
-      const myStopCountMap: Record<string, number> = {}
-      if (myStopsRaw) {
-        for (const s of myStopsRaw) {
-          myStopCountMap[s.trip_id] = (myStopCountMap[s.trip_id] || 0) + 1
         }
       }
 
@@ -201,7 +188,6 @@ export default function BrokerActiveTrips() {
             loaded_quantity: trip.loaded_quantity,
             remaining: trip.loaded_quantity - totalOffloaded,
             stop_count: countMap[trip.trip_id] ?? stops.length,
-            my_stop_count: myStopCountMap[trip.trip_id] ?? 0,
             stops,
             load_more_entries,
             trip_status: trip.trip_status,
@@ -231,18 +217,6 @@ export default function BrokerActiveTrips() {
       if (ddStopCounts) {
         for (const row of ddStopCounts) {
           ddCountMap[row.trip_id] = Number(row.stop_count)
-        }
-      }
-
-      const { data: myDDStopsRaw } = await supabase
-        .from("Stops")
-        .select("trip_id")
-        .in("trip_id", ddTripIds)
-
-      const myDDStopCountMap: Record<string, number> = {}
-      if (myDDStopsRaw) {
-        for (const s of myDDStopsRaw) {
-          myDDStopCountMap[s.trip_id] = (myDDStopCountMap[s.trip_id] || 0) + 1
         }
       }
 
@@ -323,7 +297,6 @@ export default function BrokerActiveTrips() {
             loaded_quantity: ddTrip.loaded_quantity,
             remaining: ddTrip.loaded_quantity - totalOffloaded,
             stop_count: ddCountMap[ddTrip.dd_trip_id] ?? stops.length,
-            my_stop_count: myDDStopCountMap[ddTrip.dd_trip_id] ?? 0,
             stops,
             load_more_entries,
             trip_status: ddTrip.trip_status,
@@ -435,8 +408,6 @@ export default function BrokerActiveTrips() {
             const confirmed = trip.stops.filter(s => s.confirmed).length
             const pending = trip.stops.filter(s => !s.confirmed && !s.disputed).length
             const disputed = trip.stops.filter(s => s.disputed).length
-            const hasMyStops = trip.my_stop_count > 0
-
             return (
               <div key={trip.trip_id} style={{ background: "white", borderRadius: 12, padding: 20, border: "1px solid #e2e8f0", boxShadow: "0 1px 3px rgba(0, 0, 0, 0.05)" }} onMouseEnter={e => { if (!isMobile) { e.currentTarget.style.boxShadow = "0 4px 12px rgba(0, 0, 0, 0.08)"; e.currentTarget.style.borderColor = "#cbd5e1" } }} onMouseLeave={e => { if (!isMobile) { e.currentTarget.style.boxShadow = "0 1px 3px rgba(0, 0, 0, 0.05)"; e.currentTarget.style.borderColor = "#e2e8f0" } }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 16 }}>
@@ -493,20 +464,14 @@ export default function BrokerActiveTrips() {
                     {pending > 0 && <span style={{ width: 8, height: 8, borderRadius: "50%", background: "#f5a623" }} title={`${pending} pending`} />}
                     {disputed > 0 && <span style={{ width: 8, height: 8, borderRadius: "50%", background: "#ef4444" }} title={`${disputed} disputed`} />}
                   </div>
-                  {hasMyStops ? (
-                    <button
-                      onClick={() => { setSelectedStops(trip.stops); setSelectedLoadMore(trip.load_more_entries); setSelectedPlate(trip.plate_number); setSelectedTrip({ atc: trip.atc, amount_charged: trip.amount_charged, payment_mode: trip.payment_mode }) }}
-                      style={{ padding: "8px 16px", background: "#f0f7ff", color: "#0070f3", border: "1px solid #bfdbfe", borderRadius: 8, cursor: "pointer", fontWeight: 600, fontSize: fontSize.sm }}
-                      onMouseEnter={e => e.currentTarget.style.background = "#e0efff"}
-                      onMouseLeave={e => e.currentTarget.style.background = "#f0f7ff"}
-                    >
-                      Details
-                    </button>
-                  ) : (
-                    <span style={{ padding: "8px 16px", color: "#9ca3af", fontSize: fontSize.sm, fontWeight: 500 }}>
-                      No stops assigned
-                    </span>
-                  )}
+                  <button
+                    onClick={() => { setSelectedStops(trip.stops); setSelectedLoadMore(trip.load_more_entries); setSelectedPlate(trip.plate_number); setSelectedTrip({ atc: trip.atc, amount_charged: trip.amount_charged, payment_mode: trip.payment_mode }) }}
+                    style={{ padding: "8px 16px", background: "#f0f7ff", color: "#0070f3", border: "1px solid #bfdbfe", borderRadius: 8, cursor: "pointer", fontWeight: 600, fontSize: fontSize.sm }}
+                    onMouseEnter={e => e.currentTarget.style.background = "#e0efff"}
+                    onMouseLeave={e => e.currentTarget.style.background = "#f0f7ff"}
+                  >
+                    Details
+                  </button>
                 </div>
               </div>
             )
@@ -532,7 +497,6 @@ export default function BrokerActiveTrips() {
                 const confirmed = trip.stops.filter(s => s.confirmed).length
                 const pending = trip.stops.filter(s => !s.confirmed && !s.disputed).length
                 const disputed = trip.stops.filter(s => s.disputed).length
-                const hasMyStops = trip.my_stop_count > 0
 
                 return (
                   <tr key={trip.trip_id} style={{ borderBottom: "1px solid #e2e8f0" }} onMouseEnter={e => e.currentTarget.style.background = "#f8fafc"} onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
@@ -548,16 +512,10 @@ export default function BrokerActiveTrips() {
                     <td style={{ padding: "12px 16px", color: "#0f172a", fontSize: fontSize.base, fontWeight: 500 }}>{trip.loaded_quantity}</td>
                     <td style={{ padding: "12px 16px", color: trip.remaining === 0 ? "#ef4444" : trip.remaining < trip.loaded_quantity * 0.2 ? "#f5a623" : "#16a34a", fontSize: fontSize.base, fontWeight: 600 }}>{trip.remaining}</td>
                     <td style={{ padding: "12px 16px" }}>
-                      {hasMyStops ? (
-                        <span style={{ color: "#0070f3", fontSize: fontSize.sm, fontWeight: 500, textDecoration: "underline", cursor: "pointer" }}
-                          onClick={() => { setSelectedStops(trip.stops); setSelectedLoadMore(trip.load_more_entries); setSelectedPlate(trip.plate_number); setSelectedTrip({ atc: trip.atc, amount_charged: trip.amount_charged, payment_mode: trip.payment_mode }) }}>
-                          {trip.stop_count} {trip.stop_count === 1 ? "stop" : "stops"}
-                        </span>
-                      ) : (
-                        <span style={{ color: "#94a3b8", fontSize: fontSize.sm }}>
-                          {trip.stop_count} {trip.stop_count === 1 ? "stop" : "stops"}
-                        </span>
-                      )}
+                      <span style={{ color: "#0070f3", fontSize: fontSize.sm, fontWeight: 500, textDecoration: "underline", cursor: "pointer" }}
+                        onClick={() => { setSelectedStops(trip.stops); setSelectedLoadMore(trip.load_more_entries); setSelectedPlate(trip.plate_number); setSelectedTrip({ atc: trip.atc, amount_charged: trip.amount_charged, payment_mode: trip.payment_mode }) }}>
+                        {trip.stop_count} {trip.stop_count === 1 ? "stop" : "stops"}
+                      </span>
                       {confirmed > 0 && <span style={{ marginLeft: 4, width: 8, height: 8, borderRadius: "50%", background: "#16a34a", display: "inline-block" }} title={`${confirmed} confirmed`} />}
                       {pending > 0 && <span style={{ marginLeft: 4, width: 8, height: 8, borderRadius: "50%", background: "#f5a623", display: "inline-block" }} title={`${pending} pending`} />}
                       {disputed > 0 && <span style={{ marginLeft: 4, width: 8, height: 8, borderRadius: "50%", background: "#ef4444", display: "inline-block" }} title={`${disputed} disputed`} />}
@@ -606,7 +564,7 @@ export default function BrokerActiveTrips() {
         </div>
       )}
 
-      {/* Stops Modal — only shows broker's own stops */}
+      {/* Stops Modal */}
       {selectedStops && (
         <div onClick={closeModals} style={{ position: "fixed", inset: 0, background: "rgba(15, 23, 42, 0.6)", backdropFilter: "blur(4px)", display: "flex", alignItems: isMobile ? "flex-end" : "center", justifyContent: "center", zIndex: 100, padding: isMobile ? 0 : 24, animation: "fadeIn 0.2s ease-out" }}>
           <div onClick={e => e.stopPropagation()} style={{ background: "white", borderRadius: isMobile ? "20px 20px 0 0" : 12, padding: isMobile ? "28px 20px" : 32, width: "100%", maxWidth: 500, maxHeight: isMobile ? "90vh" : "80vh", overflowY: "auto", boxShadow: "0 25px 50px -12px rgba(0, 0, 0, 0.25)", animation: "slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1)" }}>
@@ -632,7 +590,7 @@ export default function BrokerActiveTrips() {
             )}
 
             {selectedStops.length === 0 ? (
-              <p style={{ color: "#94a3b8", fontSize: fontSize.base }}>No stops assigned to you on this trip.</p>
+              <p style={{ color: "#94a3b8", fontSize: fontSize.base }}>No stops on this trip.</p>
             ) : (
               <div style={{ display: "flex", flexDirection: "column", gap: 12, marginBottom: 20 }}>
                 {selectedStops.map((stop, index) => (

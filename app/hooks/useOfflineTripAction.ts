@@ -1,10 +1,7 @@
 "use client"
 
-// hooks/useOfflineTripAction.ts
-// Conditional hook: online = instant submit, offline = save locally
-
-import { useCallback, useState } from 'react';
-import { supabase } from '@/lib/supabase';
+import { useCallback, useEffect, useState } from 'react';
+import { apiMutate } from '@/lib/api-mutation';
 import {
   savePendingTripAction,
   getPendingTripActionCount,
@@ -25,11 +22,17 @@ export function useOfflineTripAction(): UseOfflineTripActionResult {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isOnline, setIsOnline] = useState(navigator.onLine);
 
-  // Detect online/offline
-  if (typeof window !== 'undefined') {
-    window.addEventListener('online', () => setIsOnline(true));
-    window.addEventListener('offline', () => setIsOnline(false));
-  }
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const goOnline = () => setIsOnline(true);
+    const goOffline = () => setIsOnline(false);
+    window.addEventListener('online', goOnline);
+    window.addEventListener('offline', goOffline);
+    return () => {
+      window.removeEventListener('online', goOnline);
+      window.removeEventListener('offline', goOffline);
+    };
+  }, []);
 
   const submitAction = useCallback(
     async (
@@ -41,29 +44,30 @@ export function useOfflineTripAction(): UseOfflineTripActionResult {
       setIsSubmitting(true);
 
       try {
-        // ONLINE: Submit immediately
         if (isOnline) {
           console.log(`[Trip Action] Online - submitting ${type} immediately`);
 
           let result;
           if (type === 'load_more') {
-            // load_more: UPDATE existing Trips record
             const { loaded_quantity, trip_status, updated_at } = data;
-            result = await supabase
-              .from(tableName)
-              .update({ loaded_quantity, trip_status, updated_at })
-              .eq('trip_id', tripId);
+            result = await apiMutate("trips", {
+              action: "update",
+              table: "Trips",
+              data: { loaded_quantity, trip_status, updated_at },
+              filters: { trip_id: tripId },
+            })
           } else {
-            // stop & discrepancy: INSERT new records
-            result = await supabase
-              .from(tableName)
-              .insert([data]);
+            result = await apiMutate("trips", {
+              action: "insert",
+              table: tableName,
+              data,
+            })
           }
 
           if (result.error) {
             console.error(`[Trip Action] Submit failed:`, result.error);
             setIsSubmitting(false);
-            return { success: false, error: result.error.message };
+            return { success: false, error: result.error };
           }
 
           console.log(`[Trip Action] ${type} submitted successfully`);
@@ -71,7 +75,6 @@ export function useOfflineTripAction(): UseOfflineTripActionResult {
           return { success: true };
         }
 
-        // OFFLINE: Save locally
         console.log(`[Trip Action] Offline - saving ${type} locally`);
         await savePendingTripAction(type, tripId, data);
         setIsSubmitting(false);
@@ -93,20 +96,26 @@ export function useOfflineTripAction(): UseOfflineTripActionResult {
   };
 }
 
-// Hook to get pending count (for indicator badge)
 export function usePendingTripCount(): number {
   const [count, setCount] = useState(0);
 
-  if (typeof window !== 'undefined') {
-    // Update count when online
-    window.addEventListener('online', async () => {
-      const newCount = await getPendingTripActionCount();
-      setCount(newCount);
-    });
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
 
-    // Update on mount
-    getPendingTripActionCount().then(setCount);
-  }
+    let mounted = true;
+    const refreshCount = async () => {
+      const newCount = await getPendingTripActionCount();
+      if (mounted) setCount(newCount);
+    };
+
+    window.addEventListener('online', refreshCount);
+    refreshCount();
+
+    return () => {
+      mounted = false;
+      window.removeEventListener('online', refreshCount);
+    };
+  }, []);
 
   return count;
 }

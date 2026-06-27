@@ -1,8 +1,10 @@
 "use client"
 
-import { useEffect, useState, useRef } from "react"
+import { useEffect, useState, useRef, useMemo } from "react"
 import { useRouter } from "next/navigation"
 import { supabase } from "@/lib/supabase"
+import { apiMutate } from "@/lib/api-mutation"
+import RoleSwitcher from "@/components/RoleSwitcher"
 import { formatAmount, parseAmount } from "@/lib/formatAmount"
 import ModernInput from "@/components/ModernInput"
 import { Icon } from "@iconify/react"
@@ -28,6 +30,8 @@ type FuelDeposit = {
   amount: number
   note: string | null
   deposited_at: string
+  status: string
+  confirmed_at: string | null
 }
 
 type StationManager = {
@@ -118,17 +122,25 @@ export default function StationManagerDashboard() {
       if (!session) { router.push("/login"); return }
       const user = session.user
 
-      const { data: profile } = await supabase.from("Profiles").select("role").eq("user_id", user.id).single()
-      if (profile?.role !== "StationManager") { router.push("/login"); return }
+      await supabase.from("Profiles").select("full_name").eq("user_id", user.id).single()
 
-      const { data: mgr } = await supabase.from("station_managers").select("manager_id, company_id, profile_picture_url").eq("manager_id", user.id).single()
-      if (!mgr) { router.push("/login"); return }
+      const { data: mgr } = await supabase
+        .from("station_managers")
+        .select("manager_id, company_id, profile_picture_url")
+        .eq("manager_id", user.id)
+        .single()
+
+      if (!mgr?.company_id) {
+        router.push("/login")
+        return
+      }
 
       setManager(mgr)
-      await fetchCompanyData(mgr.company_id)
+      const companyId = mgr.company_id
+      await fetchCompanyData(companyId)
       await Promise.all([
-        fetchATFs(mgr.company_id),
-        fetchDeposits(mgr.company_id),
+        fetchATFs(companyId),
+        fetchDeposits(companyId),
       ])
       setLoading(false)
     }
@@ -177,9 +189,8 @@ export default function StationManagerDashboard() {
   async function fetchDeposits(cId: string) {
     const { data } = await supabase
       .from("fuel_deposits")
-      .select("deposit_id, amount, note, deposited_at")
+      .select("deposit_id, amount, note, deposited_at, status, confirmed_at")
       .eq("company_id", cId)
-      .eq("status", "Pending")
       .order("deposited_at", { ascending: false })
 
     setDeposits(data || [])
@@ -202,10 +213,12 @@ export default function StationManagerDashboard() {
       return
     }
 
-    const { error: updateError } = await supabase
-      .from("fuel_deposits")
-      .update({ status: "Confirmed", confirmed_at: new Date().toISOString() })
-      .eq("deposit_id", deposit.deposit_id)
+    const { error: updateError } = await apiMutate("fuel", {
+      action: "update",
+      table: "fuel_deposits",
+      data: { status: "Confirmed", confirmed_at: new Date().toISOString() },
+      filters: { deposit_id: deposit.deposit_id },
+    })
 
     if (updateError) { setConfirmLoading(false); return }
 
@@ -216,7 +229,12 @@ export default function StationManagerDashboard() {
       .single()
 
     const newBalance = (company?.current_balance ?? 0) + deposit.amount
-    await supabase.from("fuel_companies").update({ current_balance: newBalance }).eq("company_id", manager?.company_id)
+    await apiMutate("fuel", {
+      action: "update",
+      table: "fuel_companies",
+      data: { current_balance: newBalance },
+      filters: { company_id: manager?.company_id },
+    })
     setCurrentBalance(newBalance)
 
     setConfirmLoading(false)
@@ -240,10 +258,17 @@ export default function StationManagerDashboard() {
       return
     }
 
-    await supabase
-      .from("fuel_deposits")
-      .update({ status: "Declined", declined_at: new Date().toISOString() })
-      .eq("deposit_id", deposit.deposit_id)
+    const { error: declineError } = await apiMutate("fuel", {
+      action: "update",
+      table: "fuel_deposits",
+      data: { status: "Declined", declined_at: new Date().toISOString() },
+      filters: { deposit_id: deposit.deposit_id },
+    })
+
+    if (declineError) {
+      setConfirmLoading(false)
+      return
+    }
 
     setConfirmLoading(false)
     setConfirmingDeposit(null)
@@ -338,25 +363,76 @@ export default function StationManagerDashboard() {
     if (!ratePerLitre || rate <= 0) return setDispenseError("Enter a valid rate per litre")
 
     const total = dispensingATF.litres * rate
-    const isLow = currentBalance !== null && currentBalance < total
-    if (isLow) return setDispenseError(`Insufficient balance — need ₦${total.toLocaleString()} but only ₦${currentBalance?.toLocaleString()} available`)
 
     setDispenseLoading(true)
 
-    await supabase.from("fuel_requests").update({
-      atf_status: "Dispensed",
-      rate_per_litre: rate,
-      total_amount: total,
-      dispensed_at: new Date().toISOString(),
-    }).eq("request_id", dispensingATF.request_id)
+    const { data: freshATF } = await supabase
+      .from("fuel_requests")
+      .select("atf_status")
+      .eq("request_id", dispensingATF.request_id)
+      .single()
 
-    const newBalance = (currentBalance ?? 0) - total
-    await supabase.from("fuel_companies").update({ current_balance: newBalance }).eq("company_id", manager?.company_id)
-    setCurrentBalance(newBalance)
+    if (!freshATF || freshATF.atf_status !== "Authorised") {
+      setDispenseError("This ATF is no longer Authorised. Refresh and try again.")
+      setDispenseLoading(false)
+      return
+    }
+
+    const { data: company } = await supabase
+      .from("fuel_companies")
+      .select("current_balance")
+      .eq("company_id", manager?.company_id)
+      .single()
+
+    const freshBalance = company?.current_balance ?? 0
+    if (freshBalance < total) {
+      setDispenseError(`Insufficient balance — need ₦${total.toLocaleString()} but only ₦${freshBalance.toLocaleString()} available`)
+      setDispenseLoading(false)
+      return
+    }
+
+    const { error: reqError } = await apiMutate("fuel", {
+      action: "update",
+      table: "fuel_requests",
+      data: {
+        atf_status: "Dispensed",
+        rate_per_litre: rate,
+        total_amount: total,
+        dispensed_at: new Date().toISOString(),
+      },
+      filters: { request_id: dispensingATF.request_id, atf_status: "Authorised" },
+    })
+    if (reqError) {
+      setDispenseError("Unable to mark as dispensed. Refresh and try again.")
+      setDispenseLoading(false)
+      return
+    }
+
+    const { error: debitError } = await apiMutate("fuel", {
+      action: "update",
+      table: "fuel_companies",
+      data: { current_balance: freshBalance - total },
+      filters: { company_id: manager?.company_id },
+    })
+    if (debitError) {
+      setDispenseError("Dispensed but balance update failed. Contact support.")
+      setDispenseLoading(false)
+      return
+    }
+    setCurrentBalance(freshBalance - total)
 
     const { data: truck } = await supabase.from("Trucks").select("fuel_balance").eq("plate_number", dispensingATF.plate_number).single()
     if (truck) {
-      await supabase.from("Trucks").update({ fuel_balance: truck.fuel_balance + dispensingATF.litres }).eq("plate_number", dispensingATF.plate_number)
+      const { error: truckError } = await apiMutate("trips", {
+        action: "update", table: "Trucks",
+        data: { fuel_balance: truck.fuel_balance + dispensingATF.litres },
+        filters: { plate_number: dispensingATF.plate_number },
+      })
+      if (truckError) {
+        setDispenseError("Dispensed and debited but truck balance failed. Contact support.")
+        setDispenseLoading(false)
+        return
+      }
     }
 
     setDispenseLoading(false)
@@ -371,11 +447,22 @@ export default function StationManagerDashboard() {
     if (!invalidateReason.trim()) return setInvalidateError("Provide a reason for invalidation")
 
     setInvalidateLoading(true)
-    await supabase.from("fuel_requests").update({
-      atf_status: "Invalidated",
-      invalidation_reason: invalidateReason.trim(),
-      invalidated_at: new Date().toISOString(),
-    }).eq("request_id", invalidatingATF.request_id)
+    const { error: invalidateErrorResult } = await apiMutate("fuel", {
+      action: "update",
+      table: "fuel_requests",
+      data: {
+        atf_status: "Invalidated",
+        invalidation_reason: invalidateReason.trim(),
+        invalidated_at: new Date().toISOString(),
+      },
+      filters: { request_id: invalidatingATF.request_id, atf_status: "Authorised" },
+    })
+
+    if (invalidateErrorResult) {
+      setInvalidateError("Unable to invalidate this ATF. Refresh and try again.")
+      setInvalidateLoading(false)
+      return
+    }
 
     setInvalidateLoading(false)
     setInvalidatingATF(null)
@@ -383,6 +470,25 @@ export default function StationManagerDashboard() {
     setInvalidateError("")
     fetchATFs(manager?.company_id ?? "")
   }
+
+  const balanceMap = useMemo(() => {
+    const map: Record<string, number> = {}
+    const records: { id: string; amount: number; created_at: string }[] = [
+      ...atfs.filter(a => a.atf_status === "Dispensed" || a.atf_status === "Confirmed").map(a => ({
+        id: a.request_id, amount: a.total_amount ?? 0, created_at: a.requested_at
+      })),
+      ...deposits.filter(d => d.status === "Confirmed").map(d => ({
+        id: d.deposit_id, amount: -d.amount, created_at: d.confirmed_at ?? d.deposited_at
+      })),
+    ]
+    records.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+    let running = currentBalance ?? 0
+    for (const rec of records) {
+      map[rec.id] = running
+      running += rec.amount
+    }
+    return map
+  }, [atfs, deposits, currentBalance])
 
   const filteredATFs = filter === "All" ? atfs : atfs.filter(a => a.atf_status === filter)
   const isLow = currentBalance !== null && currentBalance < lowThreshold
@@ -476,7 +582,7 @@ export default function StationManagerDashboard() {
               <h1 style={{ margin: 0, fontSize: isMobile ? fontSize.lg : fontSize.xl, fontWeight: 700, color: "#0070f3" }}>
                 {companyName}
               </h1>
-              <p style={{ margin: "2px 0 0", fontSize: fontSize.sm, color: "#64748b" }}>Station Manager</p>
+              <RoleSwitcher currentRole="StationManager" style={{ margin: "2px 0 0", fontSize: fontSize.sm, color: "#64748b" }} />
             </div>
           </div>
           <div style={{ display: "flex", gap: 8 }}>
@@ -508,11 +614,11 @@ export default function StationManagerDashboard() {
         </div>
 
         {/* Pending Deposits */}
-        {deposits.length > 0 && (
+        {deposits.filter(d => d.status === "Pending").length > 0 && (
           <div style={{ marginBottom: 24 }}>
             <h3 style={{ margin: "0 0 12px", fontSize: fontSize.base, fontWeight: 700, color: "#0f172a" }}>Pending Top-ups</h3>
             <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-              {deposits.map(d => (
+              {deposits.filter(d => d.status === "Pending").map(d => (
                 <div key={d.deposit_id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", background: "#fffbeb", border: "1px solid #fde68a", borderRadius: 12, padding: "14px 18px" }}>
                   <div>
                     <p style={{ margin: 0, fontWeight: 700, fontSize: fontSize.lg, color: "#0f172a" }}>₦{d.amount.toLocaleString()}</p>
@@ -581,6 +687,11 @@ export default function StationManagerDashboard() {
                     <div>
                       <p style={{ margin: 0, fontSize: fontSize.xs, color: "#94a3b8" }}>Total Amount</p>
                       <p style={{ margin: "2px 0 0", fontWeight: 700, fontSize: fontSize.base, color: "#16a34a" }}>₦{atf.total_amount.toLocaleString()}</p>
+                      {atf.atf_status === "Confirmed" && balanceMap[atf.request_id] !== undefined && (
+                        <span style={{ marginTop: 4, fontSize: fontSize.xs, fontWeight: 600, color: "#16a34a", background: "#f0fdf4", padding: "2px 8px", borderRadius: 4, display: "inline-block" }}>
+                          Balance after: ₦{balanceMap[atf.request_id].toLocaleString()}
+                        </span>
+                      )}
                     </div>
                   )}
                 </div>

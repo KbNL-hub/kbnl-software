@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react"
 import { supabase } from "@/lib/supabase"
+import { apiMutate } from "@/lib/api-mutation"
 
 type Broker = {
   broker_id: string
@@ -35,52 +36,51 @@ export default function ReassignBroker({ stopId, onReassigned }: Props) {
     if (!selectedBrokerId) return setMessage("Select a broker")
     setSubmitting(true)
 
-    const { error } = await supabase
-      .from("Stops")
-      .update({
-        broker_id: selectedBrokerId,
-        disputed: false,
-        dispute_reason: null,
-        disputed_by: null,
-        confirmed: false,
+    try {
+      const { error } = await apiMutate("trips", {
+        action: "update", table: "Stops",
+        data: { broker_id: selectedBrokerId, disputed: false, dispute_reason: null, disputed_by: null, confirmed: false },
+        filters: { stop_id: stopId },
       })
-      .eq("stop_id", stopId)
 
-    setSubmitting(false)
+      if (error) {
+        setMessage("Failed to reassign")
+        return
+      }
 
-    if (error) {
-      setMessage("Failed to reassign")
-      return
+      setDone(true)
+      setMessage("✅ Stop reassigned successfully")
+      setTimeout(() => onReassigned(), 1500)
+    } catch {
+      setMessage("Network error, please try again")
+    } finally {
+      setSubmitting(false)
     }
-
-    setDone(true)
-    setMessage("✅ Stop reassigned successfully")
-    setTimeout(() => onReassigned(), 1500)
   }
 
   async function handleResolve() {
     setSubmitting(true)
 
-    const { error } = await supabase
-      .from("Stops")
-      .update({
-        disputed: false,
-        dispute_reason: null,
-        disputed_by: null,
-        confirmed: true,
+    try {
+      const { error } = await apiMutate("trips", {
+        action: "update", table: "Stops",
+        data: { disputed: false, dispute_reason: null, disputed_by: null, confirmed: true },
+        filters: { stop_id: stopId },
       })
-      .eq("stop_id", stopId)
 
-    setSubmitting(false)
+      if (error) {
+        setMessage("Failed to resolve dispute")
+        return
+      }
 
-    if (error) {
-      setMessage("Failed to resolve dispute")
-      return
+      setDone(true)
+      setMessage("✅ Dispute resolved")
+      setTimeout(() => onReassigned(), 1500)
+    } catch {
+      setMessage("Network error, please try again")
+    } finally {
+      setSubmitting(false)
     }
-
-    setDone(true)
-    setMessage("✅ Dispute resolved")
-    setTimeout(() => onReassigned(), 1500)
   }
 
   if (done) return (

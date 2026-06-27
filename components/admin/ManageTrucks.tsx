@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from "react"
 import { supabase } from "@/lib/supabase"
+import { usePermissions } from "@/lib/PermissionContext"
 
 type Truck = {
   plate_number: string
@@ -69,9 +70,11 @@ const getPillStyle = (filter: string, isActive: boolean) => {
 
 export default function ManageTrucks() {
   const { isMobile, isDesktop } = useBreakpoint()
+  const { getAccess } = usePermissions()
+  const canEdit = getAccess("manage-trucks").canEdit
   const [trucks, setTrucks] = useState<Truck[]>([])
   const [loading, setLoading] = useState(true)
-  const [viewMode, setViewMode] = useState<ViewMode>(isMobile ? "card" : "table")
+  const [viewMode, setViewMode] = useState<ViewMode>("card")
   const [editingTruck, setEditingTruck] = useState<Truck | null>(null)
   const [editKbnlNo, setEditKbnlNo] = useState("")
   const [editModel, setEditModel] = useState("")
@@ -88,16 +91,23 @@ export default function ManageTrucks() {
   const tonnageRef = useRef<HTMLInputElement>(null)
 
   async function fetchTrucks() {
-    const { data, error } = await supabase
-      .from("Trucks")
-      .select("*")
-      .order("plate_number", { ascending: true })
+    try {
+      const { data, error } = await supabase
+        .from("Trucks")
+        .select("*")
+        .order("plate_number", { ascending: true })
 
-    if (!error) setTrucks(data || [])
-    setLoading(false)
+      if (!error) setTrucks(data || [])
+    } finally {
+      setLoading(false)
+    }
   }
 
   useEffect(() => { fetchTrucks() }, [])
+
+  useEffect(() => {
+    setViewMode(isMobile ? "card" : "table")
+  }, [isMobile])
 
   const filterOptions = ["All", "Empty", "Loaded", "Undergoing Repairs", "Decommissioned"]
   const filteredTrucks = filterStatus === "All" ? trucks : trucks.filter((t) => t.status === filterStatus)
@@ -120,54 +130,68 @@ export default function ManageTrucks() {
   }
 
   async function handleUpdate() {
+    if (!canEdit) return
     if (!editingTruck) return
     if (!editKbnlNo.trim()) return setMessage("KbNL truck number is required")
     if (!editModel.trim()) return setMessage("Truck model is required")
     if (!editCapacity) return setMessage("Capacity is required")
     if (!editTonnage) return setMessage("Tonnage is required")
+    const capacity = Number(editCapacity)
+    const tonnage = Number(editTonnage)
+    if (!Number.isInteger(capacity) || capacity <= 0) return setMessage("Capacity must be a positive whole number")
+    if (!Number.isFinite(tonnage) || tonnage <= 0) return setMessage("Tonnage must be a positive number")
 
     setSubmitting(true)
 
-    const { error } = await supabase
-      .from("Trucks")
-      .update({
-        kbnl_truck_no: editKbnlNo.trim(),
-        truck_model: editModel,
-        capacity: parseInt(editCapacity),
-        tonnage: parseFloat(editTonnage),
-        truck_size: editTruckSize || null,
-        status: editStatus,
-      })
-      .eq("plate_number", editingTruck.plate_number)
+    try {
+      const { error } = await supabase
+        .from("Trucks")
+        .update({
+          kbnl_truck_no: editKbnlNo.trim(),
+          truck_model: editModel.trim(),
+          capacity,
+          tonnage,
+          truck_size: editTruckSize || null,
+          status: editStatus,
+        })
+        .eq("plate_number", editingTruck.plate_number)
 
-    setSubmitting(false)
+      if (error) {
+        setMessage("Failed to update truck")
+        return
+      }
 
-    if (error) {
-      setMessage("Failed to update truck")
-      return
+      closeModals()
+      fetchTrucks()
+    } catch {
+      setMessage("Network error, please try again")
+    } finally {
+      setSubmitting(false)
     }
-
-    closeModals()
-    fetchTrucks()
   }
 
   async function handleDelete(plate_number: string) {
+    if (!canEdit) return
     setSubmitting(true)
 
-    const { error } = await supabase
-      .from("Trucks")
-      .delete()
-      .eq("plate_number", plate_number)
+    try {
+      const { error } = await supabase
+        .from("Trucks")
+        .delete()
+        .eq("plate_number", plate_number)
 
-    setSubmitting(false)
+      if (error) {
+        setMessage("Failed to delete truck")
+        return
+      }
 
-    if (error) {
-      setMessage("Failed to delete truck")
-      return
+      closeModals()
+      fetchTrucks()
+    } catch {
+      setMessage("Network error, please try again")
+    } finally {
+      setSubmitting(false)
     }
-
-    closeModals()
-    fetchTrucks()
   }
 
   const statusPillColor = (status: string) => {
@@ -327,17 +351,19 @@ export default function ManageTrucks() {
                     <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
                       <button
                         onClick={() => startEdit(truck)}
-                        style={{ flex: 1, padding: "8px 12px", cursor: "pointer", borderRadius: 6, border: "1px solid #e2e8f0", color: "#0070f3", background: "#f0f7ff", fontSize: fontSize.sm, fontWeight: 500, transition: "all 0.2s" }}
-                        onMouseEnter={e => { e.currentTarget.style.background = "#e0efff"; e.currentTarget.style.borderColor = "#0070f3" }}
-                        onMouseLeave={e => { e.currentTarget.style.background = "#f0f7ff"; e.currentTarget.style.borderColor = "#e2e8f0" }}
+                        disabled={!canEdit}
+                        style={{ flex: 1, padding: "8px 12px", cursor: !canEdit ? "not-allowed" : "pointer", borderRadius: 6, border: "1px solid #e2e8f0", color: "#0070f3", background: !canEdit ? "#94a3b8" : "#f0f7ff", fontSize: fontSize.sm, fontWeight: 500, transition: "all 0.2s" }}
+                        onMouseEnter={e => { if (canEdit) { e.currentTarget.style.background = "#e0efff"; e.currentTarget.style.borderColor = "#0070f3" } }}
+                        onMouseLeave={e => { if (canEdit) { e.currentTarget.style.background = "#f0f7ff"; e.currentTarget.style.borderColor = "#e2e8f0" } }}
                       >
                         Edit
                       </button>
                       <button
                         onClick={() => { setDeletingPlate(truck.plate_number); setMessage("") }}
-                        style={{ flex: 1, padding: "8px 12px", cursor: "pointer", borderRadius: 6, border: "1px solid #fee2e2", color: "#ef4444", background: "#fef2f2", fontSize: fontSize.sm, fontWeight: 500, transition: "all 0.2s" }}
-                        onMouseEnter={e => { e.currentTarget.style.background = "#fee2e2" }}
-                        onMouseLeave={e => { e.currentTarget.style.background = "#fef2f2" }}
+                        disabled={!canEdit}
+                        style={{ flex: 1, padding: "8px 12px", cursor: !canEdit ? "not-allowed" : "pointer", borderRadius: 6, border: "1px solid #fee2e2", color: "#ef4444", background: !canEdit ? "#94a3b8" : "#fef2f2", fontSize: fontSize.sm, fontWeight: 500, transition: "all 0.2s" }}
+                        onMouseEnter={e => { if (canEdit) e.currentTarget.style.background = "#fee2e2" }}
+                        onMouseLeave={e => { if (canEdit) e.currentTarget.style.background = "#fef2f2" }}
                       >
                         Delete
                       </button>
@@ -384,17 +410,19 @@ export default function ManageTrucks() {
                           <div style={{ display: "flex", gap: 6, justifyContent: "flex-end" }}>
                             <button
                               onClick={() => startEdit(truck)}
-                              style={{ padding: "6px 10px", cursor: "pointer", borderRadius: 6, border: "1px solid #e2e8f0", color: "#0070f3", background: "#f0f7ff", fontSize: fontSize.sm, fontWeight: 500, transition: "all 0.2s", minHeight: 32, minWidth: 32, display: "inline-flex", alignItems: "center", justifyContent: "center" }}
-                              onMouseEnter={e => { e.currentTarget.style.background = "#e0efff"; e.currentTarget.style.borderColor = "#0070f3" }}
-                              onMouseLeave={e => { e.currentTarget.style.background = "#f0f7ff"; e.currentTarget.style.borderColor = "#e2e8f0" }}
+                              disabled={!canEdit}
+                              style={{ padding: "6px 10px", cursor: !canEdit ? "not-allowed" : "pointer", borderRadius: 6, border: "1px solid #e2e8f0", color: "#0070f3", background: !canEdit ? "#94a3b8" : "#f0f7ff", fontSize: fontSize.sm, fontWeight: 500, transition: "all 0.2s", minHeight: 32, minWidth: 32, display: "inline-flex", alignItems: "center", justifyContent: "center" }}
+                              onMouseEnter={e => { if (canEdit) { e.currentTarget.style.background = "#e0efff"; e.currentTarget.style.borderColor = "#0070f3" } }}
+                              onMouseLeave={e => { if (canEdit) { e.currentTarget.style.background = "#f0f7ff"; e.currentTarget.style.borderColor = "#e2e8f0" } }}
                             >
                               Edit
                             </button>
                             <button
                               onClick={() => { setDeletingPlate(truck.plate_number); setMessage("") }}
-                              style={{ padding: "6px 10px", cursor: "pointer", borderRadius: 6, border: "1px solid #fee2e2", color: "#ef4444", background: "#fef2f2", fontSize: fontSize.sm, fontWeight: 500, transition: "all 0.2s", minHeight: 32, minWidth: 32, display: "inline-flex", alignItems: "center", justifyContent: "center" }}
-                              onMouseEnter={e => { e.currentTarget.style.background = "#fee2e2" }}
-                              onMouseLeave={e => { e.currentTarget.style.background = "#fef2f2" }}
+                              disabled={!canEdit}
+                              style={{ padding: "6px 10px", cursor: !canEdit ? "not-allowed" : "pointer", borderRadius: 6, border: "1px solid #fee2e2", color: "#ef4444", background: !canEdit ? "#94a3b8" : "#fef2f2", fontSize: fontSize.sm, fontWeight: 500, transition: "all 0.2s", minHeight: 32, minWidth: 32, display: "inline-flex", alignItems: "center", justifyContent: "center" }}
+                              onMouseEnter={e => { if (canEdit) e.currentTarget.style.background = "#fee2e2" }}
+                              onMouseLeave={e => { if (canEdit) e.currentTarget.style.background = "#fef2f2" }}
                             >
                               Delete
                             </button>
@@ -433,27 +461,27 @@ export default function ManageTrucks() {
                 <div style={{ display: "flex", flexDirection: "column", gap: 14, marginBottom: 20 }}>
                   <div>
                     <label style={{ display: "block", marginBottom: 6, color: "#475569", fontSize: fontSize.sm, fontWeight: 500 }}>KbNL Truck No. *</label>
-                    <input type="text" value={editKbnlNo} onChange={(e) => { setEditKbnlNo(e.target.value); setMessage("") }} onKeyDown={(e) => { if (e.key === "Enter") capacityRef.current?.focus() }} style={inputStyle} />
+                    <input type="text" value={editKbnlNo} readOnly={!canEdit} onChange={(e) => { setEditKbnlNo(e.target.value); setMessage("") }} onKeyDown={(e) => { if (e.key === "Enter") capacityRef.current?.focus() }} style={inputStyle} />
                   </div>
 
                   <div>
                     <label style={{ display: "block", marginBottom: 6, color: "#475569", fontSize: fontSize.sm, fontWeight: 500 }}>Truck Model *</label>
-                    <input type="text" value={editModel} onChange={(e) => { setEditModel(e.target.value); setMessage("") }} onKeyDown={(e) => { if (e.key === "Enter") capacityRef.current?.focus() }} style={inputStyle} />
+                    <input type="text" value={editModel} readOnly={!canEdit} onChange={(e) => { setEditModel(e.target.value); setMessage("") }} onKeyDown={(e) => { if (e.key === "Enter") capacityRef.current?.focus() }} style={inputStyle} />
                   </div>
 
                   <div>
                     <label style={{ display: "block", marginBottom: 6, color: "#475569", fontSize: fontSize.sm, fontWeight: 500 }}>Capacity (bags) *</label>
-                    <input ref={capacityRef} type="number" value={editCapacity} onChange={(e) => { setEditCapacity(e.target.value); setMessage("") }} onKeyDown={(e) => { if (e.key === "Enter") tonnageRef.current?.focus() }} style={inputStyle} />
+                    <input ref={capacityRef} type="number" value={editCapacity} readOnly={!canEdit} onChange={(e) => { setEditCapacity(e.target.value); setMessage("") }} onKeyDown={(e) => { if (e.key === "Enter") tonnageRef.current?.focus() }} style={inputStyle} />
                   </div>
 
                   <div>
                     <label style={{ display: "block", marginBottom: 6, color: "#475569", fontSize: fontSize.sm, fontWeight: 500 }}>Tonnage *</label>
-                    <input ref={tonnageRef} type="number" step="0.1" value={editTonnage} onChange={(e) => { setEditTonnage(e.target.value); setMessage("") }} style={inputStyle} />
+                    <input ref={tonnageRef} type="number" step="0.1" value={editTonnage} readOnly={!canEdit} onChange={(e) => { setEditTonnage(e.target.value); setMessage("") }} style={inputStyle} />
                   </div>
 
                   <div>
                     <label style={{ display: "block", marginBottom: 6, color: "#475569", fontSize: fontSize.sm, fontWeight: 500 }}>Truck Size</label>
-                    <select value={editTruckSize} onChange={(e) => setEditTruckSize(e.target.value)} style={{ ...inputStyle, appearance: "none", paddingRight: 32, backgroundImage: "url('data:image/svg+xml;charset=UTF-8,%3csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 24 24%22 fill=%22none%22 stroke=%22%23171717%22 stroke-width=%222%22%3e%3cpolyline points=%226 9 12 15 18 9%22%3e%3c/polyline%3e%3c/svg%3e')", backgroundRepeat: "no-repeat", backgroundPosition: "right 12px center", backgroundSize: "16px" }}>
+                    <select value={editTruckSize} disabled={!canEdit} onChange={(e) => setEditTruckSize(e.target.value)} style={{ ...inputStyle, appearance: "none", paddingRight: 32, backgroundImage: "url('data:image/svg+xml;charset=UTF-8,%3csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 24 24%22 fill=%22none%22 stroke=%22%23171717%22 stroke-width=%222%22%3e%3cpolyline points=%226 9 12 15 18 9%22%3e%3c/polyline%3e%3c/svg%3e')", backgroundRepeat: "no-repeat", backgroundPosition: "right 12px center", backgroundSize: "16px" }}>
                       <option value="">No size</option>
                       {TRUCK_SIZES.map((s) => (
                         <option key={s} value={s}>{s}</option>
@@ -463,7 +491,7 @@ export default function ManageTrucks() {
 
                   <div>
                     <label style={{ display: "block", marginBottom: 6, color: "#475569", fontSize: fontSize.sm, fontWeight: 500 }}>Status</label>
-                    <select value={editStatus} onChange={(e) => setEditStatus(e.target.value)} style={{ ...inputStyle, appearance: "none", paddingRight: 32, backgroundImage: "url('data:image/svg+xml;charset=UTF-8,%3csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 24 24%22 fill=%22none%22 stroke=%22%23171717%22 stroke-width=%222%22%3e%3cpolyline points=%226 9 12 15 18 9%22%3e%3c/polyline%3e%3c/svg%3e')", backgroundRepeat: "no-repeat", backgroundPosition: "right 12px center", backgroundSize: "16px" }}>
+                    <select value={editStatus} disabled={!canEdit} onChange={(e) => setEditStatus(e.target.value)} style={{ ...inputStyle, appearance: "none", paddingRight: 32, backgroundImage: "url('data:image/svg+xml;charset=UTF-8,%3csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 24 24%22 fill=%22none%22 stroke=%22%23171717%22 stroke-width=%222%22%3e%3cpolyline points=%226 9 12 15 18 9%22%3e%3c/polyline%3e%3c/svg%3e')", backgroundRepeat: "no-repeat", backgroundPosition: "right 12px center", backgroundSize: "16px" }}>
                       {truckStatuses.map((s) => (
                         <option key={s} value={s}>{s}</option>
                       ))}
@@ -473,7 +501,7 @@ export default function ManageTrucks() {
 
                 {message && <div style={{ padding: 12, background: "#fef2f2", borderLeft: "4px solid #ef4444", borderRadius: 4, marginBottom: 20, color: "#b91c1c", fontSize: fontSize.sm }}>{message}</div>}
 
-                <button onClick={handleUpdate} disabled={submitting} style={{ width: "100%", padding: "12px 16px", background: "#0070f3", color: "white", border: "none", borderRadius: 8, cursor: submitting ? "not-allowed" : "pointer", fontWeight: 600, fontSize: fontSize.md, transition: "opacity 0.2s", opacity: submitting ? 0.7 : 1, minHeight: 44 }}>
+                <button onClick={handleUpdate} disabled={submitting || !canEdit} style={{ width: "100%", padding: "12px 16px", background: submitting || !canEdit ? "#94a3b8" : "#0070f3", color: "white", border: "none", borderRadius: 8, cursor: submitting || !canEdit ? "not-allowed" : "pointer", fontWeight: 600, fontSize: fontSize.md, transition: "opacity 0.2s", opacity: submitting || !canEdit ? 0.7 : 1, minHeight: 44 }}>
                   {submitting ? "Saving..." : "Save Changes"}
                 </button>
               </>
@@ -494,7 +522,7 @@ export default function ManageTrucks() {
                     <button onClick={closeModals} style={{ padding: "12px 16px", background: "white", color: "#475569", border: "1px solid #cbd5e1", borderRadius: 8, cursor: "pointer", fontWeight: 600, fontSize: fontSize.md, minHeight: 44, transition: "all 0.2s" }} onMouseEnter={e => { e.currentTarget.style.background = "#f8fafc"; e.currentTarget.style.borderColor = "#0070f3"; e.currentTarget.style.color = "#0070f3" }} onMouseLeave={e => { e.currentTarget.style.background = "white"; e.currentTarget.style.borderColor = "#cbd5e1"; e.currentTarget.style.color = "#475569" }}>
                       Cancel
                     </button>
-                    <button onClick={() => handleDelete(deletingPlate)} disabled={submitting} style={{ padding: "12px 16px", background: "#ef4444", color: "white", border: "none", borderRadius: 8, cursor: submitting ? "not-allowed" : "pointer", fontWeight: 600, fontSize: fontSize.md, opacity: submitting ? 0.7 : 1, minHeight: 44, transition: "all 0.2s" }} onMouseEnter={e => { if (!submitting) e.currentTarget.style.background = "#dc2626" }} onMouseLeave={e => { e.currentTarget.style.background = "#ef4444" }}>
+                    <button onClick={() => handleDelete(deletingPlate)} disabled={submitting || !canEdit} style={{ padding: "12px 16px", background: submitting || !canEdit ? "#94a3b8" : "#ef4444", color: "white", border: "none", borderRadius: 8, cursor: submitting || !canEdit ? "not-allowed" : "pointer", fontWeight: 600, fontSize: fontSize.md, opacity: submitting || !canEdit ? 0.7 : 1, minHeight: 44, transition: "all 0.2s" }} onMouseEnter={e => { if (!submitting && canEdit) e.currentTarget.style.background = "#dc2626" }} onMouseLeave={e => { e.currentTarget.style.background = "#ef4444" }}>
                       {submitting ? "Deleting..." : "Yes, Delete"}
                     </button>
                   </div>

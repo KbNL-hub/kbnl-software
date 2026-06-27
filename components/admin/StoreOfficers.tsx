@@ -2,7 +2,10 @@
 
 import { useState, useEffect, useRef } from "react"
 import { supabase } from "@/lib/supabase"
+import { apiMutate } from "@/lib/api-mutation"
 import ModernInput from "@/components/ModernInput"
+import InviteSuccessCard from "@/components/admin/InviteSuccessCard"
+import { usePermissions } from "@/lib/PermissionContext"
 
 type StoreOfficer = {
   officer_id: string
@@ -51,6 +54,8 @@ const fontSize = {
 }
 
 export default function StoreOfficers() {
+  const { getAccess } = usePermissions()
+  const canEdit = getAccess("store-officers").canEdit
   const { isMobile, isDesktop } = useBreakpoint()
   const [officers, setOfficers] = useState<StoreOfficer[]>([])
   const [loading, setLoading] = useState(true)
@@ -71,6 +76,7 @@ export default function StoreOfficers() {
 
   const [message, setMessage] = useState("")
   const [submitting, setSubmitting] = useState(false)
+  const [inviteResult, setInviteResult] = useState<{ tempPassword: string; email: string } | null>(null)
 
   const phoneRef = useRef<HTMLInputElement>(null)
   const emailRef = useRef<HTMLInputElement>(null)
@@ -95,60 +101,84 @@ export default function StoreOfficers() {
     setFullName(""); setPhoneNumber(""); setEmail(""); setStoreName("")
     setEditName(""); setEditPhone("")
     setMessage("")
+    setInviteResult(null)
   }
 
   async function handleInvite() {
+    if (!canEdit) return
     if (!fullName.trim()) return setMessage("Full name is required")
     if (!email.trim()) return setMessage("Email is required")
     if (!storeName) return setMessage("Select a store")
 
     setSubmitting(true)
-    const res = await fetch("/api/invite-user", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        email, fullName, phoneNumber,
-        role: "StoreOfficer",
-        storeName,
-      }),
-    })
 
-    const result = await res.json()
-    setSubmitting(false)
+    try {
+      const res = await fetch("/api/invite-user", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email, fullName, phoneNumber,
+          role: "StoreOfficer",
+          storeName,
+        }),
+      })
 
-    if (!res.ok) { setMessage("Failed: " + result.error); return }
-    closeModals()
-    fetchOfficers()
+      const result = await res.json()
+
+      if (!res.ok) { setMessage("Failed: " + result.error); return }
+      setInviteResult({ tempPassword: result.tempPassword, email })
+      fetchOfficers()
+    } catch {
+      setMessage("Network error, please try again")
+    } finally {
+      setSubmitting(false)
+    }
   }
 
   async function handleUpdate() {
+    if (!canEdit) return
     if (!editingOfficer) return
     if (!editName.trim()) return setMessage("Name is required")
 
     setSubmitting(true)
-    const { error } = await supabase
-      .from("store_officers")
-      .update({ full_name: editName, phone_number: editPhone || null })
-      .eq("officer_id", editingOfficer.officer_id)
 
-    setSubmitting(false)
-    if (error) { setMessage("Failed to update"); return }
-    closeModals()
-    fetchOfficers()
+    try {
+      const { error } = await apiMutate("admin", {
+        action: "update",
+        table: "store_officers",
+        data: { full_name: editName, phone_number: editPhone || null },
+        filters: { officer_id: editingOfficer.officer_id },
+      })
+
+      if (error) { setMessage("Failed to update"); return }
+      closeModals()
+      fetchOfficers()
+    } catch {
+      setMessage("Network error, please try again")
+    } finally {
+      setSubmitting(false)
+    }
   }
 
   async function handleDelete(officerId: string) {
+    if (!canEdit) return
     setSubmitting(true)
-    const { error } = await supabase.from("store_officers").delete().eq("officer_id", officerId)
-    setSubmitting(false)
 
-    if (error) {
-      setMessage("Failed to delete officer")
-      return
+    try {
+      const { error } = await apiMutate("admin", { action: "delete", table: "store_officers", filters: { officer_id: officerId } })
+
+      if (error) {
+        setMessage("Failed to delete officer")
+        return
+      }
+
+      closeModals()
+      fetchOfficers()
+    } catch {
+      setMessage("Network error, please try again")
+    } finally {
+      setSubmitting(false)
     }
-
-    closeModals()
-    fetchOfficers()
   }
 
   const statusColor = (status: string) => {
@@ -294,16 +324,18 @@ export default function StoreOfficers() {
           {/* Add Button */}
           <button
             onClick={() => {
+              if (!canEdit) return
               setShowInviteModal(true)
               setMessage("")
             }}
+            disabled={!canEdit}
             style={{
               padding: isMobile ? "10px 16px" : "12px 20px",
-              background: "#0070f3",
+              background: canEdit ? "#0070f3" : "#94a3b8",
               color: "white",
               border: "none",
               borderRadius: 8,
-              cursor: "pointer",
+              cursor: canEdit ? "pointer" : "not-allowed",
               fontWeight: 600,
               fontSize: fontSize.md,
               flex: isMobile ? 1 : "0 0 auto",
@@ -317,11 +349,11 @@ export default function StoreOfficers() {
               whiteSpace: "nowrap",
             }}
             onMouseEnter={(e) => {
-              if (!isMobile)
+              if (canEdit && !isMobile)
                 (e.currentTarget.style.transform = "translateY(-2px)")
             }}
             onMouseLeave={(e) => {
-              if (!isMobile) (e.currentTarget.style.transform = "none")
+              if (canEdit && !isMobile) (e.currentTarget.style.transform = "none")
             }}
           >
             <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
@@ -401,22 +433,28 @@ export default function StoreOfficers() {
           </p>
           <button
             onClick={() => {
+              if (!canEdit) return
               setShowInviteModal(true)
               setMessage("")
             }}
+            disabled={!canEdit}
             style={{
               padding: "10px 20px",
-              background: "white",
+              background: canEdit ? "white" : "#94a3b8",
               color: "#0f172a",
               border: "1px solid #cbd5e1",
               borderRadius: 8,
-              cursor: "pointer",
+              cursor: canEdit ? "pointer" : "not-allowed",
               fontWeight: 500,
               fontSize: fontSize.base,
               transition: "all 0.2s ease",
             }}
-            onMouseEnter={(e) => (e.currentTarget.style.background = "#f8fafc")}
-            onMouseLeave={(e) => (e.currentTarget.style.background = "white")}
+            onMouseEnter={(e) => {
+              if (canEdit) e.currentTarget.style.background = "#f8fafc"
+            }}
+            onMouseLeave={(e) => {
+              if (canEdit) e.currentTarget.style.background = "white"
+            }}
           >
             Add First Officer
           </button>
@@ -550,28 +588,32 @@ export default function StoreOfficers() {
                     <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
                       <button
                         onClick={() => {
+                          if (!canEdit) return
                           setEditingOfficer(officer)
                           setEditName(officer.full_name)
                           setEditPhone(officer.phone_number || "")
                           setMessage("")
                         }}
+                        disabled={!canEdit}
                         style={{
                           flex: 1,
                           padding: "8px 12px",
-                          cursor: "pointer",
+                          cursor: canEdit ? "pointer" : "not-allowed",
                           borderRadius: 6,
                           border: "1px solid #e2e8f0",
-                          color: "#0070f3",
-                          background: "#f0f7ff",
+                          color: canEdit ? "#0070f3" : "#94a3b8",
+                          background: canEdit ? "#f0f7ff" : "#e2e8f0",
                           fontSize: fontSize.sm,
                           fontWeight: 500,
                           transition: "all 0.2s",
                         }}
                         onMouseEnter={(e) => {
+                          if (!canEdit) return
                           e.currentTarget.style.background = "#e0efff"
                           e.currentTarget.style.borderColor = "#0070f3"
                         }}
                         onMouseLeave={(e) => {
+                          if (!canEdit) return
                           e.currentTarget.style.background = "#f0f7ff"
                           e.currentTarget.style.borderColor = "#e2e8f0"
                         }}
@@ -580,25 +622,29 @@ export default function StoreOfficers() {
                       </button>
                       <button
                         onClick={() => {
+                          if (!canEdit) return
                           setDeletingId(officer.officer_id)
                           setMessage("")
                         }}
+                        disabled={!canEdit}
                         style={{
                           flex: 1,
                           padding: "8px 12px",
-                          cursor: "pointer",
+                          cursor: canEdit ? "pointer" : "not-allowed",
                           borderRadius: 6,
                           border: "1px solid #fee2e2",
-                          color: "#ef4444",
-                          background: "#fef2f2",
+                          color: canEdit ? "#ef4444" : "#94a3b8",
+                          background: canEdit ? "#fef2f2" : "#e2e8f0",
                           fontSize: fontSize.sm,
                           fontWeight: 500,
                           transition: "all 0.2s",
                         }}
                         onMouseEnter={(e) => {
+                          if (!canEdit) return
                           e.currentTarget.style.background = "#fee2e2"
                         }}
                         onMouseLeave={(e) => {
+                          if (!canEdit) return
                           e.currentTarget.style.background = "#fef2f2"
                         }}
                       >
@@ -703,18 +749,20 @@ export default function StoreOfficers() {
                           <div style={{ display: "flex", gap: 6, justifyContent: "flex-end" }}>
                             <button
                               onClick={() => {
+                                if (!canEdit) return
                                 setEditingOfficer(officer)
                                 setEditName(officer.full_name)
                                 setEditPhone(officer.phone_number || "")
                                 setMessage("")
                               }}
+                              disabled={!canEdit}
                               style={{
                                 padding: "6px 10px",
-                                cursor: "pointer",
+                                cursor: canEdit ? "pointer" : "not-allowed",
                                 borderRadius: 5,
                                 border: "1px solid #e2e8f0",
-                                color: "#0070f3",
-                                background: "#f0f7ff",
+                                color: canEdit ? "#0070f3" : "#94a3b8",
+                                background: canEdit ? "#f0f7ff" : "#e2e8f0",
                                 fontSize: fontSize.sm,
                                 fontWeight: 500,
                                 transition: "all 0.2s",
@@ -725,10 +773,12 @@ export default function StoreOfficers() {
                                 justifyContent: "center",
                               }}
                               onMouseEnter={(e) => {
+                                if (!canEdit) return
                                 e.currentTarget.style.background = "#e0efff"
                                 e.currentTarget.style.borderColor = "#0070f3"
                               }}
                               onMouseLeave={(e) => {
+                                if (!canEdit) return
                                 e.currentTarget.style.background = "#f0f7ff"
                                 e.currentTarget.style.borderColor = "#e2e8f0"
                               }}
@@ -737,16 +787,18 @@ export default function StoreOfficers() {
                             </button>
                             <button
                               onClick={() => {
+                                if (!canEdit) return
                                 setDeletingId(officer.officer_id)
                                 setMessage("")
                               }}
+                              disabled={!canEdit}
                               style={{
                                 padding: "6px 10px",
-                                cursor: "pointer",
+                                cursor: canEdit ? "pointer" : "not-allowed",
                                 borderRadius: 5,
                                 border: "1px solid #fee2e2",
-                                color: "#ef4444",
-                                background: "#fef2f2",
+                                color: canEdit ? "#ef4444" : "#94a3b8",
+                                background: canEdit ? "#fef2f2" : "#e2e8f0",
                                 fontSize: fontSize.sm,
                                 fontWeight: 500,
                                 transition: "all 0.2s",
@@ -757,9 +809,11 @@ export default function StoreOfficers() {
                                 justifyContent: "center",
                               }}
                               onMouseEnter={(e) => {
+                                if (!canEdit) return
                                 e.currentTarget.style.background = "#fee2e2"
                               }}
                               onMouseLeave={(e) => {
+                                if (!canEdit) return
                                 e.currentTarget.style.background = "#fef2f2"
                               }}
                             >
@@ -810,149 +864,163 @@ export default function StoreOfficers() {
             {/* Invite Modal */}
             {showInviteModal && (
               <>
-                <div
-                  style={{
-                    display: "flex",
-                    justifyContent: "space-between",
-                    alignItems: "center",
-                    marginBottom: 24,
-                  }}
-                >
-                  <h3
-                    style={{
-                      margin: 0,
-                      color: "#0f172a",
-                      fontSize: fontSize.xl,
-                      fontWeight: 700,
-                    }}
-                  >
-                    Add Store Officer
-                  </h3>
-                  <button
-                    onClick={closeModals}
-                    style={{
-                      background: "none",
-                      border: "none",
-                      color: "#94a3b8",
-                      cursor: "pointer",
-                      padding: 0,
-                      width: 32,
-                      height: 32,
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      transition: "color 0.2s",
-                    }}
-                    onMouseEnter={(e) => (e.currentTarget.style.color = "#64748b")}
-                    onMouseLeave={(e) => (e.currentTarget.style.color = "#94a3b8")}
-                  >
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <line x1="18" y1="6" x2="6" y2="18" />
-                      <line x1="6" y1="6" x2="18" y2="18" />
-                    </svg>
-                  </button>
-                </div>
-
-                <div
-                  style={{
-                    display: "flex",
-                    flexDirection: "column",
-                    gap: 14,
-                    marginBottom: 20,
-                  }}
-                >
-                  <div>
-                    <label style={{ display: "block", marginBottom: 6, color: "#475569", fontSize: fontSize.sm, fontWeight: 500 }}>
-                      Full Name *
-                    </label>
-                    <ModernInput
-                      type="text"
-                      placeholder="e.g. Jane Doe"
-                      value={fullName}
-                      onChange={(e: any) => { setFullName(e.target.value); setMessage("") }}
-                      onKeyDown={(e: any) => { if (e.key === "Enter") phoneRef.current?.focus() }}
-                      style={inputStyle}
-                      autoFocus
-                    />
-                  </div>
-                  <div>
-                    <label style={{ display: "block", marginBottom: 6, color: "#475569", fontSize: fontSize.sm, fontWeight: 500 }}>
-                      Phone Number
-                    </label>
-                    <ModernInput
-                      ref={phoneRef}
-                      type="text"
-                      placeholder="e.g. 08012345678"
-                      value={phoneNumber}
-                      onChange={(e: any) => { setPhoneNumber(e.target.value); setMessage("") }}
-                      onKeyDown={(e: any) => { if (e.key === "Enter") emailRef.current?.focus() }}
-                      style={inputStyle}
-                    />
-                  </div>
-                  <div>
-                    <label style={{ display: "block", marginBottom: 6, color: "#475569", fontSize: fontSize.sm, fontWeight: 500 }}>
-                      Email Address *
-                    </label>
-                    <ModernInput
-                      ref={emailRef}
-                      type="email"
-                      placeholder="e.g. officer@example.com"
-                      value={email}
-                      onChange={(e: any) => { setEmail(e.target.value); setMessage("") }}
-                      style={inputStyle}
-                    />
-                  </div>
-                  <div>
-                    <label style={{ display: "block", marginBottom: 6, color: "#475569", fontSize: fontSize.sm, fontWeight: 500 }}>
-                      Assigned Store *
-                    </label>
-                    <select
-                      value={storeName}
-                      onChange={(e) => { setStoreName(e.target.value); setMessage("") }}
-                      style={inputStyle}
+                {inviteResult ? (
+                  <InviteSuccessCard
+                    tempPassword={inviteResult.tempPassword}
+                    email={inviteResult.email}
+                    onClose={() => { closeModals(); setInviteResult(null) }}
+                  />
+                ) : (
+                  <>
+                    <div
+                      style={{
+                        display: "flex",
+                        justifyContent: "space-between",
+                        alignItems: "center",
+                        marginBottom: 24,
+                      }}
                     >
-                      <option value="">Select store</option>
-                      {STORE_LOCATIONS.map(s => (<option key={s} value={s}>{s}</option>))}
-                    </select>
-                  </div>
-                </div>
+                      <h3
+                        style={{
+                          margin: 0,
+                          color: "#0f172a",
+                          fontSize: fontSize.xl,
+                          fontWeight: 700,
+                        }}
+                      >
+                        Add Store Officer
+                      </h3>
+                      <button
+                        onClick={closeModals}
+                        style={{
+                          background: "none",
+                          border: "none",
+                          color: "#94a3b8",
+                          cursor: "pointer",
+                          padding: 0,
+                          width: 32,
+                          height: 32,
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          transition: "color 0.2s",
+                        }}
+                        onMouseEnter={(e) => (e.currentTarget.style.color = "#64748b")}
+                        onMouseLeave={(e) => (e.currentTarget.style.color = "#94a3b8")}
+                      >
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <line x1="18" y1="6" x2="6" y2="18" />
+                          <line x1="6" y1="6" x2="18" y2="18" />
+                        </svg>
+                      </button>
+                    </div>
 
-                {message && (
-                  <div
-                    style={{
-                      padding: 12,
-                      background: "#fef2f2",
-                      borderLeft: "4px solid #ef4444",
-                      borderRadius: 4,
-                      marginBottom: 20,
-                      color: "#b91c1c",
-                      fontSize: fontSize.sm,
-                    }}
-                  >
-                    {message}
-                  </div>
+                    <div
+                      style={{
+                        display: "flex",
+                        flexDirection: "column",
+                        gap: 14,
+                        marginBottom: 20,
+                      }}
+                    >
+                      <div>
+                        <label style={{ display: "block", marginBottom: 6, color: "#475569", fontSize: fontSize.sm, fontWeight: 500 }}>
+                          Full Name *
+                        </label>
+                        <ModernInput
+                          type="text"
+                          placeholder="e.g. Jane Doe"
+                          value={fullName}
+                          onChange={(e: any) => { setFullName(e.target.value); setMessage("") }}
+                          onKeyDown={(e: any) => { if (e.key === "Enter") phoneRef.current?.focus() }}
+                          readOnly={!canEdit}
+                          style={inputStyle}
+                          autoFocus
+                        />
+                      </div>
+                      <div>
+                        <label style={{ display: "block", marginBottom: 6, color: "#475569", fontSize: fontSize.sm, fontWeight: 500 }}>
+                          Phone Number
+                        </label>
+                        <ModernInput
+                          ref={phoneRef}
+                          type="text"
+                          placeholder="e.g. 08012345678"
+                          value={phoneNumber}
+                          onChange={(e: any) => { setPhoneNumber(e.target.value); setMessage("") }}
+                          onKeyDown={(e: any) => { if (e.key === "Enter") emailRef.current?.focus() }}
+                          readOnly={!canEdit}
+                          style={inputStyle}
+                        />
+                      </div>
+                      <div>
+                        <label style={{ display: "block", marginBottom: 6, color: "#475569", fontSize: fontSize.sm, fontWeight: 500 }}>
+                          Email Address *
+                        </label>
+                        <ModernInput
+                          ref={emailRef}
+                          type="email"
+                          placeholder="e.g. officer@example.com"
+                          value={email}
+                          onChange={(e: any) => { setEmail(e.target.value); setMessage("") }}
+                          readOnly={!canEdit}
+                          style={inputStyle}
+                        />
+                      </div>
+                      <div>
+                        <label style={{ display: "block", marginBottom: 6, color: "#475569", fontSize: fontSize.sm, fontWeight: 500 }}>
+                          Assigned Store *
+                        </label>
+                        <select
+                          value={storeName}
+                          onChange={(e) => { setStoreName(e.target.value); setMessage("") }}
+                          disabled={!canEdit}
+                          style={inputStyle}
+                        >
+                          <option value="">Select store</option>
+                          {STORE_LOCATIONS.map(s => (<option key={s} value={s}>{s}</option>))}
+                        </select>
+                      </div>
+                    </div>
+
+                    {message && (
+                      <div
+                        style={{
+                          padding: 12,
+                          background: "#fef2f2",
+                          borderLeft: "4px solid #ef4444",
+                          borderRadius: 4,
+                          marginBottom: 20,
+                          color: "#b91c1c",
+                          fontSize: fontSize.sm,
+                        }}
+                      >
+                        {message}
+                      </div>
+                    )}
+
+                    <button
+                      onClick={handleInvite}
+                      disabled={submitting || !canEdit}
+                      style={{
+                        width: "100%",
+                        padding: "12px 16px",
+                        background: submitting || !canEdit ? "#94a3b8" : "#0070f3",
+                        color: "white",
+                        border: "none",
+                        borderRadius: 8,
+                        cursor: submitting || !canEdit ? "not-allowed" : "pointer",
+                        fontWeight: 600,
+                        fontSize: fontSize.md,
+                        transition: "opacity 0.2s",
+                        opacity: submitting ? 0.7 : 1,
+                        minHeight: 44,
+                      }}
+                    >
+                      {submitting ? "Sending Invite..." : "Send Invite"}
+                    </button>
+                  </>
                 )}
-
-                <button
-                  onClick={handleInvite}
-                  disabled={submitting}
-                  style={{
-                    width: "100%",
-                    padding: "12px 16px",
-                    background: "#0070f3",
-                    color: "white",
-                    border: "none",
-                    borderRadius: 8,
-                    cursor: submitting ? "not-allowed" : "pointer",
-                    fontWeight: 600,
-                    fontSize: fontSize.md,
-                    transition: "opacity 0.2s",
-                    opacity: submitting ? 0.7 : 1,
-                    minHeight: 44,
-                  }}
-                >
-                  {submitting ? "Sending Invite..." : "Send Invite"}
-                </button>
               </>
             )}
 
@@ -1019,6 +1087,7 @@ export default function StoreOfficers() {
                       value={editName}
                       onChange={(e: any) => { setEditName(e.target.value); setMessage("") }}
                       onKeyDown={(e: any) => { if (e.key === "Enter") editPhoneRef.current?.focus() }}
+                      readOnly={!canEdit}
                       style={inputStyle}
                       autoFocus
                     />
@@ -1033,6 +1102,7 @@ export default function StoreOfficers() {
                       value={editPhone}
                       onChange={(e: any) => { setEditPhone(e.target.value); setMessage("") }}
                       onKeyDown={(e: any) => { if (e.key === "Enter") handleUpdate() }}
+                      readOnly={!canEdit}
                       style={inputStyle}
                     />
                   </div>
@@ -1069,15 +1139,15 @@ export default function StoreOfficers() {
 
                 <button
                   onClick={handleUpdate}
-                  disabled={submitting}
+                  disabled={submitting || !canEdit}
                   style={{
                     width: "100%",
                     padding: "12px 16px",
-                    background: "#0070f3",
+                    background: submitting || !canEdit ? "#94a3b8" : "#0070f3",
                     color: "white",
                     border: "none",
                     borderRadius: 8,
-                    cursor: submitting ? "not-allowed" : "pointer",
+                    cursor: submitting || !canEdit ? "not-allowed" : "pointer",
                     fontWeight: 600,
                     fontSize: fontSize.md,
                     transition: "opacity 0.2s",
@@ -1190,14 +1260,14 @@ export default function StoreOfficers() {
                     </button>
                     <button
                       onClick={() => handleDelete(deletingId)}
-                      disabled={submitting}
+                      disabled={submitting || !canEdit}
                       style={{
                         padding: "12px 16px",
-                        background: "#ef4444",
+                        background: submitting || !canEdit ? "#94a3b8" : "#ef4444",
                         color: "white",
                         border: "none",
                         borderRadius: 8,
-                        cursor: submitting ? "not-allowed" : "pointer",
+                        cursor: submitting || !canEdit ? "not-allowed" : "pointer",
                         fontWeight: 600,
                         fontSize: fontSize.md,
                         opacity: submitting ? 0.7 : 1,
@@ -1205,10 +1275,10 @@ export default function StoreOfficers() {
                         transition: "all 0.2s",
                       }}
                       onMouseEnter={(e) => {
-                        if (!submitting) e.currentTarget.style.background = "#dc2626"
+                        if (!submitting && canEdit) e.currentTarget.style.background = "#dc2626"
                       }}
                       onMouseLeave={(e) => {
-                        e.currentTarget.style.background = "#ef4444"
+                        e.currentTarget.style.background = submitting || !canEdit ? "#94a3b8" : "#ef4444"
                       }}
                     >
                       {submitting ? "Deleting..." : "Yes, Delete"}

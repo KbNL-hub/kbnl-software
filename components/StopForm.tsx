@@ -37,23 +37,17 @@ export default function StopForm({ tripId, loadedQuantity: initialLoaded = 0, of
   const [submitting, setSubmitting] = useState(false)
 
   const remaining = loadedQuantity - offloadedSoFar
-  const inputQty = parseInt(quantityOffloaded) || 0
+  const parsedQty = Number(quantityOffloaded)
+  const inputQty = Number.isFinite(parsedQty) ? parsedQty : 0
   const displayRemaining = remaining - inputQty
 
-  useEffect(() => { 
-    // If data provided as props, use it
-    if (initialLoaded > 0) {
-      setLoadedQuantity(initialLoaded);
-      setOffloadedSoFar(initialOffloaded);
-      return; // Don't fetch
-    }
-
-    useEffect(() => { fetchTripData() }, [tripId])
+  useEffect(() => {
+    let cancelled = false
 
     async function fetchTripData() {
       const { data: tripData } = await supabase
         .from("Trips").select("loaded_quantity").eq("trip_id", tripId).single()
-      if (!tripData) return
+      if (!tripData || cancelled) return
       setLoadedQuantity(tripData.loaded_quantity)
 
       const { data: stopsData } = await supabase
@@ -61,10 +55,21 @@ export default function StopForm({ tripId, loadedQuantity: initialLoaded = 0, of
       const { data: discData } = await supabase
         .from("trip_discrepancies").select("shortage").eq("trip_id", tripId)
 
+      if (cancelled) return
       const totalOffloaded = (stopsData || []).reduce((sum, s) => sum + (s.quantity_offloaded || 0), 0)
       const totalShortage = (discData || []).reduce((sum, d) => sum + (d.shortage || 0), 0)
       setOffloadedSoFar(totalOffloaded + totalShortage)
     }
+
+    // If data provided as props, use it
+    if (initialLoaded > 0) {
+      setLoadedQuantity(initialLoaded);
+      setOffloadedSoFar(initialOffloaded);
+      return; // Don't fetch
+    }
+
+    fetchTripData()
+    return () => { cancelled = true }
   }, [tripId, initialLoaded, initialOffloaded])
 
   function captureGPS() {
@@ -93,56 +98,59 @@ export default function StopForm({ tripId, loadedQuantity: initialLoaded = 0, of
     if (stopType === "store" && !selectedStore) return setMessage("Select a store")
     if (!quantityOffloaded) return setMessage("Enter quantity offloaded")
     if (inputQty <= 0) return setMessage("Quantity must be greater than 0")
+    if (!Number.isInteger(inputQty)) return setMessage("Quantity must be a whole number")
     if (inputQty > remaining) return setMessage(`Only ${remaining} bags remaining`)
     if (stopType === "customer" && !stopLocation.trim()) return setMessage("Enter stop location")
 
     setSubmitting(true)
 
-    // Derive stop_type from actual form data: if broker exists → customer, else → store
-    const derivedStopType = selectedBroker ? "customer" : "store"
+    try {
+      // Derive stop_type from actual form data: if broker exists → customer, else → store
+      const derivedStopType = selectedBroker ? "customer" : "store"
 
-    const payload: Record<string, unknown> = {
-      trip_id: tripId,
-      stop_type: derivedStopType,
-      quantity_offloaded: inputQty,
-      stop_location: derivedStopType === "store" ? selectedStore : stopLocation,
-      latitude: latitude ?? null,
-      longitude: longitude ?? null,
-      stop_time: new Date().toISOString(),
-    }
+      const payload: Record<string, unknown> = {
+        trip_id: tripId,
+        stop_type: derivedStopType,
+        quantity_offloaded: inputQty,
+        stop_location: derivedStopType === "store" ? selectedStore : stopLocation,
+        latitude: latitude ?? null,
+        longitude: longitude ?? null,
+        stop_time: new Date().toISOString(),
+      }
 
-    if (derivedStopType === "customer") {
-      payload.broker_id = selectedBroker!.broker_id
-      payload.customer_id = selectedCustomer?.customer_id ?? null
-    } else {
-      payload.broker_id = null
-      payload.customer_id = null
-      payload.store_name = selectedStore
-    }
+      if (derivedStopType === "customer") {
+        payload.broker_id = selectedBroker!.broker_id
+        payload.customer_id = selectedCustomer?.customer_id ?? null
+      } else {
+        payload.broker_id = null
+        payload.customer_id = null
+        payload.store_name = selectedStore
+      }
 
-    // ← CHANGED: Use submitAction instead of supabase.from()
-    const result = await submitAction(
-      'stop',
-      tripId,
-      'Stops',
-      payload
-    )
+      const result = await submitAction(
+        'stop',
+        tripId,
+        'Stops',
+        payload
+      )
 
-    setSubmitting(false)
+      if (!result.success) {
+        console.error(result.error)
+        setMessage(`Failed to save stop: ${result.error}`)
+        return
+      } 
 
-    if (!result.success) {
-      console.error(result.error)
-      setMessage(`Failed to save stop: ${result.error}`)
-      return
-    } 
-
-    // ← ADDED: Show offline message if applicable
-    if (result.offline) {
-      setMessage("✅ Stop saved offline. Will sync when connected.")
-      setTimeout(() => onStopLogged(inputQty), 1500)
-    } else {
-      setMessage("✅ Stop logged successfully")
-      setTimeout(() => onStopLogged(inputQty), 1000)
+      if (result.offline) {
+        setMessage("✅ Stop saved offline. Will sync when connected.")
+        setTimeout(() => onStopLogged(inputQty), 1500)
+      } else {
+        setMessage("✅ Stop logged successfully")
+        setTimeout(() => onStopLogged(inputQty), 1000)
+      }
+    } catch {
+      setMessage("Network error, please try again")
+    } finally {
+      setSubmitting(false)
     }
   }
 
@@ -222,6 +230,7 @@ export default function StopForm({ tripId, loadedQuantity: initialLoaded = 0, of
           placeholder="e.g. 50"
           value={quantityOffloaded}
           min={1}
+          step={1}
           max={remaining}
           onChange={(e) => { setQuantityOffloaded(e.target.value); setMessage("") }}
           style={{

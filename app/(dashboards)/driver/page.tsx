@@ -4,6 +4,8 @@ import { useState, useEffect, useRef } from "react"
 
 import { Icon } from "@iconify/react"
 import { supabase } from "@/lib/supabase"
+import { apiMutate } from "@/lib/api-mutation"
+import RoleSwitcher from "@/components/RoleSwitcher"
 import StopForm from "@/components/StopForm"
 import ModernInput from "@/components/ModernInput"
 import TripOfflineIndicator from "@/components/TripOfflineIndicator"
@@ -30,7 +32,7 @@ type Stop = {
   quantity_offloaded: number
   stop_time: string
 }
-type Truck = { plate_number: string; kbnl_truck_no: string; truck_size: string | null }
+type Truck = { plate_number: string; kbnl_truck_no?: string; truck_size: string | null }
 type LoadMoreEntry = {
   id: string
   quantity: number
@@ -140,6 +142,11 @@ export default function DriverDashboard() {
   const [complaintError, setComplaintError] = useState("")
   const [complaintSubmitting, setComplaintSubmitting] = useState(false)
   const [complaintPendingEndTrip, setComplaintPendingEndTrip] = useState(false)
+  const [showMyComplaints, setShowMyComplaints] = useState(false)
+  const [complaintsRefreshKey, setComplaintsRefreshKey] = useState(0)
+  const [myComplaints, setMyComplaints] = useState<{ complaint_id: string; complaint_type: string; notes: string; plate_number: string; reported_at: string; resolved: boolean }[]>([])
+  const [fetchingComplaints, setFetchingComplaints] = useState(false)
+  const [resolvingComplaintId, setResolvingComplaintId] = useState<string | null>(null)
 
   // Load more
   const [loadMoreQty, setLoadMoreQty] = useState("")
@@ -219,10 +226,17 @@ export default function DriverDashboard() {
     if (!session) { window.location.href = "/login"; return }
     const user = session.user
 
+    const { data: profile } = await supabase
+      .from("Profiles").select("full_name").eq("user_id", user.id).single()
+
     const { data: driverData } = await supabase
       .from("Drivers").select("driver_id, full_name, profile_picture_url").eq("driver_id", user.id).single()
-    if (!driverData) return
-    setDriver(driverData)
+
+    if (driverData) {
+      setDriver(driverData)
+    } else if (profile) {
+      setDriver({ driver_id: user.id, full_name: profile.full_name })
+    }
 
     const { data: tripData } = await supabase
       .from("Trips").select("*").eq("driver_id", user.id)
@@ -243,8 +257,17 @@ export default function DriverDashboard() {
     const { data: trucksData } = await supabase
       .from("Trucks").select("plate_number, kbnl_truck_no, truck_size").eq("status", "Empty")
     const available = (trucksData || []).filter(t => !usedPlates.includes(t.plate_number))
-    setTrucks(available)
-    setAllTrucks(trucksData || [])
+    let merged: Truck[] = [...available]
+
+    const { data: tricyclesData } = await supabase
+      .from("tricycles").select("tricycle_number, assigned_to")
+    const availableTricycles: Truck[] = (tricyclesData || [])
+      .filter(t => !usedPlates.includes(t.tricycle_number))
+      .map(t => ({ plate_number: t.tricycle_number, kbnl_truck_no: t.assigned_to, truck_size: "Tricycle" }))
+    merged = [...merged, ...availableTricycles]
+
+    setTrucks(merged)
+    setAllTrucks([...(trucksData || []), ...availableTricycles])
 
     const { data: productsData } = await supabase.rpc("get_products")
     if (productsData) {
@@ -317,11 +340,16 @@ export default function DriverDashboard() {
   async function handleConfirmReceipt() {
     if (!activeATF || !driver) return
     setConfirmingATF(true)
-    await supabase.from("fuel_requests").update({
-      atf_status: "Confirmed",
-      confirmed_at: new Date().toISOString(),
-      confirmed_by: driver.driver_id,
-    }).eq("request_id", activeATF.request_id)
+    await apiMutate("fuel", {
+      action: "update",
+      table: "fuel_requests",
+      data: {
+        atf_status: "Confirmed",
+        confirmed_at: new Date().toISOString(),
+        confirmed_by: driver.driver_id,
+      },
+      filters: { request_id: activeATF.request_id },
+    })
     setConfirmingATF(false)
     await fetchATFs(driver.driver_id)
   }
@@ -389,10 +417,7 @@ export default function DriverDashboard() {
         .from("profile-pictures")
         .getPublicUrl(filePath)
 
-      const { error: updateError } = await supabase
-        .from("Drivers")
-        .update({ profile_picture_url: publicUrl })
-        .eq("driver_id", driver.driver_id)
+      const { error: updateError } = await apiMutate("admin", { action: "update", table: "Drivers", data: { profile_picture_url: publicUrl }, filters: { driver_id: driver.driver_id } })
 
       if (updateError) { setPictureError("Failed to save profile"); setPictureLoading(false); return }
 
@@ -442,18 +467,24 @@ export default function DriverDashboard() {
     if (!loadedQuantity) return setMessage("Enter no. of bags")
 
     setSubmitting(true)
-    const { data, error } = await supabase.from("Trips").insert([{
-      driver_id: driver?.driver_id, plate_number: plateNumber, product,
-      material_centre: loadingPointName, loaded_quantity: parseInt(loadedQuantity),
-      ATC: showATC ? atc.trim() : null,
-      amount_charged: isDinaOrTricycle ? parseFloat(amountCharged) : null,
-      payment_mode: isDinaOrTricycle ? paymentMode : null,
-      trip_status: "In transit",
-    }]).select().single()
+    const { data, error } = await apiMutate("trips", {
+      action: "insert",
+      table: "Trips",
+      data: {
+        driver_id: driver?.driver_id, plate_number: plateNumber, product,
+        material_centre: loadingPointName, loaded_quantity: parseInt(loadedQuantity),
+        ATC: showATC ? atc.trim() : null,
+        amount_charged: isDinaOrTricycle ? parseFloat(amountCharged) : null,
+        payment_mode: isDinaOrTricycle ? paymentMode : null,
+        trip_status: "In transit",
+      },
+    })
 
-    if (error || !data) { setMessage("Failed to start trip"); setSubmitting(false); return }
-    await supabase.from("Trucks").update({ status: "Loaded" }).eq("plate_number", plateNumber)
-    setActiveTrip(data); setRemaining(parseInt(loadedQuantity)); setOffloadedSoFar(0); setStops([])
+    if (error || !data || !Array.isArray(data) || data.length === 0) { setMessage("Failed to start trip"); setSubmitting(false); return }
+    if (truckSize !== "Tricycle") {
+      await apiMutate("trips", { action: "update", table: "Trucks", data: { status: "Loaded" }, filters: { plate_number: plateNumber } })
+    }
+    setActiveTrip(data[0]); setRemaining(parseInt(loadedQuantity)); setOffloadedSoFar(0); setStops([]); setLoadMoreEntries([])
     setSubmitting(false); setShowEndConfirm(false); setMessage(""); navigateTo("active-trip")
   }
 
@@ -462,16 +493,16 @@ export default function DriverDashboard() {
     setSubmitting(true)
 
     await clearOfflineTripData(activeTrip.trip_id);
-    await supabase.from("Trips").update({ trip_status: "Completed", updated_at: new Date().toISOString() }).eq("trip_id", activeTrip.trip_id)
-    await supabase.from("Trucks").update({ status: "Empty" }).eq("plate_number", activeTrip.plate_number)
-    setSubmitting(false); setShowEndConfirm(false); setActiveTrip(null); setStops([]); setRemaining(0); setOffloadedSoFar(0); navigateTo("dashboard")
+    await apiMutate("trips", { action: "update", table: "Trips", data: { trip_status: "Completed", updated_at: new Date().toISOString() }, filters: { trip_id: activeTrip.trip_id } })
+    await apiMutate("trips", { action: "update", table: "Trucks", data: { status: "Empty" }, filters: { plate_number: activeTrip.plate_number } })
+    setSubmitting(false); setShowEndConfirm(false); setActiveTrip(null); setStops([]); setLoadMoreEntries([]); setRemaining(0); setOffloadedSoFar(0); navigateTo("dashboard")
   }
 
   async function handleHoldTrip() {
     if (!activeTrip) return
     setSubmitting(true)
     const newStatus = activeTrip.trip_status === "On hold" ? "In transit" : "On hold"
-    await supabase.from("Trips").update({ trip_status: newStatus }).eq("trip_id", activeTrip.trip_id)
+    await apiMutate("trips", { action: "update", table: "Trips", data: { trip_status: newStatus }, filters: { trip_id: activeTrip.trip_id } })
     setActiveTrip({ ...activeTrip, trip_status: newStatus }); setSubmitting(false); setShowHoldConfirm(false)
   }
 
@@ -568,13 +599,17 @@ export default function DriverDashboard() {
     setLoadMoreLocationName(""); setLoadMoreProduct(""); setLoadMoreProductOptions([]); setLoadMoreError("")
 
     if (!result.offline && navigator.onLine && activeTrip) {
-      await supabase.from("trip_load_more").insert([{
-        trip_id: activeTrip.trip_id,
-        quantity: qty,
-        loading_point_type: moreCat,
-        loading_point_name: moreLoc,
-        product: moreProd,
-      }])
+      await apiMutate("trips", {
+        action: "insert",
+        table: "trip_load_more",
+        data: {
+          trip_id: activeTrip.trip_id,
+          quantity: qty,
+          loading_point_type: moreCat,
+          loading_point_name: moreLoc,
+          product: moreProd,
+        },
+      })
       await fetchLoadMoreEntries(activeTrip.trip_id)
     }
 
@@ -594,16 +629,51 @@ export default function DriverDashboard() {
     }
 
     setComplaintSubmitting(true)
-    const { error } = await supabase.from("driver_complaints").insert([{
-      driver_id: driver?.driver_id, trip_id: activeTrip?.trip_id ?? null,
-      plate_number: complaintTruck, complaint_type: complaintType, notes: complaintNotes.trim(),
-    }])
+    const { error } = await apiMutate("admin", {
+      action: "insert",
+      table: "driver_complaints",
+      data: {
+        driver_id: driver?.driver_id, trip_id: activeTrip?.trip_id ?? null,
+        plate_number: complaintTruck, complaint_type: complaintType, notes: complaintNotes.trim(),
+      },
+    })
     setComplaintSubmitting(false)
     if (error) { setComplaintError("Failed to submit complaint"); return }
 
     setShowComplaintModal(false); setComplaintType(""); setComplaintTruck("")
     setComplaintNotes(""); setComplaintError(""); setComplaintPendingEndTrip(false)
-    if (thenEndTrip) handleEndTrip()
+    if (thenEndTrip) { handleEndTrip() } else { setComplaintsRefreshKey(k => k + 1) }
+  }
+
+  useEffect(() => {
+    if (!showMyComplaints) return
+    let cancelled = false
+    ;(async () => {
+      setFetchingComplaints(true)
+      const { data } = await supabase
+        .from("driver_complaints")
+        .select("complaint_id, complaint_type, notes, plate_number, reported_at, resolved")
+        .eq("driver_id", driver?.driver_id)
+        .order("reported_at", { ascending: false })
+      if (!cancelled) {
+        setMyComplaints((data || []) as any)
+        setFetchingComplaints(false)
+      }
+    })()
+    return () => { cancelled = true }
+  }, [showMyComplaints, complaintsRefreshKey])
+
+  async function handleMarkResolved(id: string) {
+    setResolvingComplaintId(id)
+    try {
+      await apiMutate("admin", {
+        action: "update", table: "driver_complaints",
+        data: { resolved: true }, filters: { complaint_id: id },
+      })
+      setMyComplaints(prev => prev.map(c => c.complaint_id === id ? { ...c, resolved: true } : c))
+    } finally {
+      setResolvingComplaintId(null)
+    }
   }
 
   function openComplaintFromEndTrip() {
@@ -741,14 +811,12 @@ export default function DriverDashboard() {
               <h1 style={{ margin: 0, fontSize: isMobile ? fontSize.lg : fontSize.xl, fontWeight: 700, color: "#0070f3" }}>
                 {driver?.full_name}
               </h1>
-              <p style={{ margin: "2px 0 0", fontSize: fontSize.sm, color: "#64748b" }}>
-                Driver
-              </p>
+              <RoleSwitcher currentRole="Driver" style={{ margin: "2px 0 0", fontSize: fontSize.sm, color: "#64748b" }} />
             </div>
           </div>
           <div style={{ display: "flex", gap: 8 }}>
             <button
-              onClick={() => { setComplaintPendingEndTrip(false); setShowComplaintModal(true) }}
+              onClick={() => { setComplaintPendingEndTrip(false); setShowMyComplaints(true) }}
               style={{ padding: "8px 14px", background: "#fff8e1", color: "#f5a623", border: "1.5px solid #f8ad5c", borderRadius: 8, cursor: "pointer", fontSize: fontSize.sm, minHeight: 40, fontWeight: 600, display: "flex", alignItems: "center", gap: 6, transition: "all 0.2s", whiteSpace: "nowrap" }}
               onMouseEnter={e => { e.currentTarget.style.background = "#fff0e1"; e.currentTarget.style.borderColor = "#f8ad5c" }}
               onMouseLeave={e => { e.currentTarget.style.background = "#fff8e1"; e.currentTarget.style.borderColor = "#f8ad5c" }}
@@ -957,11 +1025,11 @@ export default function DriverDashboard() {
               </div>
 
               <div style={{ marginBottom: 16 }}>
-                <label style={labelStyle}>Plate Number *</label>
+                <label style={labelStyle}>{truckSize === "Tricycle" ? "Tricycle Number" : "Plate Number"} *</label>
                 <div style={{ position: "relative" }}>
                   <ModernInput as="select" value={plateNumber} onChange={e => { setPlateNumber(e.target.value); setMessage("") }} style={inputStyle}>
-                    <option value="">Select plate number</option>
-                    {trucks.filter(t => !truckSize || t.truck_size === truckSize).map(t => <option key={t.plate_number} value={t.plate_number}>{t.plate_number}{t.kbnl_truck_no ? ` · #${t.kbnl_truck_no}` : ""}</option>)}
+                    <option value="">{truckSize === "Tricycle" ? "Select tricycle" : "Select plate number"}</option>
+                    {trucks.filter(t => !truckSize || t.truck_size === truckSize).map(t => <option key={t.plate_number} value={t.plate_number}>{t.plate_number}{t.kbnl_truck_no ? (t.truck_size === "Tricycle" ? ` · ${t.kbnl_truck_no}` : ` · #${t.kbnl_truck_no}`) : ""}</option>)}
                   </ModernInput>
                 </div>
               </div>
@@ -1294,6 +1362,46 @@ export default function DriverDashboard() {
         </div>
       )}
 
+      {/* My Complaints List */}
+      {showMyComplaints && (
+        <div style={modalOverlay}>
+          <div onClick={e => e.stopPropagation()} style={{ ...modalBox, maxHeight: "85vh", overflowY: "auto" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+              <h3 style={{ margin: 0, color: "#0f172a", fontSize: fontSize.xl, fontWeight: 700 }}>My Reports</h3>
+              <button onClick={() => setShowMyComplaints(false)} style={{ background: "none", border: "none", cursor: "pointer", padding: 4, color: "#94a3b8" }} onMouseEnter={e => e.currentTarget.style.color = "#475569"} onMouseLeave={e => e.currentTarget.style.color = "#94a3b8"}><Icon icon="mdi:close" width={20} /></button>
+            </div>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+              <p style={{ margin: 0, fontSize: fontSize.sm, color: "#64748b" }}>{myComplaints.filter(c => !c.resolved).length} open &middot; {myComplaints.filter(c => c.resolved).length} resolved</p>
+              <button onClick={() => { setShowMyComplaints(false); setShowComplaintModal(true) }} style={{ padding: "8px 16px", background: "#f5a623", color: "white", border: "none", borderRadius: 6, cursor: "pointer", fontWeight: 600, fontSize: fontSize.sm, display: "flex", alignItems: "center", gap: 6, minHeight: 36 }} onMouseEnter={e => e.currentTarget.style.background = "#d48a1c"} onMouseLeave={e => e.currentTarget.style.background = "#f5a623"}><Icon icon="mdi:plus" width={16} /> New Report</button>
+            </div>
+            {fetchingComplaints ? (
+              <div style={{ display: "flex", justifyContent: "center", padding: "32px 0" }}><div style={{ width: 28, height: 28, borderRadius: "50%", border: "3px solid #e2e8f0", borderTopColor: "#0070f3", animation: "spin 1s linear infinite" }} /></div>
+            ) : myComplaints.length === 0 ? (
+              <div style={{ textAlign: "center", padding: "40px 24px" }}><p style={{ margin: 0, color: "#64748b", fontSize: fontSize.base }}>No reports yet</p></div>
+            ) : (
+              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                {myComplaints.map(c => (
+                  <div key={c.complaint_id} style={{ display: "flex", alignItems: "flex-start", gap: 10, padding: "12px 14px", borderRadius: 8, border: `1px solid ${c.resolved ? "#e2e8f0" : "#fef3c7"}`, background: c.resolved ? "#fafafa" : "#fffcf5", opacity: c.resolved ? 0.7 : 1 }}>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 4 }}>
+                        <span style={{ padding: "2px 7px", borderRadius: 4, fontSize: fontSize.xs, fontWeight: 500, background: "#f0f7ff", color: "#0c4a6e", border: "1px solid #bfdbfe" }}>{c.complaint_type}</span>
+                        <span style={{ fontSize: fontSize.xs, color: "#94a3b8", fontFamily: "monospace" }}>{c.plate_number}</span>
+                      </div>
+                      <p style={{ margin: "0 0 4px", fontSize: fontSize.sm, color: "#0f172a", fontWeight: 500, lineHeight: 1.4, wordBreak: "break-word" }}>{c.notes.length > 100 ? c.notes.slice(0, 100) + "…" : c.notes}</p>
+                      <p style={{ margin: 0, fontSize: fontSize.xs, color: "#94a3b8" }}>{new Date(c.reported_at).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit" })}</p>
+                    </div>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 6, alignItems: "flex-end", flexShrink: 0 }}>
+                      <span style={{ padding: "3px 8px", borderRadius: 5, fontSize: fontSize.xs, fontWeight: 500, background: c.resolved ? "#d1fae5" : "#fef3c7", color: c.resolved ? "#065f46" : "#78350f", border: `1px solid ${c.resolved ? "#a7f3d0" : "#fde68a"}` }}>{c.resolved ? "Resolved" : "Open"}</span>
+                      {!c.resolved && <button onClick={() => handleMarkResolved(c.complaint_id)} disabled={resolvingComplaintId === c.complaint_id} style={{ padding: "4px 10px", fontSize: fontSize.xs, fontWeight: 600, background: resolvingComplaintId === c.complaint_id ? "#94a3b8" : "#16a34a", color: "white", border: "none", borderRadius: 5, cursor: resolvingComplaintId === c.complaint_id ? "not-allowed" : "pointer", minHeight: 28 }} onMouseEnter={e => { if (!resolvingComplaintId) e.currentTarget.style.background = "#15803d" }} onMouseLeave={e => { if (!resolvingComplaintId) e.currentTarget.style.background = "#16a34a" }}>{resolvingComplaintId === c.complaint_id ? "…" : "Mark Resolved"}</button>}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* Complaint */}
       {showComplaintModal && (
         <div style={modalOverlay}>
@@ -1312,7 +1420,7 @@ export default function DriverDashboard() {
               <div style={{ position: "relative" }}>
                 <ModernInput as="select" value={complaintTruck} onChange={e => { setComplaintTruck(e.target.value); setComplaintError("") }} style={inputStyle}>
                   <option value="">Select truck</option>
-                  {allTrucks.map(t => <option key={t.plate_number} value={t.plate_number}>{t.plate_number}{t.kbnl_truck_no ? ` · #${t.kbnl_truck_no}` : ""}</option>)}
+                  {allTrucks.map(t => <option key={t.plate_number} value={t.plate_number}>{t.plate_number}{t.kbnl_truck_no ? (t.truck_size === "Tricycle" ? ` · ${t.kbnl_truck_no}` : ` · #${t.kbnl_truck_no}`) : ""}</option>)}
                 </ModernInput>
                 
               </div>

@@ -1,12 +1,25 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useMemo } from "react"
 import ModernInput from "@/components/ModernInput"
 import { supabase } from "@/lib/supabase"
+import { apiMutate } from "@/lib/api-mutation"
 import { formatAmount, parseAmount } from "@/lib/formatAmount"
+import { usePermissions } from "@/lib/PermissionContext"
+
+type FuelDeposit = {
+  deposit_id: string
+  company_id: string
+  amount: number
+  note: string | null
+  status: string
+  deposited_at: string
+  confirmed_at: string | null
+}
 
 type ATF = {
   request_id: string
+  company_id: string
   atf_code: string | null
   plate_number: string
   kbnl_truck_no: string | null
@@ -64,8 +77,11 @@ const atfStatusColor = (status: string) => {
 const filters = ["All", "Pending", "Authorised", "Dispensed", "Confirmed", "Invalidated"]
 
 export default function DieselManager() {
+  const { getAccess } = usePermissions()
+  const canEdit = getAccess("diesel-manager").canEdit
   const { isMobile, isDesktop } = useBreakpoint()
   const [atfs, setAtfs] = useState<ATF[]>([])
+  const [deposits, setDeposits] = useState<FuelDeposit[]>([])
   const [companies, setCompanies] = useState<FuelCompany[]>([])
   const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState("All")
@@ -92,7 +108,7 @@ export default function DieselManager() {
   }, [])
 
   async function fetchAll() {
-    await Promise.all([fetchATFs(), fetchCompanies()])
+    await Promise.all([fetchATFs(), fetchCompanies(), fetchDeposits()])
     setLastUpdated(new Date())
     setLoading(false)
   }
@@ -112,6 +128,7 @@ export default function DieselManager() {
       const { data: truck } = await supabase.from("Trucks").select("kbnl_truck_no").eq("plate_number", r.plate_number).single()
       return {
         ...r,
+        company_id: r.company_id,
         driver_name: driver?.full_name ?? "Unknown",
         officer_name: officer?.full_name ?? "Unknown",
         company_name: company?.company_name ?? "Unknown",
@@ -120,6 +137,14 @@ export default function DieselManager() {
     }))
 
     setAtfs(enriched)
+  }
+
+  async function fetchDeposits() {
+    const { data } = await supabase
+      .from("fuel_deposits")
+      .select("deposit_id, company_id, amount, note, status, deposited_at, confirmed_at")
+      .order("deposited_at", { ascending: false })
+    if (data) setDeposits(data)
   }
 
   async function fetchCompanies() {
@@ -131,28 +156,65 @@ export default function DieselManager() {
   }
 
   async function handleDeposit() {
+    if (!canEdit) return
     const amount = parseAmount(depositAmount)
     if (!depositCompanyId) return setDepositError("Select a fuel company")
     if (!depositAmount || amount <= 0) return setDepositError("Enter a valid amount")
 
     setDepositLoading(true)
 
-    const { error } = await supabase.from("fuel_deposits").insert([{
-      company_id: depositCompanyId,
-      amount,
-      note: depositNote.trim() || null,
-      status: "Pending",
-    }])
+    try {
+      const { error } = await apiMutate("fuel", {
+        action: "insert",
+        table: "fuel_deposits",
+        data: {
+          company_id: depositCompanyId,
+          amount,
+          note: depositNote.trim() || null,
+          status: "Pending",
+        },
+      })
 
-    if (error) { setDepositError("Failed to log deposit"); setDepositLoading(false); return }
+      if (error) { setDepositError("Failed to log deposit"); return }
 
-    setDepositLoading(false)
-    setShowDepositModal(false)
-    setDepositCompanyId(""); setDepositAmount(""); setDepositNote(""); setDepositError("")
-    fetchCompanies()
+      setShowDepositModal(false)
+      setDepositCompanyId(""); setDepositAmount(""); setDepositNote(""); setDepositError("")
+      fetchCompanies()
+    } catch {
+      setDepositError("Network error, please try again")
+    } finally {
+      setDepositLoading(false)
+    }
   }
 
   const filteredATFs = filter === "All" ? atfs : atfs.filter(a => a.atf_status === filter)
+
+  const balanceMap = useMemo(() => {
+    const map: Record<string, number> = {}
+    const perCompany = new Map<string, { id: string; amount: number; created_at: string }[]>()
+    for (const a of atfs) {
+      if (a.atf_status !== "Dispensed" && a.atf_status !== "Confirmed" || !a.total_amount) continue
+      const r = perCompany.get(a.company_id) || []
+      r.push({ id: a.request_id, amount: a.total_amount, created_at: a.dispensed_at ?? a.requested_at })
+      perCompany.set(a.company_id, r)
+    }
+    for (const d of deposits) {
+      if (d.status !== "Confirmed") continue
+      const r = perCompany.get(d.company_id) || []
+      r.push({ id: d.deposit_id, amount: -d.amount, created_at: d.confirmed_at ?? d.deposited_at })
+      perCompany.set(d.company_id, r)
+    }
+    const balances = new Map(companies.map(c => [c.company_id, c.current_balance]))
+    for (const [companyId, records] of perCompany) {
+      records.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+      let running = balances.get(companyId) ?? 0
+      for (const rec of records) {
+        map[rec.id] = running
+        running += rec.amount
+      }
+    }
+    return map
+  }, [atfs, deposits, companies])
 
   return (
     <div style={{ minHeight: "100vh", background: "#f8fafc", padding: isMobile ? "16px" : "32px", fontFamily: "'Inter', sans-serif" }}>
@@ -302,6 +364,11 @@ export default function DieselManager() {
                         <div style={{ flex: 1, background: "#f0f7ff", borderRadius: 8, padding: "10px 12px", border: "1px solid #e0f2fe" }}>
                           <p style={{ margin: 0, fontSize: fontSize.xs, color: "#0284c7" }}>Total</p>
                           <p style={{ margin: "2px 0 0", fontWeight: 700, color: "#0369a1", fontSize: fontSize.md }}>₦{atf.total_amount.toLocaleString()}</p>
+                          {atf.atf_status === "Confirmed" && balanceMap[atf.request_id] !== undefined && (
+                            <span style={{ marginTop: 4, fontSize: fontSize.xs, fontWeight: 600, color: "#16a34a", background: "#f0fdf4", padding: "2px 8px", borderRadius: 4, display: "inline-block" }}>
+                              Balance after: ₦{balanceMap[atf.request_id].toLocaleString()}
+                            </span>
+                          )}
                         </div>
                       )}
                     </div>
@@ -399,6 +466,7 @@ export default function DieselManager() {
                   value={depositAmount}
                   onChange={(e: any) => { setDepositAmount(formatAmount(e.target.value)); setDepositError("") }}
                   style={inputStyle}
+                  readOnly={!canEdit}
                 />
               </div>
               <div>
@@ -409,6 +477,7 @@ export default function DieselManager() {
                   value={depositNote}
                   onChange={(e: any) => setDepositNote(e.target.value)}
                   style={inputStyle}
+                  readOnly={!canEdit}
                 />
               </div>
             </div>
@@ -419,7 +488,7 @@ export default function DieselManager() {
               <button onClick={() => { setShowDepositModal(false); setDepositCompanyId(""); setDepositAmount(""); setDepositNote(""); setDepositError("") }} style={{ flex: 1, padding: "12px 16px", background: "white", color: "#0f172a", border: "1px solid #cbd5e1", borderRadius: 8, cursor: "pointer", fontWeight: 600, fontSize: fontSize.md, minHeight: 44 }}>
                 Cancel
               </button>
-              <button onClick={handleDeposit} disabled={depositLoading} style={{ flex: 1, padding: "12px 16px", background: "#0070f3", color: "white", border: "none", borderRadius: 8, cursor: depositLoading ? "not-allowed" : "pointer", fontWeight: 600, fontSize: fontSize.md, minHeight: 44, opacity: depositLoading ? 0.7 : 1 }}>
+              <button onClick={handleDeposit} disabled={depositLoading || !canEdit} style={{ flex: 1, padding: "12px 16px", background: depositLoading || !canEdit ? "#94a3b8" : "#0070f3", color: "white", border: "none", borderRadius: 8, cursor: depositLoading || !canEdit ? "not-allowed" : "pointer", fontWeight: 600, fontSize: fontSize.md, minHeight: 44, opacity: depositLoading || !canEdit ? 0.7 : 1 }}>
                 {depositLoading ? "Adding..." : "Top Up"}
               </button>
             </div>

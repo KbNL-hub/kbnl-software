@@ -2,7 +2,10 @@
 
 import { useState, useEffect, useRef } from "react"
 import { supabase } from "@/lib/supabase"
+import { apiMutate } from "@/lib/api-mutation"
 import ModernInput from "@/components/ModernInput"
+import InviteSuccessCard from "@/components/admin/InviteSuccessCard"
+import { usePermissions } from "@/lib/PermissionContext"
 
 type TruckAdmin = {
   admin_id: string
@@ -31,6 +34,8 @@ function useBreakpoint() {
 const fontSize = { xs: 12, sm: 13, base: 14, md: 15, lg: 16, xl: 20, "2xl": 24, "3xl": 28 }
 
 export default function ManageTruckAdmins() {
+  const { getAccess } = usePermissions()
+  const canEdit = getAccess("truck-admins").canEdit
   const { isMobile, isDesktop } = useBreakpoint()
   const [admins, setAdmins] = useState<TruckAdmin[]>([])
   const [loading, setLoading] = useState(true)
@@ -46,6 +51,7 @@ export default function ManageTruckAdmins() {
   const [editPhone, setEditPhone] = useState("")
   const [message, setMessage] = useState("")
   const [submitting, setSubmitting] = useState(false)
+  const [inviteResult, setInviteResult] = useState<{ tempPassword: string; email: string } | null>(null)
 
   const phoneRef = useRef<HTMLInputElement>(null)
   const emailRef = useRef<HTMLInputElement>(null)
@@ -73,48 +79,69 @@ export default function ManageTruckAdmins() {
     setEditName("")
     setEditPhone("")
     setMessage("")
+    setInviteResult(null)
   }
 
   async function handleInvite() {
+    if (!canEdit) return
     if (!fullName.trim()) return setMessage("Full name is required")
     if (!email.trim()) return setMessage("Email is required")
     setSubmitting(true)
 
-    const res = await fetch("/api/invite-user", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email, fullName, phoneNumber, role: "TruckAdmin" }),
-    })
-    const result = await res.json()
-    setSubmitting(false)
+    try {
+      const res = await fetch("/api/invite-user", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, fullName, phoneNumber, role: "TruckAdmin" }),
+      })
+      const result = await res.json()
 
-    if (!res.ok) { setMessage("Failed: " + result.error); return }
-    closeModals()
-    fetchAdmins()
+      if (!res.ok) { setMessage("Failed: " + result.error); return }
+      setInviteResult({ tempPassword: result.tempPassword, email })
+      fetchAdmins()
+    } catch {
+      setMessage("Network error, please try again")
+    } finally {
+      setSubmitting(false)
+    }
   }
 
   async function handleUpdate() {
+    if (!canEdit) return
     if (!editingAdmin) return
     if (!editName.trim()) return setMessage("Name is required")
     setSubmitting(true)
 
-    const { error } = await supabase
-      .from("truck_admins")
-      .update({ full_name: editName, phone_number: editPhone || null })
-      .eq("admin_id", editingAdmin.admin_id)
-
-    setSubmitting(false)
-    if (error) { setMessage("Failed to update admin"); return }
-    closeModals()
-    fetchAdmins()
+    try {
+      const { error } = await apiMutate("admin", {
+        action: "update",
+        table: "truck_admins",
+        data: { full_name: editName, phone_number: editPhone || null },
+        filters: { admin_id: editingAdmin.admin_id },
+      })
+      if (error) { setMessage("Failed to update admin"); return }
+      closeModals()
+      fetchAdmins()
+    } catch {
+      setMessage("Network error, please try again")
+    } finally {
+      setSubmitting(false)
+    }
   }
 
   async function handleDelete(adminId: string) {
+    if (!canEdit) return
     setSubmitting(true)
-    await supabase.from("truck_admins").delete().eq("admin_id", adminId)
-    setSubmitting(false)
-    closeModals()
-    fetchAdmins()
+    try {
+      const { error } = await apiMutate("admin", { action: "delete", table: "truck_admins", filters: { admin_id: adminId } })
+      if (error) { setMessage("Failed to delete admin"); return }
+      closeModals()
+      fetchAdmins()
+    } catch {
+      setMessage("Network error, please try again")
+    } finally {
+      setSubmitting(false)
+    }
   }
 
   const statusColor = (status: string) => {
@@ -163,7 +190,7 @@ export default function ManageTruckAdmins() {
             </div>
           )}
 
-          <button onClick={() => { setShowInviteModal(true); setMessage("") }} style={{ padding: isMobile ? "10px 16px" : "12px 20px", background: "#0070f3", color: "white", border: "none", borderRadius: 8, cursor: "pointer", fontWeight: 600, fontSize: fontSize.md, flex: isMobile ? 1 : "0 0 auto", boxShadow: "0 4px 12px rgba(0, 112, 243, 0.2)", transition: "all 0.2s ease", display: "flex", alignItems: "center", justifyContent: "center", gap: 6, minHeight: 40, whiteSpace: "nowrap" }} onMouseEnter={(e) => { if (!isMobile) e.currentTarget.style.transform = "translateY(-2px)" }} onMouseLeave={(e) => { if (!isMobile) e.currentTarget.style.transform = "none" }}>
+          <button onClick={() => { if (!canEdit) return; setShowInviteModal(true); setMessage("") }} style={{ padding: isMobile ? "10px 16px" : "12px 20px", background: canEdit ? "#0070f3" : "#94a3b8", color: "white", border: "none", borderRadius: 8, cursor: canEdit ? "pointer" : "not-allowed", fontWeight: 600, fontSize: fontSize.md, flex: isMobile ? 1 : "0 0 auto", boxShadow: "0 4px 12px rgba(0, 112, 243, 0.2)", transition: "all 0.2s ease", display: "flex", alignItems: "center", justifyContent: "center", gap: 6, minHeight: 40, whiteSpace: "nowrap" }} onMouseEnter={(e) => { if (!isMobile) e.currentTarget.style.transform = "translateY(-2px)" }} onMouseLeave={(e) => { if (!isMobile) e.currentTarget.style.transform = "none" }}>
             <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2c5.5 0 10 4.5 10 10s-4.5 10-10 10S2 17.5 2 12 6.5 2 12 2m0 2c-4.4 0-8 3.6-8 8s3.6 8 8 8 8-3.6 8-8-3.6-8-8-8m3.5 9h-3v3h-1v-3h-3v-1h3v-3h1v3h3v1z" /></svg>
             Add Admin
           </button>
@@ -182,7 +209,7 @@ export default function ManageTruckAdmins() {
           </div>
           <h3 style={{ margin: "0 0 8px", color: "#0f172a", fontSize: fontSize.xl, fontWeight: 600 }}>No truck admins yet</h3>
           <p style={{ color: "#64748b", fontSize: fontSize.base, margin: "0 0 24px", maxWidth: 400, marginLeft: "auto", marginRight: "auto" }}>Add truck admins to manage fleet administration tasks.</p>
-          <button onClick={() => { setShowInviteModal(true); setMessage("") }} style={{ padding: "10px 20px", background: "white", color: "#0f172a", border: "1px solid #cbd5e1", borderRadius: 8, cursor: "pointer", fontWeight: 500, fontSize: fontSize.base, transition: "all 0.2s ease" }} onMouseEnter={e => e.currentTarget.style.background = "#f8fafc"} onMouseLeave={e => e.currentTarget.style.background = "white"}>
+          <button onClick={() => { if (!canEdit) return; setShowInviteModal(true); setMessage("") }} style={{ padding: "10px 20px", background: canEdit ? "white" : "#94a3b8", color: "#0f172a", border: "1px solid #cbd5e1", borderRadius: 8, cursor: canEdit ? "pointer" : "not-allowed", fontWeight: 500, fontSize: fontSize.base, transition: "all 0.2s ease" }} onMouseEnter={e => e.currentTarget.style.background = "#f8fafc"} onMouseLeave={e => e.currentTarget.style.background = "white"}>
             Add First Admin
           </button>
         </div>
@@ -210,10 +237,10 @@ export default function ManageTruckAdmins() {
                     </div>
 
                     <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
-                      <button onClick={() => { setEditingAdmin(admin); setEditName(admin.full_name); setEditPhone(admin.phone_number || ""); setMessage("") }} style={{ flex: 1, padding: "8px 12px", cursor: "pointer", borderRadius: 6, border: "1px solid #e2e8f0", color: "#0070f3", background: "#f0f7ff", fontSize: fontSize.sm, fontWeight: 500, transition: "all 0.2s" }} onMouseEnter={e => { e.currentTarget.style.background = "#e0efff"; e.currentTarget.style.borderColor = "#0070f3" }} onMouseLeave={e => { e.currentTarget.style.background = "#f0f7ff"; e.currentTarget.style.borderColor = "#e2e8f0" }}>
+                      <button onClick={() => { if (!canEdit) return; setEditingAdmin(admin); setEditName(admin.full_name); setEditPhone(admin.phone_number || ""); setMessage("") }} disabled={!canEdit} style={{ flex: 1, padding: "8px 12px", cursor: canEdit ? "pointer" : "not-allowed", borderRadius: 6, border: "1px solid #e2e8f0", color: canEdit ? "#0070f3" : "#94a3b8", background: canEdit ? "#f0f7ff" : "#e2e8f0", fontSize: fontSize.sm, fontWeight: 500, transition: "all 0.2s" }} onMouseEnter={e => { if (!canEdit) return; e.currentTarget.style.background = "#e0efff"; e.currentTarget.style.borderColor = "#0070f3" }} onMouseLeave={e => { if (!canEdit) return; e.currentTarget.style.background = "#f0f7ff"; e.currentTarget.style.borderColor = "#e2e8f0" }}>
                         Edit
                       </button>
-                      <button onClick={() => { setDeletingId(admin.admin_id); setMessage("") }} style={{ flex: 1, padding: "8px 12px", cursor: "pointer", borderRadius: 6, border: "1px solid #fee2e2", color: "#ef4444", background: "#fef2f2", fontSize: fontSize.sm, fontWeight: 500, transition: "all 0.2s" }} onMouseEnter={e => { e.currentTarget.style.background = "#fee2e2" }} onMouseLeave={e => { e.currentTarget.style.background = "#fef2f2" }}>
+                      <button onClick={() => { if (!canEdit) return; setDeletingId(admin.admin_id); setMessage("") }} disabled={!canEdit} style={{ flex: 1, padding: "8px 12px", cursor: canEdit ? "pointer" : "not-allowed", borderRadius: 6, border: "1px solid #fee2e2", color: canEdit ? "#ef4444" : "#94a3b8", background: canEdit ? "#fef2f2" : "#e2e8f0", fontSize: fontSize.sm, fontWeight: 500, transition: "all 0.2s" }} onMouseEnter={e => { if (!canEdit) return; e.currentTarget.style.background = "#fee2e2" }} onMouseLeave={e => { if (!canEdit) return; e.currentTarget.style.background = "#fef2f2" }}>
                         Delete
                       </button>
                     </div>
@@ -257,10 +284,10 @@ export default function ManageTruckAdmins() {
                         </td>
                         <td style={{ padding: "12px 16px", textAlign: "right" }}>
                           <div style={{ display: "flex", gap: 6, justifyContent: "flex-end" }}>
-                            <button onClick={() => { setEditingAdmin(admin); setEditName(admin.full_name); setEditPhone(admin.phone_number || ""); setMessage("") }} style={{ padding: "6px 10px", cursor: "pointer", borderRadius: 5, border: "1px solid #e2e8f0", color: "#0070f3", background: "#f0f7ff", fontSize: fontSize.sm, fontWeight: 500, transition: "all 0.2s", minHeight: 32, minWidth: 32, display: "flex", alignItems: "center", justifyContent: "center" }} onMouseEnter={e => { e.currentTarget.style.background = "#e0efff"; e.currentTarget.style.borderColor = "#0070f3" }} onMouseLeave={e => { e.currentTarget.style.background = "#f0f7ff"; e.currentTarget.style.borderColor = "#e2e8f0" }}>
+                            <button onClick={() => { if (!canEdit) return; setEditingAdmin(admin); setEditName(admin.full_name); setEditPhone(admin.phone_number || ""); setMessage("") }} disabled={!canEdit} style={{ padding: "6px 10px", cursor: canEdit ? "pointer" : "not-allowed", borderRadius: 5, border: "1px solid #e2e8f0", color: canEdit ? "#0070f3" : "#94a3b8", background: canEdit ? "#f0f7ff" : "#e2e8f0", fontSize: fontSize.sm, fontWeight: 500, transition: "all 0.2s", minHeight: 32, minWidth: 32, display: "flex", alignItems: "center", justifyContent: "center" }} onMouseEnter={e => { if (!canEdit) return; e.currentTarget.style.background = "#e0efff"; e.currentTarget.style.borderColor = "#0070f3" }} onMouseLeave={e => { if (!canEdit) return; e.currentTarget.style.background = "#f0f7ff"; e.currentTarget.style.borderColor = "#e2e8f0" }}>
                               Edit
                             </button>
-                            <button onClick={() => { setDeletingId(admin.admin_id); setMessage("") }} style={{ padding: "6px 10px", cursor: "pointer", borderRadius: 5, border: "1px solid #fee2e2", color: "#ef4444", background: "#fef2f2", fontSize: fontSize.sm, fontWeight: 500, transition: "all 0.2s", minHeight: 32, minWidth: 32, display: "flex", alignItems: "center", justifyContent: "center" }} onMouseEnter={e => { e.currentTarget.style.background = "#fee2e2" }} onMouseLeave={e => { e.currentTarget.style.background = "#fef2f2" }}>
+                            <button onClick={() => { if (!canEdit) return; setDeletingId(admin.admin_id); setMessage("") }} disabled={!canEdit} style={{ padding: "6px 10px", cursor: canEdit ? "pointer" : "not-allowed", borderRadius: 5, border: "1px solid #fee2e2", color: canEdit ? "#ef4444" : "#94a3b8", background: canEdit ? "#fef2f2" : "#e2e8f0", fontSize: fontSize.sm, fontWeight: 500, transition: "all 0.2s", minHeight: 32, minWidth: 32, display: "flex", alignItems: "center", justifyContent: "center" }} onMouseEnter={e => { if (!canEdit) return; e.currentTarget.style.background = "#fee2e2" }} onMouseLeave={e => { if (!canEdit) return; e.currentTarget.style.background = "#fef2f2" }}>
                               Delete
                             </button>
                           </div>
@@ -282,28 +309,38 @@ export default function ManageTruckAdmins() {
 
             {showInviteModal && (
               <>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24 }}>
-                  <h3 style={{ margin: 0, color: "#0f172a", fontSize: fontSize.xl, fontWeight: 700 }}>Add Truck Admin</h3>
-                  <button onClick={closeModals} style={{ background: "none", border: "none", color: "#94a3b8", cursor: "pointer", padding: 0, width: 32, height: 32, display: "flex", alignItems: "center", justifyContent: "center", transition: "color 0.2s" }} onMouseEnter={e => e.currentTarget.style.color = "#64748b"} onMouseLeave={e => e.currentTarget.style.color = "#94a3b8"}><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg></button>
-                </div>
-                <div style={{ display: "flex", flexDirection: "column", gap: 14, marginBottom: 20 }}>
-                  <div>
-                    <label style={{ display: "block", marginBottom: 6, color: "#475569", fontSize: fontSize.sm, fontWeight: 500 }}>Full Name *</label>
-                    <ModernInput type="text" placeholder="e.g. John Doe" value={fullName} onChange={(e: any) => { setFullName(e.target.value); setMessage("") }} onKeyDown={(e: any) => { if (e.key === "Enter") phoneRef.current?.focus() }} style={{ width: "100%", padding: "12px 14px", boxSizing: "border-box", borderRadius: 8, border: "1px solid #e0e0e0", fontSize: fontSize.base, background: "white", color: "#171717", minHeight: 48, transition: "border-color 0.2s ease" }} autoFocus />
-                  </div>
-                  <div>
-                    <label style={{ display: "block", marginBottom: 6, color: "#475569", fontSize: fontSize.sm, fontWeight: 500 }}>Phone Number</label>
-                    <ModernInput ref={phoneRef} type="text" placeholder="e.g. 08012345678" value={phoneNumber} onChange={(e: any) => { setPhoneNumber(e.target.value); setMessage("") }} onKeyDown={(e: any) => { if (e.key === "Enter") emailRef.current?.focus() }} style={{ width: "100%", padding: "12px 14px", boxSizing: "border-box", borderRadius: 8, border: "1px solid #e0e0e0", fontSize: fontSize.base, background: "white", color: "#171717", minHeight: 48, transition: "border-color 0.2s ease" }} />
-                  </div>
-                  <div>
-                    <label style={{ display: "block", marginBottom: 6, color: "#475569", fontSize: fontSize.sm, fontWeight: 500 }}>Email Address *</label>
-                    <ModernInput ref={emailRef} type="email" placeholder="e.g. admin@example.com" value={email} onChange={(e: any) => { setEmail(e.target.value); setMessage("") }} onKeyDown={(e: any) => { if (e.key === "Enter") handleInvite() }} style={{ width: "100%", padding: "12px 14px", boxSizing: "border-box", borderRadius: 8, border: "1px solid #e0e0e0", fontSize: fontSize.base, background: "white", color: "#171717", minHeight: 48, transition: "border-color 0.2s ease" }} />
-                  </div>
-                </div>
-                {message && <div style={{ padding: 12, background: "#fef2f2", borderLeft: "4px solid #ef4444", borderRadius: 4, marginBottom: 20, color: "#b91c1c", fontSize: fontSize.sm }}>{message}</div>}
-                <button onClick={handleInvite} disabled={submitting} style={{ width: "100%", padding: "12px 16px", background: "#0070f3", color: "white", border: "none", borderRadius: 8, cursor: submitting ? "not-allowed" : "pointer", fontWeight: 600, fontSize: fontSize.md, transition: "opacity 0.2s", opacity: submitting ? 0.7 : 1, minHeight: 44 }}>
-                  {submitting ? "Sending Invite..." : "Send Invite"}
-                </button>
+                {inviteResult ? (
+                  <InviteSuccessCard
+                    tempPassword={inviteResult.tempPassword}
+                    email={inviteResult.email}
+                    onClose={() => { closeModals(); setInviteResult(null) }}
+                  />
+                ) : (
+                  <>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24 }}>
+                      <h3 style={{ margin: 0, color: "#0f172a", fontSize: fontSize.xl, fontWeight: 700 }}>Add Truck Admin</h3>
+                      <button onClick={closeModals} style={{ background: "none", border: "none", color: "#94a3b8", cursor: "pointer", padding: 0, width: 32, height: 32, display: "flex", alignItems: "center", justifyContent: "center", transition: "color 0.2s" }} onMouseEnter={e => e.currentTarget.style.color = "#64748b"} onMouseLeave={e => e.currentTarget.style.color = "#94a3b8"}><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg></button>
+                    </div>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 14, marginBottom: 20 }}>
+                      <div>
+                        <label style={{ display: "block", marginBottom: 6, color: "#475569", fontSize: fontSize.sm, fontWeight: 500 }}>Full Name *</label>
+                        <ModernInput type="text" placeholder="e.g. John Doe" value={fullName} onChange={(e: any) => { setFullName(e.target.value); setMessage("") }} onKeyDown={(e: any) => { if (e.key === "Enter") phoneRef.current?.focus() }} readOnly={!canEdit} style={{ width: "100%", padding: "12px 14px", boxSizing: "border-box", borderRadius: 8, border: "1px solid #e0e0e0", fontSize: fontSize.base, background: "white", color: "#171717", minHeight: 48, transition: "border-color 0.2s ease" }} autoFocus />
+                      </div>
+                      <div>
+                        <label style={{ display: "block", marginBottom: 6, color: "#475569", fontSize: fontSize.sm, fontWeight: 500 }}>Phone Number</label>
+                        <ModernInput ref={phoneRef} type="text" placeholder="e.g. 08012345678" value={phoneNumber} onChange={(e: any) => { setPhoneNumber(e.target.value); setMessage("") }} onKeyDown={(e: any) => { if (e.key === "Enter") emailRef.current?.focus() }} readOnly={!canEdit} style={{ width: "100%", padding: "12px 14px", boxSizing: "border-box", borderRadius: 8, border: "1px solid #e0e0e0", fontSize: fontSize.base, background: "white", color: "#171717", minHeight: 48, transition: "border-color 0.2s ease" }} />
+                      </div>
+                      <div>
+                        <label style={{ display: "block", marginBottom: 6, color: "#475569", fontSize: fontSize.sm, fontWeight: 500 }}>Email Address *</label>
+                        <ModernInput ref={emailRef} type="email" placeholder="e.g. admin@example.com" value={email} onChange={(e: any) => { setEmail(e.target.value); setMessage("") }} onKeyDown={(e: any) => { if (e.key === "Enter") handleInvite() }} readOnly={!canEdit} style={{ width: "100%", padding: "12px 14px", boxSizing: "border-box", borderRadius: 8, border: "1px solid #e0e0e0", fontSize: fontSize.base, background: "white", color: "#171717", minHeight: 48, transition: "border-color 0.2s ease" }} />
+                      </div>
+                    </div>
+                    {message && <div style={{ padding: 12, background: "#fef2f2", borderLeft: "4px solid #ef4444", borderRadius: 4, marginBottom: 20, color: "#b91c1c", fontSize: fontSize.sm }}>{message}</div>}
+                    <button onClick={handleInvite} disabled={submitting || !canEdit} style={{ width: "100%", padding: "12px 16px", background: submitting || !canEdit ? "#94a3b8" : "#0070f3", color: "white", border: "none", borderRadius: 8, cursor: submitting || !canEdit ? "not-allowed" : "pointer", fontWeight: 600, fontSize: fontSize.md, transition: "opacity 0.2s", opacity: submitting ? 0.7 : 1, minHeight: 44 }}>
+                      {submitting ? "Sending Invite..." : "Send Invite"}
+                    </button>
+                  </>
+                )}
               </>
             )}
 
@@ -316,15 +353,15 @@ export default function ManageTruckAdmins() {
                 <div style={{ display: "flex", flexDirection: "column", gap: 14, marginBottom: 20 }}>
                   <div>
                     <label style={{ display: "block", marginBottom: 6, color: "#475569", fontSize: fontSize.sm, fontWeight: 500 }}>Full Name *</label>
-                    <ModernInput type="text" value={editName} onChange={(e: any) => { setEditName(e.target.value); setMessage("") }} onKeyDown={(e: any) => { if (e.key === "Enter") editPhoneRef.current?.focus() }} style={{ width: "100%", padding: "12px 14px", boxSizing: "border-box", borderRadius: 8, border: "1px solid #e0e0e0", fontSize: fontSize.base, background: "white", color: "#171717", minHeight: 48, transition: "border-color 0.2s ease" }} autoFocus />
+                    <ModernInput type="text" value={editName} onChange={(e: any) => { setEditName(e.target.value); setMessage("") }} onKeyDown={(e: any) => { if (e.key === "Enter") editPhoneRef.current?.focus() }} readOnly={!canEdit} style={{ width: "100%", padding: "12px 14px", boxSizing: "border-box", borderRadius: 8, border: "1px solid #e0e0e0", fontSize: fontSize.base, background: "white", color: "#171717", minHeight: 48, transition: "border-color 0.2s ease" }} autoFocus />
                   </div>
                   <div>
                     <label style={{ display: "block", marginBottom: 6, color: "#475569", fontSize: fontSize.sm, fontWeight: 500 }}>Phone Number</label>
-                    <ModernInput ref={editPhoneRef} type="text" value={editPhone} onChange={(e: any) => { setEditPhone(e.target.value); setMessage("") }} onKeyDown={(e: any) => { if (e.key === "Enter") handleUpdate() }} style={{ width: "100%", padding: "12px 14px", boxSizing: "border-box", borderRadius: 8, border: "1px solid #e0e0e0", fontSize: fontSize.base, background: "white", color: "#171717", minHeight: 48, transition: "border-color 0.2s ease" }} />
+                    <ModernInput ref={editPhoneRef} type="text" value={editPhone} onChange={(e: any) => { setEditPhone(e.target.value); setMessage("") }} onKeyDown={(e: any) => { if (e.key === "Enter") handleUpdate() }} readOnly={!canEdit} style={{ width: "100%", padding: "12px 14px", boxSizing: "border-box", borderRadius: 8, border: "1px solid #e0e0e0", fontSize: fontSize.base, background: "white", color: "#171717", minHeight: 48, transition: "border-color 0.2s ease" }} />
                   </div>
                 </div>
                 {message && <div style={{ padding: 12, background: "#fef2f2", borderLeft: "4px solid #ef4444", borderRadius: 4, marginBottom: 20, color: "#b91c1c", fontSize: fontSize.sm }}>{message}</div>}
-                <button onClick={handleUpdate} disabled={submitting} style={{ width: "100%", padding: "12px 16px", background: "#0070f3", color: "white", border: "none", borderRadius: 8, cursor: submitting ? "not-allowed" : "pointer", fontWeight: 600, fontSize: fontSize.md, transition: "opacity 0.2s", opacity: submitting ? 0.7 : 1, minHeight: 44 }}>
+                <button onClick={handleUpdate} disabled={submitting || !canEdit} style={{ width: "100%", padding: "12px 16px", background: submitting || !canEdit ? "#94a3b8" : "#0070f3", color: "white", border: "none", borderRadius: 8, cursor: submitting || !canEdit ? "not-allowed" : "pointer", fontWeight: 600, fontSize: fontSize.md, transition: "opacity 0.2s", opacity: submitting ? 0.7 : 1, minHeight: 44 }}>
                   {submitting ? "Saving..." : "Save Changes"}
                 </button>
               </>
@@ -343,7 +380,7 @@ export default function ManageTruckAdmins() {
                     <button onClick={closeModals} style={{ padding: "12px 16px", background: "white", color: "#475569", border: "1px solid #cbd5e1", borderRadius: 8, cursor: "pointer", fontWeight: 600, fontSize: fontSize.md, minHeight: 44, transition: "all 0.2s" }} onMouseEnter={e => { e.currentTarget.style.background = "#f8fafc"; e.currentTarget.style.borderColor = "#0070f3"; e.currentTarget.style.color = "#0070f3" }} onMouseLeave={e => { e.currentTarget.style.background = "white"; e.currentTarget.style.borderColor = "#cbd5e1"; e.currentTarget.style.color = "#475569" }}>
                       Cancel
                     </button>
-                    <button onClick={() => handleDelete(deletingId)} disabled={submitting} style={{ padding: "12px 16px", background: "#ef4444", color: "white", border: "none", borderRadius: 8, cursor: submitting ? "not-allowed" : "pointer", fontWeight: 600, fontSize: fontSize.md, opacity: submitting ? 0.7 : 1, minHeight: 44, transition: "all 0.2s" }} onMouseEnter={e => { if (!submitting) e.currentTarget.style.background = "#dc2626" }} onMouseLeave={e => { e.currentTarget.style.background = "#ef4444" }}>
+                    <button onClick={() => handleDelete(deletingId)} disabled={submitting || !canEdit} style={{ padding: "12px 16px", background: submitting || !canEdit ? "#94a3b8" : "#ef4444", color: "white", border: "none", borderRadius: 8, cursor: submitting || !canEdit ? "not-allowed" : "pointer", fontWeight: 600, fontSize: fontSize.md, opacity: submitting ? 0.7 : 1, minHeight: 44, transition: "all 0.2s" }} onMouseEnter={e => { if (!submitting && canEdit) e.currentTarget.style.background = "#dc2626" }} onMouseLeave={e => { e.currentTarget.style.background = submitting || !canEdit ? "#94a3b8" : "#ef4444" }}>
                       {submitting ? "Deleting..." : "Yes, Delete"}
                     </button>
                   </div>

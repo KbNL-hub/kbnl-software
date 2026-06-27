@@ -2,7 +2,10 @@
 
 import { useState, useEffect, useRef } from "react"
 import { supabase } from "@/lib/supabase"
+import { apiMutate } from "@/lib/api-mutation"
 import ModernInput from "@/components/ModernInput"
+import InviteSuccessCard from "@/components/admin/InviteSuccessCard"
+import { usePermissions } from "@/lib/PermissionContext"
 
 type TruckOfficer = {
   manager_id: string
@@ -40,6 +43,8 @@ function useBreakpoint() {
 const fontSize = { xs: 12, sm: 13, base: 14, md: 15, lg: 16, xl: 20, "2xl": 24, "3xl": 28 }
 
 export default function ManageTruckOfficers() {
+  const { getAccess } = usePermissions()
+  const canEdit = getAccess("truck-officers").canEdit
   const { isMobile, isDesktop } = useBreakpoint()
   const [managers, setManagers] = useState<TruckOfficer[]>([])
   const [loading, setLoading] = useState(true)
@@ -59,7 +64,9 @@ export default function ManageTruckOfficers() {
   const [editPhone, setEditPhone] = useState("")
   const [message, setMessage] = useState("")
   const [submitting, setSubmitting] = useState(false)
+  const [inviteResult, setInviteResult] = useState<{ tempPassword: string; email: string } | null>(null)
   const [assignError, setAssignError] = useState("")
+  const [pendingPlate, setPendingPlate] = useState<string | null>(null)
 
   const phoneRef = useRef<HTMLInputElement>(null)
   const emailRef = useRef<HTMLInputElement>(null)
@@ -133,34 +140,45 @@ export default function ManageTruckOfficers() {
     setEditPhone("")
     setMessage("")
     setAssignError("")
+    setPendingPlate(null)
     setAllTrucks([])
     setAssignedTrucks([])
+    setInviteResult(null)
   }
 
   async function handleInvite() {
     if (!fullName.trim()) return setMessage("Full name is required")
     if (!email.trim()) return setMessage("Email is required")
     setSubmitting(true)
-    const res = await fetch("/api/invite-user", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email, fullName, phoneNumber, role: "TruckOfficer" }),
-    })
-    const result = await res.json()
-    setSubmitting(false)
-    if (!res.ok) { setMessage("Failed: " + result.error); return }
-    closeModals()
-    fetchManagers()
+
+    try {
+      const res = await fetch("/api/invite-user", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, fullName, phoneNumber, role: "TruckOfficer" }),
+      })
+      const result = await res.json()
+
+      if (!res.ok) { setMessage("Failed: " + result.error); return }
+      setInviteResult({ tempPassword: result.tempPassword, email })
+      fetchManagers()
+    } catch {
+      setMessage("Network error, please try again")
+    } finally {
+      setSubmitting(false)
+    }
   }
 
   async function handleUpdate() {
     if (!editingManager) return
     if (!editName.trim()) return setMessage("Name is required")
     setSubmitting(true)
-    const { error } = await supabase
-      .from("truck_officers")
-      .update({ full_name: editName, phone_number: editPhone || null })
-      .eq("manager_id", editingManager.manager_id)
+    const { error } = await apiMutate("admin", {
+      action: "update",
+      table: "truck_officers",
+      data: { full_name: editName, phone_number: editPhone || null },
+      filters: { manager_id: editingManager.manager_id },
+    })
     setSubmitting(false)
     if (error) { setMessage("Failed to update officer"); return }
     closeModals()
@@ -169,8 +187,9 @@ export default function ManageTruckOfficers() {
 
   async function handleDelete(managerId: string) {
     setSubmitting(true)
-    await supabase.from("truck_officers").delete().eq("manager_id", managerId)
+    const { error } = await apiMutate("admin", { action: "delete", table: "truck_officers", filters: { manager_id: managerId } })
     setSubmitting(false)
+    if (error) { setMessage("Failed to delete officer"); return }
     closeModals()
     fetchManagers()
   }
@@ -179,17 +198,30 @@ export default function ManageTruckOfficers() {
     if (!assigningManager) return
     const truck = allTrucks.find(t => t.plate_number === plateNumber)
     if (truck?.assigned_manager_id && truck.assigned_manager_id !== assigningManager.manager_id) {
+      setPendingPlate(plateNumber)
       setAssignError(`${plateNumber} is assigned to ${truck.assigned_manager_name}. Reassign anyway?`)
       return
     }
-    await supabase.from("maintenance_assignments").upsert([{ manager_id: assigningManager.manager_id, plate_number: plateNumber }], { onConflict: "plate_number" })
+    setAssignError("")
+    const { error } = await apiMutate("maintenance", {
+      action: "upsert",
+      table: "maintenance_assignments",
+      data: { manager_id: assigningManager.manager_id, plate_number: plateNumber },
+      conflict: "plate_number",
+    })
+    if (error) { setAssignError("Failed to assign truck"); return }
     fetchTrucksForAssignment(assigningManager.manager_id)
     fetchManagers()
   }
 
   async function handleUnassignTruck(plateNumber: string) {
     if (!assigningManager) return
-    await supabase.from("maintenance_assignments").delete().eq("plate_number", plateNumber).eq("manager_id", assigningManager.manager_id)
+    const { error } = await apiMutate("maintenance", {
+      action: "delete",
+      table: "maintenance_assignments",
+      filters: { plate_number: plateNumber, manager_id: assigningManager.manager_id },
+    })
+    if (error) { setAssignError("Failed to unassign truck"); return }
     fetchTrucksForAssignment(assigningManager.manager_id)
     fetchManagers()
   }
@@ -197,7 +229,13 @@ export default function ManageTruckOfficers() {
   async function handleForceAssign(plateNumber: string) {
     if (!assigningManager) return
     setAssignError("")
-    await supabase.from("maintenance_assignments").upsert([{ manager_id: assigningManager.manager_id, plate_number: plateNumber }], { onConflict: "plate_number" })
+    const { error } = await apiMutate("maintenance", {
+      action: "upsert",
+      table: "maintenance_assignments",
+      data: { manager_id: assigningManager.manager_id, plate_number: plateNumber },
+      conflict: "plate_number",
+    })
+    if (error) { setAssignError("Failed to reassign truck"); return }
     fetchTrucksForAssignment(assigningManager.manager_id)
     fetchManagers()
   }
@@ -252,7 +290,7 @@ export default function ManageTruckOfficers() {
             </div>
           )}
 
-          <button onClick={() => { setShowInviteModal(true); setMessage("") }} style={{ padding: isMobile ? "10px 16px" : "12px 20px", background: "#0070f3", color: "white", border: "none", borderRadius: 8, cursor: "pointer", fontWeight: 600, fontSize: fontSize.md, flex: isMobile ? 1 : "0 0 auto", boxShadow: "0 4px 12px rgba(0, 112, 243, 0.2)", transition: "all 0.2s ease", display: "flex", alignItems: "center", justifyContent: "center", gap: 6, minHeight: 40, whiteSpace: "nowrap" }} onMouseEnter={(e) => { if (!isMobile) e.currentTarget.style.transform = "translateY(-2px)" }} onMouseLeave={(e) => { if (!isMobile) e.currentTarget.style.transform = "none" }}>
+          <button onClick={() => { if (!canEdit) return; setShowInviteModal(true); setMessage("") }} style={{ padding: isMobile ? "10px 16px" : "12px 20px", background: canEdit ? "#0070f3" : "#94a3b8", color: "white", border: "none", borderRadius: 8, cursor: canEdit ? "pointer" : "not-allowed", fontWeight: 600, fontSize: fontSize.md, flex: isMobile ? 1 : "0 0 auto", boxShadow: "0 4px 12px rgba(0, 112, 243, 0.2)", transition: "all 0.2s ease", display: "flex", alignItems: "center", justifyContent: "center", gap: 6, minHeight: 40, whiteSpace: "nowrap" }} onMouseEnter={(e) => { if (!isMobile) e.currentTarget.style.transform = "translateY(-2px)" }} onMouseLeave={(e) => { if (!isMobile) e.currentTarget.style.transform = "none" }}>
             <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2c5.5 0 10 4.5 10 10s-4.5 10-10 10S2 17.5 2 12 6.5 2 12 2m0 2c-4.4 0-8 3.6-8 8s3.6 8 8 8 8-3.6 8-8-3.6-8-8-8m3.5 9h-3v3h-1v-3h-3v-1h3v-3h1v3h3v1z" /></svg>
             Add Officer
           </button>
@@ -271,7 +309,7 @@ export default function ManageTruckOfficers() {
           </div>
           <h3 style={{ margin: "0 0 8px", color: "#0f172a", fontSize: fontSize.xl, fontWeight: 600 }}>No truck officers yet</h3>
           <p style={{ color: "#64748b", fontSize: fontSize.base, margin: "0 0 24px", maxWidth: 400, marginLeft: "auto", marginRight: "auto" }}>Add truck officers to manage vehicle assignments and maintenance.</p>
-          <button onClick={() => { setShowInviteModal(true); setMessage("") }} style={{ padding: "10px 20px", background: "white", color: "#0f172a", border: "1px solid #cbd5e1", borderRadius: 8, cursor: "pointer", fontWeight: 500, fontSize: fontSize.base, transition: "all 0.2s ease" }} onMouseEnter={e => e.currentTarget.style.background = "#f8fafc"} onMouseLeave={e => e.currentTarget.style.background = "white"}>
+          <button onClick={() => { if (!canEdit) return; setShowInviteModal(true); setMessage("") }} style={{ padding: "10px 20px", background: canEdit ? "white" : "#94a3b8", color: "#0f172a", border: "1px solid #cbd5e1", borderRadius: 8, cursor: canEdit ? "pointer" : "not-allowed", fontWeight: 500, fontSize: fontSize.base, transition: "all 0.2s ease" }} onMouseEnter={e => e.currentTarget.style.background = "#f8fafc"} onMouseLeave={e => e.currentTarget.style.background = "white"}>
             Add First Officer
           </button>
         </div>
@@ -300,17 +338,16 @@ export default function ManageTruckOfficers() {
 
                     <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 12, padding: "12px 0 0", borderTop: "1px solid #f1f5f9" }}>
                       <span style={{ fontSize: fontSize.sm, color: "#475569", fontWeight: 500 }}>
-                        {m.truck_count} / 10 trucks
-                        {m.truck_count >= 10 && <span style={{ marginLeft: 4, color: "#f59e0b" }}>⚠️</span>}
+                        {m.truck_count} {m.truck_count === 1 ? "truck" : "trucks"} assigned
                       </span>
                       <div style={{ display: "flex", gap: 8 }}>
-                        <button onClick={() => { setAssigningManager(m); fetchTrucksForAssignment(m.manager_id); setAssignError("") }} style={{ padding: "8px 12px", cursor: "pointer", borderRadius: 6, border: "1px solid #e2e8f0", color: "#2f855a", background: "#f0fdf4", fontSize: fontSize.sm, fontWeight: 500, transition: "all 0.2s" }} onMouseEnter={e => { e.currentTarget.style.background = "#ecfdf5"; e.currentTarget.style.borderColor = "#2f855a" }} onMouseLeave={e => { e.currentTarget.style.background = "#f0fdf4"; e.currentTarget.style.borderColor = "#e2e8f0" }}>
+                        <button onClick={() => { if (!canEdit) return; setAssigningManager(m); fetchTrucksForAssignment(m.manager_id); setAssignError("") }} style={{ padding: "8px 12px", cursor: canEdit ? "pointer" : "not-allowed", borderRadius: 6, border: "1px solid #e2e8f0", color: canEdit ? "#2f855a" : "#94a3b8", background: canEdit ? "#f0fdf4" : "#e2e8f0", fontSize: fontSize.sm, fontWeight: 500, transition: "all 0.2s" }} onMouseEnter={e => { if (!canEdit) return; e.currentTarget.style.background = "#ecfdf5"; e.currentTarget.style.borderColor = "#2f855a" }} onMouseLeave={e => { if (!canEdit) return; e.currentTarget.style.background = "#f0fdf4"; e.currentTarget.style.borderColor = "#e2e8f0" }}>
                           Assign
                         </button>
-                        <button onClick={() => { setEditingManager(m); setEditName(m.full_name); setEditPhone(m.phone_number || ""); setMessage("") }} style={{ padding: "8px 12px", cursor: "pointer", borderRadius: 6, border: "1px solid #e2e8f0", color: "#0070f3", background: "#f0f7ff", fontSize: fontSize.sm, fontWeight: 500, transition: "all 0.2s" }} onMouseEnter={e => { e.currentTarget.style.background = "#e0efff"; e.currentTarget.style.borderColor = "#0070f3" }} onMouseLeave={e => { e.currentTarget.style.background = "#f0f7ff"; e.currentTarget.style.borderColor = "#e2e8f0" }}>
+                        <button onClick={() => { if (!canEdit) return; setEditingManager(m); setEditName(m.full_name); setEditPhone(m.phone_number || ""); setMessage("") }} style={{ padding: "8px 12px", cursor: canEdit ? "pointer" : "not-allowed", borderRadius: 6, border: "1px solid #e2e8f0", color: canEdit ? "#0070f3" : "#94a3b8", background: canEdit ? "#f0f7ff" : "#e2e8f0", fontSize: fontSize.sm, fontWeight: 500, transition: "all 0.2s" }} onMouseEnter={e => { if (!canEdit) return; e.currentTarget.style.background = "#e0efff"; e.currentTarget.style.borderColor = "#0070f3" }} onMouseLeave={e => { if (!canEdit) return; e.currentTarget.style.background = "#f0f7ff"; e.currentTarget.style.borderColor = "#e2e8f0" }}>
                           Edit
                         </button>
-                        <button onClick={() => { setDeletingId(m.manager_id); setMessage("") }} style={{ padding: "8px 12px", cursor: "pointer", borderRadius: 6, border: "1px solid #fee2e2", color: "#ef4444", background: "#fef2f2", fontSize: fontSize.sm, fontWeight: 500, transition: "all 0.2s" }} onMouseEnter={e => { e.currentTarget.style.background = "#fee2e2" }} onMouseLeave={e => { e.currentTarget.style.background = "#fef2f2" }}>
+                        <button onClick={() => { if (!canEdit) return; setDeletingId(m.manager_id); setMessage("") }} style={{ padding: "8px 12px", cursor: canEdit ? "pointer" : "not-allowed", borderRadius: 6, border: "1px solid #fee2e2", color: canEdit ? "#ef4444" : "#94a3b8", background: canEdit ? "#fef2f2" : "#e2e8f0", fontSize: fontSize.sm, fontWeight: 500, transition: "all 0.2s" }} onMouseEnter={e => { if (!canEdit) return; e.currentTarget.style.background = "#fee2e2" }} onMouseLeave={e => { if (!canEdit) return; e.currentTarget.style.background = "#fef2f2" }}>
                           Delete
                         </button>
                       </div>
@@ -350,8 +387,7 @@ export default function ManageTruckOfficers() {
                           {m.phone_number || <span style={{ color: "#94a3b8", fontStyle: "italic" }}>Not provided</span>}
                         </td>
                         <td style={{ padding: "12px 16px", color: "#475569", fontSize: fontSize.sm, fontWeight: 500 }}>
-                          {m.truck_count} / 10
-                          {m.truck_count >= 10 && <span style={{ marginLeft: 4, color: "#f59e0b" }}>⚠️</span>}
+                          {m.truck_count} {m.truck_count === 1 ? "truck" : "trucks"} assigned
                         </td>
                         <td style={{ padding: "12px 16px" }}>
                           <span style={{ padding: "4px 10px", borderRadius: 6, fontSize: fontSize.xs, background: bg, color: color, border: `1px solid ${border}`, fontWeight: 500, display: "inline-block" }}>
@@ -360,13 +396,13 @@ export default function ManageTruckOfficers() {
                         </td>
                         <td style={{ padding: "12px 16px", textAlign: "right" }}>
                           <div style={{ display: "flex", gap: 6, justifyContent: "flex-end" }}>
-                            <button onClick={() => { setAssigningManager(m); fetchTrucksForAssignment(m.manager_id); setAssignError("") }} style={{ padding: "6px 10px", cursor: "pointer", borderRadius: 5, border: "1px solid #e2e8f0", color: "#2f855a", background: "#f0fdf4", fontSize: fontSize.sm, fontWeight: 500, transition: "all 0.2s", minHeight: 32, minWidth: 32, display: "flex", alignItems: "center", justifyContent: "center" }} onMouseEnter={e => { e.currentTarget.style.background = "#ecfdf5"; e.currentTarget.style.borderColor = "#2f855a" }} onMouseLeave={e => { e.currentTarget.style.background = "#f0fdf4"; e.currentTarget.style.borderColor = "#e2e8f0" }}>
+                            <button onClick={() => { if (!canEdit) return; setAssigningManager(m); fetchTrucksForAssignment(m.manager_id); setAssignError("") }} style={{ padding: "6px 10px", cursor: canEdit ? "pointer" : "not-allowed", borderRadius: 5, border: "1px solid #e2e8f0", color: canEdit ? "#2f855a" : "#94a3b8", background: canEdit ? "#f0fdf4" : "#e2e8f0", fontSize: fontSize.sm, fontWeight: 500, transition: "all 0.2s", minHeight: 32, minWidth: 32, display: "flex", alignItems: "center", justifyContent: "center" }} onMouseEnter={e => { if (!canEdit) return; e.currentTarget.style.background = "#ecfdf5"; e.currentTarget.style.borderColor = "#2f855a" }} onMouseLeave={e => { if (!canEdit) return; e.currentTarget.style.background = "#f0fdf4"; e.currentTarget.style.borderColor = "#e2e8f0" }}>
                               Assign
                             </button>
-                            <button onClick={() => { setEditingManager(m); setEditName(m.full_name); setEditPhone(m.phone_number || ""); setMessage("") }} style={{ padding: "6px 10px", cursor: "pointer", borderRadius: 5, border: "1px solid #e2e8f0", color: "#0070f3", background: "#f0f7ff", fontSize: fontSize.sm, fontWeight: 500, transition: "all 0.2s", minHeight: 32, minWidth: 32, display: "flex", alignItems: "center", justifyContent: "center" }} onMouseEnter={e => { e.currentTarget.style.background = "#e0efff"; e.currentTarget.style.borderColor = "#0070f3" }} onMouseLeave={e => { e.currentTarget.style.background = "#f0f7ff"; e.currentTarget.style.borderColor = "#e2e8f0" }}>
+                            <button onClick={() => { if (!canEdit) return; setEditingManager(m); setEditName(m.full_name); setEditPhone(m.phone_number || ""); setMessage("") }} style={{ padding: "6px 10px", cursor: canEdit ? "pointer" : "not-allowed", borderRadius: 5, border: "1px solid #e2e8f0", color: canEdit ? "#0070f3" : "#94a3b8", background: canEdit ? "#f0f7ff" : "#e2e8f0", fontSize: fontSize.sm, fontWeight: 500, transition: "all 0.2s", minHeight: 32, minWidth: 32, display: "flex", alignItems: "center", justifyContent: "center" }} onMouseEnter={e => { if (!canEdit) return; e.currentTarget.style.background = "#e0efff"; e.currentTarget.style.borderColor = "#0070f3" }} onMouseLeave={e => { if (!canEdit) return; e.currentTarget.style.background = "#f0f7ff"; e.currentTarget.style.borderColor = "#e2e8f0" }}>
                               Edit
                             </button>
-                            <button onClick={() => { setDeletingId(m.manager_id); setMessage("") }} style={{ padding: "6px 10px", cursor: "pointer", borderRadius: 5, border: "1px solid #fee2e2", color: "#ef4444", background: "#fef2f2", fontSize: fontSize.sm, fontWeight: 500, transition: "all 0.2s", minHeight: 32, minWidth: 32, display: "flex", alignItems: "center", justifyContent: "center" }} onMouseEnter={e => { e.currentTarget.style.background = "#fee2e2" }} onMouseLeave={e => { e.currentTarget.style.background = "#fef2f2" }}>
+                            <button onClick={() => { if (!canEdit) return; setDeletingId(m.manager_id); setMessage("") }} style={{ padding: "6px 10px", cursor: canEdit ? "pointer" : "not-allowed", borderRadius: 5, border: "1px solid #fee2e2", color: canEdit ? "#ef4444" : "#94a3b8", background: canEdit ? "#fef2f2" : "#e2e8f0", fontSize: fontSize.sm, fontWeight: 500, transition: "all 0.2s", minHeight: 32, minWidth: 32, display: "flex", alignItems: "center", justifyContent: "center" }} onMouseEnter={e => { if (!canEdit) return; e.currentTarget.style.background = "#fee2e2" }} onMouseLeave={e => { if (!canEdit) return; e.currentTarget.style.background = "#fef2f2" }}>
                               Delete
                             </button>
                           </div>
@@ -388,28 +424,38 @@ export default function ManageTruckOfficers() {
 
             {showInviteModal && (
               <>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24 }}>
-                  <h3 style={{ margin: 0, color: "#0f172a", fontSize: fontSize.xl, fontWeight: 700 }}>Add Truck Officer</h3>
-                  <button onClick={closeModals} style={{ background: "none", border: "none", color: "#94a3b8", cursor: "pointer", padding: 0, width: 32, height: 32, display: "flex", alignItems: "center", justifyContent: "center", transition: "color 0.2s" }} onMouseEnter={e => e.currentTarget.style.color = "#64748b"} onMouseLeave={e => e.currentTarget.style.color = "#94a3b8"}><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg></button>
-                </div>
-                <div style={{ display: "flex", flexDirection: "column", gap: 14, marginBottom: 20 }}>
-                  <div>
-                    <label style={{ display: "block", marginBottom: 6, color: "#475569", fontSize: fontSize.sm, fontWeight: 500 }}>Full Name *</label>
-                    <ModernInput type="text" placeholder="e.g. John Doe" value={fullName} onChange={(e: any) => { setFullName(e.target.value); setMessage("") }} onKeyDown={(e: any) => { if (e.key === "Enter") phoneRef.current?.focus() }} style={inputStyle} autoFocus />
-                  </div>
-                  <div>
-                    <label style={{ display: "block", marginBottom: 6, color: "#475569", fontSize: fontSize.sm, fontWeight: 500 }}>Phone Number</label>
-                    <ModernInput ref={phoneRef} type="text" placeholder="e.g. 08012345678" value={phoneNumber} onChange={(e: any) => { setPhoneNumber(e.target.value); setMessage("") }} onKeyDown={(e: any) => { if (e.key === "Enter") emailRef.current?.focus() }} style={inputStyle} />
-                  </div>
-                  <div>
-                    <label style={{ display: "block", marginBottom: 6, color: "#475569", fontSize: fontSize.sm, fontWeight: 500 }}>Email Address *</label>
-                    <ModernInput ref={emailRef} type="email" placeholder="e.g. officer@example.com" value={email} onChange={(e: any) => { setEmail(e.target.value); setMessage("") }} onKeyDown={(e: any) => { if (e.key === "Enter") handleInvite() }} style={inputStyle} />
-                  </div>
-                </div>
-                {message && <div style={{ padding: 12, background: "#fef2f2", borderLeft: "4px solid #ef4444", borderRadius: 4, marginBottom: 20, color: "#b91c1c", fontSize: fontSize.sm }}>{message}</div>}
-                <button onClick={handleInvite} disabled={submitting} style={{ width: "100%", padding: "12px 16px", background: "#0070f3", color: "white", border: "none", borderRadius: 8, cursor: submitting ? "not-allowed" : "pointer", fontWeight: 600, fontSize: fontSize.md, transition: "opacity 0.2s", opacity: submitting ? 0.7 : 1, minHeight: 44 }}>
-                  {submitting ? "Sending Invite..." : "Send Invite"}
-                </button>
+                {inviteResult ? (
+                  <InviteSuccessCard
+                    tempPassword={inviteResult.tempPassword}
+                    email={inviteResult.email}
+                    onClose={() => { closeModals(); setInviteResult(null) }}
+                  />
+                ) : (
+                  <>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24 }}>
+                      <h3 style={{ margin: 0, color: "#0f172a", fontSize: fontSize.xl, fontWeight: 700 }}>Add Truck Officer</h3>
+                      <button onClick={closeModals} style={{ background: "none", border: "none", color: "#94a3b8", cursor: "pointer", padding: 0, width: 32, height: 32, display: "flex", alignItems: "center", justifyContent: "center", transition: "color 0.2s" }} onMouseEnter={e => e.currentTarget.style.color = "#64748b"} onMouseLeave={e => e.currentTarget.style.color = "#94a3b8"}><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg></button>
+                    </div>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 14, marginBottom: 20 }}>
+                      <div>
+                        <label style={{ display: "block", marginBottom: 6, color: "#475569", fontSize: fontSize.sm, fontWeight: 500 }}>Full Name *</label>
+                        <ModernInput type="text" placeholder="e.g. John Doe" value={fullName} onChange={(e: any) => { setFullName(e.target.value); setMessage("") }} onKeyDown={(e: any) => { if (e.key === "Enter") phoneRef.current?.focus() }} readOnly={!canEdit} style={inputStyle} autoFocus />
+                      </div>
+                      <div>
+                        <label style={{ display: "block", marginBottom: 6, color: "#475569", fontSize: fontSize.sm, fontWeight: 500 }}>Phone Number</label>
+                        <ModernInput ref={phoneRef} type="text" placeholder="e.g. 08012345678" value={phoneNumber} onChange={(e: any) => { setPhoneNumber(e.target.value); setMessage("") }} onKeyDown={(e: any) => { if (e.key === "Enter") emailRef.current?.focus() }} readOnly={!canEdit} style={inputStyle} />
+                      </div>
+                      <div>
+                        <label style={{ display: "block", marginBottom: 6, color: "#475569", fontSize: fontSize.sm, fontWeight: 500 }}>Email Address *</label>
+                        <ModernInput ref={emailRef} type="email" placeholder="e.g. officer@example.com" value={email} onChange={(e: any) => { setEmail(e.target.value); setMessage("") }} onKeyDown={(e: any) => { if (e.key === "Enter") handleInvite() }} readOnly={!canEdit} style={inputStyle} />
+                      </div>
+                    </div>
+                    {message && <div style={{ padding: 12, background: "#fef2f2", borderLeft: "4px solid #ef4444", borderRadius: 4, marginBottom: 20, color: "#b91c1c", fontSize: fontSize.sm }}>{message}</div>}
+                    <button onClick={handleInvite} disabled={submitting || !canEdit} style={{ width: "100%", padding: "12px 16px", background: submitting || !canEdit ? "#94a3b8" : "#0070f3", color: "white", border: "none", borderRadius: 8, cursor: submitting || !canEdit ? "not-allowed" : "pointer", fontWeight: 600, fontSize: fontSize.md, transition: "opacity 0.2s", opacity: submitting ? 0.7 : 1, minHeight: 44 }}>
+                      {submitting ? "Sending Invite..." : "Send Invite"}
+                    </button>
+                  </>
+                )}
               </>
             )}
 
@@ -422,15 +468,15 @@ export default function ManageTruckOfficers() {
                 <div style={{ display: "flex", flexDirection: "column", gap: 14, marginBottom: 20 }}>
                   <div>
                     <label style={{ display: "block", marginBottom: 6, color: "#475569", fontSize: fontSize.sm, fontWeight: 500 }}>Full Name *</label>
-                    <ModernInput type="text" value={editName} onChange={(e: any) => { setEditName(e.target.value); setMessage("") }} onKeyDown={(e: any) => { if (e.key === "Enter") editPhoneRef.current?.focus() }} style={inputStyle} autoFocus />
+                    <ModernInput type="text" value={editName} onChange={(e: any) => { setEditName(e.target.value); setMessage("") }} onKeyDown={(e: any) => { if (e.key === "Enter") editPhoneRef.current?.focus() }} readOnly={!canEdit} style={inputStyle} autoFocus />
                   </div>
                   <div>
                     <label style={{ display: "block", marginBottom: 6, color: "#475569", fontSize: fontSize.sm, fontWeight: 500 }}>Phone Number</label>
-                    <ModernInput ref={editPhoneRef} type="text" value={editPhone} onChange={(e: any) => { setEditPhone(e.target.value); setMessage("") }} onKeyDown={(e: any) => { if (e.key === "Enter") handleUpdate() }} style={inputStyle} />
+                    <ModernInput ref={editPhoneRef} type="text" value={editPhone} onChange={(e: any) => { setEditPhone(e.target.value); setMessage("") }} onKeyDown={(e: any) => { if (e.key === "Enter") handleUpdate() }} readOnly={!canEdit} style={inputStyle} />
                   </div>
                 </div>
                 {message && <div style={{ padding: 12, background: "#fef2f2", borderLeft: "4px solid #ef4444", borderRadius: 4, marginBottom: 20, color: "#b91c1c", fontSize: fontSize.sm }}>{message}</div>}
-                <button onClick={handleUpdate} disabled={submitting} style={{ width: "100%", padding: "12px 16px", background: "#0070f3", color: "white", border: "none", borderRadius: 8, cursor: submitting ? "not-allowed" : "pointer", fontWeight: 600, fontSize: fontSize.md, transition: "opacity 0.2s", opacity: submitting ? 0.7 : 1, minHeight: 44 }}>
+                <button onClick={handleUpdate} disabled={submitting || !canEdit} style={{ width: "100%", padding: "12px 16px", background: submitting || !canEdit ? "#94a3b8" : "#0070f3", color: "white", border: "none", borderRadius: 8, cursor: submitting || !canEdit ? "not-allowed" : "pointer", fontWeight: 600, fontSize: fontSize.md, transition: "opacity 0.2s", opacity: submitting ? 0.7 : 1, minHeight: 44 }}>
                   {submitting ? "Saving..." : "Save Changes"}
                 </button>
               </>
@@ -449,7 +495,7 @@ export default function ManageTruckOfficers() {
                     <button onClick={closeModals} style={{ padding: "12px 16px", background: "white", color: "#475569", border: "1px solid #cbd5e1", borderRadius: 8, cursor: "pointer", fontWeight: 600, fontSize: fontSize.md, minHeight: 44, transition: "all 0.2s" }} onMouseEnter={e => { e.currentTarget.style.background = "#f8fafc"; e.currentTarget.style.borderColor = "#0070f3"; e.currentTarget.style.color = "#0070f3" }} onMouseLeave={e => { e.currentTarget.style.background = "white"; e.currentTarget.style.borderColor = "#cbd5e1"; e.currentTarget.style.color = "#475569" }}>
                       Cancel
                     </button>
-                    <button onClick={() => handleDelete(deletingId)} disabled={submitting} style={{ padding: "12px 16px", background: "#ef4444", color: "white", border: "none", borderRadius: 8, cursor: submitting ? "not-allowed" : "pointer", fontWeight: 600, fontSize: fontSize.md, opacity: submitting ? 0.7 : 1, minHeight: 44, transition: "all 0.2s" }} onMouseEnter={e => { if (!submitting) e.currentTarget.style.background = "#dc2626" }} onMouseLeave={e => { e.currentTarget.style.background = "#ef4444" }}>
+                    <button onClick={() => handleDelete(deletingId)} disabled={submitting || !canEdit} style={{ padding: "12px 16px", background: submitting || !canEdit ? "#94a3b8" : "#ef4444", color: "white", border: "none", borderRadius: 8, cursor: submitting || !canEdit ? "not-allowed" : "pointer", fontWeight: 600, fontSize: fontSize.md, opacity: submitting ? 0.7 : 1, minHeight: 44, transition: "all 0.2s" }} onMouseEnter={e => { if (!submitting && canEdit) e.currentTarget.style.background = "#dc2626" }} onMouseLeave={e => { e.currentTarget.style.background = submitting || !canEdit ? "#94a3b8" : "#ef4444" }}>
                       {submitting ? "Deleting..." : "Yes, Delete"}
                     </button>
                   </div>
@@ -463,8 +509,7 @@ export default function ManageTruckOfficers() {
                   <div>
                     <h3 style={{ margin: 0, color: "#0f172a", fontSize: fontSize.xl, fontWeight: 700 }}>Assign Trucks</h3>
                     <p style={{ margin: "6px 0 0", color: "#64748b", fontSize: fontSize.sm }}>
-                      {assignedToThis.length} / 10 trucks assigned
-                      {assignedToThis.length >= 10 && <span style={{ marginLeft: 6, color: "#f59e0b" }}>⚠️ At limit</span>}
+                      {assignedToThis.length} {assignedToThis.length === 1 ? "truck" : "trucks"} assigned
                     </p>
                   </div>
                   <button onClick={closeModals} style={{ background: "none", border: "none", color: "#94a3b8", cursor: "pointer", padding: 0, width: 32, height: 32, display: "flex", alignItems: "center", justifyContent: "center", transition: "color 0.2s" }} onMouseEnter={e => e.currentTarget.style.color = "#64748b"} onMouseLeave={e => e.currentTarget.style.color = "#94a3b8"}><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg></button>
@@ -474,7 +519,7 @@ export default function ManageTruckOfficers() {
                   <div style={{ background: "#fffbeb", border: "1px solid #fcd34d", borderRadius: 8, padding: "12px 14px", marginBottom: 16 }}>
                     <p style={{ margin: 0, fontSize: fontSize.sm, color: "#78350f", lineHeight: 1.4 }}>{assignError}</p>
                     {assignError.includes("assigned to") && (
-                      <button onClick={() => { const m = assignError.match(/(\S+-\S+) is/); if (m) handleForceAssign(m[1]) }} style={{ marginTop: 8, padding: "6px 12px", fontSize: fontSize.sm, cursor: "pointer", background: "#fcd34d", color: "#78350f", border: "none", borderRadius: 4, fontWeight: 500 }}>
+                      <button onClick={() => { if (!canEdit || !pendingPlate) return; handleForceAssign(pendingPlate) }} style={{ marginTop: 8, padding: "6px 12px", fontSize: fontSize.sm, cursor: canEdit ? "pointer" : "not-allowed", background: canEdit ? "#fcd34d" : "#94a3b8", color: canEdit ? "#78350f" : "#94a3b8", border: "none", borderRadius: 4, fontWeight: 500 }}>
                         Reassign Anyway
                       </button>
                     )}
@@ -495,7 +540,7 @@ export default function ManageTruckOfficers() {
                                 <span style={{ fontWeight: 500, fontSize: fontSize.sm, color: "#0f172a" }}>{t.plate_number}</span>
                                 <span style={{ fontSize: fontSize.xs, color: "#64748b", marginLeft: 8 }}>{t.truck_model}</span>
                               </div>
-                              <button onClick={() => handleUnassignTruck(t.plate_number)} style={{ padding: "4px 10px", fontSize: fontSize.xs, cursor: "pointer", background: "white", border: "1px solid #fee2e2", color: "#ef4444", borderRadius: 4, fontWeight: 500, transition: "all 0.2s" }} onMouseEnter={e => { e.currentTarget.style.background = "#fee2e2" }} onMouseLeave={e => { e.currentTarget.style.background = "white" }}>
+                              <button onClick={() => { if (!canEdit) return; handleUnassignTruck(t.plate_number) }} style={{ padding: "4px 10px", fontSize: fontSize.xs, cursor: canEdit ? "pointer" : "not-allowed", background: canEdit ? "white" : "#e2e8f0", border: "1px solid #fee2e2", color: canEdit ? "#ef4444" : "#94a3b8", borderRadius: 4, fontWeight: 500, transition: "all 0.2s" }} onMouseEnter={e => { if (!canEdit) return; e.currentTarget.style.background = "#fee2e2" }} onMouseLeave={e => { if (!canEdit) return; e.currentTarget.style.background = "white" }}>
                                 Remove
                               </button>
                             </div>
@@ -514,7 +559,7 @@ export default function ManageTruckOfficers() {
                                 <span style={{ fontWeight: 500, fontSize: fontSize.sm, color: "#0f172a" }}>{t.plate_number}</span>
                                 <span style={{ fontSize: fontSize.xs, color: "#64748b", marginLeft: 8 }}>{t.truck_model}</span>
                               </div>
-                              <button onClick={() => handleAssignTruck(t.plate_number)} style={{ padding: "4px 10px", fontSize: fontSize.xs, cursor: "pointer", background: "#0070f3", color: "white", border: "none", borderRadius: 4, fontWeight: 500, transition: "all 0.2s" }} onMouseEnter={e => e.currentTarget.style.opacity = "0.9"} onMouseLeave={e => e.currentTarget.style.opacity = "1"}>
+                              <button onClick={() => { if (!canEdit) return; handleAssignTruck(t.plate_number) }} style={{ padding: "4px 10px", fontSize: fontSize.xs, cursor: canEdit ? "pointer" : "not-allowed", background: canEdit ? "#0070f3" : "#94a3b8", color: "white", border: "none", borderRadius: 4, fontWeight: 500, transition: "all 0.2s" }} onMouseEnter={e => { if (!canEdit) return; e.currentTarget.style.opacity = "0.9" }} onMouseLeave={e => { if (!canEdit) return; e.currentTarget.style.opacity = "1" }}>
                                 Assign
                               </button>
                             </div>
@@ -534,7 +579,7 @@ export default function ManageTruckOfficers() {
                                 <span style={{ fontSize: fontSize.xs, color: "#64748b", marginLeft: 8 }}>{t.truck_model}</span>
                                 <span style={{ fontSize: fontSize.xs, color: "#94a3b8", marginLeft: 8 }}>→ {t.assigned_manager_name}</span>
                               </div>
-                              <button onClick={() => { setAssignError(`${t.plate_number} is assigned to ${t.assigned_manager_name}. Reassign anyway?`) }} style={{ padding: "4px 10px", fontSize: fontSize.xs, cursor: "pointer", background: "white", border: "1px solid #fcd34d", color: "#f59e0b", borderRadius: 4, fontWeight: 500, transition: "all 0.2s" }} onMouseEnter={e => e.currentTarget.style.background = "#fffbeb"} onMouseLeave={e => e.currentTarget.style.background = "white"}>
+                              <button onClick={() => { if (!canEdit) return; setPendingPlate(t.plate_number); setAssignError(`${t.plate_number} is assigned to ${t.assigned_manager_name}. Reassign anyway?`) }} style={{ padding: "4px 10px", fontSize: fontSize.xs, cursor: canEdit ? "pointer" : "not-allowed", background: canEdit ? "white" : "#e2e8f0", border: "1px solid #fcd34d", color: canEdit ? "#f59e0b" : "#94a3b8", borderRadius: 4, fontWeight: 500, transition: "all 0.2s" }} onMouseEnter={e => { if (!canEdit) return; e.currentTarget.style.background = "#fffbeb" }} onMouseLeave={e => { if (!canEdit) return; e.currentTarget.style.background = "white" }}>
                                 Reassign
                               </button>
                             </div>

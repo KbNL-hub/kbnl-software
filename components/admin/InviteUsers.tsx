@@ -1,0 +1,521 @@
+"use client"
+
+import { useState, useEffect, useRef } from "react"
+import { supabase } from "@/lib/supabase"
+import ModernInput from "@/components/ModernInput"
+import { usePermissions } from "@/lib/PermissionContext"
+
+type FuelCompany = {
+  company_id: string
+  company_name: string
+}
+
+const ALL_ROLES = [
+  { key: "SuperAdmin", label: "Super Admin", group: "admin", needsField: null },
+  { key: "Supervisor", label: "Supervisor", group: "admin", needsField: null },
+  { key: "CashAuthorizer", label: "Cash Authorizer", group: "admin", needsField: "office" },
+  { key: "Broker", label: "Broker", group: "admin", needsField: null },
+  { key: "TruckAdmin", label: "Truck Admin", group: "admin", needsField: null },
+  { key: "DeskOfficer", label: "Desk Officer", group: "admin", needsField: null },
+  { key: "ATCOfficer", label: "ATC Officer", group: "admin", needsField: null },
+  { key: "Driver", label: "Driver", group: "other", needsField: null },
+  { key: "StationManager", label: "Station Manager", group: "other", needsField: "company" },
+  { key: "TruckOfficer", label: "Truck Officer", group: "other", needsField: null },
+  { key: "StoreOfficer", label: "Store Officer", group: "other", needsField: "store" },
+  { key: "CashOfficer", label: "Cash Officer", group: "other", needsField: "office" },
+]
+
+const OFFICE_LOCATIONS = ["Uyo", "Ikom", "Calabar", "Ogoja"]
+const STORE_LOCATIONS = [
+  "Calabar Mini Depot", "Ikom Mini Depot", "Ogoja Depot", "Uyo Depot",
+  "Brooks Outlet", "Urua Ekpa Outlet", "Urua Nyemeiko Outlet",
+  "Reserve Store", "E1 Outlet", "Ogoja Outlet",
+]
+
+type InviteResult = {
+  success: boolean
+  tempPassword?: string
+  error?: string
+  userId?: string
+}
+
+export default function InviteUsers() {
+  const { getAccess } = usePermissions()
+  const canEdit = getAccess("invite-users").canEdit
+
+  const [email, setEmail] = useState("")
+  const [fullName, setFullName] = useState("")
+  const [phoneNumber, setPhoneNumber] = useState("")
+  const [selectedRoles, setSelectedRoles] = useState<Set<string>>(new Set())
+  const [companyId, setCompanyId] = useState("")
+  const [storeName, setStoreName] = useState("")
+  const [officeName, setOfficeName] = useState("")
+  const [cashAuthOffice, setCashAuthOffice] = useState("")
+  const [message, setMessage] = useState("")
+  const [isError, setIsError] = useState(false)
+  const [submitting, setSubmitting] = useState(false)
+  const [result, setResult] = useState<InviteResult | null>(null)
+  const [copied, setCopied] = useState(false)
+  const [companies, setCompanies] = useState<FuelCompany[]>([])
+
+  const phoneRef = useRef<HTMLInputElement>(null)
+  const emailRef = useRef<HTMLInputElement>(null)
+
+  useEffect(() => {
+    supabase.from("fuel_companies").select("company_id, company_name").order("company_name").then(({ data }) => {
+      if (data) setCompanies(data)
+    })
+  }, [])
+
+  function toggleRole(role: string) {
+    if (!canEdit) return
+    setSelectedRoles((prev) => {
+      const next = new Set(prev)
+      if (next.has(role)) next.delete(role)
+      else next.add(role)
+      return next
+    })
+    setMessage("")
+  }
+
+  function needsField(field: string): boolean {
+    return ALL_ROLES.some((r) => selectedRoles.has(r.key) && r.needsField === field)
+  }
+
+  async function handleSubmit() {
+    if (!fullName.trim()) { setMessage("Full name is required"); setIsError(true); return }
+    if (!email.trim()) { setMessage("Email is required"); setIsError(true); return }
+    if (selectedRoles.size === 0) { setMessage("Select at least one role"); setIsError(true); return }
+    if (needsField("company") && !companyId) { setMessage("Select a company for Station Manager"); setIsError(true); return }
+    if (needsField("store") && !storeName) { setMessage("Select a store for Store Officer"); setIsError(true); return }
+    if (needsField("office") && selectedRoles.has("CashOfficer") && !officeName) { setMessage("Select an office for Cash Officer"); setIsError(true); return }
+    if (needsField("office") && selectedRoles.has("CashAuthorizer") && !cashAuthOffice) { setMessage("Select an assigned office for Cash Authorizer"); setIsError(true); return }
+
+    setSubmitting(true)
+    setMessage("")
+    setResult(null)
+
+    try {
+      const res = await fetch("/api/invite-user", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email,
+          fullName,
+          phoneNumber: phoneNumber || undefined,
+          roles: [...selectedRoles],
+          companyId: companyId || undefined,
+          storeName: storeName || undefined,
+          officeName: officeName || undefined,
+          assignedOffice: cashAuthOffice || undefined,
+        }),
+      })
+
+      const data = await res.json()
+
+      if (!res.ok) {
+        setMessage(data.error || "Failed to invite user")
+        setIsError(true)
+        return
+      }
+
+      setResult({ success: true, tempPassword: data.tempPassword, userId: data.userId })
+      setCopied(false)
+    } catch {
+      setMessage("Network error, please try again")
+      setIsError(true)
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  async function copyPassword() {
+    if (!result?.tempPassword) return
+    try {
+      await navigator.clipboard.writeText(result.tempPassword)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    } catch {
+      // fallback
+      const el = document.createElement("textarea")
+      el.value = result.tempPassword
+      document.body.appendChild(el)
+      el.select()
+      document.execCommand("copy")
+      document.body.removeChild(el)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    }
+  }
+
+  function resetForm() {
+    setEmail("")
+    setFullName("")
+    setPhoneNumber("")
+    setSelectedRoles(new Set())
+    setCompanyId("")
+    setStoreName("")
+    setOfficeName("")
+    setCashAuthOffice("")
+    setMessage("")
+    setResult(null)
+    setCopied(false)
+  }
+
+  const checkboxStyle = (checked: boolean): React.CSSProperties => ({
+    width: 18,
+    height: 18,
+    borderRadius: 4,
+    border: `2px solid ${checked ? "#0070f3" : "#d0d0d0"}`,
+    background: checked ? "#0070f3" : "white",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    cursor: "pointer",
+    flexShrink: 0,
+    transition: "all 0.15s ease",
+  })
+
+  const roleBadgeStyle = (checked: boolean): React.CSSProperties => ({
+    display: "flex",
+    alignItems: "center",
+    gap: 10,
+    padding: "8px 12px",
+    borderRadius: 8,
+    border: `1.5px solid ${checked ? "#0070f3" : "#e5e5e5"}`,
+    background: checked ? "rgba(0, 112, 243, 0.06)" : "white",
+    cursor: "pointer",
+    transition: "all 0.15s ease",
+    fontSize: 14,
+    color: checked ? "#0070f3" : "#333",
+    fontWeight: checked ? 600 : 400,
+  })
+
+  const inputStyle: React.CSSProperties = {
+    width: "100%",
+    padding: "12px 14px",
+    boxSizing: "border-box",
+    fontSize: 14,
+    border: "1.5px solid #e5e5e5",
+    borderRadius: 10,
+    background: "#f9f9f9",
+    transition: "all 0.2s ease",
+  }
+
+  const labelStyle: React.CSSProperties = {
+    display: "block", fontSize: 13, fontWeight: 600,
+    color: "#171717", marginBottom: 8, letterSpacing: "0.3px",
+  }
+
+  const adminRoles = ALL_ROLES.filter((r) => r.group === "admin")
+  const otherRoles = ALL_ROLES.filter((r) => r.group === "other")
+
+  return (
+    <div style={{ maxWidth: 640, fontFamily: "'Inter', sans-serif" }}>
+      <h1 style={{ margin: "0 0 4px 0", color: "#0f172a", fontSize: 24, fontWeight: 700 }}>
+        Invite Users
+      </h1>
+      <p style={{ margin: "0 0 28px 0", color: "#64748b", fontSize: 14 }}>
+        Create a new user account with one or more roles.
+      </p>
+
+      {result?.success ? (
+        <div style={{
+          background: "white",
+          border: "1px solid #e2e8f0",
+          borderRadius: 16,
+          padding: 32,
+          boxShadow: "0 4px 16px rgba(0,0,0,0.06)",
+          textAlign: "center",
+        }}>
+          <div style={{
+            width: 56, height: 56, borderRadius: "50%",
+            background: "rgba(34, 197, 94, 0.1)",
+            display: "flex", alignItems: "center", justifyContent: "center",
+            margin: "0 auto 16px",
+          }}>
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#16a34a" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="20 6 9 17 4 12" />
+            </svg>
+          </div>
+
+          <h2 style={{ margin: "0 0 4px", color: "#0f172a", fontSize: 20, fontWeight: 700 }}>
+            User Created
+          </h2>
+          <p style={{ margin: "0 0 20px", color: "#64748b", fontSize: 14 }}>
+            {email}
+          </p>
+
+          <div style={{
+            background: "#f0f7ff",
+            border: "1.5px dashed #0070f3",
+            borderRadius: 12,
+            padding: "20px 24px",
+            marginBottom: 20,
+          }}>
+            <p style={{ margin: "0 0 8px", color: "#0c4a6e", fontSize: 12, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.5px" }}>
+              Temporary Password
+            </p>
+            <p style={{
+              margin: "0 0 12px",
+              fontSize: 28,
+              fontWeight: 700,
+              color: "#0070f3",
+              fontFamily: "'Fira Code', 'Cascadia Code', monospace",
+              letterSpacing: "0.5px",
+            }}>
+              {result.tempPassword}
+            </p>
+            <button
+              onClick={copyPassword}
+              style={{
+                padding: "8px 20px",
+                background: copied ? "#16a34a" : "#0070f3",
+                color: "white",
+                border: "none",
+                borderRadius: 8,
+                fontSize: 14,
+                fontWeight: 600,
+                cursor: "pointer",
+                transition: "all 0.2s",
+              }}
+            >
+              {copied ? "Copied!" : "Copy Password"}
+            </button>
+          </div>
+
+          <div style={{
+            background: "#fffbeb",
+            border: "1px solid #fcd34d",
+            borderRadius: 8,
+            padding: "12px 16px",
+            marginBottom: 24,
+            textAlign: "left",
+          }}>
+            <p style={{ margin: 0, fontSize: 13, color: "#78350f", lineHeight: 1.5 }}>
+              ⚠️ This is the only time this password will be shown. Share it securely with the user.
+              They will be asked to change it on first login.
+            </p>
+          </div>
+
+          <button
+            onClick={resetForm}
+            style={{
+              padding: "10px 24px",
+              background: "white",
+              color: "#0f172a",
+              border: "1px solid #cbd5e1",
+              borderRadius: 8,
+              fontSize: 14,
+              fontWeight: 600,
+              cursor: "pointer",
+            }}
+          >
+            Invite Another User
+          </button>
+        </div>
+      ) : (
+        <div style={{
+          background: "white",
+          border: "1px solid #e2e8f0",
+          borderRadius: 16,
+          padding: 28,
+          boxShadow: "0 4px 16px rgba(0,0,0,0.06)",
+        }}>
+          {/* Basic Info */}
+          <div style={{ display: "flex", flexDirection: "column", gap: 16, marginBottom: 24 }}>
+            <div>
+              <label style={labelStyle}>Full Name *</label>
+              <ModernInput
+                type="text" placeholder="e.g. John Doe"
+                value={fullName}
+                onChange={(e: any) => { setFullName(e.target.value); setMessage("") }}
+                onKeyDown={(e: any) => { if (e.key === "Enter") phoneRef.current?.focus() }}
+                style={inputStyle}
+                autoFocus
+                readOnly={!canEdit}
+              />
+            </div>
+            <div>
+              <label style={labelStyle}>Phone Number</label>
+              <ModernInput
+                ref={phoneRef}
+                type="text" placeholder="e.g. 08012345678"
+                value={phoneNumber}
+                onChange={(e: any) => { setPhoneNumber(e.target.value); setMessage("") }}
+                onKeyDown={(e: any) => { if (e.key === "Enter") emailRef.current?.focus() }}
+                style={inputStyle}
+                readOnly={!canEdit}
+              />
+            </div>
+            <div>
+              <label style={labelStyle}>Email Address (username) *</label>
+              <ModernInput
+                ref={emailRef}
+                type="email" placeholder="e.g. user@company.com"
+                value={email}
+                onChange={(e: any) => { setEmail(e.target.value); setMessage("") }}
+                style={inputStyle}
+                readOnly={!canEdit}
+              />
+            </div>
+          </div>
+
+          {/* Admin Roles */}
+          <div style={{ marginBottom: 20 }}>
+            <p style={{ margin: "0 0 10px", fontSize: 13, fontWeight: 600, color: "#0f172a", letterSpacing: "0.3px", textTransform: "uppercase" }}>
+              Admin Panel Roles
+            </p>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+              {adminRoles.map((r) => (
+                <div key={r.key} onClick={() => toggleRole(r.key)} style={roleBadgeStyle(selectedRoles.has(r.key))}>
+                  <div style={checkboxStyle(selectedRoles.has(r.key))}>
+                    {selectedRoles.has(r.key) && (
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                        <polyline points="20 6 9 17 4 12" />
+                      </svg>
+                    )}
+                  </div>
+                  {r.label}
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Other Roles */}
+          <div style={{ marginBottom: 24 }}>
+            <p style={{ margin: "0 0 10px", fontSize: 13, fontWeight: 600, color: "#0f172a", letterSpacing: "0.3px", textTransform: "uppercase" }}>
+              Other Roles
+            </p>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+              {otherRoles.map((r) => (
+                <div key={r.key} onClick={() => toggleRole(r.key)} style={roleBadgeStyle(selectedRoles.has(r.key))}>
+                  <div style={checkboxStyle(selectedRoles.has(r.key))}>
+                    {selectedRoles.has(r.key) && (
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                        <polyline points="20 6 9 17 4 12" />
+                      </svg>
+                    )}
+                  </div>
+                  {r.label}
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Conditional Fields */}
+          {needsField("company") && (
+            <div style={{ marginBottom: 16 }}>
+              <label style={labelStyle}>Company (for Station Manager) *</label>
+              <select
+                value={companyId}
+                onChange={(e) => setCompanyId(e.target.value)}
+                style={{
+                  ...inputStyle,
+                  appearance: "none",
+                  background: "#f9f9f9 url(\"data:image/svg+xml,%3Csvg width='12' height='8' viewBox='0 0 12 8' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M1 1.5L6 6.5L11 1.5' stroke='%23999' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E\") no-repeat right 14px center",
+                }}
+              >
+                <option value="">Select company...</option>
+                {companies.map((c) => (
+                  <option key={c.company_id} value={c.company_id}>{c.company_name}</option>
+                ))}
+              </select>
+            </div>
+          )}
+
+          {needsField("store") && (
+            <div style={{ marginBottom: 16 }}>
+              <label style={labelStyle}>Store (for Store Officer) *</label>
+              <select
+                value={storeName}
+                onChange={(e) => setStoreName(e.target.value)}
+                style={{
+                  ...inputStyle,
+                  appearance: "none",
+                  background: "#f9f9f9 url(\"data:image/svg+xml,%3Csvg width='12' height='8' viewBox='0 0 12 8' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M1 1.5L6 6.5L11 1.5' stroke='%23999' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E\") no-repeat right 14px center",
+                }}
+              >
+                <option value="">Select store...</option>
+                {STORE_LOCATIONS.map((s) => (
+                  <option key={s} value={s}>{s}</option>
+                ))}
+              </select>
+            </div>
+          )}
+
+          {selectedRoles.has("CashOfficer") && (
+            <div style={{ marginBottom: 16 }}>
+              <label style={labelStyle}>Office (for Cash Officer) *</label>
+              <select
+                value={officeName}
+                onChange={(e) => setOfficeName(e.target.value)}
+                style={{
+                  ...inputStyle,
+                  appearance: "none",
+                  background: "#f9f9f9 url(\"data:image/svg+xml,%3Csvg width='12' height='8' viewBox='0 0 12 8' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M1 1.5L6 6.5L11 1.5' stroke='%23999' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E\") no-repeat right 14px center",
+                }}
+              >
+                <option value="">Select office...</option>
+                {OFFICE_LOCATIONS.map((o) => (
+                  <option key={o} value={o}>{o}</option>
+                ))}
+              </select>
+            </div>
+          )}
+
+          {selectedRoles.has("CashAuthorizer") && (
+            <div style={{ marginBottom: 16 }}>
+              <label style={labelStyle}>Assigned Office (for Cash Authorizer) *</label>
+              <select
+                value={cashAuthOffice}
+                onChange={(e) => setCashAuthOffice(e.target.value)}
+                style={{
+                  ...inputStyle,
+                  appearance: "none",
+                  background: "#f9f9f9 url(\"data:image/svg+xml,%3Csvg width='12' height='8' viewBox='0 0 12 8' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M1 1.5L6 6.5L11 1.5' stroke='%23999' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E\") no-repeat right 14px center",
+                }}
+              >
+                <option value="">Select office...</option>
+                {OFFICE_LOCATIONS.map((o) => (
+                  <option key={o} value={o}>{o}</option>
+                ))}
+              </select>
+            </div>
+          )}
+
+          {message && (
+            <div style={{
+              padding: 12, borderRadius: 10, marginBottom: 16,
+              background: isError ? "rgba(239, 68, 68, 0.08)" : "rgba(34, 197, 94, 0.08)",
+              border: `1.5px solid ${isError ? "rgba(239, 68, 68, 0.3)" : "rgba(34, 197, 94, 0.3)"}`,
+              color: isError ? "#dc2626" : "#16a34a",
+              fontSize: 14, fontWeight: 500,
+            }}>
+              {message}
+            </div>
+          )}
+
+          <button
+            onClick={handleSubmit}
+            disabled={submitting || !canEdit}
+            style={{
+              width: "100%",
+              padding: 14,
+              background: submitting || !canEdit ? "#94a3b8" : "#0070f3",
+              color: "white",
+              border: "none",
+              borderRadius: 10,
+              fontSize: 16,
+              fontWeight: 600,
+              cursor: submitting || !canEdit ? "not-allowed" : "pointer",
+              opacity: submitting || !canEdit ? 0.7 : 1,
+            }}
+          >
+            {submitting ? "Creating User..." : "Create User"}
+          </button>
+        </div>
+      )}
+    </div>
+  )
+}

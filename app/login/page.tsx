@@ -6,6 +6,7 @@ import { useState, useRef, useEffect } from "react"
 import { supabase } from "@/lib/supabase"
 import { Icon } from "@iconify/react"
 import { useRouter } from "next/navigation"
+import { getRoleDashboard } from "@/lib/permissions"
 
 export default function LoginPage() {
   const [email, setEmail] = useState("")
@@ -23,6 +24,7 @@ export default function LoginPage() {
   const passwordInputRef = useRef<HTMLInputElement | null>(null)
 
   async function handleLogin() {
+    if (loading) return
     if (!email || !password) return setMessage("Enter email and password")
     setLoading(true)
     setMessage("")
@@ -38,22 +40,30 @@ export default function LoginPage() {
     // Fetch role from Profiles
     const { data: profile, error: profileError } = await supabase
       .from("Profiles")
-      .select("role")
+      .select("role, must_change_password")
       .eq("user_id", data.user.id)
       .single()
 
     if (profileError || !profile) {
+      await supabase.auth.signOut()
       setMessage("Profile not found. Contact admin.")
       setLoading(false)
       return
     }
 
     if (profile.role === "Driver") {
-      const { data: driverData } = await supabase
+      const { data: driverData, error: driverError } = await supabase
         .from("Drivers")
         .select("status")
         .eq("driver_id", data.user.id)
         .single()
+
+      if (driverError || !driverData) {
+        await supabase.auth.signOut()
+        setMessage("Unable to verify driver status. Contact admin.")
+        setLoading(false)
+        return
+      }
 
       if (driverData?.status === "Suspended") {
         await supabase.auth.signOut()
@@ -63,27 +73,22 @@ export default function LoginPage() {
       }
     }
 
+    // Check if user must change password
+    if (profile.must_change_password) {
+      setLoading(false)
+      router.push("/auth/set-password")
+      return
+    }
+
     setLoading(false)
 
     // Route based on role
-    if (profile.role === "Admin") {
-      router.push("/admin")
-    } else if (profile.role === "Driver") {
-      router.push("/driver")
-    } else if (profile.role === "Broker") {
-      router.push("/admin")
-    } else if (profile.role === "StationManager") {
-      router.push("/station-manager")
-    } else if (profile.role === "TruckOfficer") {
-      router.push("/truck-officer")
-    } else if (profile.role === "TruckAdmin") {
-      router.push("/truck-admin")
-    } else if (profile.role === "StoreOfficer") {
-      router.push("/store-officer")
-    } else if (profile.role === "CashOfficer") {
-      router.push("/cash-officer")
-    } else {
+    const dashboard = getRoleDashboard(profile.role)
+    if (dashboard === "/login") {
+      await supabase.auth.signOut()
       setMessage("Unknown role. Contact admin.")
+    } else {
+      router.push(dashboard)
     }
   }
 
@@ -387,22 +392,29 @@ export default function LoginPage() {
             )}
           </button>
 
-          {message && (
-            <div className="message-container" style={{
-              marginTop: 20,
-              padding: 12,
-              background: message.toLowerCase().includes("suspended") || message.toLowerCase().includes("error") ? "rgba(239, 68, 68, 0.08)" : "rgba(34, 197, 94, 0.08)",
-              border: `1.5px solid ${message.toLowerCase().includes("suspended") || message.toLowerCase().includes("error") ? "rgba(239, 68, 68, 0.3)" : "rgba(34, 197, 94, 0.3)"}`,
-              borderRadius: 10,
-              fontSize: 14,
-              color: message.toLowerCase().includes("suspended") || message.toLowerCase().includes("error") ? "#dc2626" : "#16a34a",
-              fontWeight: 500,
-              textAlign: "center",
-              lineHeight: 1.4,
-            }}>
-              {message}
-            </div>
-          )}
+          {message && (() => {
+            const isErrorMsg = message.toLowerCase().includes("suspended") ||
+              message.toLowerCase().includes("error") ||
+              message.toLowerCase().includes("not found") ||
+              message.toLowerCase().includes("unknown") ||
+              message.toLowerCase().includes("unable")
+            return (
+              <div className="message-container" style={{
+                marginTop: 20,
+                padding: 12,
+                background: isErrorMsg ? "rgba(239, 68, 68, 0.08)" : "rgba(34, 197, 94, 0.08)",
+                border: `1.5px solid ${isErrorMsg ? "rgba(239, 68, 68, 0.3)" : "rgba(34, 197, 94, 0.3)"}`,
+                borderRadius: 10,
+                fontSize: 14,
+                color: isErrorMsg ? "#dc2626" : "#16a34a",
+                fontWeight: 500,
+                textAlign: "center",
+                lineHeight: 1.4,
+              }}>
+                {message}
+              </div>
+            )
+          })()}
         </div>
 
         {/* Footer */}

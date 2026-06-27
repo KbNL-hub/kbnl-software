@@ -1,162 +1,193 @@
 import { createClient } from "@supabase/supabase-js"
 import { NextResponse } from "next/server"
+import { generateTempPassword } from "@/lib/auth-helpers"
 
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 )
 
+const ROLE_TABLES: Record<string, (userId: string, data: any) => Promise<string | null>> = {
+  Driver: async (userId, { fullName, phoneNumber }) => {
+    const { error } = await supabaseAdmin.from("Drivers").upsert(
+      { driver_id: userId, full_name: fullName, phone_number: phoneNumber || null },
+      { onConflict: "driver_id" }
+    )
+    return error?.message || null
+  },
+  Broker: async (userId, { fullName, phoneNumber }) => {
+    const { error } = await supabaseAdmin.from("Brokers").upsert(
+      { broker_id: userId, broker_name: fullName, phone_number: phoneNumber || null },
+      { onConflict: "broker_id" }
+    )
+    return error?.message || null
+  },
+  StationManager: async (userId, { fullName, phoneNumber, companyId }) => {
+    if (!companyId) return "Company is required for Station Manager"
+    const { error } = await supabaseAdmin.from("station_managers").upsert(
+      { manager_id: userId, full_name: fullName, phone_number: phoneNumber || null, company_id: companyId },
+      { onConflict: "manager_id" }
+    )
+    return error?.message || null
+  },
+  TruckOfficer: async (userId, { fullName, phoneNumber }) => {
+    const { error } = await supabaseAdmin.from("truck_officers").upsert(
+      { manager_id: userId, full_name: fullName, phone_number: phoneNumber || null },
+      { onConflict: "manager_id" }
+    )
+    return error?.message || null
+  },
+  TruckAdmin: async (userId, { fullName, phoneNumber }) => {
+    const { error } = await supabaseAdmin.from("truck_admins").upsert(
+      { admin_id: userId, full_name: fullName, phone_number: phoneNumber || null },
+      { onConflict: "admin_id" }
+    )
+    return error?.message || null
+  },
+  StoreOfficer: async (userId, { fullName, phoneNumber, storeName }) => {
+    if (!storeName) return "Store name is required for Store Officer"
+    const { error } = await supabaseAdmin.from("store_officers").upsert(
+      { officer_id: userId, full_name: fullName, phone_number: phoneNumber || null, store_name: storeName },
+      { onConflict: "officer_id" }
+    )
+    return error?.message || null
+  },
+  CashOfficer: async (userId, { fullName, phoneNumber, officeName }) => {
+    if (!officeName) return "Office is required for Cash Officer"
+    const { error } = await supabaseAdmin.from("cash_officers").upsert(
+      { clerk_id: userId, full_name: fullName, phone_number: phoneNumber || null, office_name: officeName, status: "Invited" },
+      { onConflict: "clerk_id" }
+    )
+    return error?.message || null
+  },
+  DeskOfficer: async (userId, { fullName, phoneNumber }) => {
+    const { error } = await supabaseAdmin.from("desk_officers").upsert(
+      { officer_id: userId, full_name: fullName, phone_number: phoneNumber || null },
+      { onConflict: "officer_id" }
+    )
+    return error?.message || null
+  },
+  ATCOfficer: async (userId, { fullName, phoneNumber }) => {
+    const { error } = await supabaseAdmin.from("atc_officers").upsert(
+      { officer_id: userId, full_name: fullName, phone_number: phoneNumber || null },
+      { onConflict: "officer_id" }
+    )
+    return error?.message || null
+  },
+  Supervisor: async (userId, { fullName, phoneNumber }) => {
+    const { error } = await supabaseAdmin.from("supervisors").upsert(
+      { supervisor_id: userId, full_name: fullName, phone_number: phoneNumber || null },
+      { onConflict: "supervisor_id" }
+    )
+    return error?.message || null
+  },
+  CashAuthorizer: async (userId, { fullName, phoneNumber, assignedOffice }) => {
+    if (!assignedOffice) return "Assigned office is required for Cash Authorizer"
+    const { error } = await supabaseAdmin.from("cash_authorizers").upsert(
+      { authorizer_id: userId, full_name: fullName, phone_number: phoneNumber || null, assigned_office: assignedOffice },
+      { onConflict: "authorizer_id" }
+    )
+    return error?.message || null
+  },
+}
+
 export async function POST(req: Request) {
-  const { email, fullName, phoneNumber, role, companyId, storeName, officeName } = await req.json()
+  const { email, fullName, phoneNumber, role, roles, companyId, storeName, officeName, assignedOffice } = await req.json()
 
-  if (!email || !fullName || !role) {
-    return NextResponse.json({ error: "Email, full name and role are required" }, { status: 400 })
+  if (!email || !fullName) {
+    return NextResponse.json({ error: "Email and full name are required" }, { status: 400 })
   }
 
-  if (role === "StationManager" && !companyId) {
-    return NextResponse.json({ error: "Company is required for Station Manager" }, { status: 400 })
+  // Accept single `role` or array `roles` for backward compatibility
+  const selectedRoles: string[] = roles && Array.isArray(roles) && roles.length > 0
+    ? roles
+    : role ? [role] : []
+
+  if (selectedRoles.length === 0) {
+    return NextResponse.json({ error: "At least one role is required" }, { status: 400 })
   }
 
-  if (role === "StoreOfficer" && !storeName) {
-    return NextResponse.json({ error: "Store is required for Store Officer" }, { status: 400 })
+  const invalidRoles = selectedRoles.filter((r) => !(r in ROLE_TABLES))
+  if (invalidRoles.length > 0) {
+    return NextResponse.json(
+      { error: `Unsupported role(s): ${invalidRoles.join(", ")}` },
+      { status: 400 }
+    )
   }
 
-  if (role === "CashOfficer" && !officeName) {
-    return NextResponse.json({ error: "Office is required for Cash Officer" }, { status: 400 })
-  }
-
+  // Check if user already exists in auth (paginate to find)
   const { data: userList, error: listError } = await supabaseAdmin.auth.admin.listUsers()
   if (listError) {
     return NextResponse.json({ error: "Failed to check existing users: " + listError.message }, { status: 500 })
   }
 
-  const existingUser = userList.users.find(u => u.email?.toLowerCase() === email.toLowerCase())
+  let existingUser = userList.users.find(u => u.email?.toLowerCase() === email.toLowerCase())
+  if (!existingUser && userList.total > userList.users.length) {
+    const perPage = userList.users.length
+    const totalPages = Math.ceil(userList.total / perPage)
+    for (let page = 2; page <= totalPages; page++) {
+      const { data: nextPage } = await supabaseAdmin.auth.admin.listUsers({ page, perPage })
+      existingUser = nextPage?.users.find(u => u.email?.toLowerCase() === email.toLowerCase())
+      if (existingUser) break
+    }
+  }
+  let tempPassword: string | null = null
   let userId = ""
-  let isNewUser = false
 
   if (existingUser) {
     userId = existingUser.id
   } else {
-    isNewUser = true
-    const { data, error: inviteError } = await supabaseAdmin.auth.admin.inviteUserByEmail(email, {
-      redirectTo: `${process.env.NEXT_PUBLIC_APP_URL}/auth/callback`
+    tempPassword = generateTempPassword()
+    const { data, error: createError } = await supabaseAdmin.auth.admin.createUser({
+      email,
+      password: tempPassword,
+      email_confirm: true,
     })
-
-    if (inviteError) {
-      return NextResponse.json({ error: inviteError.message }, { status: 500 })
+    if (createError) {
+      return NextResponse.json({ error: createError.message }, { status: 500 })
     }
     userId = data.user.id
   }
 
-  console.log("Processing profile:", { userId, role, fullName, phoneNumber, isNewUser })
-
-  if (isNewUser) {
-    // Insert into Profiles
-    const { error: profileError } = await supabaseAdmin.from("Profiles").insert([{
+  // Upsert profile for both new and existing users
+  const { error: profileError } = await supabaseAdmin.from("Profiles").upsert(
+    {
       user_id: userId,
-      role,
+      role: selectedRoles[0],
       full_name: fullName,
       phone_number: phoneNumber || null,
-    }])
+      must_change_password: true,
+    },
+    { onConflict: "user_id" }
+  )
+  if (profileError) {
+    return NextResponse.json({ error: "Failed to save profile" }, { status: 500 })
+  }
 
-    console.log("Profile error:", profileError)
-
-    if (profileError) {
-      return NextResponse.json({ error: "Invite sent but profile failed" }, { status: 500 })
+  // Insert into UserRoles for each selected role
+  for (const r of selectedRoles) {
+    const { error: roleError } = await supabaseAdmin.from("UserRoles").upsert(
+      { user_id: userId, role: r },
+      { onConflict: "user_id, role" }
+    )
+    if (roleError) {
+      console.error(`Failed to insert role ${r} for user ${userId}:`, roleError)
+      return NextResponse.json({ error: `Failed to provision role ${r}` }, { status: 500 })
     }
   }
 
-  // If Driver, also insert into Drivers table
-  if (role === "Driver") {
-    const { error: driverError } = await supabaseAdmin.from("Drivers").insert([{
-      driver_id: userId,
-      full_name: fullName,
-      phone_number: phoneNumber || null,
-    }])
-    console.log("Driver error:", driverError)
-    if (driverError) {
-      return NextResponse.json({ error: "Invite sent but driver record failed" }, { status: 500 })
+  // Insert into role-specific tables
+  const dataArgs = { fullName, phoneNumber, companyId, storeName, officeName, assignedOffice }
+  for (const r of selectedRoles) {
+    const handler = ROLE_TABLES[r]
+    if (handler) {
+      const errMsg = await handler(userId, dataArgs)
+      if (errMsg) {
+        console.error(`Failed to insert ${r} record:`, errMsg)
+        return NextResponse.json({ error: errMsg }, { status: 400 })
+      }
     }
   }
 
-  // If Broker, also insert into Brokers table
-  if (role === "Broker") {
-    const { error: brokerError } = await supabaseAdmin.from("Brokers").insert([{
-      broker_id: userId,
-      broker_name: fullName,
-      phone_number: phoneNumber || null,
-    }])
-    console.log("Broker error:", brokerError)
-    if (brokerError) {
-      return NextResponse.json({ error: "Invite sent but broker record failed" }, { status: 500 })
-    }
-  }
-
-  // If StationManager, also insert into station_managers table
-  if (role === "StationManager") {
-    const { error: smError } = await supabaseAdmin.from("station_managers").insert([{
-      manager_id: userId,
-      full_name: fullName,
-      phone_number: phoneNumber || null,
-      company_id: companyId,
-    }])
-    if (smError) {
-      return NextResponse.json({ error: "Invite sent but station manager record failed" }, { status: 500 })
-    }
-  }
-
-  if (role === "TruckOfficer") {
-    const { error: mmError } = await supabaseAdmin.from("truck_officers").insert([{
-      manager_id: userId,
-      full_name: fullName,
-      phone_number: phoneNumber || null,
-    }])
-    if (mmError) {
-      return NextResponse.json({ error: "Invite sent but truck officer record failed" }, { status: 500 })
-    }
-  }
-
-  if (role === "TruckAdmin") {
-    const { error: taError } = await supabaseAdmin.from("truck_admins").insert([{
-      admin_id: userId,
-      full_name: fullName,
-      phone_number: phoneNumber || null,
-    }])
-    if (taError) {
-      return NextResponse.json({ error: "Invite sent but truck admin record failed" }, { status: 500 })
-    }
-  }
-
-  if (role === "StoreOfficer") {
-    if (!storeName) {
-      return NextResponse.json({ error: "Store name is required for Store Officer" }, { status: 400 })
-    }
-    const { error: soError } = await supabaseAdmin.from("store_officers").insert([{
-      officer_id: userId,
-      full_name: fullName,
-      phone_number: phoneNumber || null,
-      store_name: storeName,
-    }])
-    if (soError) {
-      return NextResponse.json({ error: "Invite sent but store officer record failed" }, { status: 500 })
-    }
-  }
-
-  if (role === "CashOfficer") {
-    if (!officeName) {
-      return NextResponse.json({ error: "Office name is required for Cash Officer" }, { status: 400 })
-    }
-    const { error: ocError } = await supabaseAdmin.from("cash_officers").insert([{
-      clerk_id: userId,
-      full_name: fullName,
-      phone_number: phoneNumber || null,
-      office_name: officeName,
-      status: existingUser ? "Active" : "Invited"
-    }])
-    if (ocError) {
-      return NextResponse.json({ error: "Invite sent but Cash Officer record failed" }, { status: 500 })
-    }
-  }
-
-  return NextResponse.json({ success: true })
+  return NextResponse.json({ success: true, ...(tempPassword ? { tempPassword } : {}), userId })
 }

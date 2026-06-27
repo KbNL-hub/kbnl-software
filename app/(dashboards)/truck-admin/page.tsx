@@ -3,6 +3,8 @@
 import { useEffect, useState, useRef } from "react"
 import { useRouter } from "next/navigation"
 import { supabase } from "@/lib/supabase"
+import { apiMutate } from "@/lib/api-mutation"
+import RoleSwitcher from "@/components/RoleSwitcher"
 import { formatAmount, parseAmount } from "@/lib/formatAmount"
 import { Icon } from "@iconify/react"
 import { useBreakpoint } from "@/app/hooks/useBreakpoint"
@@ -19,6 +21,14 @@ type MaintenanceReport = {
   status: "Pending" | "Validated" | "Rejected"
   rejection_reason: string | null
   reported_at: string
+}
+
+type MaintenanceDeposit = {
+  deposit_id: string
+  amount: number
+  note: string | null
+  deposited_by: string
+  created_at: string
 }
 
 type BulkProcurement = {
@@ -120,6 +130,8 @@ export default function TruckAdminDashboard() {
   const [admin, setAdmin] = useState<TruckAdmin | null>(null)
   const [reports, setReports] = useState<MaintenanceReport[]>([])
   const [procurements, setProcurements] = useState<BulkProcurement[]>([])
+  const [deposits, setDeposits] = useState<MaintenanceDeposit[]>([])
+  const [balanceMap, setBalanceMap] = useState<Record<string, number>>({})
   const [maintenanceBalance, setMaintenanceBalance] = useState<number | null>(null)
   const [atfs, setAtfs] = useState<ATF[]>([])
   const [loading, setLoading] = useState(true)
@@ -144,6 +156,11 @@ export default function TruckAdminDashboard() {
 
   const [authorisingATF, setAuthorisingATF] = useState<ATF | null>(null)
   const [authoriseLoading, setAuthoriseLoading] = useState(false)
+
+  const [invalidatingATF, setInvalidatingATF] = useState<ATF | null>(null)
+  const [invalidateReason, setInvalidateReason] = useState("")
+  const [invalidateError, setInvalidateError] = useState("")
+  const [invalidateLoading, setInvalidateLoading] = useState(false)
 
   const [procItem, setProcItem] = useState("")
   const [procTotal, setProcTotal] = useState("")
@@ -172,15 +189,22 @@ export default function TruckAdminDashboard() {
       if (!session) { router.push("/login"); return }
       const user = session.user
 
-      const { data: profile } = await supabase.from("Profiles").select("role").eq("user_id", user.id).single()
-      if (profile?.role !== "TruckAdmin") { router.push("/login"); return }
+      const { data: profile } = await supabase.from("Profiles").select("full_name").eq("user_id", user.id).single()
 
-      const { data: adm } = await supabase.from("truck_admins").select("admin_id, full_name, profile_picture_url").eq("admin_id", user.id).single()
-      if (!adm) { router.push("/login"); return }
+      const { data: adm } = await supabase
+        .from("truck_admins")
+        .select("admin_id, full_name, profile_picture_url")
+        .eq("admin_id", user.id)
+        .single()
 
-      setAdmin(adm)
+      if (!adm) {
+        router.push("/login")
+        return
+      }
 
-      await Promise.all([fetchReports(), fetchProcurements(), fetchMaintenanceBalance(), fetchATFs()])
+      setAdmin({ ...adm, full_name: profile?.full_name ?? adm.full_name })
+
+      await Promise.all([fetchReports(), fetchProcurements(), fetchMaintenanceBalance(), fetchATFs(), fetchDeposits()])
       setLoading(false)
     }
     init()
@@ -189,7 +213,7 @@ export default function TruckAdminDashboard() {
   useEffect(() => {
     if (!admin) return
     const interval = setInterval(() => {
-      fetchReports(); fetchProcurements(); fetchMaintenanceBalance(); fetchATFs()
+      fetchReports(); fetchProcurements(); fetchMaintenanceBalance(); fetchATFs(); fetchDeposits()
     }, 30000)
     return () => clearInterval(interval)
   }, [admin])
@@ -222,6 +246,11 @@ export default function TruckAdminDashboard() {
       return { ...p, distributions: dists || [] }
     }))
     setProcurements(enriched)
+  }
+
+  async function fetchDeposits() {
+    const { data } = await supabase.from("maintenance_deposits").select("*").order("created_at", { ascending: false })
+    if (data) setDeposits(data)
   }
 
   async function fetchATFs() {
@@ -293,11 +322,6 @@ export default function TruckAdminDashboard() {
       const fileName = `${admin.admin_id}-${Date.now()}.${fileExt}`
       const filePath = `${admin.admin_id}/${fileName}`
 
-      if (admin.profile_picture_url) {
-        const oldPath = admin.profile_picture_url.split("/").slice(-2).join("/")
-        await supabase.storage.from("profile-pictures").remove([oldPath])
-      }
-
       const { error: uploadError } = await supabase.storage
         .from("profile-pictures")
         .upload(filePath, selectedFile, { upsert: false })
@@ -313,7 +337,17 @@ export default function TruckAdminDashboard() {
         .update({ profile_picture_url: publicUrl })
         .eq("admin_id", admin.admin_id)
 
-      if (updateError) { setPictureError("Failed to save profile"); setPictureLoading(false); return }
+      if (updateError) {
+        await supabase.storage.from("profile-pictures").remove([filePath])
+        setPictureError("Failed to save profile")
+        setPictureLoading(false)
+        return
+      }
+
+      if (admin.profile_picture_url) {
+        const oldPath = admin.profile_picture_url.split("/").slice(-2).join("/")
+        await supabase.storage.from("profile-pictures").remove([oldPath])
+      }
 
       setAdmin({ ...admin, profile_picture_url: publicUrl })
 
@@ -330,9 +364,30 @@ export default function TruckAdminDashboard() {
   async function handleValidate() {
     if (!validating) return
     setValidateLoading(true)
-    await supabase.from("maintenance_reports").update({ status: "Validated", validated_at: new Date().toISOString(), validated_by: admin?.admin_id }).eq("report_id", validating.report_id)
-    const newBalance = Math.max(0, (maintenanceBalance ?? 0) - validating.amount)
-    await supabase.from("maintenance_balance").update({ current_balance: newBalance, updated_at: new Date().toISOString() }).eq("id", 1)
+
+    const { error: reportError } = await apiMutate("maintenance", {
+      action: "update",
+      table: "maintenance_reports",
+      data: { status: "Validated", validated_at: new Date().toISOString(), validated_by: admin?.admin_id },
+      filters: { report_id: validating.report_id },
+    })
+    if (reportError) { setValidateLoading(false); return }
+
+    const { data: freshBalance } = await supabase
+      .from("maintenance_balance")
+      .select("current_balance")
+      .eq("id", 1)
+      .single()
+
+    const newBalance = Math.max(0, (freshBalance?.current_balance ?? 0) - validating.amount)
+    const { error: balanceError } = await apiMutate("maintenance", {
+      action: "update",
+      table: "maintenance_balance",
+      data: { current_balance: newBalance, updated_at: new Date().toISOString() },
+      filters: { id: 1 },
+    })
+    if (balanceError) { setValidateLoading(false); return }
+
     setMaintenanceBalance(newBalance)
     setValidateLoading(false)
     setValidating(null)
@@ -343,7 +398,12 @@ export default function TruckAdminDashboard() {
     if (!rejecting) return
     if (!rejectReason.trim()) return setRejectError("Please provide a reason")
     setRejectLoading(true)
-    await supabase.from("maintenance_reports").update({ status: "Rejected", rejection_reason: rejectReason.trim() }).eq("report_id", rejecting.report_id)
+    await apiMutate("maintenance", {
+      action: "update",
+      table: "maintenance_reports",
+      data: { status: "Rejected", rejection_reason: rejectReason.trim() },
+      filters: { report_id: rejecting.report_id },
+    })
     setRejectLoading(false); setRejecting(null); setRejectReason(""); setRejectError("")
     fetchReports()
   }
@@ -352,19 +412,13 @@ export default function TruckAdminDashboard() {
     if (!authorisingATF) return
     setAuthoriseLoading(true)
 
-    let code = generateATFCode()
-    let attempts = 0
-    while (attempts < 10) {
-      const { data: existing } = await supabase.from("fuel_requests").select("request_id").eq("atf_code", code).single()
-      if (!existing) break
-      code = generateATFCode()
-      attempts++
-    }
-
-    const { error } = await supabase
-      .from("fuel_requests")
-      .update({ atf_status: "Authorised", atf_code: code, authorised_by: admin?.admin_id })
-      .eq("request_id", authorisingATF.request_id)
+    const code = generateATFCode()
+    const { error } = await apiMutate("fuel", {
+      action: "update",
+      table: "fuel_requests",
+      data: { atf_status: "Authorised", atf_code: code, authorised_by: admin?.admin_id },
+      filters: { request_id: authorisingATF.request_id },
+    })
 
     setAuthoriseLoading(false)
     if (error) return
@@ -372,14 +426,61 @@ export default function TruckAdminDashboard() {
     fetchATFs()
   }
 
+  async function handleInvalidate() {
+    if (!invalidatingATF) return
+    if (!invalidateReason.trim()) return setInvalidateError("Provide a reason for invalidation")
+
+    setInvalidateLoading(true)
+    const { error: invalidateErrorResult } = await apiMutate("fuel", {
+      action: "update",
+      table: "fuel_requests",
+      data: {
+        atf_status: "Invalidated",
+        invalidation_reason: invalidateReason.trim(),
+        invalidated_at: new Date().toISOString(),
+      },
+      filters: { request_id: invalidatingATF.request_id },
+    })
+
+    if (invalidateErrorResult) {
+      setInvalidateError("Unable to invalidate this ATF. Refresh and try again.")
+      setInvalidateLoading(false)
+      return
+    }
+
+    setInvalidateLoading(false)
+    setInvalidatingATF(null)
+    setInvalidateReason("")
+    setInvalidateError("")
+    fetchATFs()
+  }
+
   async function handleDeposit() {
     const amount = parseAmount(depositAmount)
     if (!depositAmount || amount <= 0) return setDepositError("Enter a valid amount")
     setDepositLoading(true)
-    const { error } = await supabase.from("maintenance_deposits").insert([{ amount, note: depositNote.trim() || null, deposited_by: admin?.admin_id }])
-    if (error) { setDepositError("Failed to log deposit"); setDepositLoading(false); return }
-    const newBalance = (maintenanceBalance ?? 0) + amount
-    await supabase.from("maintenance_balance").update({ current_balance: newBalance, updated_at: new Date().toISOString() }).eq("id", 1)
+    const { error: depositError } = await apiMutate("maintenance", {
+      action: "insert",
+      table: "maintenance_deposits",
+      data: { amount, note: depositNote.trim() || null, deposited_by: admin?.admin_id },
+    })
+    if (depositError) { setDepositError("Failed to log deposit"); setDepositLoading(false); return }
+
+    const { data: freshBalance } = await supabase
+      .from("maintenance_balance")
+      .select("current_balance")
+      .eq("id", 1)
+      .single()
+
+    const newBalance = (freshBalance?.current_balance ?? 0) + amount
+    const { error: balanceError } = await apiMutate("maintenance", {
+      action: "update",
+      table: "maintenance_balance",
+      data: { current_balance: newBalance, updated_at: new Date().toISOString() },
+      filters: { id: 1 },
+    })
+    if (balanceError) { setDepositError("Deposit logged but balance update failed. Contact support."); setDepositLoading(false); return }
+
     setMaintenanceBalance(newBalance)
     setDepositLoading(false); setDepositAmount(""); setDepositNote(""); setDepositError("")
   }
@@ -389,18 +490,60 @@ export default function TruckAdminDashboard() {
     const totalNum = parseAmount(procTotal)
     if (!procTotal || totalNum <= 0) return setProcError("Enter a valid total amount")
     setProcLoading(true)
-    const { data: procurement, error } = await supabase.from("bulk_procurement").insert([{ item_name: procItem.trim(), total_amount: totalNum, notes: procNotes.trim() || null, logged_by: admin?.admin_id }]).select().single()
+    const { data: procurement, error: procError } = await apiMutate("maintenance", {
+      action: "insert",
+      table: "bulk_procurement",
+      data: { item_name: procItem.trim(), total_amount: totalNum, notes: procNotes.trim() || null, logged_by: admin?.admin_id },
+    })
     setProcLoading(false)
-    if (error || !procurement) { setProcError("Failed to log procurement"); return }
-    
-    const newBalance = Math.max(0, (maintenanceBalance ?? 0) - totalNum)
-    await supabase.from("maintenance_balance").update({ current_balance: newBalance, updated_at: new Date().toISOString() }).eq("id", 1)
+    if (procError || !procurement) { setProcError("Failed to log procurement"); return }
+
+    const { data: freshBalance } = await supabase
+      .from("maintenance_balance")
+      .select("current_balance")
+      .eq("id", 1)
+      .single()
+
+    const newBalance = Math.max(0, (freshBalance?.current_balance ?? 0) - totalNum)
+    const { error: balanceError } = await apiMutate("maintenance", {
+      action: "update",
+      table: "maintenance_balance",
+      data: { current_balance: newBalance, updated_at: new Date().toISOString() },
+      filters: { id: 1 },
+    })
+    if (balanceError) { setProcError("Procurement logged but balance update failed. Contact support."); return }
+
     setMaintenanceBalance(newBalance)
     
     setProcItem(""); setProcTotal(""); setProcNotes(""); setProcError("")
     await fetchProcurements()
     setTab("reports"); setFilter("Bulk Procurement")
   }
+
+  useEffect(() => {
+    const map: Record<string, number> = {}
+    const records: { id: string; type: "deduction"; amount: number; created_at: string }[] = [
+      ...reports.filter(r => r.status === "Validated").map(r => ({
+        id: r.report_id, type: "deduction" as const, amount: r.amount, created_at: r.reported_at
+      })),
+      ...procurements.map(p => ({
+        id: p.procurement_id, type: "deduction" as const, amount: p.total_amount, created_at: p.logged_at
+      })),
+      ...deposits.map(d => ({
+        id: d.deposit_id, type: "deduction" as const, amount: -d.amount, created_at: d.created_at
+      })),
+    ]
+    records.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+
+    let running = maintenanceBalance ?? 0
+    for (const rec of records) {
+      if (rec.type === "deduction") {
+        map[rec.id] = running
+        running += rec.amount
+      }
+    }
+    setBalanceMap(map)
+  }, [reports, procurements, deposits, maintenanceBalance])
 
   const feedItems: FeedItem[] = [
     ...reports.map(r => ({ kind: "report" as const, data: r, date: r.reported_at })),
@@ -508,7 +651,7 @@ export default function TruckAdminDashboard() {
               <h1 style={{ margin: 0, fontSize: isMobile ? fontSize.lg : fontSize.xl, fontWeight: 700, color: "#0070f3" }}>
                 {admin?.full_name}
               </h1>
-              <p style={{ margin: "2px 0 0", fontSize: fontSize.sm, color: "#64748b" }}>Truck Admin</p>
+              <RoleSwitcher currentRole="TruckAdmin" style={{ margin: "2px 0 0", fontSize: fontSize.sm, color: "#64748b" }} />
             </div>
           </div>
           <div style={{ display: "flex", gap: 8 }}>
@@ -589,6 +732,11 @@ export default function TruckAdminDashboard() {
                       <div style={{ background: "#f8fafc", borderRadius: 8, padding: "10px 12px", marginBottom: 8, border: "1px solid #e2e8f0" }}>
                         <p style={{ margin: 0, fontSize: fontSize.xs, color: "#94a3b8" }}>Total Amount</p>
                         <p style={{ margin: "2px 0 0", fontWeight: 700, color: "#0070f3", fontSize: fontSize.base }}>₦{p.total_amount.toLocaleString()}</p>
+                        {balanceMap[p.procurement_id] !== undefined && (
+                          <span style={{ marginTop: 4, fontSize: fontSize.xs, fontWeight: 600, color: "#16a34a", background: "#f0fdf4", padding: "2px 8px", borderRadius: 4, display: "inline-block" }}>
+                            Balance after: ₦{balanceMap[p.procurement_id].toLocaleString()}
+                          </span>
+                        )}
                       </div>
                       {p.notes && <p style={{ margin: 0, fontSize: fontSize.sm, color: "#64748b" }}><strong>Notes:</strong> {p.notes}</p>}
                     </div>
@@ -610,6 +758,11 @@ export default function TruckAdminDashboard() {
                     <div style={{ background: "#f8fafc", borderRadius: 8, padding: "10px 12px", marginBottom: 12, border: "1px solid #e2e8f0" }}>
                       <p style={{ margin: 0, fontSize: fontSize.xs, color: "#94a3b8" }}>Amount</p>
                       <p style={{ margin: "2px 0 0", fontWeight: 700, color: "#0070f3", fontSize: fontSize.base }}>₦{r.amount.toLocaleString()}</p>
+                      {r.status === "Validated" && balanceMap[r.report_id] !== undefined && (
+                        <span style={{ marginTop: 4, fontSize: fontSize.xs, fontWeight: 600, color: "#16a34a", background: "#f0fdf4", padding: "2px 8px", borderRadius: 4, display: "inline-block" }}>
+                          Balance after: ₦{balanceMap[r.report_id].toLocaleString()}
+                        </span>
+                      )}
                     </div>
                     {r.notes && <p style={{ margin: "0 0 8px 0", fontSize: fontSize.sm, color: "#64748b" }}><strong>Notes:</strong> {r.notes}</p>}
                     {r.status === "Rejected" && r.rejection_reason && (
@@ -687,8 +840,18 @@ export default function TruckAdminDashboard() {
                       )}
                     </div>
                     {atf.atf_status === "Pending" && (
-                      <button onClick={() => setAuthorisingATF(atf)} style={{ width: "100%", padding: "10px 14px", background: "#0070f3", color: "white", border: "none", borderRadius: 8, cursor: "pointer", fontWeight: 700, fontSize: fontSize.sm, minHeight: 40, transition: "opacity 0.2s" }} onMouseEnter={e => e.currentTarget.style.opacity = "0.9"} onMouseLeave={e => e.currentTarget.style.opacity = "1"}>
-                        Authorise ATF
+                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                        <button onClick={() => setAuthorisingATF(atf)} style={{ padding: "10px 14px", background: "#0070f3", color: "white", border: "none", borderRadius: 8, cursor: "pointer", fontWeight: 700, fontSize: fontSize.sm, minHeight: 40, transition: "opacity 0.2s" }} onMouseEnter={e => e.currentTarget.style.opacity = "0.9"} onMouseLeave={e => e.currentTarget.style.opacity = "1"}>
+                          Authorise ATF
+                        </button>
+                        <button onClick={() => { setInvalidatingATF(atf); setInvalidateReason(""); setInvalidateError("") }} style={{ padding: "10px 14px", background: "white", color: "#ef4444", border: "1.5px solid #ef4444", borderRadius: 8, cursor: "pointer", fontWeight: 700, fontSize: fontSize.sm, minHeight: 40, transition: "all 0.2s" }} onMouseEnter={e => { e.currentTarget.style.background = "rgba(239, 68, 68, 0.05)"; e.currentTarget.style.borderColor = "#f87171" }} onMouseLeave={e => { e.currentTarget.style.background = "white"; e.currentTarget.style.borderColor = "#ef4444" }}>
+                          Invalidate
+                        </button>
+                      </div>
+                    )}
+                    {atf.atf_status === "Authorised" && (
+                      <button onClick={() => { setInvalidatingATF(atf); setInvalidateReason(""); setInvalidateError("") }} style={{ width: "100%", padding: "10px 14px", background: "white", color: "#ef4444", border: "1.5px solid #ef4444", borderRadius: 8, cursor: "pointer", fontWeight: 700, fontSize: fontSize.sm, minHeight: 40, transition: "all 0.2s" }} onMouseEnter={e => { e.currentTarget.style.background = "rgba(239, 68, 68, 0.05)"; e.currentTarget.style.borderColor = "#f87171" }} onMouseLeave={e => { e.currentTarget.style.background = "white"; e.currentTarget.style.borderColor = "#ef4444" }}>
+                        Invalidate
                       </button>
                     )}
                     <p style={{ margin: "8px 0 0", fontSize: fontSize.xs, color: "#94a3b8" }}>{new Date(atf.requested_at).toLocaleString()}</p>
@@ -800,6 +963,31 @@ export default function TruckAdminDashboard() {
               </button>
               <button onClick={handleAuthoriseATF} disabled={authoriseLoading} style={{ padding: "12px 16px", background: "#0070f3", color: "white", border: "none", borderRadius: 8, cursor: authoriseLoading ? "not-allowed" : "pointer", fontWeight: 700, fontSize: fontSize.md, minHeight: 44, opacity: authoriseLoading ? 0.7 : 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
                 {authoriseLoading ? <><Icon icon="mdi:loading" width={16} style={{ animation: "spin 1s linear infinite" }} /> Authorising...</> : "Yes, Authorise"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Invalidate ATF Modal */}
+      {invalidatingATF && (
+        <div style={modalOverlay}>
+          <div onClick={e => e.stopPropagation()} style={modalBox}>
+            <h3 style={{ marginBottom: 6, color: "#ef4444", fontSize: fontSize.xl, fontWeight: 700 }}>Invalidate ATF</h3>
+            <p style={{ margin: "0 0 16px", color: "#64748b", fontSize: fontSize.sm }}>
+              <span style={{ fontFamily: "monospace", fontWeight: 700, color: "#0f172a", letterSpacing: 1 }}>{invalidatingATF.atf_code}</span> — {invalidatingATF.litres}L for {invalidatingATF.driver_name}
+            </p>
+            <div style={{ marginBottom: 16 }}>
+              <label style={labelStyle}>Reason *</label>
+              <textarea value={invalidateReason} onChange={e => { setInvalidateReason(e.target.value); setInvalidateError("") }} placeholder="e.g. Only 100L available, requested 200L" rows={4} style={{ width: "100%", padding: "10px 12px", boxSizing: "border-box", borderRadius: 8, border: "1px solid #e2e8f0", fontSize: fontSize.base, resize: "none", background: "white", color: "#0f172a", minHeight: 100 }} />
+            </div>
+            {invalidateError && <div style={{ padding: 12, background: "#fef2f2", borderLeft: "4px solid #ef4444", borderRadius: 4, marginBottom: 16, color: "#b91c1c", fontSize: fontSize.sm, fontWeight: 600 }}>{invalidateError}</div>}
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+              <button onClick={() => { setInvalidatingATF(null); setInvalidateReason(""); setInvalidateError("") }} style={{ padding: "12px 16px", background: "white", border: "1px solid #cbd5e1", color: "#475569", borderRadius: 8, cursor: "pointer", fontWeight: 700, fontSize: fontSize.md, minHeight: 44 }}>
+                Cancel
+              </button>
+              <button onClick={handleInvalidate} disabled={invalidateLoading} style={{ padding: "12px 16px", background: "#ef4444", color: "white", border: "none", borderRadius: 8, cursor: invalidateLoading ? "not-allowed" : "pointer", fontWeight: 700, fontSize: fontSize.md, minHeight: 44, opacity: invalidateLoading ? 0.7 : 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
+                {invalidateLoading ? <><Icon icon="mdi:loading" width={16} style={{ animation: "spin 1s linear infinite" }} /> Invalidating...</> : "Confirm Invalidate"}
               </button>
             </div>
           </div>

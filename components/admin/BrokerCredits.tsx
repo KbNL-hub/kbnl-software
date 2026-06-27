@@ -2,10 +2,12 @@
 
 import { useCallback, useEffect, useState } from "react"
 import { supabase } from "@/lib/supabase"
+import { apiMutate } from "@/lib/api-mutation"
 import { Icon } from "@iconify/react"
 import CustomerSelector from "@/components/CustomerSelector"
 import { formatAmount, parseAmount } from "@/lib/formatAmount"
 import { useBreakpoint } from "@/app/hooks/useBreakpoint"
+import { usePermissions } from "@/lib/PermissionContext"
 
 type Broker = { broker_id: string; broker_name: string }
 type CreditEntry = {
@@ -27,6 +29,8 @@ const fontSize = {
 }
 
 export default function BrokerCredits() {
+  const { getAccess } = usePermissions()
+  const canEdit = getAccess("credit").canEdit
   const bp = useBreakpoint()
   const isMobile = bp === "mobile"
   const [view, setView] = useState<"overview" | "detail">("overview")
@@ -115,6 +119,7 @@ export default function BrokerCredits() {
     .reduce((sum, c) => sum + Number(c.amount), 0)
 
   async function handleAddCredit() {
+    if (!canEdit) { setErrorMsg("You do not have permission to add credits"); return }
     if (!selectedCustomer || !selectedBroker) return
     const amount = parseAmount(amountInput)
     if (!amount || amount <= 0) { setErrorMsg("Enter a valid amount"); return }
@@ -122,25 +127,33 @@ export default function BrokerCredits() {
     setSubmitting(true)
     setErrorMsg("")
 
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) { setErrorMsg("Not authenticated"); setSubmitting(false); return }
+    try {
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) { setErrorMsg("Not authenticated"); return }
 
-    const { error } = await supabase.from("broker_credits").insert({
-      broker_id: selectedBroker.broker_id,
-      customer_name: selectedCustomer.full_name,
-      customer_id: selectedCustomer.customer_id || null,
-      amount,
-      created_by: user.id,
-    })
+      const { error } = await apiMutate("finance", {
+        action: "insert", table: "broker_credits",
+        data: {
+          broker_id: selectedBroker.broker_id,
+          customer_name: selectedCustomer.full_name,
+          customer_id: selectedCustomer.customer_id || null,
+          amount,
+          created_by: user.id,
+        },
+      })
 
-    if (error) { setErrorMsg(error.message); setSubmitting(false); return }
+      if (error) { setErrorMsg(error); return }
 
-    setShowAddModal(false)
-    setSelectedCustomer(null)
-    setAmountInput("")
-    setSubmitting(false)
-    await fetchBrokerCredits(selectedBroker.broker_id)
-    await fetchBrokerTotals()
+      setShowAddModal(false)
+      setSelectedCustomer(null)
+      setAmountInput("")
+      await fetchBrokerCredits(selectedBroker.broker_id)
+      await fetchBrokerTotals()
+    } catch {
+      setErrorMsg("Network error, please try again")
+    } finally {
+      setSubmitting(false)
+    }
   }
 
   function openUpdateModal(credit: CreditEntry) {
@@ -151,6 +164,7 @@ export default function BrokerCredits() {
   }
 
   async function handleUpdate() {
+    if (!canEdit) { setErrorMsg("You do not have permission to update credits"); return }
     if (!updatingCredit) return
     const parsed = parseAmount(updateAmountInput)
     if (isNaN(parsed) || parsed < 0) { setErrorMsg("Enter a valid amount (0 or more)"); return }
@@ -158,22 +172,28 @@ export default function BrokerCredits() {
     setSubmitting(true)
     setErrorMsg("")
 
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) { setErrorMsg("Not authenticated"); setSubmitting(false); return }
+    try {
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) { setErrorMsg("Not authenticated"); return }
 
-    const { error } = await supabase
-      .from("broker_credits")
-      .update({ amount: parsed, cleared_at: parsed === 0 ? new Date().toISOString() : null })
-      .eq("credit_id", updatingCredit.credit_id)
+      const { error } = await apiMutate("finance", {
+        action: "update", table: "broker_credits",
+        data: { amount: parsed, cleared_at: parsed === 0 ? new Date().toISOString() : null },
+        filters: { credit_id: updatingCredit.credit_id },
+      })
 
-    if (error) { setErrorMsg(error.message); setSubmitting(false); return }
+      if (error) { setErrorMsg(error); return }
 
-    setShowUpdateModal(false)
-    setUpdatingCredit(null)
-    setUpdateAmountInput("")
-    setSubmitting(false)
-    await fetchBrokerCredits(selectedBroker!.broker_id)
-    await fetchBrokerTotals()
+      setShowUpdateModal(false)
+      setUpdatingCredit(null)
+      setUpdateAmountInput("")
+      await fetchBrokerCredits(selectedBroker!.broker_id)
+      await fetchBrokerTotals()
+    } catch {
+      setErrorMsg("Network error, please try again")
+    } finally {
+      setSubmitting(false)
+    }
   }
 
   function openAddModal() {
@@ -380,8 +400,8 @@ export default function BrokerCredits() {
                 </div>
               )}
               <button
-                onClick={openAddModal}
-                style={{ padding: "10px 18px", minHeight: 42, display: "flex", alignItems: "center", gap: 6, fontSize: 13, background: "#0070f3", color: "white", border: "none", borderRadius: 8, cursor: "pointer", fontWeight: "bold" }}
+                onClick={() => { if (!canEdit) return; openAddModal() }}
+                style={{ padding: "10px 18px", minHeight: 42, display: "flex", alignItems: "center", gap: 6, fontSize: 13, background: canEdit ? "#0070f3" : "#94a3b8", color: "white", border: "none", borderRadius: 8, cursor: canEdit ? "pointer" : "not-allowed", fontWeight: "bold" }}
               >
                 <Icon icon="mdi:plus" width={16} />
                 Add Credit
@@ -412,8 +432,8 @@ export default function BrokerCredits() {
                   </div>
                   <button
                     onClick={() => openUpdateModal(c)}
-                    disabled={submitting}
-                    style={{ padding: "8px 14px", borderRadius: 8, border: "none", background: "#0070f3", color: "white", fontWeight: "bold", fontSize: 12, cursor: submitting ? "not-allowed" : "pointer", opacity: submitting ? 0.6 : 1, whiteSpace: "nowrap", minHeight: 36 }}
+                    disabled={submitting || !canEdit}
+                    style={{ padding: "8px 14px", borderRadius: 8, border: "none", background: submitting || !canEdit ? "#94a3b8" : "#0070f3", color: "white", fontWeight: "bold", fontSize: 12, cursor: submitting || !canEdit ? "not-allowed" : "pointer", opacity: submitting ? 0.6 : 1, whiteSpace: "nowrap", minHeight: 36 }}
                   >
                     Update
                   </button>
@@ -440,8 +460,8 @@ export default function BrokerCredits() {
                       <td style={{ padding: "12px 16px", textAlign: "right" }}>
                         <button
                           onClick={() => openUpdateModal(c)}
-                          disabled={submitting}
-                          style={{ padding: "6px 10px", borderRadius: 6, border: "none", background: "#0070f3", color: "white", fontWeight: "bold", fontSize: fontSize.xs, cursor: submitting ? "not-allowed" : "pointer", opacity: submitting ? 0.6 : 1, minHeight: 32 }}
+                          disabled={submitting || !canEdit}
+                          style={{ padding: "6px 10px", borderRadius: 6, border: "none", background: submitting || !canEdit ? "#94a3b8" : "#0070f3", color: "white", fontWeight: "bold", fontSize: fontSize.xs, cursor: submitting || !canEdit ? "not-allowed" : "pointer", opacity: submitting ? 0.6 : 1, minHeight: 32 }}
                         >
                           Update
                         </button>
@@ -471,6 +491,7 @@ export default function BrokerCredits() {
               placeholder="0"
               value={amountInput}
               onChange={e => setAmountInput(formatAmount(e.target.value))}
+              readOnly={!canEdit}
               style={{ width: "100%", padding: "12px 14px", boxSizing: "border-box", borderRadius: 8, border: "1.5px solid #ccc", fontSize: 14, background: "white", color: "#171717", outline: "none", minHeight: 48 }}
             />
 
@@ -480,8 +501,8 @@ export default function BrokerCredits() {
               <button onClick={() => setShowAddModal(false)} style={{ flex: 1, padding: "12px 0", background: "white", border: "1.5px solid #d1d5db", borderRadius: 8, cursor: "pointer", fontSize: 14, minHeight: 48 }}>Cancel</button>
               <button
                 onClick={handleAddCredit}
-                disabled={submitting || !selectedCustomer || !parseAmount(amountInput)}
-                style={{ flex: 1, padding: "12px 0", background: "#0070f3", color: "white", border: "none", borderRadius: 8, cursor: (submitting || !selectedCustomer || !parseAmount(amountInput)) ? "not-allowed" : "pointer", fontWeight: "bold", fontSize: 14, minHeight: 48, opacity: (submitting || !selectedCustomer || !parseAmount(amountInput)) ? 0.5 : 1 }}
+                disabled={submitting || !selectedCustomer || !parseAmount(amountInput) || !canEdit}
+                style={{ flex: 1, padding: "12px 0", background: submitting || !canEdit || !selectedCustomer || !parseAmount(amountInput) ? "#94a3b8" : "#0070f3", color: "white", border: "none", borderRadius: 8, cursor: (submitting || !canEdit || !selectedCustomer || !parseAmount(amountInput)) ? "not-allowed" : "pointer", fontWeight: "bold", fontSize: 14, minHeight: 48, opacity: (submitting || !selectedCustomer || !parseAmount(amountInput)) ? 0.5 : 1 }}
               >
                 {submitting ? "Adding..." : "Add Credit"}
               </button>
@@ -506,6 +527,7 @@ export default function BrokerCredits() {
               placeholder="0"
               value={updateAmountInput}
               onChange={e => setUpdateAmountInput(formatAmount(e.target.value))}
+              readOnly={!canEdit}
               style={{ width: "100%", padding: "12px 14px", boxSizing: "border-box", borderRadius: 8, border: "1.5px solid #ccc", fontSize: 14, background: "white", color: "#171717", outline: "none", minHeight: 48 }}
             />
 
@@ -515,8 +537,8 @@ export default function BrokerCredits() {
               <button onClick={() => setShowUpdateModal(false)} style={{ flex: 1, padding: "12px 0", background: "white", border: "1.5px solid #d1d5db", borderRadius: 8, cursor: "pointer", fontSize: 14, minHeight: 48 }}>Cancel</button>
               <button
                 onClick={handleUpdate}
-                disabled={submitting || updateAmountInput === ""}
-                style={{ flex: 1, padding: "12px 0", background: "#0070f3", color: "white", border: "none", borderRadius: 8, cursor: (submitting || updateAmountInput === "") ? "not-allowed" : "pointer", fontWeight: "bold", fontSize: 14, minHeight: 48, opacity: (submitting || updateAmountInput === "") ? 0.5 : 1 }}
+                disabled={submitting || !canEdit || updateAmountInput === ""}
+                style={{ flex: 1, padding: "12px 0", background: submitting || !canEdit || updateAmountInput === "" ? "#94a3b8" : "#0070f3", color: "white", border: "none", borderRadius: 8, cursor: submitting || !canEdit || updateAmountInput === "" ? "not-allowed" : "pointer", fontWeight: "bold", fontSize: 14, minHeight: 48, opacity: (submitting || updateAmountInput === "") ? 0.5 : 1 }}
               >
                 {submitting ? "Updating..." : "Update"}
               </button>

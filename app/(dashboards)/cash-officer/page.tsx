@@ -4,6 +4,7 @@ import { useEffect, useState, useRef } from "react"
 import { useRouter } from "next/navigation"
 import { supabase } from "@/lib/supabase"
 import { Icon } from "@iconify/react"
+import RoleSwitcher from "@/components/RoleSwitcher"
 import CashOfficerPanel from "@/components/CashOfficerPanel"
 import ReportModal from "@/components/ReportModal"
 
@@ -67,20 +68,22 @@ export default function CashOfficerDashboard() {
     const { data: { session } } = await supabase.auth.getSession()
     if (!session) { router.push("/login"); return }
 
-    // Verify role
     const { data: profile } = await supabase
-      .from("Profiles").select("role").eq("user_id", session.user.id).single()
-    if (profile?.role !== "CashOfficer") { router.push("/login"); return }
+      .from("Profiles").select("full_name").eq("user_id", session.user.id).single()
 
-    // Fetch clerk profile
-    const { data: clerkData } = await supabase
-      .from("cash_officers")
-      .select("clerk_id, full_name, office_name, profile_picture_url")
-      .eq("clerk_id", session.user.id)
-      .single()
+    if (profile) {
+      const { data: clerkData } = await supabase
+        .from("cash_officers")
+        .select("clerk_id, full_name, office_name, profile_picture_url")
+        .eq("clerk_id", session.user.id)
+        .single()
 
-    if (!clerkData) { router.push("/login"); return }
-    setClerk(clerkData)
+      if (clerkData) {
+        setClerk(clerkData)
+      } else {
+        setClerk({ clerk_id: session.user.id, full_name: profile.full_name, office_name: "" })
+      }
+    }
     
 
     setLoading(false)
@@ -255,9 +258,7 @@ export default function CashOfficerDashboard() {
               <h1 style={{ margin: 0, fontSize: isMobile ? fontSize.lg : fontSize.xl, fontWeight: 700, color: "#0070f3" }}>
                 {clerk?.full_name}
               </h1>
-              <p style={{ margin: "2px 0 0", fontSize: fontSize.sm, color: "#64748b" }}>
-                {clerk?.office_name} Office
-              </p>
+              <RoleSwitcher currentRole="CashOfficer" style={{ margin: "2px 0 0", fontSize: fontSize.sm, color: "#64748b" }} />
             </div>
           </div>
           <div style={{ display: "flex", gap: 8 }}>

@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react"
 import { Icon } from "@iconify/react"
 import { supabase } from "@/lib/supabase"
+import { apiMutate } from "@/lib/api-mutation"
 import { formatAmount, parseAmount } from "@/lib/formatAmount"
 import ModernInput from "@/components/ModernInput"
 import CustomerSelector from "@/components/CustomerSelector"
@@ -102,13 +103,19 @@ export default function MyStops() {
     if (!user) return
 
     setSubmitting(true)
-    const { error } = await supabase.from("Stops").update({
-      disputed: true, dispute_reason: disputeReason, disputed_by: user.id,
-    }).eq("stop_id", disputingStop.stop_id)
-    setSubmitting(false)
-
-    if (error) { setMessage("Failed to dispute stop"); return }
-    setDisputingStop(null); setDisputeReason(""); if (brokerId) fetchStops(brokerId)
+    try {
+      const { error } = await apiMutate("trips", {
+        action: "update", table: "Stops",
+        data: { disputed: true, dispute_reason: disputeReason, disputed_by: user.id },
+        filters: { stop_id: disputingStop.stop_id },
+      })
+      if (error) { setMessage("Failed to dispute stop"); return }
+      setDisputingStop(null); setDisputeReason(""); if (brokerId) fetchStops(brokerId)
+    } catch {
+      setMessage("Failed to dispute stop")
+    } finally {
+      setSubmitting(false)
+    }
   }
 
   async function handleConfirm() {
@@ -117,27 +124,32 @@ export default function MyStops() {
     if (!user) return
 
     setSubmitting(true)
-    const customerIdToSave = selectedCustomer?.customer_id ?? selectedStop.customer_id
+    try {
+      const customerIdToSave = selectedCustomer?.customer_id ?? selectedStop.customer_id
 
-    const { error: stopError } = await supabase.from("Stops").update({
-      confirmed: true, customer_id: customerIdToSave, updated_by: user.id,
-    }).eq("stop_id", selectedStop.stop_id)
+      const { error } = await apiMutate("trips", {
+        action: "transaction",
+        sub_actions: [
+          {
+            action: "update", table: "Stops",
+            data: { confirmed: true, customer_id: customerIdToSave, updated_by: user.id },
+            filters: { stop_id: selectedStop.stop_id },
+          },
+          {
+            action: "insert", table: "Stop_Confirmations",
+            data: { stop_id: selectedStop.stop_id, broker_id: brokerId, customer_id: customerIdToSave, price_per_bag: parseAmount(pricePerBag) },
+          },
+        ],
+      })
 
-    if (stopError) { setMessage("Failed to confirm"); setSubmitting(false); return }
-
-    const { error: confirmError } = await supabase.from("Stop_Confirmations").insert([{
-      stop_id: selectedStop.stop_id, broker_id: brokerId,
-      customer_id: customerIdToSave, price_per_bag: parseAmount(pricePerBag),
-    }])
-
-    setSubmitting(false)
-    if (confirmError) {
-      await supabase.from("Stops").update({ confirmed: false, customer_id: selectedStop.customer_id }).eq("stop_id", selectedStop.stop_id)
-      setMessage("Failed to save confirmation record. Please try again.")
-      return
+      if (error) { setMessage("Failed to confirm stop. Please try again."); return }
+      closeModal()
+      if (brokerId) fetchStops(brokerId)
+    } catch {
+      setMessage("Failed to confirm stop. Please try again.")
+    } finally {
+      setSubmitting(false)
     }
-    closeModal()
-    if (brokerId) fetchStops(brokerId)
   }
 
   if (loading) return <p style={{ color: "#888" }}>Loading…</p>

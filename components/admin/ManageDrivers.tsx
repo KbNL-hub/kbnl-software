@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from "react"
 import { supabase } from "@/lib/supabase"
+import { usePermissions } from "@/lib/PermissionContext"
 
 type Driver = {
   driver_id: string
@@ -62,9 +63,11 @@ const getPillStyle = (filter: string, isActive: boolean) => {
 
 export default function ManageDrivers() {
   const { isMobile, isDesktop } = useBreakpoint()
+  const { getAccess } = usePermissions()
+  const canEdit = getAccess("manage-drivers").canEdit
   const [drivers, setDrivers] = useState<Driver[]>([])
   const [loading, setLoading] = useState(true)
-  const [viewMode, setViewMode] = useState<ViewMode>(isMobile ? "card" : "table")
+  const [viewMode, setViewMode] = useState<ViewMode>("card")
   const [filterStatus, setFilterStatus] = useState("All")
   const [editingDriver, setEditingDriver] = useState<Driver | null>(null)
   const [editName, setEditName] = useState("")
@@ -79,16 +82,30 @@ export default function ManageDrivers() {
   const filteredDrivers = filterStatus === "All" ? drivers : drivers.filter((d) => d.status === filterStatus)
 
   async function fetchDrivers() {
-    const { data, error } = await supabase
-      .from("Drivers")
-      .select("*")
-      .order("full_name", { ascending: true })
+    try {
+      const { data, error } = await supabase
+        .from("Drivers")
+        .select("*")
+        .order("full_name", { ascending: true })
 
-    if (!error) setDrivers(data || [])
-    setLoading(false)
+      if (error) {
+        console.error("Failed to fetch drivers", error)
+        return
+      }
+
+      setDrivers(data || [])
+    } catch (error) {
+      console.error("Failed to fetch drivers", error)
+    } finally {
+      setLoading(false)
+    }
   }
 
   useEffect(() => { fetchDrivers() }, [])
+
+  useEffect(() => {
+    if (isDesktop) setViewMode("table")
+  }, [isDesktop])
 
   function startEdit(driver: Driver) {
     setEditingDriver(driver)
@@ -104,63 +121,78 @@ export default function ManageDrivers() {
   }
 
   async function handleUpdate() {
+    if (!canEdit) return
     if (!editingDriver) return
     if (!editName.trim()) return setMessage("Full name is required")
 
     setSubmitting(true)
 
-    const { error } = await supabase
-      .from("Drivers")
-      .update({ full_name: editName, phone_number: editPhone || null })
-      .eq("driver_id", editingDriver.driver_id)
+    try {
+      const { error } = await supabase
+        .from("Drivers")
+        .update({ full_name: editName, phone_number: editPhone || null })
+        .eq("driver_id", editingDriver.driver_id)
 
-    setSubmitting(false)
+      if (error) {
+        setMessage("Failed to update driver")
+        return
+      }
 
-    if (error) {
-      setMessage("Failed to update driver")
-      return
+      closeModals()
+      fetchDrivers()
+    } catch {
+      setMessage("Network error, please try again")
+    } finally {
+      setSubmitting(false)
     }
-
-    closeModals()
-    fetchDrivers()
   }
 
   async function handleSuspend(driver: Driver) {
+    if (!canEdit) return
     const newStatus = driver.status === "Suspended" ? "Active" : "Suspended"
     setSubmitting(true)
 
-    const { error } = await supabase
-      .from("Drivers")
-      .update({ status: newStatus })
-      .eq("driver_id", driver.driver_id)
+    try {
+      const { error } = await supabase
+        .from("Drivers")
+        .update({ status: newStatus })
+        .eq("driver_id", driver.driver_id)
 
-    setSubmitting(false)
+      if (error) {
+        setMessage("Failed to update driver status")
+        return
+      }
 
-    if (error) {
-      setMessage("Failed to update driver status")
-      return
+      fetchDrivers()
+    } catch {
+      setMessage("Network error, please try again")
+    } finally {
+      setSubmitting(false)
     }
-
-    fetchDrivers()
   }
 
   async function handleDelete(driver_id: string) {
+    if (!canEdit) return
     setSubmitting(true)
 
-    const { error } = await supabase
-      .from("Drivers")
-      .delete()
-      .eq("driver_id", driver_id)
+    try {
+      const { error } = await supabase
+        .from("Drivers")
+        .delete()
+        .eq("driver_id", driver_id)
 
-    setSubmitting(false)
+      if (error) {
+        setMessage("Failed to delete driver")
+        return
+      }
 
-    if (error) {
-      setMessage("Failed to delete driver")
-      return
+      closeModals()
+      fetchDrivers()
+    } catch {
+      setMessage("Network error, please try again")
+    } finally {
+      setSubmitting(false)
     }
-
-    closeModals()
-    fetchDrivers()
   }
 
   const statusPillColor = (status: string) => {
@@ -304,25 +336,28 @@ export default function ManageDrivers() {
                     <div style={{ display: "flex", gap: 8 }}>
                       <button
                         onClick={() => startEdit(driver)}
-                        style={{ flex: 1, padding: "8px 12px", cursor: "pointer", borderRadius: 6, border: "1px solid #e2e8f0", color: "#0070f3", background: "#f0f7ff", fontSize: fontSize.sm, fontWeight: 500, transition: "all 0.2s" }}
-                        onMouseEnter={e => { e.currentTarget.style.background = "#e0efff"; e.currentTarget.style.borderColor = "#0070f3" }}
-                        onMouseLeave={e => { e.currentTarget.style.background = "#f0f7ff"; e.currentTarget.style.borderColor = "#e2e8f0" }}
+                        disabled={!canEdit}
+                        style={{ flex: 1, padding: "8px 12px", cursor: !canEdit ? "not-allowed" : "pointer", borderRadius: 6, border: "1px solid #e2e8f0", color: "#0070f3", background: !canEdit ? "#94a3b8" : "#f0f7ff", fontSize: fontSize.sm, fontWeight: 500, transition: "all 0.2s" }}
+                        onMouseEnter={e => { if (canEdit) { e.currentTarget.style.background = "#e0efff"; e.currentTarget.style.borderColor = "#0070f3" } }}
+                        onMouseLeave={e => { if (canEdit) { e.currentTarget.style.background = "#f0f7ff"; e.currentTarget.style.borderColor = "#e2e8f0" } }}
                       >
                         Edit
                       </button>
                       <button
                         onClick={() => handleSuspend(driver)}
-                        style={{ flex: 1, padding: "8px 12px", cursor: "pointer", borderRadius: 6, border: `1px solid ${driver.status === "Suspended" ? "#16a34a" : "#f5a623"}`, color: driver.status === "Suspended" ? "#16a34a" : "#f5a623", background: driver.status === "Suspended" ? "#f0fdf4" : "#fffbeb", fontSize: fontSize.sm, fontWeight: 500, transition: "all 0.2s" }}
-                        onMouseEnter={e => { e.currentTarget.style.opacity = "0.8" }}
-                        onMouseLeave={e => { e.currentTarget.style.opacity = "1" }}
+                        disabled={!canEdit}
+                        style={{ flex: 1, padding: "8px 12px", cursor: !canEdit ? "not-allowed" : "pointer", borderRadius: 6, border: `1px solid ${!canEdit ? "#94a3b8" : driver.status === "Suspended" ? "#16a34a" : "#f5a623"}`, color: !canEdit ? "#94a3b8" : driver.status === "Suspended" ? "#16a34a" : "#f5a623", background: !canEdit ? "#e2e8f0" : driver.status === "Suspended" ? "#f0fdf4" : "#fffbeb", fontSize: fontSize.sm, fontWeight: 500, transition: "all 0.2s" }}
+                        onMouseEnter={e => { if (!canEdit) return; e.currentTarget.style.opacity = "0.8" }}
+                        onMouseLeave={e => { if (!canEdit) return; e.currentTarget.style.opacity = "1" }}
                       >
                         {driver.status === "Suspended" ? "Unsuspend" : "Suspend"}
                       </button>
                       <button
                         onClick={() => { setDeletingId(driver.driver_id); setMessage("") }}
-                        style={{ flex: 1, padding: "8px 12px", cursor: "pointer", borderRadius: 6, border: "1px solid #fee2e2", color: "#ef4444", background: "#fef2f2", fontSize: fontSize.sm, fontWeight: 500, transition: "all 0.2s" }}
-                        onMouseEnter={e => { e.currentTarget.style.background = "#fee2e2" }}
-                        onMouseLeave={e => { e.currentTarget.style.background = "#fef2f2" }}
+                        disabled={!canEdit}
+                        style={{ flex: 1, padding: "8px 12px", cursor: !canEdit ? "not-allowed" : "pointer", borderRadius: 6, border: "1px solid #fee2e2", color: "#ef4444", background: !canEdit ? "#94a3b8" : "#fef2f2", fontSize: fontSize.sm, fontWeight: 500, transition: "all 0.2s" }}
+                        onMouseEnter={e => { if (canEdit) e.currentTarget.style.background = "#fee2e2" }}
+                        onMouseLeave={e => { if (canEdit) e.currentTarget.style.background = "#fef2f2" }}
                       >
                         Delete
                       </button>
@@ -364,25 +399,28 @@ export default function ManageDrivers() {
                           <div style={{ display: "flex", gap: 4, justifyContent: "flex-end", flexWrap: "wrap" }}>
                             <button
                               onClick={() => startEdit(driver)}
-                              style={{ padding: "6px 10px", cursor: "pointer", borderRadius: 6, border: "1px solid #e2e8f0", color: "#0070f3", background: "#f0f7ff", fontSize: fontSize.xs, fontWeight: 500, transition: "all 0.2s", minHeight: 32 }}
-                              onMouseEnter={e => { e.currentTarget.style.background = "#e0efff"; e.currentTarget.style.borderColor = "#0070f3" }}
-                              onMouseLeave={e => { e.currentTarget.style.background = "#f0f7ff"; e.currentTarget.style.borderColor = "#e2e8f0" }}
+                              disabled={!canEdit}
+                              style={{ padding: "6px 10px", cursor: !canEdit ? "not-allowed" : "pointer", borderRadius: 6, border: "1px solid #e2e8f0", color: "#0070f3", background: !canEdit ? "#94a3b8" : "#f0f7ff", fontSize: fontSize.xs, fontWeight: 500, transition: "all 0.2s", minHeight: 32 }}
+                              onMouseEnter={e => { if (canEdit) { e.currentTarget.style.background = "#e0efff"; e.currentTarget.style.borderColor = "#0070f3" } }}
+                              onMouseLeave={e => { if (canEdit) { e.currentTarget.style.background = "#f0f7ff"; e.currentTarget.style.borderColor = "#e2e8f0" } }}
                             >
                               Edit
                             </button>
                             <button
                               onClick={() => handleSuspend(driver)}
-                              style={{ padding: "6px 10px", cursor: "pointer", borderRadius: 6, border: `1px solid ${driver.status === "Suspended" ? "#16a34a" : "#f5a623"}`, color: driver.status === "Suspended" ? "#16a34a" : "#f5a623", background: driver.status === "Suspended" ? "#f0fdf4" : "#fffbeb", fontSize: fontSize.xs, fontWeight: 500, transition: "all 0.2s", minHeight: 32 }}
-                              onMouseEnter={e => { e.currentTarget.style.opacity = "0.8" }}
-                              onMouseLeave={e => { e.currentTarget.style.opacity = "1" }}
+                              disabled={!canEdit}
+                              style={{ padding: "6px 10px", cursor: !canEdit ? "not-allowed" : "pointer", borderRadius: 6, border: `1px solid ${!canEdit ? "#94a3b8" : driver.status === "Suspended" ? "#16a34a" : "#f5a623"}`, color: !canEdit ? "#94a3b8" : driver.status === "Suspended" ? "#16a34a" : "#f5a623", background: !canEdit ? "#e2e8f0" : driver.status === "Suspended" ? "#f0fdf4" : "#fffbeb", fontSize: fontSize.xs, fontWeight: 500, transition: "all 0.2s", minHeight: 32 }}
+                              onMouseEnter={e => { if (!canEdit) return; e.currentTarget.style.opacity = "0.8" }}
+                              onMouseLeave={e => { if (!canEdit) return; e.currentTarget.style.opacity = "1" }}
                             >
                               {driver.status === "Suspended" ? "Unsuspend" : "Suspend"}
                             </button>
                             <button
                               onClick={() => { setDeletingId(driver.driver_id); setMessage("") }}
-                              style={{ padding: "6px 10px", cursor: "pointer", borderRadius: 6, border: "1px solid #fee2e2", color: "#ef4444", background: "#fef2f2", fontSize: fontSize.xs, fontWeight: 500, transition: "all 0.2s", minHeight: 32 }}
-                              onMouseEnter={e => { e.currentTarget.style.background = "#fee2e2" }}
-                              onMouseLeave={e => { e.currentTarget.style.background = "#fef2f2" }}
+                              disabled={!canEdit}
+                              style={{ padding: "6px 10px", cursor: !canEdit ? "not-allowed" : "pointer", borderRadius: 6, border: "1px solid #fee2e2", color: "#ef4444", background: !canEdit ? "#94a3b8" : "#fef2f2", fontSize: fontSize.xs, fontWeight: 500, transition: "all 0.2s", minHeight: 32 }}
+                              onMouseEnter={e => { if (canEdit) e.currentTarget.style.background = "#fee2e2" }}
+                              onMouseLeave={e => { if (canEdit) e.currentTarget.style.background = "#fef2f2" }}
                             >
                               Delete
                             </button>
@@ -419,18 +457,18 @@ export default function ManageDrivers() {
                 <div style={{ display: "flex", flexDirection: "column", gap: 14, marginBottom: 20 }}>
                   <div>
                     <label style={{ display: "block", marginBottom: 6, color: "#475569", fontSize: fontSize.sm, fontWeight: 500 }}>Full Name *</label>
-                    <input type="text" value={editName} onChange={(e) => { setEditName(e.target.value); setMessage("") }} onKeyDown={(e) => { if (e.key === "Enter") phoneRef.current?.focus() }} style={inputStyle} />
+                    <input type="text" value={editName} readOnly={!canEdit} onChange={(e) => { setEditName(e.target.value); setMessage("") }} onKeyDown={(e) => { if (e.key === "Enter") phoneRef.current?.focus() }} style={inputStyle} />
                   </div>
 
                   <div>
                     <label style={{ display: "block", marginBottom: 6, color: "#475569", fontSize: fontSize.sm, fontWeight: 500 }}>Phone Number</label>
-                    <input ref={phoneRef} type="text" value={editPhone} onChange={(e) => { setEditPhone(e.target.value); setMessage("") }} onKeyDown={(e) => { if (e.key === "Enter") handleUpdate() }} style={inputStyle} />
+                    <input ref={phoneRef} type="text" value={editPhone} readOnly={!canEdit} onChange={(e) => { setEditPhone(e.target.value); setMessage("") }} onKeyDown={(e) => { if (e.key === "Enter") handleUpdate() }} style={inputStyle} />
                   </div>
                 </div>
 
                 {message && <div style={{ padding: 12, background: "#fef2f2", borderLeft: "4px solid #ef4444", borderRadius: 4, marginBottom: 20, color: "#b91c1c", fontSize: fontSize.sm }}>{message}</div>}
 
-                <button onClick={handleUpdate} disabled={submitting} style={{ width: "100%", padding: "12px 16px", background: "#0070f3", color: "white", border: "none", borderRadius: 8, cursor: submitting ? "not-allowed" : "pointer", fontWeight: 600, fontSize: fontSize.md, transition: "opacity 0.2s", opacity: submitting ? 0.7 : 1, minHeight: 44 }}>
+                <button onClick={handleUpdate} disabled={submitting || !canEdit} style={{ width: "100%", padding: "12px 16px", background: submitting || !canEdit ? "#94a3b8" : "#0070f3", color: "white", border: "none", borderRadius: 8, cursor: submitting || !canEdit ? "not-allowed" : "pointer", fontWeight: 600, fontSize: fontSize.md, transition: "opacity 0.2s", opacity: submitting || !canEdit ? 0.7 : 1, minHeight: 44 }}>
                   {submitting ? "Saving..." : "Save Changes"}
                 </button>
               </>
@@ -451,7 +489,7 @@ export default function ManageDrivers() {
                     <button onClick={closeModals} style={{ padding: "12px 16px", background: "white", color: "#475569", border: "1px solid #cbd5e1", borderRadius: 8, cursor: "pointer", fontWeight: 600, fontSize: fontSize.md, minHeight: 44, transition: "all 0.2s" }} onMouseEnter={e => { e.currentTarget.style.background = "#f8fafc"; e.currentTarget.style.borderColor = "#0070f3"; e.currentTarget.style.color = "#0070f3" }} onMouseLeave={e => { e.currentTarget.style.background = "white"; e.currentTarget.style.borderColor = "#cbd5e1"; e.currentTarget.style.color = "#475569" }}>
                       Cancel
                     </button>
-                    <button onClick={() => handleDelete(deletingId)} disabled={submitting} style={{ padding: "12px 16px", background: "#ef4444", color: "white", border: "none", borderRadius: 8, cursor: submitting ? "not-allowed" : "pointer", fontWeight: 600, fontSize: fontSize.md, opacity: submitting ? 0.7 : 1, minHeight: 44, transition: "all 0.2s" }} onMouseEnter={e => { if (!submitting) e.currentTarget.style.background = "#dc2626" }} onMouseLeave={e => { e.currentTarget.style.background = "#ef4444" }}>
+                    <button onClick={() => handleDelete(deletingId)} disabled={submitting || !canEdit} style={{ padding: "12px 16px", background: submitting || !canEdit ? "#94a3b8" : "#ef4444", color: "white", border: "none", borderRadius: 8, cursor: submitting || !canEdit ? "not-allowed" : "pointer", fontWeight: 600, fontSize: fontSize.md, opacity: submitting || !canEdit ? 0.7 : 1, minHeight: 44, transition: "all 0.2s" }} onMouseEnter={e => { if (!submitting && canEdit) e.currentTarget.style.background = "#dc2626" }} onMouseLeave={e => { e.currentTarget.style.background = "#ef4444" }}>
                       {submitting ? "Deleting..." : "Yes, Delete"}
                     </button>
                   </div>

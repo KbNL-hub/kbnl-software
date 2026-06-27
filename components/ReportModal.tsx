@@ -3,6 +3,14 @@
 import { useEffect, useRef, useState } from "react"
 import { Icon } from "@iconify/react"
 import { supabase } from "@/lib/supabase"
+import { apiMutate } from "@/lib/api-mutation"
+
+type ReportItem = {
+  id: string
+  message: string
+  created_at: string
+  resolved: boolean
+}
 
 type ReportModalProps = {
   isOpen: boolean
@@ -11,24 +19,24 @@ type ReportModalProps = {
   userRole: string
 }
 
+const fontSize = { xs: 12, sm: 13, base: 14, md: 15 }
+
 export default function ReportModal({ isOpen, onClose, userId, userRole }: ReportModalProps) {
+  const [mode, setMode] = useState<"list" | "form" | "success">("list")
+  const [reports, setReports] = useState<ReportItem[]>([])
+  const [loading, setLoading] = useState(false)
+  const [resolving, setResolving] = useState<string | null>(null)
   const [message, setMessage] = useState("")
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState("")
-  const [success, setSuccess] = useState(false)
   const closeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  function handleClose() {
-    if (closeTimerRef.current) {
-      clearTimeout(closeTimerRef.current)
-      closeTimerRef.current = null
+  useEffect(() => {
+    if (isOpen) {
+      setMode("list")
+      fetchReports()
     }
-    setMessage("")
-    setError("")
-    setSuccess(false)
-    setSubmitting(false)
-    onClose()
-  }
+  }, [isOpen])
 
   useEffect(() => {
     return () => {
@@ -36,7 +44,41 @@ export default function ReportModal({ isOpen, onClose, userId, userRole }: Repor
     }
   }, [])
 
-  if (!isOpen) return null
+  async function fetchReports() {
+    setLoading(true)
+    const { data } = await supabase
+      .from("reports")
+      .select("id, message, created_at, resolved")
+      .eq("user_id", userId)
+      .order("created_at", { ascending: false })
+    setReports((data || []) as ReportItem[])
+    setLoading(false)
+  }
+
+  async function handleResolve(id: string) {
+    setResolving(id)
+    try {
+      await apiMutate("admin", {
+        action: "update", table: "reports",
+        data: { resolved: true }, filters: { id },
+      })
+      setReports(prev => prev.map(r => r.id === id ? { ...r, resolved: true } : r))
+    } catch {
+      // silent
+    } finally {
+      setResolving(null)
+    }
+  }
+
+  function handleClose() {
+    if (closeTimerRef.current) {
+      clearTimeout(closeTimerRef.current)
+      closeTimerRef.current = null
+    }
+    setMessage(""); setError(""); setSubmitting(false)
+    setMode("list"); setReports([])
+    onClose()
+  }
 
   async function handleSubmit() {
     if (!userId.trim() || !userRole.trim()) {
@@ -51,28 +93,30 @@ export default function ReportModal({ isOpen, onClose, userId, userRole }: Repor
     setError("")
 
     try {
-      const { error: insertError } = await supabase.from("reports").insert([{
-        user_id: userId,
-        role: userRole,
-        message: message.trim(),
-        resolved: false,
-      }])
+      const { error: insertError } = await apiMutate("reports", {
+        action: "insert", table: "reports",
+        data: { user_id: userId, role: userRole, message: message.trim(), resolved: false },
+      })
 
       if (insertError) {
         setError("Failed to submit. Try again.")
         return
       }
 
-      setSuccess(true)
+      setMode("success")
       closeTimerRef.current = setTimeout(() => {
-        handleClose()
-      }, 2000)
+        setMode("list")
+        setMessage("")
+        fetchReports()
+      }, 1500)
     } catch {
       setError("Failed to submit. Try again.")
     } finally {
       setSubmitting(false)
     }
   }
+
+  if (!isOpen) return null
 
   const modalOverlay: React.CSSProperties = {
     position: "fixed", inset: 0, background: "rgba(15, 23, 42, 0.6)",
@@ -83,7 +127,7 @@ export default function ReportModal({ isOpen, onClose, userId, userRole }: Repor
 
   const modalBox: React.CSSProperties = {
     background: "white", borderRadius: 12, padding: 32,
-    width: "100%", maxWidth: 480,
+    width: "100%", maxWidth: 480, maxHeight: "85vh", overflowY: "auto",
     boxShadow: "0 25px 50px -12px rgba(0, 0, 0, 0.25)",
     fontFamily: "'Inter', sans-serif",
   }
@@ -93,11 +137,16 @@ export default function ReportModal({ isOpen, onClose, userId, userRole }: Repor
     marginBottom: 8, fontSize: 13, color: "#475569",
   }
 
+  const unresolved = reports.filter(r => !r.resolved)
+  const resolvedCount = reports.filter(r => r.resolved).length
+
   return (
     <div style={modalOverlay} onClick={handleClose}>
       <div style={modalBox} onClick={e => e.stopPropagation()}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
-          <h2 style={{ margin: 0, fontSize: 18, fontWeight: 700, color: "#0f172a" }}>Submit Report</h2>
+          <h2 style={{ margin: 0, fontSize: 18, fontWeight: 700, color: "#0f172a" }}>
+            {mode === "list" ? "My Reports" : mode === "success" ? "" : "Submit Report"}
+          </h2>
           <button
             onClick={handleClose}
             style={{ background: "none", border: "none", cursor: "pointer", padding: 4, color: "#94a3b8", transition: "color 0.2s" }}
@@ -108,12 +157,14 @@ export default function ReportModal({ isOpen, onClose, userId, userRole }: Repor
           </button>
         </div>
 
-        {success ? (
+        {mode === "success" ? (
           <div style={{ textAlign: "center", padding: "24px 0" }}>
-            <Icon icon="mdi:check-circle" width={48} color="#16a34a" style={{ marginBottom: 12 }} />
+            <div style={{ width: 56, height: 56, background: "#f0fff4", borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 12px", border: "2px solid #86efac" }}>
+              <Icon icon="mdi:check-circle" width={28} color="#16a34a" />
+            </div>
             <p style={{ fontSize: 16, fontWeight: 600, color: "#0f172a", margin: 0 }}>Report submitted successfully!</p>
           </div>
-        ) : (
+        ) : mode === "form" ? (
           <>
             <div style={{ marginBottom: 16 }}>
               <label style={labelStyle}>Describe your issue</label>
@@ -143,27 +194,126 @@ export default function ReportModal({ isOpen, onClose, userId, userRole }: Repor
               </div>
             )}
 
-            <button
-              onClick={handleSubmit}
-              disabled={submitting}
-              style={{
-                width: "100%", padding: "14px 16px",
-                background: submitting ? "#94a3b8" : "#0070f3",
-                color: "white", border: "none", borderRadius: 8,
-                cursor: submitting ? "not-allowed" : "pointer",
-                fontWeight: 700, fontSize: 14,
-                display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
-                opacity: submitting ? 0.7 : 1,
-                transition: "all 0.2s ease",
-                minHeight: 44,
-              }}
-            >
-              {submitting ? (
-                <><Icon icon="mdi:loading" width={16} style={{ animation: "spin 1s linear infinite" }} /> Submitting...</>
-              ) : (
-                <><Icon icon="mdi:send" width={16} /> Submit Report</>
-              )}
-            </button>
+            <div style={{ display: "flex", gap: 8 }}>
+              <button
+                onClick={() => { setMode("list"); setMessage(""); setError("") }}
+                style={{
+                  padding: "14px 16px", background: "white", border: "1px solid #cbd5e1",
+                  borderRadius: 8, cursor: "pointer", fontWeight: 600, fontSize: 14,
+                  color: "#475569", minHeight: 44, flex: 1,
+                }}
+              >
+                Back
+              </button>
+              <button
+                onClick={handleSubmit}
+                disabled={submitting}
+                style={{
+                  flex: 1, padding: "14px 16px",
+                  background: submitting ? "#94a3b8" : "#0070f3",
+                  color: "white", border: "none", borderRadius: 8,
+                  cursor: submitting ? "not-allowed" : "pointer",
+                  fontWeight: 700, fontSize: 14,
+                  display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
+                  opacity: submitting ? 0.7 : 1,
+                  transition: "all 0.2s ease",
+                  minHeight: 44,
+                }}
+              >
+                {submitting ? (
+                  <><Icon icon="mdi:loading" width={16} style={{ animation: "spin 1s linear infinite" }} /> Submitting...</>
+                ) : (
+                  <><Icon icon="mdi:send" width={16} /> Submit Report</>
+                )}
+              </button>
+            </div>
+          </>
+        ) : (
+          <>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+              <p style={{ margin: 0, fontSize: fontSize.sm, color: "#64748b" }}>
+                {unresolved.length} open &middot; {resolvedCount} resolved
+              </p>
+              <button
+                onClick={() => { setMode("form"); setMessage(""); setError("") }}
+                style={{
+                  padding: "8px 16px", background: "#0070f3", color: "white",
+                  border: "none", borderRadius: 6, cursor: "pointer",
+                  fontWeight: 600, fontSize: fontSize.sm,
+                  display: "flex", alignItems: "center", gap: 6,
+                  minHeight: 36, transition: "all 0.2s ease",
+                }}
+                onMouseEnter={e => e.currentTarget.style.background = "#0060df"}
+                onMouseLeave={e => e.currentTarget.style.background = "#0070f3"}
+              >
+                <Icon icon="mdi:plus" width={16} /> New Report
+              </button>
+            </div>
+
+            {loading ? (
+              <div style={{ display: "flex", justifyContent: "center", padding: "32px 0" }}>
+                <div style={{ width: 28, height: 28, borderRadius: "50%", border: "3px solid #e2e8f0", borderTopColor: "#0070f3", animation: "spin 1s linear infinite" }} />
+              </div>
+            ) : reports.length === 0 ? (
+              <div style={{ textAlign: "center", padding: "40px 24px" }}>
+                <div style={{ width: 48, height: 48, background: "#f1f5f9", borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 12px" }}>
+                  <Icon icon="mdi:file-document-outline" width={24} color="#94a3b8" />
+                </div>
+                <p style={{ margin: 0, color: "#64748b", fontSize: fontSize.base }}>No reports yet</p>
+              </div>
+            ) : (
+              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                {reports.map(r => (
+                  <div
+                    key={r.id}
+                    style={{
+                      display: "flex", alignItems: "flex-start", gap: 10,
+                      padding: "12px 14px", borderRadius: 8,
+                      border: `1px solid ${r.resolved ? "#e2e8f0" : "#fef3c7"}`,
+                      background: r.resolved ? "#fafafa" : "#fffcf5",
+                      opacity: r.resolved ? 0.7 : 1,
+                      transition: "all 0.2s ease",
+                    }}
+                  >
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <p style={{ margin: "0 0 4px", fontSize: fontSize.sm, color: "#0f172a", fontWeight: 500, lineHeight: 1.4, wordBreak: "break-word" }}>
+                        {r.message.length > 100 ? r.message.slice(0, 100) + "…" : r.message}
+                      </p>
+                      <p style={{ margin: 0, fontSize: fontSize.xs, color: "#94a3b8" }}>
+                        {new Date(r.created_at).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit" })}
+                      </p>
+                    </div>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 6, alignItems: "flex-end", flexShrink: 0 }}>
+                      <span style={{
+                        padding: "3px 8px", borderRadius: 5, fontSize: fontSize.xs, fontWeight: 500,
+                        background: r.resolved ? "#d1fae5" : "#fef3c7",
+                        color: r.resolved ? "#065f46" : "#78350f",
+                        border: `1px solid ${r.resolved ? "#a7f3d0" : "#fde68a"}`,
+                      }}>
+                        {r.resolved ? "Resolved" : "Open"}
+                      </span>
+                      {!r.resolved && (
+                        <button
+                          onClick={() => handleResolve(r.id)}
+                          disabled={resolving === r.id}
+                          style={{
+                            padding: "4px 10px", fontSize: fontSize.xs, fontWeight: 600,
+                            background: resolving === r.id ? "#94a3b8" : "#16a34a",
+                            color: "white", border: "none", borderRadius: 5,
+                            cursor: resolving === r.id ? "not-allowed" : "pointer",
+                            transition: "all 0.2s ease", minHeight: 28,
+                          }}
+                          onMouseEnter={e => { if (!resolving) e.currentTarget.style.background = "#15803d" }}
+                          onMouseLeave={e => { if (!resolving) e.currentTarget.style.background = "#16a34a" }}
+                        >
+                          {resolving === r.id ? "…" : "Mark Resolved"}
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </>
         )}
       </div>
