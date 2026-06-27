@@ -2,6 +2,14 @@ import { supabase } from "./supabase"
 
 export type MutationAction = "insert" | "update" | "delete" | "upsert"
 
+export type SubAction = {
+  action: MutationAction
+  table: string
+  data?: Record<string, unknown>
+  filters?: Record<string, unknown>
+  conflict?: string
+}
+
 export type MutationPayload = {
   action: MutationAction
   table?: string
@@ -9,6 +17,9 @@ export type MutationPayload = {
   filters?: Record<string, unknown>
   conflict?: string
   returning?: string
+} | {
+  action: "transaction"
+  sub_actions: SubAction[]
 }
 
 export type MutationResult<T = unknown> = {
