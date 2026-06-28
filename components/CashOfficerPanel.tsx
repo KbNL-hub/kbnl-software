@@ -561,7 +561,7 @@ export default function CashOfficerPanel({ clerkId, officeName, fullName }: Prop
             {viewingExpense.resolved_at && (
               <div style={{ background: "#f3f4f6", padding: 12, borderRadius: 6, fontSize: 12, color: "#555", marginBottom: 20 }}>
                 {viewingExpense.status === "Authorised" ? (
-                  <div>✅ Authorised on {new Date(viewingExpense.resolved_at).toLocaleString()}</div>
+                  <div>✓ Authorised on {new Date(viewingExpense.resolved_at).toLocaleString()}</div>
                 ) : (
                   <div>
                     ❌ Rejected on {new Date(viewingExpense.resolved_at).toLocaleString()}

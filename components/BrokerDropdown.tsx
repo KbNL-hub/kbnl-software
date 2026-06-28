@@ -157,9 +157,9 @@ export default function BrokerDropdown({ onSelect }: Props) {
       </div>
 
       {selected && (
-        <p style={{ marginTop: 8, fontSize: 13, color: "#00aa00", fontWeight: "bold" }}>
-          ✅ {selected.broker_name}
-        </p>
+        <div style={{ marginTop: 8, padding: "8px 12px", background: "#eff6ff", borderRadius: 6, fontSize: 13, color: "#0070f3", fontWeight: 500 }}>
+          Selected: {selected.broker_name}
+        </div>
       )}
     </div>
   )

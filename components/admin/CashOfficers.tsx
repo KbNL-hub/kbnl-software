@@ -13,6 +13,7 @@ type CashOfficer = {
   phone_number: string | null
   office_name: string
   status: string
+  profile_picture_url?: string
 }
 
 type ViewMode = "card" | "table"
@@ -85,7 +86,7 @@ export default function CashOfficers() {
     setLoading(true)
     const { data } = await supabase
       .from("cash_officers")
-      .select("clerk_id, full_name, phone_number, office_name, status")
+      .select("clerk_id, full_name, phone_number, office_name, status, profile_picture_url")
       .order("full_name", { ascending: true })
     setClerks(data || [])
     setLoading(false)
@@ -475,22 +476,25 @@ export default function CashOfficers() {
                   >
                     <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12 }}>
                       <div style={{ display: "flex", alignItems: "center", gap: 12, flex: 1, minWidth: 0 }}>
-                        <div
-                          style={{
-                            width: 40,
-                            height: 40,
-                            borderRadius: "50%",
-                            background: "linear-gradient(135deg, #0070f3 0%, #0056d4 100%)",
-                            color: "white",
-                            display: "flex",
-                            alignItems: "center",
-                            justifyContent: "center",
-                            fontWeight: 600,
-                            fontSize: fontSize.md,
-                            flexShrink: 0,
-                          }}
-                        >
-                          {clerk.full_name.charAt(0).toUpperCase()}
+                        <div style={{
+                          width: 40,
+                          height: 40,
+                          borderRadius: "50%",
+                          background: clerk.profile_picture_url ? "transparent" : "linear-gradient(135deg, #0070f3 0%, #0056d4 100%)",
+                          color: "white",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          fontWeight: 600,
+                          fontSize: fontSize.md,
+                          flexShrink: 0,
+                          overflow: "hidden",
+                        }}>
+                          {clerk.profile_picture_url ? (
+                            <img src={clerk.profile_picture_url} alt={clerk.full_name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                          ) : (
+                            clerk.full_name.charAt(0).toUpperCase()
+                          )}
                         </div>
                         <div style={{ minWidth: 0 }}>
                           <h3
@@ -620,12 +624,16 @@ export default function CashOfficers() {
                             <div
                               style={{
                                 width: 36, height: 36, borderRadius: "50%",
-                                background: "linear-gradient(135deg, #0070f3 0%, #0056d4 100%)",
+                                background: clerk.profile_picture_url ? "transparent" : "linear-gradient(135deg, #0070f3 0%, #0056d4 100%)",
                                 color: "white", display: "flex", alignItems: "center", justifyContent: "center",
-                                fontWeight: 600, fontSize: fontSize.base, flexShrink: 0,
+                                fontWeight: 600, fontSize: fontSize.base, flexShrink: 0, overflow: "hidden",
                               }}
                             >
-                              {clerk.full_name.charAt(0).toUpperCase()}
+                              {clerk.profile_picture_url ? (
+                                <img src={clerk.profile_picture_url} alt={clerk.full_name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                              ) : (
+                                clerk.full_name.charAt(0).toUpperCase()
+                              )}
                             </div>
                             <span style={{ color: "#0f172a", fontSize: fontSize.base, fontWeight: 500 }}>
                               {clerk.full_name}

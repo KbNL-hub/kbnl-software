@@ -13,6 +13,7 @@ type StoreOfficer = {
   phone_number: string | null
   store_name: string
   status: string
+  profile_picture_url?: string
 }
 
 type ViewMode = "card" | "table"
@@ -88,7 +89,7 @@ export default function StoreOfficers() {
     setLoading(true)
     const { data } = await supabase
       .from("store_officers")
-      .select("officer_id, full_name, phone_number, store_name, status")
+      .select("officer_id, full_name, phone_number, store_name, status, profile_picture_url")
       .order("full_name", { ascending: true })
     setOfficers(data || [])
     setLoading(false)
@@ -514,7 +515,7 @@ export default function StoreOfficers() {
                             width: 40,
                             height: 40,
                             borderRadius: "50%",
-                            background: "linear-gradient(135deg, #0070f3 0%, #0056d4 100%)",
+                            background: officer.profile_picture_url ? "transparent" : "linear-gradient(135deg, #0070f3 0%, #0056d4 100%)",
                             color: "white",
                             display: "flex",
                             alignItems: "center",
@@ -522,9 +523,14 @@ export default function StoreOfficers() {
                             fontWeight: 600,
                             fontSize: fontSize.md,
                             flexShrink: 0,
+                            overflow: "hidden",
                           }}
                         >
-                          {officer.full_name.charAt(0).toUpperCase()}
+                          {officer.profile_picture_url ? (
+                            <img src={officer.profile_picture_url} alt={officer.full_name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                          ) : (
+                            officer.full_name.charAt(0).toUpperCase()
+                          )}
                         </div>
                         <div style={{ minWidth: 0 }}>
                           <h3
@@ -704,7 +710,7 @@ export default function StoreOfficers() {
                                 width: 36,
                                 height: 36,
                                 borderRadius: "50%",
-                                background: "linear-gradient(135deg, #0070f3 0%, #0056d4 100%)",
+                                background: officer.profile_picture_url ? "transparent" : "linear-gradient(135deg, #0070f3 0%, #0056d4 100%)",
                                 color: "white",
                                 display: "flex",
                                 alignItems: "center",
@@ -712,9 +718,14 @@ export default function StoreOfficers() {
                                 fontWeight: 600,
                                 fontSize: fontSize.base,
                                 flexShrink: 0,
+                                overflow: "hidden",
                               }}
                             >
-                              {officer.full_name.charAt(0).toUpperCase()}
+                              {officer.profile_picture_url ? (
+                                <img src={officer.profile_picture_url} alt={officer.full_name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                              ) : (
+                                officer.full_name.charAt(0).toUpperCase()
+                              )}
                             </div>
                             <span style={{ color: "#0f172a", fontSize: fontSize.base, fontWeight: 500 }}>
                               {officer.full_name}

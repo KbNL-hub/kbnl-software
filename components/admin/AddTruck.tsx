@@ -101,7 +101,7 @@ export default function AddTruck() {
         if (error) { setMessage("Failed to add vehicle"); return }
       }
 
-      setMessage("✅ Vehicle added successfully")
+      setMessage("Vehicle added successfully")
       setPlateNumber("")
       setKbnlTruckNo("")
       setTruckModel("")
@@ -318,14 +318,24 @@ export default function AddTruck() {
         {submitting ? "Saving..." : isTricycleSelected ? "Add Tricycle" : "Add Truck"}
       </button>
 
-      {message && (
-        <p style={{
-          marginTop: 16, fontWeight: "bold",
-          color: message.startsWith("✅") ? "green" : "red"
-        }}>
-          {message}
-        </p>
-      )}
+      {message && (() => {
+        const isSuccess = message.toLowerCase().includes("successfully")
+        return (
+          <div style={{
+            marginTop: 16,
+            padding: "10px 14px",
+            background: isSuccess ? "rgba(34, 197, 94, 0.08)" : "rgba(239, 68, 68, 0.08)",
+            border: `1px solid ${isSuccess ? "rgba(34, 197, 94, 0.3)" : "rgba(239, 68, 68, 0.3)"}`,
+            borderRadius: 8,
+            fontSize: 13,
+            color: isSuccess ? "#16a34a" : "#dc2626",
+            fontWeight: 500,
+            textAlign: "center",
+          }}>
+            {message}
+          </div>
+        )
+      })()}
     </div>
   )
 }

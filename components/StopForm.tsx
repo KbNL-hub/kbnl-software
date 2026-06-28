@@ -141,10 +141,10 @@ export default function StopForm({ tripId, loadedQuantity: initialLoaded = 0, of
       } 
 
       if (result.offline) {
-        setMessage("✅ Stop saved offline. Will sync when connected.")
+        setMessage("Stop saved offline. Will sync when connected.")
         setTimeout(() => onStopLogged(inputQty), 1500)
       } else {
-        setMessage("✅ Stop logged successfully")
+        setMessage("Stop logged successfully")
         setTimeout(() => onStopLogged(inputQty), 1000)
       }
     } catch {
@@ -280,11 +280,24 @@ export default function StopForm({ tripId, loadedQuantity: initialLoaded = 0, of
         {submitting ? "Saving..." : "Log Stop"}
       </button>
 
-      {message && (
-        <p style={{ marginTop: 16, fontWeight: "bold", color: message.startsWith("✅") ? "green" : "red" }}>
-          {message}
-        </p>
-      )}
+      {message && (() => {
+        const isSuccess = message.toLowerCase().includes("successfully") || message.toLowerCase().includes("saved")
+        return (
+          <div style={{
+            marginTop: 16,
+            padding: "10px 14px",
+            background: isSuccess ? "rgba(34, 197, 94, 0.08)" : "rgba(239, 68, 68, 0.08)",
+            border: `1px solid ${isSuccess ? "rgba(34, 197, 94, 0.3)" : "rgba(239, 68, 68, 0.3)"}`,
+            borderRadius: 8,
+            fontSize: 13,
+            color: isSuccess ? "#16a34a" : "#dc2626",
+            fontWeight: 500,
+            textAlign: "center",
+          }}>
+            {message}
+          </div>
+        )
+      })()}
     </div>
   )
 }

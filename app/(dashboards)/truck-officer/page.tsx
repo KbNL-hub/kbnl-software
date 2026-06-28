@@ -862,7 +862,7 @@ export default function TruckOfficerDashboard() {
         {tab === "fuel" && (
           <div>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
-              <p style={{ margin: 0, fontWeight: 700, fontSize: fontSize.lg, color: "#0f172a" }}>Fuel Expense Log</p>
+              <p style={{ margin: 0, fontWeight: 700, fontSize: fontSize.lg, color: "#0f172a" }}>Fuel Consumption</p>
               <button
                 onClick={() => { setShowFuelModal(true); setFuelError("") }}
                 disabled={assignedTrucks.length === 0}

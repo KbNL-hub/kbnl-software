@@ -49,7 +49,7 @@ export default function ReassignBroker({ stopId, onReassigned }: Props) {
       }
 
       setDone(true)
-      setMessage("✅ Stop reassigned successfully")
+      setMessage("Stop reassigned successfully")
       setTimeout(() => onReassigned(), 1500)
     } catch {
       setMessage("Network error, please try again")
@@ -74,7 +74,7 @@ export default function ReassignBroker({ stopId, onReassigned }: Props) {
       }
 
       setDone(true)
-      setMessage("✅ Dispute resolved")
+      setMessage("Dispute resolved")
       setTimeout(() => onReassigned(), 1500)
     } catch {
       setMessage("Network error, please try again")
@@ -84,9 +84,9 @@ export default function ReassignBroker({ stopId, onReassigned }: Props) {
   }
 
   if (done) return (
-    <p style={{ marginTop: 8, fontSize: 13, fontWeight: "bold", color: "#00aa00" }}>
+    <div style={{ marginTop: 8, padding: "10px 14px", background: "rgba(34, 197, 94, 0.08)", border: "1px solid rgba(34, 197, 94, 0.3)", borderRadius: 8, fontSize: 13, color: "#16a34a", fontWeight: 500, textAlign: "center" }}>
       {message}
-    </p>
+    </div>
   )
 
   return (

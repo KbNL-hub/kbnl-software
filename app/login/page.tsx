@@ -29,7 +29,17 @@ export default function LoginPage() {
     setLoading(true)
     setMessage("")
 
+    let timedOut = false
+    const timer = setTimeout(() => {
+      timedOut = true
+      setLoading(false)
+      setMessage("Connection timed out. Please check your network and try again.")
+    }, 15000)
+
     const { data, error } = await supabase.auth.signInWithPassword({ email, password })
+
+    clearTimeout(timer)
+    if (timedOut) return
 
     if (error) {
       setMessage(error.message)
@@ -397,7 +407,8 @@ export default function LoginPage() {
               message.toLowerCase().includes("error") ||
               message.toLowerCase().includes("not found") ||
               message.toLowerCase().includes("unknown") ||
-              message.toLowerCase().includes("unable")
+              message.toLowerCase().includes("unable") ||
+              message.toLowerCase().includes("timed out")
             return (
               <div className="message-container" style={{
                 marginTop: 20,

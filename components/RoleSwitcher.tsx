@@ -30,6 +30,7 @@ const LABELS: Record<string, string> = {
 export default function RoleSwitcher({ currentRole, style, onRoleSwitch }: Props) {
   const router = useRouter()
   const [userRoles, setUserRoles] = useState<string[]>([])
+  const [sessionUserId, setSessionUserId] = useState<string | null>(null)
   const [open, setOpen] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
 
@@ -43,7 +44,10 @@ export default function RoleSwitcher({ currentRole, style, onRoleSwitch }: Props
         .select("role")
         .eq("user_id", userId)
 
-      if (active && data) setUserRoles(data.map(r => r.role))
+      if (active && data) {
+        setUserRoles(data.map(r => r.role))
+        setSessionUserId(userId)
+      }
     }
 
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -53,6 +57,10 @@ export default function RoleSwitcher({ currentRole, style, onRoleSwitch }: Props
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (sessionUserId && session?.user.id && session.user.id !== sessionUserId) {
+        window.location.reload()
+        return
+      }
       loadRoles(session?.user.id)
     })
 
@@ -60,7 +68,7 @@ export default function RoleSwitcher({ currentRole, style, onRoleSwitch }: Props
       active = false
       subscription.unsubscribe()
     }
-  }, [])
+  }, [sessionUserId])
 
   useEffect(() => {
     const handleClick = (e: MouseEvent) => {
@@ -99,7 +107,7 @@ export default function RoleSwitcher({ currentRole, style, onRoleSwitch }: Props
           display: "inline-flex",
           alignItems: "center",
           gap: 4,
-          padding: "3px 10px",
+          padding: "2px 8px",
           borderRadius: 100,
           lineHeight: 1.4,
           transition: "background 0.2s",
@@ -108,7 +116,7 @@ export default function RoleSwitcher({ currentRole, style, onRoleSwitch }: Props
         onMouseLeave={e => { e.currentTarget.style.background = pillBg }}
       >
         {LABELS[currentRole] || currentRole}
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ transition: "transform 0.2s", transform: open ? "rotate(180deg)" : "none" }}>
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ transition: "transform 0.2s", transform: open ? "rotate(180deg)" : "none" }}>
           <path d="M6 9l6 6 6-6" />
         </svg>
       </button>
@@ -156,7 +164,7 @@ export default function RoleSwitcher({ currentRole, style, onRoleSwitch }: Props
                   color: r === currentRole ? "#0070f3" : "#0f172a",
                   border: "none",
                   cursor: "pointer",
-                  fontSize: 13,
+                  fontSize: 12,
                   borderRadius: 6,
                   fontWeight: r === currentRole ? 600 : 400,
                   transition: "background 0.15s",

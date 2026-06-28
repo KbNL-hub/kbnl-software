@@ -15,7 +15,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  metadataBase: new URL("https://truck-system-ten.vercel.app"),
+  metadataBase: new URL("https://kpaksbuddy.com"),
   title: "KbNL - Operations Management System",
   description: "Advanced company operations management system for cement distribution in Nigeria",
   keywords: ["logistics", "transportation", "trucking", "cargo", "Nigeria", "Cement", "Operations Management", "Distribution"],
@@ -38,7 +38,7 @@ export const metadata: Metadata = {
   openGraph: {
     title: "KbNL - Operations Management System",
     description: "Streamline your distribution company operations with KbNL",
-    url: "https://truck-system-ten.vercel.app",
+    url: "https://kpaksbuddy.com",
     type: "website",
     images: [
       {

@@ -2,6 +2,8 @@
 
 import { useState, useEffect, useRef } from "react"
 import { supabase } from "@/lib/supabase"
+import ModernInput from "@/components/ModernInput"
+import InviteSuccessCard from "@/components/admin/InviteSuccessCard"
 import { usePermissions } from "@/lib/PermissionContext"
 
 type Driver = {
@@ -10,6 +12,7 @@ type Driver = {
   phone_number: string
   status: string
   created_at: string
+  profile_picture_url?: string
 }
 
 type ViewMode = "card" | "table"
@@ -76,29 +79,28 @@ export default function ManageDrivers() {
   const [message, setMessage] = useState("")
   const [submitting, setSubmitting] = useState(false)
 
+  // Invite state
+  const [showInviteModal, setShowInviteModal] = useState(false)
+  const [fullName, setFullName] = useState("")
+  const [phoneNumber, setPhoneNumber] = useState("")
+  const [email, setEmail] = useState("")
+  const [inviteResult, setInviteResult] = useState<{ tempPassword: string; email: string } | null>(null)
+
   const phoneRef = useRef<HTMLInputElement>(null)
+  const emailRef = useRef<HTMLInputElement>(null)
+  const editPhoneRef = useRef<HTMLInputElement>(null)
 
   const filterOptions = ["All", "Active", "Invited", "Suspended"]
   const filteredDrivers = filterStatus === "All" ? drivers : drivers.filter((d) => d.status === filterStatus)
 
   async function fetchDrivers() {
-    try {
-      const { data, error } = await supabase
-        .from("Drivers")
-        .select("*")
-        .order("full_name", { ascending: true })
+    const { data, error } = await supabase
+      .from("Drivers")
+      .select("driver_id, full_name, phone_number, status, created_at, profile_picture_url")
+      .order("full_name", { ascending: true })
 
-      if (error) {
-        console.error("Failed to fetch drivers", error)
-        return
-      }
-
-      setDrivers(data || [])
-    } catch (error) {
-      console.error("Failed to fetch drivers", error)
-    } finally {
-      setLoading(false)
-    }
+    if (!error) setDrivers(data || [])
+    setLoading(false)
   }
 
   useEffect(() => { fetchDrivers() }, [])
@@ -115,9 +117,16 @@ export default function ManageDrivers() {
   }
 
   function closeModals() {
+    setShowInviteModal(false)
     setEditingDriver(null)
     setDeletingId(null)
+    setFullName("")
+    setPhoneNumber("")
+    setEmail("")
+    setEditName("")
+    setEditPhone("")
     setMessage("")
+    setInviteResult(null)
   }
 
   async function handleUpdate() {
@@ -195,6 +204,35 @@ export default function ManageDrivers() {
     }
   }
 
+  async function handleInvite() {
+    if (!fullName.trim()) return setMessage("Full name is required")
+    if (!email.trim()) return setMessage("Email is required")
+
+    setSubmitting(true)
+
+    try {
+      const res = await fetch("/api/invite-user", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, fullName, phoneNumber, role: "Driver" }),
+      })
+
+      const result = await res.json()
+
+      if (!res.ok) {
+        setMessage("Failed: " + result.error)
+        return
+      }
+
+      setInviteResult({ tempPassword: result.tempPassword, email })
+      fetchDrivers()
+    } catch {
+      setMessage("Network error, please try again")
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
   const statusPillColor = (status: string) => {
     const pill = getPillStyle(status, true)
     return { bg: pill.bg, color: pill.textColor, border: pill.borderColor }
@@ -225,50 +263,85 @@ export default function ManageDrivers() {
           </p>
         </div>
 
-        {drivers.length > 0 && (
-          <div style={{ display: "flex", background: "white", border: "1px solid #e2e8f0", borderRadius: 8, padding: 4, gap: 0 }}>
-            <button
-              onClick={() => setViewMode("card")}
-              style={{
-                padding: "8px 12px",
-                background: viewMode === "card" ? "#0070f3" : "transparent",
-                color: viewMode === "card" ? "white" : "#64748b",
-                border: "none",
-                borderRadius: 6,
-                cursor: "pointer",
-                fontSize: fontSize.xs,
-                fontWeight: 600,
-                minWidth: 44,
-                height: 40,
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center"
-              }}
-            >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M3 3h8v8H3V3zm10 0h8v8h-8V3zM3 13h8v8H3v-8zm10 0h8v8h-8v-8z"/></svg>
-            </button>
-            <button
-              onClick={() => setViewMode("table")}
-              style={{
-                padding: "8px 12px",
-                background: viewMode === "table" ? "#0070f3" : "transparent",
-                color: viewMode === "table" ? "white" : "#64748b",
-                border: "none",
-                borderRadius: 6,
-                cursor: "pointer",
-                fontSize: fontSize.xs,
-                fontWeight: 600,
-                minWidth: 44,
-                height: 40,
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center"
-              }}
-            >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M3 4h18v2H3V4zm0 7h18v2H3v-2zm0 7h18v2H3v-2z"/></svg>
-            </button>
-          </div>
-        )}
+        <div style={{ display: "flex", alignItems: "center", gap: 12, width: isMobile ? "100%" : "auto" }}>
+          {drivers.length > 0 && (
+            <div style={{ display: "flex", background: "white", border: "1px solid #e2e8f0", borderRadius: 8, padding: 4, gap: 0 }}>
+              <button
+                onClick={() => setViewMode("card")}
+                style={{
+                  padding: "8px 12px",
+                  background: viewMode === "card" ? "#0070f3" : "transparent",
+                  color: viewMode === "card" ? "white" : "#64748b",
+                  border: "none",
+                  borderRadius: 6,
+                  cursor: "pointer",
+                  fontSize: fontSize.xs,
+                  fontWeight: 600,
+                  minWidth: 44,
+                  height: 40,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center"
+                }}
+              >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M3 3h8v8H3V3zm10 0h8v8h-8V3zM3 13h8v8H3v-8zm10 0h8v8h-8v-8z"/></svg>
+              </button>
+              <button
+                onClick={() => setViewMode("table")}
+                style={{
+                  padding: "8px 12px",
+                  background: viewMode === "table" ? "#0070f3" : "transparent",
+                  color: viewMode === "table" ? "white" : "#64748b",
+                  border: "none",
+                  borderRadius: 6,
+                  cursor: "pointer",
+                  fontSize: fontSize.xs,
+                  fontWeight: 600,
+                  minWidth: 44,
+                  height: 40,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center"
+                }}
+              >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M3 4h18v2H3V4zm0 7h18v2H3v-2zm0 7h18v2H3v-2z"/></svg>
+              </button>
+            </div>
+          )}
+
+          <button
+            onClick={() => setShowInviteModal(true)}
+            disabled={!canEdit}
+            style={{
+              padding: isMobile ? "10px 16px" : "12px 20px",
+              background: !canEdit ? "#94a3b8" : "#0070f3",
+              color: "white",
+              border: "none",
+              borderRadius: 8,
+              cursor: !canEdit ? "not-allowed" : "pointer",
+              fontWeight: 600,
+              fontSize: fontSize.md,
+              flex: isMobile ? 1 : "0 0 auto",
+              boxShadow: "0 4px 12px rgba(0, 112, 243, 0.2)",
+              transition: "all 0.2s ease",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: 6,
+              minHeight: 40,
+              whiteSpace: "nowrap"
+            }}
+            onMouseEnter={(e) => {
+              if (!isMobile) (e.currentTarget.style.transform = "translateY(-2px)")
+            }}
+            onMouseLeave={(e) => {
+              if (!isMobile) (e.currentTarget.style.transform = "none")
+            }}
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2c5.5 0 10 4.5 10 10s-4.5 10-10 10S2 17.5 2 12 6.5 2 12 2m0 2c-4.4 0-8 3.6-8 8s3.6 8 8 8 8-3.6 8-8-3.6-8-8-8m3.5 9h-3v3h-1v-3h-3v-1h3v-3h1v3h3v1z"/></svg>
+            Add Driver
+          </button>
+        </div>
       </div>
 
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 24 }}>
@@ -320,9 +393,18 @@ export default function ManageDrivers() {
                 return (
                   <div key={driver.driver_id} style={{ background: "white", borderRadius: 12, padding: 16, border: "1px solid #e2e8f0", boxShadow: "0 1px 3px rgba(0, 0, 0, 0.05)", transition: "all 0.2s ease" }} onMouseEnter={e => { e.currentTarget.style.boxShadow = "0 4px 12px rgba(0, 0, 0, 0.08)"; e.currentTarget.style.borderColor = "#cbd5e1" }} onMouseLeave={e => { e.currentTarget.style.boxShadow = "0 1px 3px rgba(0, 0, 0, 0.05)"; e.currentTarget.style.borderColor = "#e2e8f0" }}>
                     <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12, marginBottom: 12 }}>
-                      <div style={{ flex: 1 }}>
-                        <h3 style={{ margin: "0 0 4px 0", color: "#0f172a", fontSize: fontSize.lg, fontWeight: 600 }}>{driver.full_name}</h3>
-                        <p style={{ margin: 0, color: "#64748b", fontSize: fontSize.sm }}>{driver.phone_number || "No phone"}</p>
+                      <div style={{ display: "flex", alignItems: "center", gap: 12, flex: 1, minWidth: 0 }}>
+                        <div style={{ width: 40, height: 40, borderRadius: "50%", background: driver.profile_picture_url ? "transparent" : "linear-gradient(135deg, #0070f3 0%, #0056d4 100%)", color: "white", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 600, fontSize: fontSize.md, flexShrink: 0, overflow: "hidden" }}>
+                          {driver.profile_picture_url ? (
+                            <img src={driver.profile_picture_url} alt={driver.full_name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                          ) : (
+                            driver.full_name.charAt(0).toUpperCase()
+                          )}
+                        </div>
+                        <div style={{ minWidth: 0 }}>
+                          <h3 style={{ margin: "0 0 4px 0", color: "#0f172a", fontSize: fontSize.lg, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{driver.full_name}</h3>
+                          <p style={{ margin: 0, color: "#64748b", fontSize: fontSize.sm, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{driver.phone_number || "No phone"}</p>
+                        </div>
                       </div>
                       <span style={{ padding: "6px 12px", borderRadius: 16, fontSize: fontSize.xs, fontWeight: 600, background: pill.bg, color: pill.color, border: `1.5px solid ${pill.border}`, whiteSpace: "nowrap" }}>
                         {driver.status}
@@ -385,7 +467,18 @@ export default function ManageDrivers() {
                     const pill = statusPillColor(driver.status)
                     return (
                       <tr key={driver.driver_id} style={{ borderBottom: idx === filteredDrivers.length - 1 ? "none" : "1px solid #e2e8f0", transition: "background 0.2s ease" }} onMouseEnter={e => e.currentTarget.style.background = "#f8fafc"} onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
-                        <td style={{ padding: "12px 16px", color: "#0f172a", fontSize: fontSize.base, fontWeight: 500 }}>{driver.full_name}</td>
+                        <td style={{ padding: "12px 16px" }}>
+                          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                            <div style={{ width: 36, height: 36, borderRadius: "50%", background: driver.profile_picture_url ? "transparent" : "linear-gradient(135deg, #0070f3 0%, #0056d4 100%)", color: "white", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 600, fontSize: fontSize.base, flexShrink: 0, overflow: "hidden" }}>
+                              {driver.profile_picture_url ? (
+                                <img src={driver.profile_picture_url} alt={driver.full_name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                              ) : (
+                                driver.full_name.charAt(0).toUpperCase()
+                              )}
+                            </div>
+                            <span style={{ color: "#0f172a", fontSize: fontSize.base, fontWeight: 500 }}>{driver.full_name}</span>
+                          </div>
+                        </td>
                         <td style={{ padding: "12px 16px", color: "#64748b", fontSize: fontSize.sm }}>{driver.phone_number || "—"}</td>
                         <td style={{ padding: "12px 16px" }}>
                           <span style={{ padding: "6px 10px", borderRadius: 14, fontSize: fontSize.xs, fontWeight: 600, background: pill.bg, color: pill.color, border: `1.5px solid ${pill.border}` }}>
@@ -436,7 +529,7 @@ export default function ManageDrivers() {
         </>
       )}
 
-      {(editingDriver || deletingId) && (
+      {(showInviteModal || editingDriver || deletingId) && (
         <div
           onClick={closeModals}
           style={{ position: "fixed", inset: 0, background: "rgba(15, 23, 42, 0.6)", backdropFilter: "blur(4px)", display: "flex", alignItems: isMobile ? "flex-end" : "center", justifyContent: "center", zIndex: 100, padding: isMobile ? 0 : 24, animation: "fadeIn 0.2s ease-out" }}
@@ -446,6 +539,76 @@ export default function ManageDrivers() {
             onClick={e => e.stopPropagation()}
             style={{ background: "white", borderRadius: isMobile ? "20px 20px 0 0" : 12, padding: isMobile ? "28px 20px" : 32, width: "100%", maxWidth: 440, maxHeight: "90vh", overflowY: "auto", boxShadow: "0 25px 50px -12px rgba(0, 0, 0, 0.25)", animation: "slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1)" }}
           >
+
+            {showInviteModal && (
+              <>
+                {inviteResult ? (
+                  <InviteSuccessCard
+                    tempPassword={inviteResult.tempPassword}
+                    email={inviteResult.email}
+                    onClose={() => { closeModals(); setInviteResult(null) }}
+                  />
+                ) : (
+                  <>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24 }}>
+                      <h3 style={{ margin: 0, color: "#0f172a", fontSize: fontSize.xl, fontWeight: 700 }}>Add New Driver</h3>
+                      <button onClick={closeModals} style={{ background: "none", border: "none", color: "#94a3b8", cursor: "pointer", padding: 0, width: 32, height: 32, display: "flex", alignItems: "center", justifyContent: "center", transition: "color 0.2s" }} onMouseEnter={e => e.currentTarget.style.color = "#64748b"} onMouseLeave={e => e.currentTarget.style.color = "#94a3b8"}><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+                    </div>
+
+                    <div style={{ display: "flex", flexDirection: "column", gap: 14, marginBottom: 20 }}>
+                      <div>
+                        <label style={{ display: "block", marginBottom: 6, color: "#475569", fontSize: fontSize.sm, fontWeight: 500 }}>Full Name *</label>
+                        <ModernInput
+                          type="text"
+                          placeholder="e.g. John Doe"
+                          value={fullName}
+                          readOnly={!canEdit}
+                          onChange={(e: any) => { setFullName(e.target.value); setMessage("") }}
+                          onKeyDown={(e: any) => { if (e.key === "Enter") phoneRef.current?.focus() }}
+                          style={inputStyle}
+                        />
+                      </div>
+                      <div>
+                        <label style={{ display: "block", marginBottom: 6, color: "#475569", fontSize: fontSize.sm, fontWeight: 500 }}>Phone Number</label>
+                        <ModernInput
+                          ref={phoneRef}
+                          type="text"
+                          placeholder="e.g. 08012345678"
+                          value={phoneNumber}
+                          readOnly={!canEdit}
+                          onChange={(e: any) => { setPhoneNumber(e.target.value); setMessage("") }}
+                          onKeyDown={(e: any) => { if (e.key === "Enter") emailRef.current?.focus() }}
+                          style={inputStyle}
+                        />
+                      </div>
+                      <div>
+                        <label style={{ display: "block", marginBottom: 6, color: "#475569", fontSize: fontSize.sm, fontWeight: 500 }}>Email Address *</label>
+                        <ModernInput
+                          ref={emailRef}
+                          type="email"
+                          placeholder="e.g. driver@example.com"
+                          value={email}
+                          readOnly={!canEdit}
+                          onChange={(e: any) => { setEmail(e.target.value); setMessage("") }}
+                          onKeyDown={(e: any) => { if (e.key === "Enter") handleInvite() }}
+                          style={inputStyle}
+                        />
+                      </div>
+                    </div>
+
+                    {message && <div style={{ padding: 12, background: "#fef2f2", borderLeft: "4px solid #ef4444", borderRadius: 4, marginBottom: 20, color: "#b91c1c", fontSize: fontSize.sm }}>{message}</div>}
+
+                    <button
+                      onClick={handleInvite}
+                      disabled={submitting || !canEdit}
+                      style={{ width: "100%", padding: "12px 16px", background: submitting || !canEdit ? "#94a3b8" : "#0070f3", color: "white", border: "none", borderRadius: 8, cursor: submitting || !canEdit ? "not-allowed" : "pointer", fontWeight: 600, fontSize: fontSize.md, transition: "opacity 0.2s", opacity: submitting || !canEdit ? 0.7 : 1, minHeight: 44 }}
+                    >
+                      {submitting ? "Sending Invite..." : "Send Invite"}
+                    </button>
+                  </>
+                )}
+              </>
+            )}
 
             {editingDriver && (
               <>
@@ -457,12 +620,12 @@ export default function ManageDrivers() {
                 <div style={{ display: "flex", flexDirection: "column", gap: 14, marginBottom: 20 }}>
                   <div>
                     <label style={{ display: "block", marginBottom: 6, color: "#475569", fontSize: fontSize.sm, fontWeight: 500 }}>Full Name *</label>
-                    <input type="text" value={editName} readOnly={!canEdit} onChange={(e) => { setEditName(e.target.value); setMessage("") }} onKeyDown={(e) => { if (e.key === "Enter") phoneRef.current?.focus() }} style={inputStyle} />
+                    <input type="text" value={editName} readOnly={!canEdit} onChange={(e) => { setEditName(e.target.value); setMessage("") }} onKeyDown={(e) => { if (e.key === "Enter") editPhoneRef.current?.focus() }} style={inputStyle} />
                   </div>
 
                   <div>
                     <label style={{ display: "block", marginBottom: 6, color: "#475569", fontSize: fontSize.sm, fontWeight: 500 }}>Phone Number</label>
-                    <input ref={phoneRef} type="text" value={editPhone} readOnly={!canEdit} onChange={(e) => { setEditPhone(e.target.value); setMessage("") }} onKeyDown={(e) => { if (e.key === "Enter") handleUpdate() }} style={inputStyle} />
+                    <input ref={editPhoneRef} type="text" value={editPhone} readOnly={!canEdit} onChange={(e) => { setEditPhone(e.target.value); setMessage("") }} onKeyDown={(e) => { if (e.key === "Enter") handleUpdate() }} style={inputStyle} />
                   </div>
                 </div>
 

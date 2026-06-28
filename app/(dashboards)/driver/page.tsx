@@ -552,7 +552,7 @@ export default function DriverDashboard() {
     setDiscShortage(""); setDiscCaked(""); setDiscNotes(""); setDiscDropLocation(""); setDiscCustomDropLocation(""); setDiscError("")
     
     if (result.offline) {
-      setMessage("✓ Report saved offline. Will sync when connected.")
+      setMessage("✅ Report saved offline. Will sync when connected.")
     }
     
     if (activeTrip) fetchStops(activeTrip.trip_id, activeTrip.loaded_quantity)
@@ -614,7 +614,7 @@ export default function DriverDashboard() {
     }
 
     if (result.offline) {
-      setMessage("✓ Saved offline. Will update when you are connected.")
+      setMessage("✅ Saved offline. Will update when you are connected.")
     }
   }
 

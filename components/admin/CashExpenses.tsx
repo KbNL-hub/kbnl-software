@@ -86,6 +86,7 @@ export default function CashExpenses() {
   const [expenses, setExpenses] = useState<CashExpense[]>([])
   const [deposits, setDeposits] = useState<CashDeposit[]>([])
   const [clerksMap, setClerksMap] = useState<Record<string, string>>({})
+  const [clerkPicsMap, setClerkPicsMap] = useState<Record<string, string>>({})
   const [adminsMap, setAdminsMap] = useState<Record<string, string>>({})
   const [loading, setLoading] = useState(true)
 
@@ -145,10 +146,12 @@ export default function CashExpenses() {
       }
 
       // Fetch cash officers
-      const { data: clerks } = await supabase.from("cash_officers").select("clerk_id, full_name")
+      const { data: clerks } = await supabase.from("cash_officers").select("clerk_id, full_name, profile_picture_url")
       const cMap: Record<string, string> = {}
-      clerks?.forEach(c => { cMap[c.clerk_id] = c.full_name })
+      const cpMap: Record<string, string> = {}
+      clerks?.forEach(c => { cMap[c.clerk_id] = c.full_name; if (c.profile_picture_url) cpMap[c.clerk_id] = c.profile_picture_url })
       setClerksMap(cMap)
+      setClerkPicsMap(cpMap)
 
       // Fetch admin profiles
       const { data: adminProfiles } = await supabase.from("Profiles").select("user_id, full_name")
@@ -610,6 +613,7 @@ export default function CashExpenses() {
           <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
             {filteredExpenses.map(exp => {
               const clerkName = clerksMap[exp.clerk_id] || "Unknown Clerk"
+              const clerkPic = clerkPicsMap[exp.clerk_id]
               const isExpanded = expandedExpense === exp.expense_id
               const items = expenseItems[exp.expense_id] || []
 
@@ -657,8 +661,12 @@ export default function CashExpenses() {
                       </div>
                       <div style={{ display: "flex", alignItems: "center", gap: 8, color: "#64748b", fontSize: fontSize.xs }}>
                         <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                          <div style={{ width: 20, height: 20, borderRadius: "50%", background: "#e2e8f0", color: "#64748b", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, fontWeight: 700 }}>
-                            {clerkName.charAt(0)}
+                          <div style={{ width: 20, height: 20, borderRadius: "50%", background: clerkPic ? "transparent" : "#e2e8f0", color: "#64748b", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, fontWeight: 700, overflow: "hidden" }}>
+                            {clerkPic ? (
+                              <img src={clerkPic} alt={clerkName} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                            ) : (
+                              clerkName.charAt(0)
+                            )}
                           </div>
                           <strong style={{ color: "#334155" }}>{clerkName}</strong>
                         </div>

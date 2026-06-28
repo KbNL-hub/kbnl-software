@@ -233,7 +233,9 @@ export default function CustomerSelector({ onSelect, allowUnsavedNew, initialVal
       )}
 
       {selected && !creating && (
-        <p style={{ marginTop: 8, fontSize: 13, color: "#00aa00", fontWeight: "bold" }}>✅ {selected.full_name}</p>
+        <div style={{ marginTop: 8, padding: "8px 12px", background: "#eff6ff", borderRadius: 6, fontSize: 13, color: "#0070f3", fontWeight: 500 }}>
+          Selected: {selected.full_name}
+        </div>
       )}
     </div>
   )

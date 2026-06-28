@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react"
 import { supabase } from "@/lib/supabase"
 import { apiMutate } from "@/lib/api-mutation"
+import { Icon } from "@iconify/react"
 
 type FuelCompany = {
   company_id: string
@@ -97,7 +98,7 @@ export default function BuyDiesel({ driverId, onBack }: Props) {
   if (submitted) {
     return (
       <div style={{ textAlign: "center", paddingTop: 60 }}>
-        <p style={{ fontSize: 48, marginBottom: 16 }}>✅</p>
+        <Icon icon="mdi:check-circle" width={48} height={48} color="#16a34a" style={{ marginBottom: 16 }} />
         <h2 style={{ marginBottom: 8 }}>Request Submitted</h2>
         <p style={{ color: "#888", marginBottom: 40 }}>
           Your diesel request has been sent. The station manager will validate it.

@@ -223,7 +223,7 @@ export default function ReportModal({ isOpen, onClose, userId, userRole }: Repor
                 {submitting ? (
                   <><Icon icon="mdi:loading" width={16} style={{ animation: "spin 1s linear infinite" }} /> Submitting...</>
                 ) : (
-                  <><Icon icon="mdi:send" width={16} /> Submit Report</>
+                  <><Icon icon="mdi:send" width={16} /> Submit</>
                 )}
               </button>
             </div>

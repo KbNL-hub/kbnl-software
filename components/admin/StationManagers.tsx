@@ -14,6 +14,7 @@ type StationManager = {
   status: string
   company_id: string
   company_name: string
+  profile_picture_url?: string
 }
 
 type FuelCompany = {
@@ -101,7 +102,7 @@ export default function ManageStationManagers() {
   async function fetchManagers() {
     const { data } = await supabase
       .from("station_managers")
-      .select("manager_id, full_name, phone_number, status, company_id")
+      .select("manager_id, full_name, phone_number, status, company_id, profile_picture_url")
       .order("full_name", { ascending: true })
 
     if (!data) return
@@ -582,8 +583,7 @@ export default function ManageStationManagers() {
                             width: 40,
                             height: 40,
                             borderRadius: "50%",
-                            background:
-                              "linear-gradient(135deg, #0070f3 0%, #0056d4 100%)",
+                            background: manager.profile_picture_url ? "transparent" : "linear-gradient(135deg, #0070f3 0%, #0056d4 100%)",
                             color: "white",
                             display: "flex",
                             alignItems: "center",
@@ -591,9 +591,14 @@ export default function ManageStationManagers() {
                             fontWeight: 600,
                             fontSize: fontSize.md,
                             flexShrink: 0,
+                            overflow: "hidden",
                           }}
                         >
-                          {manager.full_name.charAt(0).toUpperCase()}
+                          {manager.profile_picture_url ? (
+                            <img src={manager.profile_picture_url} alt={manager.full_name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                          ) : (
+                            manager.full_name.charAt(0).toUpperCase()
+                          )}
                         </div>
                         <div style={{ minWidth: 0 }}>
                           <h3
@@ -834,8 +839,7 @@ export default function ManageStationManagers() {
                                 width: 36,
                                 height: 36,
                                 borderRadius: "50%",
-                                background:
-                                  "linear-gradient(135deg, #0070f3 0%, #0056d4 100%)",
+                                background: manager.profile_picture_url ? "transparent" : "linear-gradient(135deg, #0070f3 0%, #0056d4 100%)",
                                 color: "white",
                                 display: "flex",
                                 alignItems: "center",
@@ -843,9 +847,14 @@ export default function ManageStationManagers() {
                                 fontWeight: 600,
                                 fontSize: fontSize.base,
                                 flexShrink: 0,
+                                overflow: "hidden",
                               }}
                             >
-                              {manager.full_name.charAt(0).toUpperCase()}
+                              {manager.profile_picture_url ? (
+                                <img src={manager.profile_picture_url} alt={manager.full_name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                              ) : (
+                                manager.full_name.charAt(0).toUpperCase()
+                              )}
                             </div>
                             <span
                               style={{

@@ -13,6 +13,7 @@ type TruckOfficer = {
   phone_number: string | null
   status: string
   truck_count: number
+  profile_picture_url?: string
 }
 
 type Truck = {
@@ -78,7 +79,7 @@ export default function ManageTruckOfficers() {
     setLoading(true)
     const { data } = await supabase
       .from("truck_officers")
-      .select("manager_id, full_name, phone_number, status")
+      .select("manager_id, full_name, phone_number, status, profile_picture_url")
       .order("full_name", { ascending: true })
 
     if (!data) { setLoading(false); return }
@@ -323,8 +324,12 @@ export default function ManageTruckOfficers() {
                   <div key={m.manager_id} style={{ background: "white", borderRadius: 12, padding: 16, border: "1px solid #e2e8f0", boxShadow: "0 1px 3px rgba(0, 0, 0, 0.05)", transition: "all 0.2s ease" }} onMouseEnter={e => { e.currentTarget.style.boxShadow = "0 4px 12px rgba(0, 0, 0, 0.08)"; e.currentTarget.style.borderColor = "#cbd5e1" }} onMouseLeave={e => { e.currentTarget.style.boxShadow = "0 1px 3px rgba(0, 0, 0, 0.05)"; e.currentTarget.style.borderColor = "#e2e8f0" }}>
                     <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12 }}>
                       <div style={{ display: "flex", alignItems: "center", gap: 12, flex: 1, minWidth: 0 }}>
-                        <div style={{ width: 40, height: 40, borderRadius: "50%", background: "linear-gradient(135deg, #0070f3 0%, #0056d4 100%)", color: "white", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 600, fontSize: fontSize.md, flexShrink: 0 }}>
-                          {m.full_name.charAt(0).toUpperCase()}
+                        <div style={{ width: 40, height: 40, borderRadius: "50%", background: m.profile_picture_url ? "transparent" : "linear-gradient(135deg, #0070f3 0%, #0056d4 100%)", color: "white", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 600, fontSize: fontSize.md, flexShrink: 0, overflow: "hidden" }}>
+                          {m.profile_picture_url ? (
+                            <img src={m.profile_picture_url} alt={m.full_name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                          ) : (
+                            m.full_name.charAt(0).toUpperCase()
+                          )}
                         </div>
                         <div style={{ minWidth: 0 }}>
                           <h3 style={{ margin: "0 0 4px 0", color: "#0f172a", fontSize: fontSize.lg, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{m.full_name}</h3>
@@ -377,8 +382,12 @@ export default function ManageTruckOfficers() {
                       <tr key={m.manager_id} style={{ borderBottom: idx === managers.length - 1 ? "none" : "1px solid #e2e8f0", transition: "background 0.2s ease" }} onMouseEnter={e => e.currentTarget.style.background = "#f8fafc"} onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
                         <td style={{ padding: "12px 16px" }}>
                           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                            <div style={{ width: 36, height: 36, borderRadius: "50%", background: "linear-gradient(135deg, #0070f3 0%, #0056d4 100%)", color: "white", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 600, fontSize: fontSize.base, flexShrink: 0 }}>
-                              {m.full_name.charAt(0).toUpperCase()}
+                            <div style={{ width: 36, height: 36, borderRadius: "50%", background: m.profile_picture_url ? "transparent" : "linear-gradient(135deg, #0070f3 0%, #0056d4 100%)", color: "white", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 600, fontSize: fontSize.base, flexShrink: 0, overflow: "hidden" }}>
+                              {m.profile_picture_url ? (
+                                <img src={m.profile_picture_url} alt={m.full_name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                              ) : (
+                                m.full_name.charAt(0).toUpperCase()
+                              )}
                             </div>
                             <span style={{ color: "#0f172a", fontSize: fontSize.base, fontWeight: 500 }}>{m.full_name}</span>
                           </div>

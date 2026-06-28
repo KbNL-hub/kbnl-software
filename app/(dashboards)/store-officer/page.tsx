@@ -142,6 +142,7 @@ export default function StoreOfficerDashboard() {
     return new Date(y, m - 1, d, now.getHours(), now.getMinutes(), now.getSeconds()).toISOString()
   }
 
+  const [updatedStockProducts, setUpdatedStockProducts] = useState<string[]>([])
   const [salesFilter, setSalesFilter] = useState("All")
   const [salesDateFilter, setSalesDateFilter] = useState("")
   const [salesSortByAdded, setSalesSortByAdded] = useState(true)
@@ -259,6 +260,7 @@ export default function StoreOfficerDashboard() {
       .from("store_sales")
       .select("sale_id, product, quantity, price_per_bag, total_amount, customer_name, payment_mode, delivery_mode, tricycle_id, truck_plate, sold_at, created_at, broker_id, status")
       .eq("officer_id", officerId)
+      .order("sold_at", { ascending: false })
 
     if (!data) return
 
@@ -401,6 +403,8 @@ export default function StoreOfficerDashboard() {
       fetchPendingStops(officer.store_name),
       fetchStock(officer.store_name),
     ])
+    setUpdatedStockProducts(supplyLines.map(l => l.product))
+    setTimeout(() => setUpdatedStockProducts([]), 3000)
   }
 
   function addSaleLine() {
@@ -619,7 +623,7 @@ export default function StoreOfficerDashboard() {
 
   const groupedSales = sales.reduce<GroupedSale[]>((groups, sale) => {
     const groupId = [
-      sale.sold_at,
+      sale.sold_at.split("T")[0],
       sale.customer_name ?? "",
       sale.payment_mode,
       sale.delivery_mode,
@@ -669,7 +673,7 @@ export default function StoreOfficerDashboard() {
       const bCreated = b.lines[0]?.created_at || b.sold_at
       return bCreated.localeCompare(aCreated)
     } else {
-      return b.sold_at.localeCompare(a.sold_at)
+      return b.sold_at.split("T")[0].localeCompare(a.sold_at.split("T")[0])
     }
   })
   const paymentFilters = PAYMENT_MODES.filter(mode => sales.some(sale => sale.payment_mode === mode))
@@ -686,7 +690,8 @@ export default function StoreOfficerDashboard() {
   if (loading) return (
     <div style={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: "100vh", fontFamily: "'Inter', sans-serif" }}>
       <div style={{ width: 40, height: 40, borderRadius: "50%", border: "3px solid #e2e8f0", borderTopColor: "#0070f3", animation: "spin 1s linear infinite" }} />
-      <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+      <style>{`@keyframes spin { to { transform: rotate(360deg); } }
+@keyframes pulseGlow { 0%, 100% { box-shadow: 0 0 5px rgba(16, 185, 129, 0.3); border-color: #6ee7b7; } 50% { box-shadow: 0 0 20px rgba(16, 185, 129, 0.6); border-color: #34d399; } }`}</style>
     </div>
   )
 
@@ -798,14 +803,24 @@ export default function StoreOfficerDashboard() {
             ? <p style={{ color: "#64748b", fontSize: fontSize.base, margin: 0 }}>No stock recorded yet.</p>
             : (
               <div style={{ display: "grid", gridTemplateColumns: isMobile ? "repeat(2, 1fr)" : "repeat(auto-fit, minmax(160px, 1fr))", gap: 12 }}>
-                {stock.map(s => (
-                  <div key={s.product} style={{ background: "#f0f7ff", border: "1.5px solid #bfdbfe", borderRadius: 8, padding: "12px 14px" }}>
+                {stock.map(s => {
+                  const isUpdated = updatedStockProducts.includes(s.product)
+                  return (
+                  <div key={s.product} style={{
+                    background: "#f0f7ff",
+                    border: `1.5px solid ${isUpdated ? "#6ee7b7" : "#bfdbfe"}`,
+                    borderRadius: 8,
+                    padding: "12px 14px",
+                    animation: isUpdated ? "pulseGlow 0.6s ease 3" : undefined,
+                    transition: "box-shadow 0.3s, border-color 0.3s",
+                  }}>
                     <p style={{ margin: 0, fontSize: fontSize.xs, color: "#64748b" }}>{s.product}</p>
                     <p style={{ margin: "6px 0 0", fontWeight: 700, fontSize: fontSize["2xl"], color: s.balance === 0 ? "#ef4444" : s.balance < 50 ? "#f5a623" : "#0070f3" }}>
                       {s.balance}<span style={{ fontSize: fontSize.xs, fontWeight: 500, color: "#64748b", marginLeft: 4 }}>bags</span>
                     </p>
                   </div>
-                ))}
+                  )
+                })}
               </div>
             )
           }

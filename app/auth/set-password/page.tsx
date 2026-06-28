@@ -100,7 +100,7 @@ export default function SetPasswordPage() {
 
       // Redirect to dashboard
       const dashboard = role ? getRoleDashboard(role) : "/login"
-      setMessage("✅ Password set! Redirecting...")
+      setMessage("Password set! Redirecting...")
       setIsError(false)
       setTimeout(() => router.push(dashboard), 1500)
     } else {

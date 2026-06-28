@@ -9,7 +9,6 @@ export interface RoleConfig {
 export const ALL_SECTIONS = [
   'invite-users',
   'add-truck',
-  'add-driver',
   'manage-brokers',
   'manage-drivers',
   'manage-trucks',
@@ -54,7 +53,7 @@ export const ROLES: Record<string, RoleConfig> = {
   },
   Broker: {
     sections: [
-      'add-truck', 'add-driver', 'manage-brokers',
+      'add-truck', 'manage-brokers',
       'monitor-trucks', 'manage-trucks', 'manage-drivers',
       'monitor-trips', 'complaints', 'diesel-manager',
       'tricycles', 'cash-expenses', 'customer-payments',

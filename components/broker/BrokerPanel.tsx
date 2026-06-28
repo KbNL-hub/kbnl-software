@@ -3,15 +3,26 @@
 import { useState, useEffect, useRef, useMemo } from "react"
 import { useRouter } from "next/navigation"
 import { Icon } from "@iconify/react"
+import dynamic from "next/dynamic"
 import { supabase } from "@/lib/supabase"
 import { apiMutate } from "@/lib/api-mutation"
 import RoleSwitcher from "@/components/RoleSwitcher"
 import { useBreakpoint } from "@/app/hooks/useBreakpoint"
-import MyStops from "@/components/broker/MyStops"
-import BrokerPayments from "@/components/broker/CustomerPayments"
-import BrokerCreditsView from "@/components/broker/BrokerCreditsView"
-import BrokerActiveTrips from "@/components/broker/BrokerActiveTrips"
-import CashOfficerPanel from "@/components/CashOfficerPanel"
+
+const SECTION_IMPORTS = {
+  trips: () => import("@/components/broker/BrokerActiveTrips"),
+  stops: () => import("@/components/broker/MyStops"),
+  payments: () => import("@/components/broker/CustomerPayments"),
+  credits: () => import("@/components/broker/BrokerCreditsView"),
+  expenses: () => import("@/components/CashOfficerPanel"),
+} as const
+
+type SectionKey = keyof typeof SECTION_IMPORTS
+
+const SECTION_COMPONENTS: Partial<Record<SectionKey, React.ComponentType<any>>> = {}
+for (const key of Object.keys(SECTION_IMPORTS) as SectionKey[]) {
+  SECTION_COMPONENTS[key] = dynamic(SECTION_IMPORTS[key])
+}
 
 const BASE_NAV_ITEMS = [
   { label: "Active Trips",        key: "trips",    icon: "mdi:truck-fast" },
@@ -147,6 +158,7 @@ export default function BrokerPanel({ userProfile }: Props) {
 
   function navigate(key: string) {
     setActive(key)
+    SECTION_IMPORTS[key as SectionKey]?.()
     if (isNarrow) setDrawerOpen(false)
     window.history.pushState(null, '', `${window.location.pathname}?section=${key}`)
   }
@@ -166,12 +178,15 @@ export default function BrokerPanel({ userProfile }: Props) {
     return BASE_NAV_ITEMS
   }, [isDualRole])
 
-  // Sync initial section from URL
+  // Sync initial section from URL and preload its chunk
   useEffect(() => {
     const params = new URLSearchParams(window.location.search)
     const section = params.get('section')
     const validKeys = NAV_ITEMS.map(n => n.key)
-    setActive(section && validKeys.includes(section) ? section : "")
+    if (section && validKeys.includes(section)) {
+      setActive(section)
+      SECTION_IMPORTS[section as SectionKey]?.()
+    }
   }, [NAV_ITEMS])
 
   // Handle browser back/forward between sections
@@ -197,25 +212,19 @@ export default function BrokerPanel({ userProfile }: Props) {
   }
 
   function renderContent() {
-    switch (active) {
-      case "trips":     return <BrokerActiveTrips />
-      case "stops":     return <MyStops />
-      case "payments":  return <BrokerPayments />
-      case "credits":   return <BrokerCreditsView />
-      case "expenses":  return (
-        <CashOfficerPanel
-          clerkId={userProfile.user_id}
-          officeName={clerkOfficeName}
-          fullName={userProfile.full_name}
-        />
-      )
-      default: return (
-        <div>
-          <h1 style={{ marginBottom: 8, fontSize: isMobile ? 22 : 28, color: "#171717" }}>Welcome, Broker</h1>
-          <p style={{ color: "#888", fontSize: 15 }}>Select a section from the {isNarrow ? "menu" : "sidebar"}.</p>
-        </div>
-      )
+    const Component = active ? SECTION_COMPONENTS[active as SectionKey] : undefined
+    if (Component) {
+      if (active === "expenses") {
+        return <Component clerkId={userProfile.user_id} officeName={clerkOfficeName} fullName={userProfile.full_name} />
+      }
+      return <Component />
     }
+    return (
+      <div>
+        <h1 style={{ marginBottom: 8, fontSize: isMobile ? 22 : 28, color: "#171717" }}>Welcome, Broker</h1>
+        <p style={{ color: "#888", fontSize: 15 }}>Select a section from the {isNarrow ? "menu" : "sidebar"}.</p>
+      </div>
+    )
   }
 
   function NavItem({ item, showLabel }: { item: typeof NAV_ITEMS[0]; showLabel: boolean }) {

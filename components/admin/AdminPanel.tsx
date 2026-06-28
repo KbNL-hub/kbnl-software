@@ -3,41 +3,57 @@
 import { useState, useEffect, useRef } from "react"
 import { useRouter } from "next/navigation"
 import { Icon } from "@iconify/react"
+import dynamic from "next/dynamic"
 import { supabase } from "@/lib/supabase"
 import { apiMutate } from "@/lib/api-mutation"
 import RoleSwitcher from "@/components/RoleSwitcher"
 import { useBreakpoint } from "@/app/hooks/useBreakpoint"
-
-// Admin sections
-import AddTruck from "@/components/admin/AddTruck"
-import Tricycles from "@/components/admin/Tricycles"
-import AddDriver from "@/components/admin/AddDriver"
-import ManageBrokers from "@/components/admin/ManageBrokers"
-import MonitorTrucks from "@/components/admin/MonitorTrucks"
-import ManageTrucks from "@/components/admin/ManageTrucks"
-import ManageDrivers from "@/components/admin/ManageDrivers"
-import MonitorTrips from "@/components/admin/MonitorTrips"
-import DieselManager from "@/components/admin/DieselManager"
-import StationManagers from "@/components/admin/StationManagers"
-import TruckOfficers from "@/components/admin/TruckOfficers"
-import TruckAdmins from "@/components/admin/TruckAdmins"
-import Reports from "@/components/admin/Reports"
-import Complaints from "@/components/admin/Complaints"
-import ReportModal from "@/components/ReportModal"
-import StoreOfficers from "@/components/admin/StoreOfficers"
-import CashOfficers from "@/components/admin/CashOfficers"
-import CashExpenses from "@/components/admin/CashExpenses"
-import CustomerPaymentsAdmin from "@/components/admin/CustomerPaymentsAdmin"
-import BrokerCredits from "@/components/admin/BrokerCredits"
 import NoClearance from "@/components/admin/NoClearance"
-import InviteUsers from "@/components/admin/InviteUsers"
 import { PermissionProvider, usePermissions } from "@/lib/PermissionContext"
 import { ROLES } from "@/lib/permissions"
 
-const NAV_ITEMS = [
+const SECTION_IMPORTS = {
+  "invite-users": () => import("@/components/admin/InviteUsers"),
+  "add-truck": () => import("@/components/admin/AddTruck"),
+
+  "manage-brokers": () => import("@/components/admin/ManageBrokers"),
+  "monitor-trucks": () => import("@/components/admin/MonitorTrucks"),
+  "manage-trucks": () => import("@/components/admin/ManageTrucks"),
+  "manage-drivers": () => import("@/components/admin/ManageDrivers"),
+  "monitor-trips": () => import("@/components/admin/MonitorTrips"),
+  "complaints": () => import("@/components/admin/Complaints"),
+  "station-managers": () => import("@/components/admin/StationManagers"),
+  "diesel-manager": () => import("@/components/admin/DieselManager"),
+  "truck-officers": () => import("@/components/admin/TruckOfficers"),
+  "truck-admins": () => import("@/components/admin/TruckAdmins"),
+  "tricycles": () => import("@/components/admin/Tricycles"),
+  "store-officers": () => import("@/components/admin/StoreOfficers"),
+  "cash-officers": () => import("@/components/admin/CashOfficers"),
+  "cash-expenses": () => import("@/components/admin/CashExpenses"),
+  "customer-payments": () => import("@/components/admin/CustomerPaymentsAdmin"),
+  "credit": () => import("@/components/admin/BrokerCredits"),
+  "reports": () => import("@/components/admin/Reports"),
+} as const
+
+type SectionKey = keyof typeof SECTION_IMPORTS
+
+const SECTION_KEYS = new Set(Object.keys(SECTION_IMPORTS) as SectionKey[])
+const isSectionKey = (value: string | null): value is SectionKey =>
+  !!value && SECTION_KEYS.has(value as SectionKey)
+
+type NavItemConfig = { label: string; key: SectionKey; icon: string }
+
+const SECTION_COMPONENTS: Partial<Record<SectionKey, React.ComponentType<any>>> = {}
+for (const key of Object.keys(SECTION_IMPORTS) as SectionKey[]) {
+  SECTION_COMPONENTS[key] = dynamic(SECTION_IMPORTS[key])
+}
+
+const ReportModal = dynamic(() => import("@/components/ReportModal"))
+
+const NAV_ITEMS: NavItemConfig[] = [
   { label: "Invite Users",     key: "invite-users",        icon: "mdi:account-plus-outline" },
   { label: "Add New Truck",     key: "add-truck",          icon: "mdi:truck-plus" },
-  { label: "Add New Driver",    key: "add-driver",          icon: "mdi:account-plus" },
+
   { label: "Manage Brokers",    key: "manage-brokers",      icon: "mdi:handshake" },
   { label: "Manage Drivers",    key: "manage-drivers",      icon: "mdi:account-group" },
   { label: "Manage Trucks",     key: "manage-trucks",       icon: "mdi:bus-wrench" },
@@ -79,7 +95,7 @@ function AdminPanelContent({ userProfile }: Props) {
   const isNarrow = isMobile || isTablet
 
   const router = useRouter()
-  const [active, setActive] = useState("")
+  const [active, setActive] = useState<SectionKey | "">("")
   const [sidebarOpen, setSidebarOpen] = useState(true)
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [showReportModal, setShowReportModal] = useState(false)
@@ -99,7 +115,7 @@ function AdminPanelContent({ userProfile }: Props) {
   const [pictureError, setPictureError] = useState("")
 
   // Filter nav items based on user permissions
-  const visibleNavItems = NAV_ITEMS.filter(item => sections.includes(item.key as any))
+  const visibleNavItems = NAV_ITEMS.filter(item => sections.includes(item.key))
 
   // Measure actual banner height for mobile drawer offset
   useEffect(() => {
@@ -171,12 +187,14 @@ function AdminPanelContent({ userProfile }: Props) {
 
   const visibleAlerts = lowBalanceCompanies.filter(c => !dismissedAlerts.has(c.company_id))
 
-  // Sync initial section from URL
+  // Sync initial section from URL and preload its chunk
   useEffect(() => {
     const params = new URLSearchParams(window.location.search)
     const section = params.get('section')
-    const allKeys = NAV_ITEMS.map(n => n.key)
-    setActive(section && allKeys.includes(section) ? section : "")
+    if (isSectionKey(section)) {
+      setActive(section)
+      SECTION_IMPORTS[section]()
+    }
   }, [])
 
   // Handle browser back/forward between sections
@@ -184,15 +202,15 @@ function AdminPanelContent({ userProfile }: Props) {
     const handlePopState = () => {
       const params = new URLSearchParams(window.location.search)
       const section = params.get('section')
-      const allKeys = NAV_ITEMS.map(n => n.key)
-      setActive(section && allKeys.includes(section) ? section : "")
+      setActive(isSectionKey(section) ? section : "")
     }
     window.addEventListener('popstate', handlePopState)
     return () => window.removeEventListener('popstate', handlePopState)
   }, [])
 
-  function navigate(key: string) {
+  function navigate(key: SectionKey) {
     setActive(key)
+    SECTION_IMPORTS[key]()
     if (isNarrow) setDrawerOpen(false)
     window.history.pushState(null, '', `${window.location.pathname}?section=${key}`)
   }
@@ -225,6 +243,8 @@ function AdminPanelContent({ userProfile }: Props) {
     if (!selectedFile) { setPictureError("Please select an image"); return }
     setPictureLoading(true)
     setPictureError("")
+    let uploadedPath: string | null = null
+    let profileSaved = false
     try {
       const { data: { session } } = await supabase.auth.getSession()
       if (!session) { setPictureError("Session expired"); setPictureLoading(false); return }
@@ -233,9 +253,16 @@ function AdminPanelContent({ userProfile }: Props) {
       const filePath = `${userProfile.user_id}/${fileName}`
       const { error: uploadError } = await supabase.storage.from("profile-pictures").upload(filePath, selectedFile, { upsert: false })
       if (uploadError) { setPictureError("Upload failed"); setPictureLoading(false); return }
+      uploadedPath = filePath
       const { data: { publicUrl } } = supabase.storage.from("profile-pictures").getPublicUrl(filePath)
       const { error: updateError } = await apiMutate("admin", { action: "update", table: "Profiles", data: { profile_picture_url: publicUrl }, filters: { user_id: userProfile.user_id } })
-      if (updateError) { setPictureError("Failed to save profile"); setPictureLoading(false); return }
+      if (updateError) {
+        await supabase.storage.from("profile-pictures").remove([filePath])
+        setPictureError("Failed to save profile")
+        setPictureLoading(false)
+        return
+      }
+      profileSaved = true
       if (profilePicUrl) {
         const oldPath = profilePicUrl.split("/").slice(-2).join("/")
         await supabase.storage.from("profile-pictures").remove([oldPath])
@@ -246,6 +273,9 @@ function AdminPanelContent({ userProfile }: Props) {
       setSelectedFile(null)
       setPicturePreview(null)
     } catch (err) {
+      if (uploadedPath && !profileSaved) {
+        try { await supabase.storage.from("profile-pictures").remove([uploadedPath]) } catch {}
+      }
       setPictureError("Something went wrong")
       setPictureLoading(false)
     }
@@ -263,34 +293,14 @@ function AdminPanelContent({ userProfile }: Props) {
       }
     }
 
-    switch (active) {
-      case "invite-users":       return <InviteUsers />
-      case "add-truck":          return <AddTruck />
-      case "add-driver":         return <AddDriver />
-      case "manage-brokers":     return <ManageBrokers />
-      case "monitor-trucks":     return <MonitorTrucks />
-      case "manage-trucks":      return <ManageTrucks />
-      case "manage-drivers":     return <ManageDrivers />
-      case "monitor-trips":      return <MonitorTrips />
-      case "complaints":         return <Complaints />
-      case "station-managers":   return <StationManagers />
-      case "diesel-manager":     return <DieselManager />
-      case "truck-officers":     return <TruckOfficers />
-      case "truck-admins":       return <TruckAdmins />
-      case "tricycles":          return <Tricycles />
-      case "store-officers":     return <StoreOfficers />
-      case "cash-officers":      return <CashOfficers />
-      case "cash-expenses":      return <CashExpenses />
-      case "customer-payments":  return <CustomerPaymentsAdmin />
-      case "credit":             return <BrokerCredits />
-      case "reports":            return <Reports />
-      default: return (
-        <div>
-          <h1 style={{ marginBottom: 8, fontSize: isMobile ? 22 : 28, color: "#171717" }}>Welcome, Admin</h1>
-          <p style={{ color: "#888", fontSize: 15 }}>Select a section from the {isNarrow ? "menu" : "sidebar"}.</p>
-        </div>
-      )
-    }
+    const Component = active ? SECTION_COMPONENTS[active] : undefined
+    if (Component) return <Component />
+    return (
+      <div>
+        <h1 style={{ marginBottom: 8, fontSize: isMobile ? 22 : 28, color: "#171717" }}>Welcome, Admin</h1>
+        <p style={{ color: "#888", fontSize: 15 }}>Select a section from the {isNarrow ? "menu" : "sidebar"}.</p>
+      </div>
+    )
   }
 
   function NavItem({ item, showLabel }: { item: typeof NAV_ITEMS[0]; showLabel: boolean }) {
