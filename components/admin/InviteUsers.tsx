@@ -57,6 +57,10 @@ export default function InviteUsers() {
   const [result, setResult] = useState<InviteResult | null>(null)
   const [copied, setCopied] = useState(false)
   const [companies, setCompanies] = useState<FuelCompany[]>([])
+  const [allProducts, setAllProducts] = useState<string[]>([])
+  const [openingBalance, setOpeningBalance] = useState<{ product: string; quantity: string }[]>([
+    { product: "", quantity: "" }
+  ])
 
   const phoneRef = useRef<HTMLInputElement>(null)
   const emailRef = useRef<HTMLInputElement>(null)
@@ -64,6 +68,9 @@ export default function InviteUsers() {
   useEffect(() => {
     supabase.from("fuel_companies").select("company_id, company_name").order("company_name").then(({ data }) => {
       if (data) setCompanies(data)
+    })
+    supabase.rpc("get_products").then(({ data }) => {
+      if (data) setAllProducts(data.map((r: { value: string }) => r.value))
     })
   }, [])
 
@@ -80,6 +87,19 @@ export default function InviteUsers() {
 
   function needsField(field: string): boolean {
     return ALL_ROLES.some((r) => selectedRoles.has(r.key) && r.needsField === field)
+  }
+
+  function addOpeningBalanceLine() {
+    setOpeningBalance([...openingBalance, { product: "", quantity: "" }])
+  }
+
+  function removeOpeningBalanceLine(index: number) {
+    if (openingBalance.length === 1) return
+    setOpeningBalance(openingBalance.filter((_, i) => i !== index))
+  }
+
+  function updateOpeningBalanceLine(index: number, field: "product" | "quantity", value: string) {
+    setOpeningBalance(openingBalance.map((l, i) => (i === index ? { ...l, [field]: value } : l)))
   }
 
   async function handleSubmit() {
@@ -108,6 +128,7 @@ export default function InviteUsers() {
           storeName: storeName || undefined,
           officeName: officeName || undefined,
           assignedOffice: cashAuthOffice || undefined,
+          openingBalance: openingBalance.filter(l => l.product && parseInt(l.quantity) > 0) || undefined,
         }),
       })
 
@@ -157,6 +178,7 @@ export default function InviteUsers() {
     setStoreName("")
     setOfficeName("")
     setCashAuthOffice("")
+    setOpeningBalance([{ product: "", quantity: "" }])
     setMessage("")
     setResult(null)
     setCopied(false)
@@ -425,22 +447,73 @@ export default function InviteUsers() {
           )}
 
           {needsField("store") && (
-            <div style={{ marginBottom: 16 }}>
-              <label style={labelStyle}>Store (for Store Officer) *</label>
-              <select
-                value={storeName}
-                onChange={(e) => setStoreName(e.target.value)}
-                style={{
-                  ...inputStyle,
-                  appearance: "none",
-                  background: "#f9f9f9 url(\"data:image/svg+xml,%3Csvg width='12' height='8' viewBox='0 0 12 8' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M1 1.5L6 6.5L11 1.5' stroke='%23999' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E\") no-repeat right 14px center",
-                }}
-              >
-                <option value="">Select store...</option>
-                {STORE_LOCATIONS.map((s) => (
-                  <option key={s} value={s}>{s}</option>
-                ))}
-              </select>
+            <div>
+              <div style={{ marginBottom: 16 }}>
+                <label style={labelStyle}>Store (for Store Officer) *</label>
+                <select
+                  value={storeName}
+                  onChange={(e) => setStoreName(e.target.value)}
+                  style={{
+                    ...inputStyle,
+                    appearance: "none",
+                    background: "#f9f9f9 url(\"data:image/svg+xml,%3Csvg width='12' height='8' viewBox='0 0 12 8' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M1 1.5L6 6.5L11 1.5' stroke='%23999' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E\") no-repeat right 14px center",
+                  }}
+                >
+                  <option value="">Select store...</option>
+                  {STORE_LOCATIONS.map((s) => (
+                    <option key={s} value={s}>{s}</option>
+                  ))}
+                </select>
+              </div>
+
+              {storeName && (
+                <div style={{ marginBottom: 16 }}>
+                  <p style={{ margin: "0 0 4px 0", fontWeight: 700, fontSize: 14, color: "#0f172a" }}>
+                    Opening Stock Balance <span style={{ fontWeight: 400, fontSize: 12, color: "#94a3b8" }}>(optional)</span>
+                  </p>
+                  <p style={{ margin: "0 0 12px 0", fontSize: 12, color: "#94a3b8" }}>
+                    Set the initial stock balance for <strong>{storeName}</strong>.
+                  </p>
+
+                  <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 12 }}>
+                    {openingBalance.map((line, i) => (
+                      <div key={i} style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                        <select
+                          value={line.product}
+                          onChange={(e) => updateOpeningBalanceLine(i, "product", e.target.value)}
+                          style={{
+                            ...inputStyle,
+                            flex: 1,
+                            appearance: "none",
+                            background: "#f9f9f9 url(\"data:image/svg+xml,%3Csvg width='12' height='8' viewBox='0 0 12 8' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M1 1.5L6 6.5L11 1.5' stroke='%23999' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E\") no-repeat right 14px center",
+                          }}
+                        >
+                          <option value="">Select product</option>
+                          {allProducts.map((p) => (
+                            <option key={p} value={p}>{p}</option>
+                          ))}
+                        </select>
+                        <input
+                          type="number"
+                          min="1"
+                          placeholder="Qty"
+                          value={line.quantity}
+                          onChange={(e) => updateOpeningBalanceLine(i, "quantity", e.target.value)}
+                          onKeyDown={(e) => { if (e.key === "-" || e.key === "e") e.preventDefault() }}
+                          style={{ ...inputStyle, width: 100, flexShrink: 0 }}
+                        />
+                        {openingBalance.length > 1 && (
+                          <button onClick={() => removeOpeningBalanceLine(i)} style={{ background: "none", border: "none", cursor: "pointer", color: "#ef4444", fontSize: 18, lineHeight: 1, padding: 0, width: 24, height: 24, display: "flex", alignItems: "center", justifyContent: "center" }}>X</button>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+
+                  <button onClick={addOpeningBalanceLine} style={{ width: "100%", padding: "8px 12px", background: "white", border: "1px dashed #0070f3", color: "#0070f3", borderRadius: 6, cursor: "pointer", fontSize: 13, fontWeight: 600, minHeight: 38 }}>
+                    + Add Product
+                  </button>
+                </div>
+              )}
             </div>
           )}
 

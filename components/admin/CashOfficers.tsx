@@ -790,7 +790,7 @@ export default function CashOfficers() {
                         opacity: submitting ? 0.7 : 1, minHeight: 44,
                       }}
                     >
-                      {submitting ? "Sending Invite..." : "Send Invite"}
+                      {submitting ? "Adding User..." : "Add User"}
                     </button>
                   </>
                 )}

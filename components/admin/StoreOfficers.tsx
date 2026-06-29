@@ -1028,7 +1028,7 @@ export default function StoreOfficers() {
                         minHeight: 44,
                       }}
                     >
-                      {submitting ? "Sending Invite..." : "Send Invite"}
+                      {submitting ? "Adding User..." : "Add User"}
                     </button>
                   </>
                 )}

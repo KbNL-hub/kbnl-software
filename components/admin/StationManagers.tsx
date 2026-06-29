@@ -73,6 +73,11 @@ export default function ManageStationManagers() {
   const [email, setEmail] = useState("")
   const [companyId, setCompanyId] = useState("")
 
+  // New company form
+  const [showNewCompanyForm, setShowNewCompanyForm] = useState(false)
+  const [newCompanyName, setNewCompanyName] = useState("")
+  const [creatingCompany, setCreatingCompany] = useState(false)
+
   // Edit form
   const [editName, setEditName] = useState("")
   const [editPhone, setEditPhone] = useState("")
@@ -84,6 +89,7 @@ export default function ManageStationManagers() {
   const phoneRef = useRef<HTMLInputElement>(null)
   const emailRef = useRef<HTMLInputElement>(null)
   const companyRef = useRef<HTMLSelectElement>(null)
+  const newCompanyRef = useRef<HTMLInputElement>(null)
   const editPhoneRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
@@ -133,10 +139,54 @@ export default function ManageStationManagers() {
     setCompanies(data || [])
   }
 
+  async function handleCreateCompany() {
+    if (!canEdit) return
+    const name = newCompanyName.trim()
+    if (!name) return setMessage("Enter a company name")
+
+    setCreatingCompany(true)
+    setMessage("")
+
+    try {
+      const { data, error } = await apiMutate<FuelCompany[]>("fuel", {
+        action: "insert",
+        table: "fuel_companies",
+        data: { company_name: name },
+      })
+
+      if (error) {
+        setMessage("Failed to create company: " + error)
+        return
+      }
+
+      if (!data || !data[0]) {
+        setMessage("Failed to create company: no data returned")
+        return
+      }
+
+      const created: FuelCompany = {
+        company_id: data[0].company_id,
+        company_name: data[0].company_name,
+      }
+
+      setCompanies((prev) => [...prev, created].sort((a, b) => a.company_name.localeCompare(b.company_name)))
+      setCompanyId(created.company_id)
+      setShowNewCompanyForm(false)
+      setNewCompanyName("")
+      setMessage("")
+    } catch {
+      setMessage("Network error, please try again")
+    } finally {
+      setCreatingCompany(false)
+    }
+  }
+
   function closeModals() {
     setShowInviteModal(false)
     setEditingManager(null)
     setDeletingId(null)
+    setShowNewCompanyForm(false)
+    setNewCompanyName("")
     setFullName("")
     setPhoneNumber("")
     setEmail("")
@@ -1200,23 +1250,160 @@ export default function ManageStationManagers() {
                         >
                           Fuel Company *
                         </label>
-                        <select
-                          ref={companyRef}
-                          value={companyId}
-                          onChange={(e) => {
-                            setCompanyId(e.target.value)
-                            setMessage("")
-                          }}
-                          style={inputStyle}
-                          disabled={!canEdit}
-                        >
-                          <option value="">Select a company</option>
-                          {companies.map((c) => (
-                            <option key={c.company_id} value={c.company_id}>
-                              {c.company_name}
-                            </option>
-                          ))}
-                        </select>
+                        {showNewCompanyForm ? (
+                          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                            <input
+                              ref={newCompanyRef}
+                              type="text"
+                              placeholder="Enter new company name"
+                              value={newCompanyName}
+                              onChange={(e) => {
+                                setNewCompanyName(e.target.value)
+                                setMessage("")
+                              }}
+                              onKeyDown={(e) => {
+                                if (e.key === "Enter") handleCreateCompany()
+                              }}
+                              style={inputStyle}
+                              autoFocus
+                            />
+                            <div style={{ display: "flex", gap: 8 }}>
+                              <button
+                                onClick={handleCreateCompany}
+                                disabled={creatingCompany || !canEdit}
+                                style={{
+                                  flex: 1,
+                                  padding: "10px 16px",
+                                  background: creatingCompany || !canEdit ? "#94a3b8" : "#171717",
+                                  color: "white",
+                                  border: "none",
+                                  borderRadius: 10,
+                                  cursor: creatingCompany || !canEdit ? "not-allowed" : "pointer",
+                                  fontWeight: 700,
+                                  fontSize: fontSize.sm,
+                                  minHeight: 42,
+                                  display: "flex",
+                                  alignItems: "center",
+                                  justifyContent: "center",
+                                  gap: 6,
+                                  boxShadow: creatingCompany || !canEdit ? "none" : "0 4px 12px rgba(23, 23, 23, 0.3)",
+                                  transition: "all 0.2s ease",
+                                  letterSpacing: "0.3px",
+                                }}
+                                onMouseEnter={(e) => {
+                                  if (!creatingCompany && canEdit)
+                                    e.currentTarget.style.transform = "translateY(-1px)"
+                                }}
+                                onMouseLeave={(e) => {
+                                  if (!creatingCompany && canEdit)
+                                    e.currentTarget.style.transform = "none"
+                                }}
+                              >
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                                  <path d="M12 2c5.5 0 10 4.5 10 10s-4.5 10-10 10S2 17.5 2 12 6.5 2 12 2m0 2c-4.4 0-8 3.6-8 8s3.6 8 8 8 8-3.6 8-8-3.6-8-8-8m3.5 9h-3v3h-1v-3h-3v-1h3v-3h1v3h3v1z" />
+                                </svg>
+                                {creatingCompany ? "Creating..." : "Create Company"}
+                              </button>
+                              <button
+                                onClick={() => {
+                                  setShowNewCompanyForm(false)
+                                  setNewCompanyName("")
+                                  setMessage("")
+                                  companyRef.current?.focus()
+                                }}
+                                style={{
+                                  padding: "10px 16px",
+                                  background: "white",
+                                  color: "#64748b",
+                                  border: "1.5px solid #e2e8f0",
+                                  borderRadius: 10,
+                                  cursor: "pointer",
+                                  fontWeight: 600,
+                                  fontSize: fontSize.sm,
+                                  minHeight: 42,
+                                  transition: "all 0.2s ease",
+                                }}
+                                onMouseEnter={(e) => {
+                                  e.currentTarget.style.background = "#f8fafc"
+                                  e.currentTarget.style.borderColor = "#cbd5e1"
+                                  e.currentTarget.style.color = "#475569"
+                                }}
+                                onMouseLeave={(e) => {
+                                  e.currentTarget.style.background = "white"
+                                  e.currentTarget.style.borderColor = "#e2e8f0"
+                                  e.currentTarget.style.color = "#64748b"
+                                }}
+                              >
+                                Cancel
+                              </button>
+                            </div>
+                          </div>
+                        ) : (
+                          <>
+                            <select
+                              ref={companyRef}
+                              value={companyId}
+                              onChange={(e) => {
+                                setCompanyId(e.target.value)
+                                setMessage("")
+                              }}
+                              style={inputStyle}
+                              disabled={!canEdit}
+                            >
+                              <option value="">Select a company</option>
+                              {companies.map((c) => (
+                                <option key={c.company_id} value={c.company_id}>
+                                  {c.company_name}
+                                </option>
+                              ))}
+                            </select>
+                            <button
+                              onClick={() => {
+                                setShowNewCompanyForm(true)
+                                setTimeout(() => newCompanyRef.current?.focus(), 0)
+                              }}
+                              disabled={!canEdit}
+                              style={{
+                                width: "100%",
+                                marginTop: 8,
+                                padding: "10px 14px",
+                                background: !canEdit ? "#f1f5f9" : "white",
+                                color: !canEdit ? "#94a3b8" : "#171717",
+                                border: !canEdit ? "1.5px dashed #e2e8f0" : "1.5px dashed #cbd5e1",
+                                borderRadius: 10,
+                                cursor: !canEdit ? "not-allowed" : "pointer",
+                                fontWeight: 500,
+                                fontSize: fontSize.sm,
+                                display: "flex",
+                                alignItems: "center",
+                                justifyContent: "center",
+                                gap: 6,
+                                minHeight: 42,
+                                transition: "all 0.2s ease",
+                              }}
+                              onMouseEnter={(e) => {
+                                if (canEdit) {
+                                  e.currentTarget.style.background = "#fafafa"
+                                  e.currentTarget.style.borderColor = "#171717"
+                                  e.currentTarget.style.color = "#000"
+                                }
+                              }}
+                              onMouseLeave={(e) => {
+                                if (canEdit) {
+                                  e.currentTarget.style.background = "white"
+                                  e.currentTarget.style.borderColor = "#cbd5e1"
+                                  e.currentTarget.style.color = "#171717"
+                                }
+                              }}
+                            >
+                              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+                                <line x1="12" y1="5" x2="12" y2="19" />
+                                <line x1="5" y1="12" x2="19" y2="12" />
+                              </svg>
+                              Create new company
+                            </button>
+                          </>
+                        )}
                       </div>
                     </div>
 
@@ -1254,7 +1441,7 @@ export default function ManageStationManagers() {
                         minHeight: 44,
                       }}
                     >
-                      {submitting ? "Sending Invite..." : "Send Invite"}
+                      {submitting ? "Adding User..." : "Add User"}
                     </button>
                   </>
                 )}

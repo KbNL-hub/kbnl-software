@@ -1134,6 +1134,7 @@ export default function StoreOfficerDashboard() {
                     placeholder="Qty"
                     value={line.quantity}
                     onChange={e => updateSupplyLine(i, "quantity", e.target.value)}
+                    onKeyDown={(e: any) => { if (e.key === "-" || e.key === "e") e.preventDefault() }}
                     style={{ flex: 1, width: isMobile ? 90 : 110, flexShrink: 0, padding: "10px 12px", borderRadius: 6, border: "1px solid #e0e0e0", fontSize: fontSize.sm, boxSizing: "border-box" }}
                   />
                   {supplyLines.length > 1 && (

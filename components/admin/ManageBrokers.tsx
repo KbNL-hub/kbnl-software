@@ -501,7 +501,7 @@ export default function ManageBrokers() {
                       disabled={submitting || !canEdit}
                       style={{ width: "100%", padding: "12px 16px", background: submitting || !canEdit ? "#94a3b8" : "#0070f3", color: "white", border: "none", borderRadius: 8, cursor: submitting || !canEdit ? "not-allowed" : "pointer", fontWeight: 600, fontSize: fontSize.md, transition: "opacity 0.2s", opacity: submitting || !canEdit ? 0.7 : 1, minHeight: 44 }}
                     >
-                      {submitting ? "Sending Invite..." : "Send Invite"}
+                      {submitting ? "Adding User..." : "Add User"}
                     </button>
                   </>
                 )}

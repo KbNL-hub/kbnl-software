@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from "react"
 import { supabase } from "@/lib/supabase"
 import ModernInput from "@/components/ModernInput"
 import InviteSuccessCard from "@/components/admin/InviteSuccessCard"
+import { apiMutate } from "@/lib/api-mutation"
 import { usePermissions } from "@/lib/PermissionContext"
 
 type Driver = {
@@ -136,24 +137,21 @@ export default function ManageDrivers() {
 
     setSubmitting(true)
 
-    try {
-      const { error } = await supabase
-        .from("Drivers")
-        .update({ full_name: editName, phone_number: editPhone || null })
-        .eq("driver_id", editingDriver.driver_id)
+    const { error } = await apiMutate("admin", {
+      action: "update",
+      table: "Drivers",
+      data: { full_name: editName, phone_number: editPhone || null },
+      filters: { driver_id: editingDriver.driver_id },
+    })
 
-      if (error) {
-        setMessage("Failed to update driver")
-        return
-      }
-
+    if (error) {
+      setMessage(error)
+    } else {
       closeModals()
       fetchDrivers()
-    } catch {
-      setMessage("Network error, please try again")
-    } finally {
-      setSubmitting(false)
     }
+
+    setSubmitting(false)
   }
 
   async function handleSuspend(driver: Driver) {
@@ -161,47 +159,40 @@ export default function ManageDrivers() {
     const newStatus = driver.status === "Suspended" ? "Active" : "Suspended"
     setSubmitting(true)
 
-    try {
-      const { error } = await supabase
-        .from("Drivers")
-        .update({ status: newStatus })
-        .eq("driver_id", driver.driver_id)
+    const { error } = await apiMutate("admin", {
+      action: "update",
+      table: "Drivers",
+      data: { status: newStatus },
+      filters: { driver_id: driver.driver_id },
+    })
 
-      if (error) {
-        setMessage("Failed to update driver status")
-        return
-      }
-
+    if (error) {
+      setMessage(error)
+    } else {
       fetchDrivers()
-    } catch {
-      setMessage("Network error, please try again")
-    } finally {
-      setSubmitting(false)
     }
+
+    setSubmitting(false)
   }
 
   async function handleDelete(driver_id: string) {
     if (!canEdit) return
     setSubmitting(true)
 
-    try {
-      const { error } = await supabase
-        .from("Drivers")
-        .delete()
-        .eq("driver_id", driver_id)
+    const { error } = await apiMutate("admin", {
+      action: "delete",
+      table: "Drivers",
+      filters: { driver_id },
+    })
 
-      if (error) {
-        setMessage("Failed to delete driver")
-        return
-      }
-
+    if (error) {
+      setMessage(error)
+    } else {
       closeModals()
       fetchDrivers()
-    } catch {
-      setMessage("Network error, please try again")
-    } finally {
-      setSubmitting(false)
     }
+
+    setSubmitting(false)
   }
 
   async function handleInvite() {
@@ -603,7 +594,7 @@ export default function ManageDrivers() {
                       disabled={submitting || !canEdit}
                       style={{ width: "100%", padding: "12px 16px", background: submitting || !canEdit ? "#94a3b8" : "#0070f3", color: "white", border: "none", borderRadius: 8, cursor: submitting || !canEdit ? "not-allowed" : "pointer", fontWeight: 600, fontSize: fontSize.md, transition: "opacity 0.2s", opacity: submitting || !canEdit ? 0.7 : 1, minHeight: 44 }}
                     >
-                      {submitting ? "Sending Invite..." : "Send Invite"}
+                      {submitting ? "Adding User..." : "Add User"}
                     </button>
                   </>
                 )}
