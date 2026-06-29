@@ -137,21 +137,25 @@ export default function ManageDrivers() {
 
     setSubmitting(true)
 
-    const { error } = await apiMutate("admin", {
-      action: "update",
-      table: "Drivers",
-      data: { full_name: editName, phone_number: editPhone || null },
-      filters: { driver_id: editingDriver.driver_id },
-    })
+    try {
+      const { error } = await apiMutate("admin", {
+        action: "update",
+        table: "Drivers",
+        data: { full_name: editName, phone_number: editPhone || null },
+        filters: { driver_id: editingDriver.driver_id },
+      })
 
-    if (error) {
-      setMessage(error)
-    } else {
-      closeModals()
-      fetchDrivers()
+      if (error) {
+        setMessage(error)
+      } else {
+        closeModals()
+        fetchDrivers()
+      }
+    } catch {
+      setMessage("Network error, please try again")
+    } finally {
+      setSubmitting(false)
     }
-
-    setSubmitting(false)
   }
 
   async function handleSuspend(driver: Driver) {
@@ -159,40 +163,48 @@ export default function ManageDrivers() {
     const newStatus = driver.status === "Suspended" ? "Active" : "Suspended"
     setSubmitting(true)
 
-    const { error } = await apiMutate("admin", {
-      action: "update",
-      table: "Drivers",
-      data: { status: newStatus },
-      filters: { driver_id: driver.driver_id },
-    })
+    try {
+      const { error } = await apiMutate("admin", {
+        action: "update",
+        table: "Drivers",
+        data: { status: newStatus },
+        filters: { driver_id: driver.driver_id },
+      })
 
-    if (error) {
-      setMessage(error)
-    } else {
-      fetchDrivers()
+      if (error) {
+        setMessage(error)
+      } else {
+        fetchDrivers()
+      }
+    } catch {
+      setMessage("Network error, please try again")
+    } finally {
+      setSubmitting(false)
     }
-
-    setSubmitting(false)
   }
 
   async function handleDelete(driver_id: string) {
     if (!canEdit) return
     setSubmitting(true)
 
-    const { error } = await apiMutate("admin", {
-      action: "delete",
-      table: "Drivers",
-      filters: { driver_id },
-    })
+    try {
+      const { error } = await apiMutate("admin", {
+        action: "delete",
+        table: "Drivers",
+        filters: { driver_id },
+      })
 
-    if (error) {
-      setMessage(error)
-    } else {
-      closeModals()
-      fetchDrivers()
+      if (error) {
+        setMessage(error)
+      } else {
+        closeModals()
+        fetchDrivers()
+      }
+    } catch {
+      setMessage("Network error, please try again")
+    } finally {
+      setSubmitting(false)
     }
-
-    setSubmitting(false)
   }
 
   async function handleInvite() {

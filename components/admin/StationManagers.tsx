@@ -140,6 +140,7 @@ export default function ManageStationManagers() {
   }
 
   async function handleCreateCompany() {
+    if (creatingCompany) return
     if (!canEdit) return
     const name = newCompanyName.trim()
     if (!name) return setMessage("Enter a company name")
@@ -1257,12 +1258,13 @@ export default function ManageStationManagers() {
                               type="text"
                               placeholder="Enter new company name"
                               value={newCompanyName}
+                              disabled={creatingCompany || !canEdit}
                               onChange={(e) => {
                                 setNewCompanyName(e.target.value)
                                 setMessage("")
                               }}
                               onKeyDown={(e) => {
-                                if (e.key === "Enter") handleCreateCompany()
+                                if (e.key === "Enter" && !creatingCompany) handleCreateCompany()
                               }}
                               style={inputStyle}
                               autoFocus

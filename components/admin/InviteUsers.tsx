@@ -111,6 +111,14 @@ export default function InviteUsers() {
     if (needsField("office") && selectedRoles.has("CashOfficer") && !officeName) { setMessage("Select an office for Cash Officer"); setIsError(true); return }
     if (needsField("office") && selectedRoles.has("CashAuthorizer") && !cashAuthOffice) { setMessage("Select an assigned office for Cash Authorizer"); setIsError(true); return }
 
+    const validLines = openingBalance.filter(l => l.product && parseInt(l.quantity) > 0)
+    const products = validLines.map(l => l.product)
+    if (new Set(products).size !== products.length) {
+      setMessage("Duplicate products in opening stock — merge them")
+      setIsError(true)
+      return
+    }
+
     setSubmitting(true)
     setMessage("")
     setResult(null)
@@ -128,7 +136,7 @@ export default function InviteUsers() {
           storeName: storeName || undefined,
           officeName: officeName || undefined,
           assignedOffice: cashAuthOffice || undefined,
-          openingBalance: openingBalance.filter(l => l.product && parseInt(l.quantity) > 0) || undefined,
+          openingBalance: validLines.length > 0 ? validLines : undefined,
         }),
       })
 
@@ -452,7 +460,10 @@ export default function InviteUsers() {
                 <label style={labelStyle}>Store (for Store Officer) *</label>
                 <select
                   value={storeName}
-                  onChange={(e) => setStoreName(e.target.value)}
+                  onChange={(e) => {
+                    setStoreName(e.target.value)
+                    setOpeningBalance([{ product: "", quantity: "" }])
+                  }}
                   style={{
                     ...inputStyle,
                     appearance: "none",

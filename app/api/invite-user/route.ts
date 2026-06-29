@@ -189,21 +189,35 @@ export async function POST(req: Request) {
     }
   }
 
-  // Insert opening stock balance if provided
-  if (storeName && openingBalance && openingBalance.length > 0) {
+  // Insert opening stock balance if provided (only seed missing rows)
+  if (
+    selectedRoles.includes("StoreOfficer") &&
+    storeName &&
+    Array.isArray(openingBalance) &&
+    openingBalance.length > 0
+  ) {
     for (const line of openingBalance) {
       if (line.product && parseInt(line.quantity) > 0) {
-        const { error: stockError } = await supabaseAdmin.from("store_stock").upsert(
+        const { data: existing } = await supabaseAdmin
+          .from("store_stock")
+          .select("product")
+          .eq("store_name", storeName)
+          .eq("product", line.product)
+          .maybeSingle()
+
+        if (existing) continue
+
+        const { error: stockError } = await supabaseAdmin.from("store_stock").insert(
           {
             store_name: storeName,
             product: line.product,
             balance: parseInt(line.quantity),
             updated_at: new Date().toISOString(),
-          },
-          { onConflict: "store_name, product" }
+          }
         )
         if (stockError) {
           console.error(`Failed to insert opening balance for ${line.product}:`, stockError)
+          return NextResponse.json({ error: `Failed to set opening balance for ${line.product}` }, { status: 500 })
         }
       }
     }
