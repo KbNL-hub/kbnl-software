@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from "react"
 import { supabase } from "@/lib/supabase"
+import { apiMutate } from "@/lib/api-mutation"
 import { usePermissions } from "@/lib/PermissionContext"
 
 type Truck = {
@@ -92,7 +93,7 @@ export default function ManageTrucks() {
       const { data, error } = await supabase
         .from("Trucks")
         .select("*")
-        .order("plate_number", { ascending: true })
+        .order("kbnl_truck_no", { ascending: true })
 
       if (!error) setTrucks(data || [])
     } finally {
@@ -136,54 +137,49 @@ export default function ManageTrucks() {
 
     setSubmitting(true)
 
-    try {
-      const { error } = await supabase
-        .from("Trucks")
-        .update({
-          kbnl_truck_no: editKbnlNo.trim(),
-          truck_model: editModel.trim(),
-          capacity,
-          truck_size: editTruckSize || null,
-          status: editStatus,
-        })
-        .eq("plate_number", editingTruck.plate_number)
+    const { error } = await apiMutate("admin", {
+      action: "update",
+      table: "Trucks",
+      data: {
+        kbnl_truck_no: editKbnlNo.trim(),
+        truck_model: editModel.trim(),
+        capacity,
+        truck_size: editTruckSize || null,
+        status: editStatus,
+      },
+      filters: { plate_number: editingTruck.plate_number },
+    })
 
-      if (error) {
-        setMessage("Failed to update truck")
-        return
-      }
-
-      closeModals()
-      fetchTrucks()
-    } catch {
-      setMessage("Network error, please try again")
-    } finally {
+    if (error) {
+      setMessage(error)
       setSubmitting(false)
+      return
     }
+
+    closeModals()
+    fetchTrucks()
+    setSubmitting(false)
   }
 
   async function handleDelete(plate_number: string) {
     if (!canEdit) return
     setSubmitting(true)
 
-    try {
-      const { error } = await supabase
-        .from("Trucks")
-        .delete()
-        .eq("plate_number", plate_number)
+    const { error } = await apiMutate("admin", {
+      action: "delete",
+      table: "Trucks",
+      filters: { plate_number },
+    })
 
-      if (error) {
-        setMessage("Failed to delete truck")
-        return
-      }
-
-      closeModals()
-      fetchTrucks()
-    } catch {
-      setMessage("Network error, please try again")
-    } finally {
+    if (error) {
+      setMessage(error)
       setSubmitting(false)
+      return
     }
+
+    closeModals()
+    fetchTrucks()
+    setSubmitting(false)
   }
 
   const statusPillColor = (status: string) => {

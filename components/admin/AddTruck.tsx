@@ -2,7 +2,6 @@
 
 import { useState, useRef } from "react"
 import ModernInput from "@/components/ModernInput"
-import { supabase } from "@/lib/supabase"
 import { apiMutate } from "@/lib/api-mutation"
 import { usePermissions } from "@/lib/PermissionContext"
 
@@ -71,16 +70,18 @@ export default function AddTruck() {
 
     try {
       if (truckSize === "Tricycle") {
-        const { error } = await supabase
-          .from("tricycles")
-          .insert({
+        const { error } = await apiMutate("admin", {
+          action: "insert",
+          table: "tricycles",
+          data: {
             tricycle_number: tricycleNumber.trim(),
             assigned_to: assignedTo.trim(),
             phone_number: phoneNumber.trim(),
-          })
-        if (error) { setMessage("Failed to add vehicle"); return }
+          },
+        })
+        if (error) { setMessage(error); return }
       } else {
-        const { error } = await apiMutate("trips", {
+        const { error } = await apiMutate("admin", {
           action: "insert",
           table: "Trucks",
           data: {
@@ -92,7 +93,7 @@ export default function AddTruck() {
             status,
           },
         })
-        if (error) { setMessage("Failed to add vehicle"); return }
+        if (error) { setMessage(error); return }
       }
 
       setMessage("Vehicle added successfully")

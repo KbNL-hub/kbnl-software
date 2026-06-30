@@ -145,7 +145,7 @@ export default function CustomerPaymentsAdmin() {
 
       if (paymentError) {
         if (createdCustomer) {
-          await supabase.from("Customers").delete().eq("customer_id", finalCustomerId)
+          await apiMutate("finance", { action: "delete", table: "Customers", filters: { customer_id: finalCustomerId } })
         }
         setErrorMsg("Failed to post: " + paymentError)
         return
