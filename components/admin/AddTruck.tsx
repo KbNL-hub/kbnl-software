@@ -17,7 +17,6 @@ export default function AddTruck() {
   const [kbnlTruckNo, setKbnlTruckNo] = useState("")
   const [truckModel, setTruckModel] = useState("")
   const [capacity, setCapacity] = useState("")
-  const [tonnage, setTonnage] = useState("")
   const [truckSize, setTruckSize] = useState("")
   const [customTruckSize, setCustomTruckSize] = useState("")
   const [status, setStatus] = useState("Empty")
@@ -30,7 +29,6 @@ export default function AddTruck() {
   const kbnlRef = useRef<HTMLInputElement>(null)
   const truckModelRef = useRef<HTMLInputElement>(null)
   const capacityRef = useRef<HTMLInputElement>(null)
-  const tonnageRef = useRef<HTMLInputElement>(null)
   const statusRef = useRef<HTMLSelectElement>(null)
   const tricycleNumberRef = useRef<HTMLInputElement>(null)
   const assignedToRef = useRef<HTMLInputElement>(null)
@@ -57,7 +55,6 @@ export default function AddTruck() {
     if (!finalTruckSize) return setMessage("Truck size is required")
 
     let parsedCapacity = 0
-    let parsedTonnage = 0
     if (truckSize === "Tricycle") {
       if (!tricycleNumber.trim()) return setMessage("Tricycle number is required")
       if (!assignedTo.trim()) return setMessage("Assigned to is required")
@@ -67,9 +64,7 @@ export default function AddTruck() {
       if (!kbnlTruckNo.trim()) return setMessage("KbNL truck number is required")
       if (!truckModel.trim()) return setMessage("Truck model is required")
       parsedCapacity = Number(capacity)
-      parsedTonnage = Number(tonnage)
       if (!Number.isInteger(parsedCapacity) || parsedCapacity <= 0) return setMessage("Capacity must be a positive whole number")
-      if (!Number.isFinite(parsedTonnage) || parsedTonnage <= 0) return setMessage("Tonnage must be a positive number")
     }
 
     setSubmitting(true)
@@ -93,7 +88,6 @@ export default function AddTruck() {
             kbnl_truck_no: kbnlTruckNo.trim(),
             truck_model: truckModel,
             capacity: parsedCapacity,
-            tonnage: parsedTonnage,
             truck_size: finalTruckSize,
             status,
           },
@@ -106,7 +100,6 @@ export default function AddTruck() {
       setKbnlTruckNo("")
       setTruckModel("")
       setCapacity("")
-      setTonnage("")
       setTruckSize("")
       setCustomTruckSize("")
       setStatus("Empty")
@@ -184,29 +177,12 @@ export default function AddTruck() {
               type="number"
               placeholder="e.g. 600"
               value={capacity}
-              onChange={(e) => { setCapacity(e.target.value); setMessage("") }}
-              onKeyDown={(e) => { if (e.key === "Enter") tonnageRef.current?.focus() }}
-              style={fieldStyle}
-              readOnly={!canEdit}
-            />
-          </div>
-
-          <div style={{ marginBottom: 16 }}>
-            <label style={{ fontWeight: "bold", display: "block", marginBottom: 6 }}>
-              Tonnage *
-            </label>
-            <ModernInput
-              ref={tonnageRef}
-              type="number"
-              step="0.1"
-              placeholder="e.g. 30.5"
-              value={tonnage}
-              onChange={(e) => { setTonnage(e.target.value); setMessage("") }}
-              onKeyDown={(e) => { if (e.key === "Enter") statusRef.current?.focus() }}
-              style={fieldStyle}
-              readOnly={!canEdit}
-            />
-          </div>
+               onChange={(e) => { setCapacity(e.target.value); setMessage("") }}
+               onKeyDown={(e) => { if (e.key === "Enter") statusRef.current?.focus() }}
+               style={fieldStyle}
+               readOnly={!canEdit}
+             />
+           </div>
         </>
       )}
 
@@ -261,7 +237,7 @@ export default function AddTruck() {
 
       <div style={{ marginBottom: 16 }}>
         <label style={{ fontWeight: "bold", display: "block", marginBottom: 6 }}>
-          Truck Size *
+          Truck Size (Tonnage) *
         </label>
         <ModernInput
           as="select"

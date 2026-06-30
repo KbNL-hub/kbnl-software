@@ -9,6 +9,7 @@ import { formatAmount, parseAmount } from "@/lib/formatAmount"
 import { Icon } from "@iconify/react"
 import { useBreakpoint } from "@/app/hooks/useBreakpoint"
 import ReportModal from "@/components/ReportModal"
+import TruckMonitorSection from "@/components/admin/TruckMonitorSection"
 
 type MaintenanceReport = {
   report_id: string
@@ -136,7 +137,7 @@ export default function TruckAdminDashboard() {
   const [atfs, setAtfs] = useState<ATF[]>([])
   const [loading, setLoading] = useState(true)
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null)
-  const [tab, setTab] = useState<"reports" | "procurement" | "balance" | "atf">("reports")
+  const [tab, setTab] = useState<"reports" | "procurement" | "balance" | "atf" | "monitor">("reports")
   const [filter, setFilter] = useState("All")
   const [atfFilter, setAtfFilter] = useState("All")
 
@@ -685,6 +686,7 @@ export default function TruckAdminDashboard() {
         <div style={{ display: "flex", gap: 8, marginBottom: 24, flexWrap: "wrap" }}>
           {[
             { key: "reports", label: "Maintenance", icon: "mdi:wrench" },
+            { key: "monitor", label: "Monitor Trucks", icon: "mdi:truck-check" },
             { key: "atf", label: "ATF", icon: "mdi:gas-station" },
             { key: "procurement", label: "Procurement", icon: "mdi:package" },
             { key: "balance", label: "Top Up", icon: "mdi:plus-circle" },
@@ -785,6 +787,19 @@ export default function TruckAdminDashboard() {
                 )
               })}
             </div>
+          </div>
+        )}
+
+        {/* Monitor Trucks Tab */}
+        {tab === "monitor" && (
+          <div>
+            <div style={{ marginBottom: 16 }}>
+              <h2 style={{ margin: 0, color: "#0f172a", fontSize: fontSize.xl, fontWeight: 700 }}>Monitor Trucks</h2>
+              <p style={{ margin: "4px 0 0", color: "#64748b", fontSize: fontSize.base }}>
+                Track all active trucks and view their routes.
+              </p>
+            </div>
+            <TruckMonitorSection />
           </div>
         )}
 

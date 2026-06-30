@@ -10,6 +10,7 @@ import ModernInput from "@/components/ModernInput"
 import { Icon } from "@iconify/react"
 import { useBreakpoint } from "@/app/hooks/useBreakpoint"
 import ReportModal from "@/components/ReportModal"
+import TruckMonitorSection from "@/components/admin/TruckMonitorSection"
 
 type AssignedTruck = {
   plate_number: string
@@ -144,7 +145,7 @@ export default function TruckOfficerDashboard() {
   const [maintenanceBalance, setMaintenanceBalance] = useState<number | null>(null)
   const [loading, setLoading] = useState(true)
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null)
-  const [tab, setTab] = useState<"reports" | "fuel" | "atf">("reports")
+  const [tab, setTab] = useState<"reports" | "fuel" | "atf" | "monitor">("reports")
   const [filter, setFilter] = useState("All")
 
   const [allDrivers, setAllDrivers] = useState<Driver[]>([])
@@ -752,6 +753,7 @@ export default function TruckOfficerDashboard() {
         <div style={{ display: "flex", gap: 8, marginBottom: 24, flexWrap: "wrap" }}>
           {[
             { key: "reports", label: "Maintenance", icon: "mdi:wrench" },
+            { key: "monitor", label: "Monitor Trucks", icon: "mdi:truck-check" },
             { key: "fuel", label: "Fuel Log", icon: "mdi:fuel" },
             { key: "atf", label: "ATF", icon: "mdi:gas-station" },
           ].map(t => (
@@ -855,6 +857,19 @@ export default function TruckOfficerDashboard() {
                 )
               })}
             </div>
+          </div>
+        )}
+
+        {/* Monitor Trucks Tab */}
+        {tab === "monitor" && (
+          <div>
+            <div style={{ marginBottom: 16 }}>
+              <h2 style={{ margin: 0, color: "#0f172a", fontSize: fontSize.xl, fontWeight: 700 }}>Monitor Trucks</h2>
+              <p style={{ margin: "4px 0 0", color: "#64748b", fontSize: fontSize.base }}>
+                Track active trucks and view their routes.
+              </p>
+            </div>
+            <TruckMonitorSection plates={assignedTrucks.map(t => t.plate_number)} />
           </div>
         )}
 

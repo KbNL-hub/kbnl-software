@@ -9,7 +9,6 @@ type Truck = {
   kbnl_truck_no: string
   truck_model: string
   capacity: number
-  tonnage: number
   truck_size: string | null
   status: string
 }
@@ -79,7 +78,6 @@ export default function ManageTrucks() {
   const [editKbnlNo, setEditKbnlNo] = useState("")
   const [editModel, setEditModel] = useState("")
   const [editCapacity, setEditCapacity] = useState("")
-  const [editTonnage, setEditTonnage] = useState("")
   const [editTruckSize, setEditTruckSize] = useState("")
   const [editStatus, setEditStatus] = useState("")
   const [deletingPlate, setDeletingPlate] = useState<string | null>(null)
@@ -88,7 +86,6 @@ export default function ManageTrucks() {
   const [filterStatus, setFilterStatus] = useState("All")
 
   const capacityRef = useRef<HTMLInputElement>(null)
-  const tonnageRef = useRef<HTMLInputElement>(null)
 
   async function fetchTrucks() {
     try {
@@ -117,7 +114,6 @@ export default function ManageTrucks() {
     setEditKbnlNo(truck.kbnl_truck_no)
     setEditModel(truck.truck_model)
     setEditCapacity(truck.capacity.toString())
-    setEditTonnage(truck.tonnage?.toString() ?? "")
     setEditTruckSize(truck.truck_size ?? "")
     setEditStatus(truck.status)
     setMessage("")
@@ -135,11 +131,8 @@ export default function ManageTrucks() {
     if (!editKbnlNo.trim()) return setMessage("KbNL truck number is required")
     if (!editModel.trim()) return setMessage("Truck model is required")
     if (!editCapacity) return setMessage("Capacity is required")
-    if (!editTonnage) return setMessage("Tonnage is required")
     const capacity = Number(editCapacity)
-    const tonnage = Number(editTonnage)
     if (!Number.isInteger(capacity) || capacity <= 0) return setMessage("Capacity must be a positive whole number")
-    if (!Number.isFinite(tonnage) || tonnage <= 0) return setMessage("Tonnage must be a positive number")
 
     setSubmitting(true)
 
@@ -150,7 +143,6 @@ export default function ManageTrucks() {
           kbnl_truck_no: editKbnlNo.trim(),
           truck_model: editModel.trim(),
           capacity,
-          tonnage,
           truck_size: editTruckSize || null,
           status: editStatus,
         })
@@ -337,15 +329,9 @@ export default function ManageTrucks() {
                         <p style={{ margin: 0, color: "#0f172a", fontSize: fontSize.lg, fontWeight: 600 }}>{truck.capacity} bags</p>
                       </div>
                       <div>
-                        <p style={{ margin: "0 0 4px 0", color: "#94a3b8", fontSize: fontSize.xs }}>Tonnage</p>
-                        <p style={{ margin: 0, color: "#0f172a", fontSize: fontSize.lg, fontWeight: 600 }}>{truck.tonnage ?? "—"} T</p>
+                        <p style={{ margin: "0 0 4px 0", color: "#94a3b8", fontSize: fontSize.xs }}>Size (Tonnage)</p>
+                        <p style={{ margin: 0, color: "#0f172a", fontSize: fontSize.lg, fontWeight: 600 }}>{truck.truck_size || "—"}</p>
                       </div>
-                      {truck.truck_size && (
-                        <div>
-                          <p style={{ margin: "0 0 4px 0", color: "#94a3b8", fontSize: fontSize.xs }}>Size</p>
-                          <p style={{ margin: 0, color: "#0f172a", fontSize: fontSize.lg, fontWeight: 600 }}>{truck.truck_size}</p>
-                        </div>
-                      )}
                     </div>
 
                     <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
@@ -381,9 +367,8 @@ export default function ManageTrucks() {
                   <tr style={{ background: "#f8fafc", borderBottom: "1px solid #e2e8f0" }}>
                     <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: fontSize.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px" }}>Truck</th>
                     <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: fontSize.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px" }}>Model</th>
-                    <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: fontSize.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px" }}>Size</th>
+                    <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: fontSize.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px" }}>Size (Tonnage)</th>
                     <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: fontSize.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px" }}>Capacity</th>
-                    <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: fontSize.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px" }}>Tonnage</th>
                     <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: fontSize.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px" }}>Status</th>
                     <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: fontSize.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px", textAlign: "right" }}>Actions</th>
                   </tr>
@@ -400,7 +385,6 @@ export default function ManageTrucks() {
                         <td style={{ padding: "12px 16px", color: "#0f172a", fontSize: fontSize.base }}>{truck.truck_model}</td>
                         <td style={{ padding: "12px 16px", color: "#64748b", fontSize: fontSize.sm }}>{truck.truck_size || "—"}</td>
                         <td style={{ padding: "12px 16px", color: "#0f172a", fontSize: fontSize.base, fontWeight: 500 }}>{truck.capacity}</td>
-                        <td style={{ padding: "12px 16px", color: "#0f172a", fontSize: fontSize.base, fontWeight: 500 }}>{truck.tonnage ?? "—"}</td>
                         <td style={{ padding: "12px 16px" }}>
                           <span style={{ padding: "6px 10px", borderRadius: 14, fontSize: fontSize.xs, fontWeight: 600, background: pill.bg, color: pill.color, border: `1.5px solid ${pill.border}` }}>
                             {truck.status}
@@ -471,16 +455,11 @@ export default function ManageTrucks() {
 
                   <div>
                     <label style={{ display: "block", marginBottom: 6, color: "#475569", fontSize: fontSize.sm, fontWeight: 500 }}>Capacity (bags) *</label>
-                    <input ref={capacityRef} type="number" value={editCapacity} readOnly={!canEdit} onChange={(e) => { setEditCapacity(e.target.value); setMessage("") }} onKeyDown={(e) => { if (e.key === "Enter") tonnageRef.current?.focus() }} style={inputStyle} />
+                    <input ref={capacityRef} type="number" value={editCapacity} readOnly={!canEdit} onChange={(e) => { setEditCapacity(e.target.value); setMessage("") }} style={inputStyle} />
                   </div>
 
                   <div>
-                    <label style={{ display: "block", marginBottom: 6, color: "#475569", fontSize: fontSize.sm, fontWeight: 500 }}>Tonnage *</label>
-                    <input ref={tonnageRef} type="number" step="0.1" value={editTonnage} readOnly={!canEdit} onChange={(e) => { setEditTonnage(e.target.value); setMessage("") }} style={inputStyle} />
-                  </div>
-
-                  <div>
-                    <label style={{ display: "block", marginBottom: 6, color: "#475569", fontSize: fontSize.sm, fontWeight: 500 }}>Truck Size</label>
+                    <label style={{ display: "block", marginBottom: 6, color: "#475569", fontSize: fontSize.sm, fontWeight: 500 }}>Truck Size (Tonnage)</label>
                     <select value={editTruckSize} disabled={!canEdit} onChange={(e) => setEditTruckSize(e.target.value)} style={{ ...inputStyle, appearance: "none", paddingRight: 32, backgroundImage: "url('data:image/svg+xml;charset=UTF-8,%3csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 24 24%22 fill=%22none%22 stroke=%22%23171717%22 stroke-width=%222%22%3e%3cpolyline points=%226 9 12 15 18 9%22%3e%3c/polyline%3e%3c/svg%3e')", backgroundRepeat: "no-repeat", backgroundPosition: "right 12px center", backgroundSize: "16px" }}>
                       <option value="">No size</option>
                       {TRUCK_SIZES.map((s) => (
