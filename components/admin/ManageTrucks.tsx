@@ -137,49 +137,57 @@ export default function ManageTrucks() {
 
     setSubmitting(true)
 
-    const { error } = await apiMutate("admin", {
-      action: "update",
-      table: "Trucks",
-      data: {
-        kbnl_truck_no: editKbnlNo.trim(),
-        truck_model: editModel.trim(),
-        capacity,
-        truck_size: editTruckSize || null,
-        status: editStatus,
-      },
-      filters: { plate_number: editingTruck.plate_number },
-    })
+    try {
+      const { error } = await apiMutate("admin", {
+        action: "update",
+        table: "Trucks",
+        data: {
+          kbnl_truck_no: editKbnlNo.trim(),
+          truck_model: editModel.trim(),
+          capacity,
+          truck_size: editTruckSize || null,
+          status: editStatus,
+        },
+        filters: { plate_number: editingTruck.plate_number },
+      })
 
-    if (error) {
-      setMessage(error)
+      if (error) {
+        setMessage(error)
+        return
+      }
+
+      closeModals()
+      await fetchTrucks()
+    } catch {
+      setMessage("Failed to update truck")
+    } finally {
       setSubmitting(false)
-      return
     }
-
-    closeModals()
-    fetchTrucks()
-    setSubmitting(false)
   }
 
   async function handleDelete(plate_number: string) {
     if (!canEdit) return
     setSubmitting(true)
 
-    const { error } = await apiMutate("admin", {
-      action: "delete",
-      table: "Trucks",
-      filters: { plate_number },
-    })
+    try {
+      const { error } = await apiMutate("admin", {
+        action: "delete",
+        table: "Trucks",
+        filters: { plate_number },
+      })
 
-    if (error) {
-      setMessage(error)
+      if (error) {
+        setMessage(error)
+        return
+      }
+
+      closeModals()
+      await fetchTrucks()
+    } catch {
+      setMessage("Failed to delete truck")
+    } finally {
       setSubmitting(false)
-      return
     }
-
-    closeModals()
-    fetchTrucks()
-    setSubmitting(false)
   }
 
   const statusPillColor = (status: string) => {
