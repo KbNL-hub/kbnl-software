@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from "react"
 import { supabase } from "@/lib/supabase"
+import { apiMutate } from "@/lib/api-mutation"
 import ModernInput from "@/components/ModernInput"
 import InviteSuccessCard from "@/components/admin/InviteSuccessCard"
 import { usePermissions } from "@/lib/PermissionContext"
@@ -133,13 +134,15 @@ export default function ManageBrokers() {
     setSubmitting(true)
 
     try {
-      const { error } = await supabase
-        .from("Brokers")
-        .update({ broker_name: editName, phone_number: editPhone || null })
-        .eq("broker_id", editingBroker.broker_id)
+      const { error } = await apiMutate("admin", {
+        action: "update",
+        table: "Brokers",
+        data: { broker_name: editName, phone_number: editPhone || null },
+        filters: { broker_id: editingBroker.broker_id },
+      })
 
       if (error) {
-        setMessage("Failed to update broker")
+        setMessage(error)
         return
       }
 
@@ -157,13 +160,14 @@ export default function ManageBrokers() {
     setSubmitting(true)
 
     try {
-      const { error } = await supabase
-        .from("Brokers")
-        .delete()
-        .eq("broker_id", broker_id)
+      const { error } = await apiMutate("admin", {
+        action: "delete",
+        table: "Brokers",
+        filters: { broker_id },
+      })
 
       if (error) {
-        setMessage("Failed to delete broker")
+        setMessage(error)
         return
       }
 

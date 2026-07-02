@@ -8,6 +8,7 @@ const supabaseAdmin = createClient(
 )
 
 const ROLE_TABLES: Record<string, (userId: string, data: any) => Promise<string | null>> = {
+  SuperAdmin: async () => null,
   Driver: async (userId, { fullName, phoneNumber }) => {
     const { error } = await supabaseAdmin.from("Drivers").upsert(
       { driver_id: userId, full_name: fullName, phone_number: phoneNumber || null },
