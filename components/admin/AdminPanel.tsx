@@ -11,6 +11,7 @@ import { useBreakpoint } from "@/app/hooks/useBreakpoint"
 import NoClearance from "@/components/admin/NoClearance"
 import { PermissionProvider, usePermissions } from "@/lib/PermissionContext"
 import { ROLES } from "@/lib/permissions"
+import { toTitleCase } from "@/lib/title-case"
 
 const SECTION_IMPORTS = {
   "invite-users": () => import("@/components/admin/InviteUsers"),
@@ -86,6 +87,7 @@ type Props = {
     full_name: string
     profile_picture_url?: string
   }
+  initialRole?: string
 }
 
 function AdminPanelContent({ userProfile }: Props) {
@@ -297,7 +299,7 @@ function AdminPanelContent({ userProfile }: Props) {
     if (Component) return <Component />
     return (
       <div>
-        <h1 style={{ marginBottom: 8, fontSize: isMobile ? 22 : 28, color: "#171717" }}>Welcome, Admin</h1>
+        <h1 style={{ marginBottom: 8, fontSize: isMobile ? 22 : 28, color: "#171717" }}>Welcome, {toTitleCase(userProfile.full_name)}</h1>
         <p style={{ color: "#888", fontSize: 15 }}>Select a section from the {isNarrow ? "menu" : "sidebar"}.</p>
       </div>
     )
@@ -797,9 +799,9 @@ function AdminPanelContent({ userProfile }: Props) {
   )
 }
 
-export default function AdminPanel({ userProfile }: Props) {
+export default function AdminPanel({ userProfile, initialRole }: Props) {
   return (
-    <PermissionProvider userId={userProfile.user_id}>
+    <PermissionProvider userId={userProfile.user_id} defaultRole={initialRole}>
       <AdminPanelContent userProfile={userProfile} />
     </PermissionProvider>
   )

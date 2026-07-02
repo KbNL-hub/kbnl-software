@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { useRouter } from "next/navigation"
+import { useRouter, useSearchParams } from "next/navigation"
 import { supabase } from "@/lib/supabase"
 import { Icon } from "@iconify/react"
 import AdminPanel from "@/components/admin/AdminPanel"
@@ -27,6 +27,8 @@ export default function AdminDashboard() {
   const [loading, setLoading] = useState(true)
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const searchParams = useSearchParams()
+  const urlRole = searchParams.get("role")
 
   useEffect(() => { setMounted(true) }, [])
 
@@ -60,7 +62,12 @@ export default function AdminDashboard() {
           roles = [profile.role]
         }
         const dashboardRoles = ["SuperAdmin", "Supervisor", "CashAuthorizer", "TruckAdmin", "DeskOfficer", "ATCOfficer", "Admin", "Broker"]
-        const dashboardRole = dashboardRoles.find(r => roles.includes(r))
+        let dashboardRole = dashboardRoles.find(r => roles.includes(r))
+        const params = new URLSearchParams(window.location.search)
+        const requestedRole = params.get("role")
+        if (requestedRole && roles.includes(requestedRole)) {
+          dashboardRole = requestedRole
+        }
         const hasAdminAccess = Boolean(dashboardRole)
 
         if (!hasAdminAccess) {
@@ -89,6 +96,12 @@ export default function AdminDashboard() {
     }
     if (mounted) initUser()
   }, [mounted, router])
+
+  useEffect(() => {
+    if (urlRole) {
+      setUserProfile(prev => prev && prev.role !== urlRole ? { ...prev, role: urlRole } : prev)
+    }
+  }, [urlRole])
 
   useEffect(() => {
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
@@ -136,18 +149,19 @@ export default function AdminDashboard() {
   }
 
   const renderDashboard = () => {
-    switch (userProfile.role) {
+    const role = urlRole || userProfile.role
+    switch (role) {
       case "Admin":
       case "SuperAdmin":
       case "Supervisor":
       case "CashAuthorizer":
       case "DeskOfficer":
       case "ATCOfficer":
-        return <AdminPanel userProfile={userProfile} />
+        return <AdminPanel userProfile={userProfile} initialRole={role} />
       case "Broker":
         return <BrokerPanel userProfile={userProfile} />
       default:
-        return <p style={{ color: "#888", fontSize: fontSize.base }}>Unknown user role: {userProfile.role}</p>
+        return <p style={{ color: "#888", fontSize: fontSize.base }}>Unknown user role: {role}</p>
     }
   }
 

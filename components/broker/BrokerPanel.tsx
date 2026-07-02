@@ -8,6 +8,7 @@ import { supabase } from "@/lib/supabase"
 import { apiMutate } from "@/lib/api-mutation"
 import RoleSwitcher from "@/components/RoleSwitcher"
 import { useBreakpoint } from "@/app/hooks/useBreakpoint"
+import { toTitleCase } from "@/lib/title-case"
 
 const SECTION_IMPORTS = {
   trips: () => import("@/components/broker/BrokerActiveTrips"),
@@ -221,7 +222,7 @@ export default function BrokerPanel({ userProfile }: Props) {
     }
     return (
       <div>
-        <h1 style={{ marginBottom: 8, fontSize: isMobile ? 22 : 28, color: "#171717" }}>Welcome, Broker</h1>
+        <h1 style={{ marginBottom: 8, fontSize: isMobile ? 22 : 28, color: "#171717" }}>Welcome, {toTitleCase(userProfile.full_name)}</h1>
         <p style={{ color: "#888", fontSize: 15 }}>Select a section from the {isNarrow ? "menu" : "sidebar"}.</p>
       </div>
     )

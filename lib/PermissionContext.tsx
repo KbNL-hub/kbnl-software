@@ -16,9 +16,9 @@ interface PermissionContextType {
 
 const PermissionContext = createContext<PermissionContextType | null>(null)
 
-export function PermissionProvider({ userId, children }: { userId: string; children: ReactNode }) {
+export function PermissionProvider({ userId, defaultRole, children }: { userId: string; defaultRole?: string; children: ReactNode }) {
   const [userRoles, setUserRoles] = useState<string[]>([])
-  const [activeRole, setActiveRole] = useState<string | null>(null)
+  const [activeRole, setActiveRole] = useState<string | null>(defaultRole || null)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
@@ -27,7 +27,6 @@ export function PermissionProvider({ userId, children }: { userId: string; child
     async function fetchRoles() {
       setLoading(true)
       setUserRoles([])
-      setActiveRole(null)
 
       try {
         const { data, error } = await supabase

@@ -150,7 +150,7 @@ export default function RoleSwitcher({ currentRole, style, onRoleSwitch }: Props
                     return
                   }
                   onRoleSwitch?.(r)
-                  router.push(target)
+                  router.push(target + "?role=" + r)
                   setOpen(false)
                 }}
                 style={{
