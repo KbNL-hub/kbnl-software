@@ -105,6 +105,16 @@ export default function BrokerActiveTrips() {
         }
       }
 
+      const { data: allDiscRaw } = await supabase
+        .from("trip_discrepancies")
+        .select("trip_id, shortage, caked_bags")
+        .in("trip_id", tripIds)
+      const discByTrip = new Map<string, { shortage: number; caked_bags: number }[]>()
+      for (const d of allDiscRaw || []) {
+        if (!discByTrip.has(d.trip_id)) discByTrip.set(d.trip_id, [])
+        discByTrip.get(d.trip_id)!.push(d)
+      }
+
       const enriched = await Promise.all(
         tripsData.map(async (trip) => {
           const { data: driver } = await supabase
@@ -119,10 +129,7 @@ export default function BrokerActiveTrips() {
             .eq("trip_id", trip.trip_id)
             .order("stop_time", { ascending: true })
 
-          const { data: discData } = await supabase
-            .from("trip_discrepancies")
-            .select("shortage, caked_bags")
-            .eq("trip_id", trip.trip_id)
+          const discData = discByTrip.get(trip.trip_id) || []
 
           const stops: Stop[] = await Promise.all(
             (s || []).map(async (stop) => {
@@ -227,6 +234,16 @@ export default function BrokerActiveTrips() {
         }
       }
 
+      const { data: ddDiscRaw } = await supabase
+        .from("trip_discrepancies")
+        .select("trip_id, shortage, caked_bags")
+        .in("trip_id", ddTripIds)
+      const ddDiscByTrip = new Map<string, { shortage: number; caked_bags: number }[]>()
+      for (const d of ddDiscRaw || []) {
+        if (!ddDiscByTrip.has(d.trip_id)) ddDiscByTrip.set(d.trip_id, [])
+        ddDiscByTrip.get(d.trip_id)!.push(d)
+      }
+
       const ddTrips: Trip[] = await Promise.all(
         ddTripsData.map(async (ddTrip) => {
           const { data: s } = await supabase
@@ -235,10 +252,7 @@ export default function BrokerActiveTrips() {
             .eq("trip_id", ddTrip.dd_trip_id)
             .order("stop_time", { ascending: true })
 
-          const { data: discData } = await supabase
-            .from("trip_discrepancies")
-            .select("shortage, caked_bags")
-            .eq("trip_id", ddTrip.dd_trip_id)
+          const discData = ddDiscByTrip.get(ddTrip.dd_trip_id) || []
 
           const stops: Stop[] = await Promise.all(
             (s || []).map(async (stop) => {

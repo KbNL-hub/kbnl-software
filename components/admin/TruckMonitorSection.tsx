@@ -97,6 +97,17 @@ export default function TruckMonitorSection({ plates }: Props) {
       return
     }
 
+    const tripIds = trips.map(t => t.trip_id)
+    const { data: allDiscRaw } = await supabase
+      .from("trip_discrepancies")
+      .select("trip_id, shortage, caked_bags")
+      .in("trip_id", tripIds)
+    const discByTrip = new Map<string, { shortage: number; caked_bags: number }[]>()
+    for (const d of allDiscRaw || []) {
+      if (!discByTrip.has(d.trip_id)) discByTrip.set(d.trip_id, [])
+      discByTrip.get(d.trip_id)!.push(d)
+    }
+
     const enriched = await Promise.all(
       trips
         .filter(t => t.driver_id)
@@ -110,8 +121,7 @@ export default function TruckMonitorSection({ plates }: Props) {
           const { data: stops } = await supabase
             .from("Stops").select("quantity_offloaded").eq("trip_id", trip.trip_id)
 
-          const { data: discData } = await supabase
-            .from("trip_discrepancies").select("shortage, caked_bags").eq("trip_id", trip.trip_id)
+          const discData = discByTrip.get(trip.trip_id) || []
 
           const totalOffloaded = stops?.reduce((sum, s) => sum + (s.quantity_offloaded || 0), 0) ?? 0
           const totalShortage = (discData || []).reduce((sum, d) => sum + (d.shortage || 0), 0)
