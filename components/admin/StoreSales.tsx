@@ -245,7 +245,7 @@ export default function StoreSales() {
             </div>
           )}
           <button
-            onClick={loadAll}
+            onClick={() => loadAll()}
             style={{
               padding: "8px 12px",
               background: "white",
