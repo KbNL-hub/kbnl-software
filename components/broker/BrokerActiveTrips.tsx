@@ -119,6 +119,11 @@ export default function BrokerActiveTrips() {
             .eq("trip_id", trip.trip_id)
             .order("stop_time", { ascending: true })
 
+          const { data: discData } = await supabase
+            .from("trip_discrepancies")
+            .select("shortage, caked_bags")
+            .eq("trip_id", trip.trip_id)
+
           const stops: Stop[] = await Promise.all(
             (s || []).map(async (stop) => {
               let broker_name = null
@@ -176,6 +181,8 @@ export default function BrokerActiveTrips() {
           const load_more_entries: LoadMoreEntry[] = loadMoreRaw || []
 
           const totalOffloaded = stops.reduce((sum, st) => sum + st.quantity_offloaded, 0)
+          const totalShortage = (discData || []).reduce((sum, d) => sum + (d.shortage || 0), 0)
+          const totalCaked = (discData || []).reduce((sum, d) => sum + (d.caked_bags || 0), 0)
 
           return {
             trip_id: trip.trip_id,
@@ -186,7 +193,7 @@ export default function BrokerActiveTrips() {
             product: trip.product,
             material_centre: trip.material_centre,
             loaded_quantity: trip.loaded_quantity,
-            remaining: trip.loaded_quantity - totalOffloaded,
+            remaining: trip.loaded_quantity - totalOffloaded - totalShortage - totalCaked,
             stop_count: countMap[trip.trip_id] ?? stops.length,
             stops,
             load_more_entries,
@@ -227,6 +234,11 @@ export default function BrokerActiveTrips() {
             .select("stop_id, quantity_offloaded, stop_time, stop_location, broker_id, customer_id, confirmed, disputed, dispute_reason, store_name, stop_type")
             .eq("trip_id", ddTrip.dd_trip_id)
             .order("stop_time", { ascending: true })
+
+          const { data: discData } = await supabase
+            .from("trip_discrepancies")
+            .select("shortage, caked_bags")
+            .eq("trip_id", ddTrip.dd_trip_id)
 
           const stops: Stop[] = await Promise.all(
             (s || []).map(async (stop) => {
@@ -285,6 +297,8 @@ export default function BrokerActiveTrips() {
           const load_more_entries: LoadMoreEntry[] = loadMoreRaw || []
 
           const totalOffloaded = stops.reduce((sum, st) => sum + st.quantity_offloaded, 0)
+          const totalShortage = (discData || []).reduce((sum, d) => sum + (d.shortage || 0), 0)
+          const totalCaked = (discData || []).reduce((sum, d) => sum + (d.caked_bags || 0), 0)
 
           return {
             trip_id: ddTrip.dd_trip_id,
@@ -295,7 +309,7 @@ export default function BrokerActiveTrips() {
             product: ddTrip.product,
             material_centre: ddTrip.loading_point,
             loaded_quantity: ddTrip.loaded_quantity,
-            remaining: ddTrip.loaded_quantity - totalOffloaded,
+            remaining: ddTrip.loaded_quantity - totalOffloaded - totalShortage - totalCaked,
             stop_count: ddCountMap[ddTrip.dd_trip_id] ?? stops.length,
             stops,
             load_more_entries,

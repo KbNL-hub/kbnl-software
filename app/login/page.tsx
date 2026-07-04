@@ -408,7 +408,8 @@ export default function LoginPage() {
               message.toLowerCase().includes("not found") ||
               message.toLowerCase().includes("unknown") ||
               message.toLowerCase().includes("unable") ||
-              message.toLowerCase().includes("timed out")
+              message.toLowerCase().includes("timed out") ||
+              message.toLowerCase().includes("failed to fetch")
             return (
               <div className="message-container" style={{
                 marginTop: 20,

@@ -26,6 +26,7 @@ export const ALL_SECTIONS = [
   'cash-expenses',
   'complaints',
   'reports',
+  'store-sales',
 ] as const
 
 export type SectionKey = (typeof ALL_SECTIONS)[number]

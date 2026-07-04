@@ -110,14 +110,19 @@ export default function TruckMonitorSection({ plates }: Props) {
           const { data: stops } = await supabase
             .from("Stops").select("quantity_offloaded").eq("trip_id", trip.trip_id)
 
+          const { data: discData } = await supabase
+            .from("trip_discrepancies").select("shortage, caked_bags").eq("trip_id", trip.trip_id)
+
           const totalOffloaded = stops?.reduce((sum, s) => sum + (s.quantity_offloaded || 0), 0) ?? 0
+          const totalShortage = (discData || []).reduce((sum, d) => sum + (d.shortage || 0), 0)
+          const totalCaked = (discData || []).reduce((sum, d) => sum + (d.caked_bags || 0), 0)
 
           return {
             trip_id: trip.trip_id,
             plate_number: trip.plate_number,
             kbnl_truck_no: truck?.kbnl_truck_no ?? null,
             loaded_quantity: trip.loaded_quantity,
-            remaining: trip.loaded_quantity - totalOffloaded,
+            remaining: trip.loaded_quantity - totalOffloaded - totalShortage - totalCaked,
             driver_name: driver?.full_name ?? "Unknown",
             driver_phone: driver?.phone_number ?? "—",
             trip_status: trip.trip_status,

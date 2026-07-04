@@ -34,6 +34,7 @@ const SECTION_IMPORTS = {
   "customer-payments": () => import("@/components/admin/CustomerPaymentsAdmin"),
   "credit": () => import("@/components/admin/BrokerCredits"),
   "reports": () => import("@/components/admin/Reports"),
+  "store-sales": () => import("@/components/admin/StoreSales"),
 } as const
 
 type SectionKey = keyof typeof SECTION_IMPORTS
@@ -67,6 +68,7 @@ const NAV_ITEMS: NavItemConfig[] = [
   { label: "Monitor Trucks",    key: "monitor-trucks",      icon: "mdi:dump-truck" },
   { label: "Monitor Trips",     key: "monitor-trips",       icon: "streamline-ultimate:trip-road-bold" },
   { label: "Diesel Manager",    key: "diesel-manager",      icon: "mdi:gas-station" },
+  { label: "Store Sales",       key: "store-sales",         icon: "mdi:storefront-outline" },
   { label: "Customer Payments", key: "customer-payments",   icon: "mdi:cash-register" },
   { label: "Credit",            key: "credit",              icon: "mdi:credit-card-outline" },
   { label: "Cash Expenses",     key: "cash-expenses",       icon: "mdi:cash-multiple" },

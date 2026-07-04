@@ -274,6 +274,7 @@ export default function MonitorTrips() {
 
       const totalOffloaded = stops.reduce((sum, s) => sum + s.quantity_offloaded, 0)
       const totalShortage = discrepancies.reduce((sum, d) => sum + (d.shortage || 0), 0)
+      const totalCaked = discrepancies.reduce((sum, d) => sum + (d.caked_bags || 0), 0)
 
       return {
         trip_id: trip.trip_id,
@@ -285,7 +286,7 @@ export default function MonitorTrips() {
         product: trip.product,
         material_centre: trip.material_centre,
         loaded_quantity: trip.loaded_quantity,
-        remaining: trip.loaded_quantity - totalOffloaded - totalShortage,
+        remaining: trip.loaded_quantity - totalOffloaded - totalShortage - totalCaked,
         stop_count: stops.length,
         stops,
         discrepancies,
@@ -355,6 +356,17 @@ export default function MonitorTrips() {
       for (const c of confirmationsData || []) confirmationMap.set(c.stop_id, c)
     }
 
+    const ddDiscByTrip = new Map<string, Discrepancy[]>()
+    const { data: allDiscRaw } = await supabase
+      .from("trip_discrepancies")
+      .select("discrepancy_id, trip_id, shortage, caked_bags, notes, reported_at")
+      .in("trip_id", ddTripIds)
+      .order("reported_at", { ascending: true })
+    for (const d of allDiscRaw || []) {
+      if (!ddDiscByTrip.has(d.trip_id)) ddDiscByTrip.set(d.trip_id, [])
+      ddDiscByTrip.get(d.trip_id)!.push(d)
+    }
+
     const loadMoreByTrip = new Map<string, LoadMoreEntry[]>()
     const { data: allLoadMoreRaw } = await supabase
       .from("trip_load_more")
@@ -407,7 +419,11 @@ export default function MonitorTrips() {
 
       const load_more_entries: LoadMoreEntry[] = loadMoreByTrip.get(ddTrip.dd_trip_id) || []
 
+      const discrepancies: Discrepancy[] = ddDiscByTrip.get(ddTrip.dd_trip_id) || []
+
       const totalOffloaded = stops.reduce((sum, s) => sum + s.quantity_offloaded, 0)
+      const totalShortage = discrepancies.reduce((sum, d) => sum + (d.shortage || 0), 0)
+      const totalCaked = discrepancies.reduce((sum, d) => sum + (d.caked_bags || 0), 0)
 
       return {
         trip_id: ddTrip.dd_trip_id,
@@ -419,10 +435,10 @@ export default function MonitorTrips() {
         product: ddTrip.product,
         material_centre: ddTrip.loading_point,
         loaded_quantity: ddTrip.loaded_quantity,
-        remaining: ddTrip.loaded_quantity - totalOffloaded,
+        remaining: ddTrip.loaded_quantity - totalOffloaded - totalShortage - totalCaked,
         stop_count: stops.length,
         stops,
-        discrepancies: [],
+        discrepancies,
         load_more_entries,
         trip_status: ddTrip.trip_status,
         atc: ddTrip.atc ?? null,

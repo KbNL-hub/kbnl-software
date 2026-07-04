@@ -53,12 +53,13 @@ export default function StopForm({ tripId, loadedQuantity: initialLoaded = 0, of
       const { data: stopsData } = await supabase
         .from("Stops").select("quantity_offloaded").eq("trip_id", tripId)
       const { data: discData } = await supabase
-        .from("trip_discrepancies").select("shortage").eq("trip_id", tripId)
+        .from("trip_discrepancies").select("shortage, caked_bags").eq("trip_id", tripId)
 
       if (cancelled) return
       const totalOffloaded = (stopsData || []).reduce((sum, s) => sum + (s.quantity_offloaded || 0), 0)
       const totalShortage = (discData || []).reduce((sum, d) => sum + (d.shortage || 0), 0)
-      setOffloadedSoFar(totalOffloaded + totalShortage)
+      const totalCaked = (discData || []).reduce((sum, d) => sum + (d.caked_bags || 0), 0)
+      setOffloadedSoFar(totalOffloaded + totalShortage + totalCaked)
     }
 
     // If data provided as props, use it

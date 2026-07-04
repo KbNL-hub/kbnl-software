@@ -81,6 +81,7 @@ export default function CashExpenses() {
   const { isMobile, isDesktop } = useBreakpoint()
   const [selectedOffice, setSelectedOffice] = useState<string>("Calabar")
   const [assignedOffice, setAssignedOffice] = useState<string | null>(null)
+  const [isCashAuthorizer, setIsCashAuthorizer] = useState(false)
   const [adminUser, setAdminUser] = useState<any>(null)
   const [officeBalance, setOfficeBalance] = useState<number>(0)
   const [expenses, setExpenses] = useState<CashExpense[]>([])
@@ -92,10 +93,6 @@ export default function CashExpenses() {
 
   // Filter state
   const [filter, setFilter] = useState<"All" | "Pending" | "Authorised" | "Rejected">("All")
-
-  // Modals
-  const [showAssignModal, setShowAssignModal] = useState(false)
-  const [newAssignedOffice, setNewAssignedOffice] = useState("")
 
   const [showDepositModal, setShowDepositModal] = useState(false)
   const [depositAmount, setDepositAmount] = useState("")
@@ -130,18 +127,28 @@ export default function CashExpenses() {
       const { data: { user } } = await supabase.auth.getUser()
       if (user) {
         setAdminUser(user)
-        // Fetch assignment
-        const { data: assignment } = await supabase
-          .from("admin_office_assignments")
-          .select("office_name")
-          .eq("admin_id", user.id)
-          .single()
-        
-        if (assignment) {
-          setAssignedOffice(assignment.office_name)
-          setSelectedOffice(assignment.office_name)
-        } else {
-          setShowAssignModal(true)
+
+        // Determine if user is a CashAuthorizer
+        const { data: userRoles } = await supabase
+          .from("UserRoles")
+          .select("role")
+          .eq("user_id", user.id)
+        const roleList = userRoles?.map(r => r.role) || []
+        const isAuth = roleList.includes("CashAuthorizer")
+        setIsCashAuthorizer(isAuth)
+
+        if (isAuth) {
+          // Fetch assigned office from cash_authorizers table
+          const { data: authorizer } = await supabase
+            .from("cash_authorizers")
+            .select("assigned_office")
+            .eq("authorizer_id", user.id)
+            .maybeSingle()
+          
+          if (authorizer?.assigned_office) {
+            setAssignedOffice(authorizer.assigned_office)
+            setSelectedOffice(authorizer.assigned_office)
+          }
         }
       }
 
@@ -226,36 +233,8 @@ export default function CashExpenses() {
     }
   }
 
-  async function handleSaveAssignment() {
-    if (!canEdit) { setErrorMsg("You do not have permission to assign offices"); return }
-    if (!newAssignedOffice) return
-    if (!adminUser) return
-
-    setSubmitting(true)
-    setErrorMsg("")
-
-    try {
-      const { error } = await apiMutate("finance", {
-        action: "upsert", table: "admin_office_assignments",
-        data: { admin_id: adminUser.id, office_name: newAssignedOffice },
-        conflict: "admin_id",
-      })
-
-      if (error) { setErrorMsg("Failed to assign office: " + error); return }
-      setAssignedOffice(newAssignedOffice)
-      setSelectedOffice(newAssignedOffice)
-      setShowAssignModal(false)
-      setMessage("Office assignment saved!")
-      setTimeout(() => setMessage(""), 3000)
-    } catch {
-      setErrorMsg("Network error, please try again")
-    } finally {
-      setSubmitting(false)
-    }
-  }
-
   async function handleDeposit() {
-    if (!canEdit) { setErrorMsg("You do not have permission to deposit cash"); return }
+    if (!canDeposit) { setErrorMsg("You do not have permission to deposit cash"); return }
     const parsed = parseAmount(depositAmount)
     if (isNaN(parsed) || parsed <= 0) {
       setErrorMsg("Please enter a valid amount")
@@ -388,7 +367,8 @@ export default function CashExpenses() {
     }
   }
 
-  const isAssigned = selectedOffice === assignedOffice
+  const isAssigned = isCashAuthorizer ? (selectedOffice === assignedOffice) : true
+  const canDeposit = canEdit || (isCashAuthorizer && isAssigned)
 
   const filteredExpenses = expenses.filter(e => {
     if (filter === "All") return true
@@ -443,12 +423,6 @@ export default function CashExpenses() {
           {assignedOffice ? (
             <p style={{ margin: "8px 0 0", color: "#64748b", fontSize: fontSize.base, display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
               Your assigned office: <strong style={{ color: "#0f172a" }}>{assignedOffice}</strong>
-              <button 
-                onClick={() => { setNewAssignedOffice(assignedOffice); setShowAssignModal(true); setErrorMsg("") }}
-                style={{ background: "none", border: "none", color: "#0070f3", cursor: "pointer", textDecoration: "underline", padding: 0, fontSize: fontSize.sm, fontWeight: 500 }}
-              >
-                Change Assignment
-              </button>
             </p>
           ) : (
             <p style={{ margin: "8px 0 0", color: "#ef4444", fontSize: fontSize.base, display: "flex", alignItems: "center", gap: 6, fontWeight: 500 }}>
@@ -522,18 +496,18 @@ export default function CashExpenses() {
 
         {isAssigned && (
           <button
-            onClick={() => { if (!canEdit) return; setShowDepositModal(true); setErrorMsg(""); setDepositAmount(""); setDepositNote("") }}
-            disabled={!canEdit}
+            onClick={() => { if (!canDeposit) return; setShowDepositModal(true); setErrorMsg(""); setDepositAmount(""); setDepositNote("") }}
+            disabled={!canDeposit}
             style={{
               padding: "14px 28px",
-              background: !canEdit ? "#94a3b8" : "#0070f3",
+              background: !canDeposit ? "#94a3b8" : "#0070f3",
               color: "white",
               border: "none",
               borderRadius: 12,
-              cursor: !canEdit ? "not-allowed" : "pointer",
+              cursor: !canDeposit ? "not-allowed" : "pointer",
               fontWeight: 600,
               fontSize: fontSize.md,
-              boxShadow: !canEdit ? "none" : "0 4px 14px 0 rgba(0,112,243,0.39)",
+              boxShadow: !canDeposit ? "none" : "0 4px 14px 0 rgba(0,112,243,0.39)",
               transition: "transform 0.2s, box-shadow 0.2s",
               display: "flex",
               alignItems: "center",
@@ -543,8 +517,8 @@ export default function CashExpenses() {
               position: "relative",
               zIndex: 1
             }}
-            onMouseEnter={e => { if (!canEdit) return; e.currentTarget.style.transform = "translateY(-2px)"; e.currentTarget.style.boxShadow = "0 6px 20px rgba(0,112,243,0.4)" }}
-            onMouseLeave={e => { if (!canEdit) return; e.currentTarget.style.transform = "translateY(0)"; e.currentTarget.style.boxShadow = "0 4px 14px 0 rgba(0,112,243,0.39)" }}
+            onMouseEnter={e => { if (!canDeposit) return; e.currentTarget.style.transform = "translateY(-2px)"; e.currentTarget.style.boxShadow = "0 6px 20px rgba(0,112,243,0.4)" }}
+            onMouseLeave={e => { if (!canDeposit) return; e.currentTarget.style.transform = "translateY(0)"; e.currentTarget.style.boxShadow = "0 4px 14px 0 rgba(0,112,243,0.39)" }}
           >
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
             Deposit Cash
@@ -798,54 +772,7 @@ export default function CashExpenses() {
       </div>
 
       {/* MODALS */}
-      {/* 1. Office Assignment Modal */}
-      {showAssignModal && (
-        <div style={{ position: "fixed", inset: 0, background: "rgba(15, 23, 42, 0.6)", backdropFilter: "blur(4px)", display: "flex", alignItems: isMobile ? "flex-end" : "center", justifyContent: "center", zIndex: 100, padding: isMobile ? 0 : 24, animation: "fadeIn 0.2s ease-out" }}>
-          <style>{`@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } } @keyframes slideUp { from { transform: translateY(20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }`}</style>
-          <div style={{ background: "white", borderRadius: isMobile ? "20px 20px 0 0" : 16, padding: isMobile ? "28px 24px" : 32, width: "100%", maxWidth: 440, boxShadow: "0 25px 50px -12px rgba(0, 0, 0, 0.25)", animation: "slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1)" }}>
-            <h3 style={{ margin: "0 0 12px 0", color: "#0f172a", fontSize: fontSize.xl, fontWeight: 700 }}>Set Office Assignment</h3>
-            <p style={{ color: "#64748b", fontSize: fontSize.sm, marginBottom: 24, lineHeight: 1.5 }}>
-              Select the office you are managing. You will be able to authorise pending expenses and add deposits for this office. Other offices will remain read-only.
-            </p>
-            
-            <div style={{ marginBottom: 24 }}>
-              <label style={{ display: "block", fontWeight: 600, color: "#334155", marginBottom: 8, fontSize: fontSize.sm }}>Office Location</label>
-              <select
-                value={newAssignedOffice}
-                onChange={(e) => { setNewAssignedOffice(e.target.value); setErrorMsg("") }}
-                style={inputStyle}
-              >
-                <option value="">Select office...</option>
-                {OFFICES.map(o => (<option key={o} value={o}>{o} Office</option>))}
-              </select>
-            </div>
-
-            {errorMsg && <div style={{ padding: 12, background: "#fef2f2", borderLeft: "4px solid #ef4444", borderRadius: 4, marginBottom: 20, color: "#b91c1c", fontSize: fontSize.sm }}>{errorMsg}</div>}
-            
-            <div style={{ display: "flex", gap: 12 }}>
-              {assignedOffice && (
-                <button 
-                  onClick={() => setShowAssignModal(false)} 
-                  style={{ flex: 1, padding: "12px", background: "white", border: "1px solid #cbd5e1", color: "#475569", borderRadius: 8, fontWeight: 600, cursor: "pointer", fontSize: fontSize.md, transition: "background 0.2s" }}
-                  onMouseEnter={e => e.currentTarget.style.background = "#f8fafc"}
-                  onMouseLeave={e => e.currentTarget.style.background = "white"}
-                >
-                  Cancel
-                </button>
-              )}
-              <button
-                onClick={handleSaveAssignment}
-                disabled={submitting || !newAssignedOffice || !canEdit}
-                style={{ flex: 2, padding: "12px", background: submitting || !newAssignedOffice || !canEdit ? "#94a3b8" : "#0070f3", border: "none", color: "white", borderRadius: 8, fontWeight: 600, cursor: submitting || !newAssignedOffice || !canEdit ? "not-allowed" : "pointer", fontSize: fontSize.md, opacity: submitting || !newAssignedOffice || !canEdit ? 0.7 : 1, transition: "opacity 0.2s" }}
-              >
-                {submitting ? "Saving..." : "Save Assignment"}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* 2. Deposit Cash Modal */}
+      {/* 1. Deposit Cash Modal */}
       {showDepositModal && (
         <div onClick={() => setShowDepositModal(false)} style={{ position: "fixed", inset: 0, background: "rgba(15, 23, 42, 0.6)", backdropFilter: "blur(4px)", display: "flex", alignItems: isMobile ? "flex-end" : "center", justifyContent: "center", zIndex: 100, padding: isMobile ? 0 : 24, animation: "fadeIn 0.2s ease-out" }}>
           <div onClick={(e) => e.stopPropagation()} style={{ background: "white", borderRadius: isMobile ? "20px 20px 0 0" : 16, padding: isMobile ? "28px 24px" : 32, width: "100%", maxWidth: 440, boxShadow: "0 25px 50px -12px rgba(0, 0, 0, 0.25)", animation: "slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1)" }}>
@@ -889,8 +816,8 @@ export default function CashExpenses() {
               </button>
               <button
                 onClick={handleDeposit}
-                disabled={submitting || !canEdit}
-                style={{ flex: 1, padding: "12px", background: submitting || !canEdit ? "#94a3b8" : "#0070f3", border: "none", color: "white", borderRadius: 8, fontWeight: 600, cursor: submitting || !canEdit ? "not-allowed" : "pointer", fontSize: fontSize.md, opacity: submitting || !canEdit ? 0.7 : 1, transition: "opacity 0.2s" }}
+                disabled={submitting || !canDeposit}
+                style={{ flex: 1, padding: "12px", background: submitting || !canDeposit ? "#94a3b8" : "#0070f3", border: "none", color: "white", borderRadius: 8, fontWeight: 600, cursor: submitting || !canDeposit ? "not-allowed" : "pointer", fontSize: fontSize.md, opacity: submitting || !canDeposit ? 0.7 : 1, transition: "opacity 0.2s" }}
               >
                 {submitting ? "Processing..." : "Complete Deposit"}
               </button>

@@ -139,10 +139,8 @@ export default function TruckOfficerDashboard() {
   const [reports, setReports] = useState<MaintenanceReport[]>([])
   const [procurements, setProcurements] = useState<BulkProcurement[]>([])
   const [deposits, setDeposits] = useState<MaintenanceDeposit[]>([])
-  const [balanceMap, setBalanceMap] = useState<Record<string, number>>({})
   const [fuelExpenses, setFuelExpenses] = useState<FuelExpense[]>([])
   const [atfs, setAtfs] = useState<ATF[]>([])
-  const [maintenanceBalance, setMaintenanceBalance] = useState<number | null>(null)
   const [loading, setLoading] = useState(true)
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null)
   const [tab, setTab] = useState<"reports" | "fuel" | "atf" | "monitor">("reports")
@@ -235,7 +233,6 @@ export default function TruckOfficerDashboard() {
         fetchProcurements(),
         fetchDeposits(),
         fetchFuelExpenses(managerId),
-        fetchMaintenanceBalance(),
         fetchATFs(managerId),
       ])
       setLoading(false)
@@ -250,17 +247,10 @@ export default function TruckOfficerDashboard() {
       fetchProcurements()
       fetchDeposits()
       fetchFuelExpenses(officer.manager_id)
-      fetchMaintenanceBalance()
       fetchATFs(officer.manager_id)
     }, 30000)
     return () => clearInterval(interval)
   }, [officer])
-
-  async function fetchMaintenanceBalance() {
-    const { data } = await supabase
-      .from("maintenance_balance").select("current_balance").eq("id", 1).single()
-    if (data) setMaintenanceBalance(data.current_balance)
-  }
 
   async function fetchTrucks(mId: string) {
     const { data: assignments } = await supabase
@@ -551,31 +541,6 @@ export default function TruckOfficerDashboard() {
     if (officer) fetchATFs(officer.manager_id)
   }
 
-  useEffect(() => {
-    const map: Record<string, number> = {}
-    const records: { id: string; type: "deduction"; amount: number; created_at: string }[] = [
-      ...reports.filter(r => r.status === "Validated").map(r => ({
-        id: r.report_id, type: "deduction" as const, amount: r.amount, created_at: r.reported_at
-      })),
-      ...procurements.map(p => ({
-        id: p.procurement_id, type: "deduction" as const, amount: p.total_amount, created_at: p.logged_at
-      })),
-      ...deposits.map(d => ({
-        id: d.deposit_id, type: "deduction" as const, amount: -d.amount, created_at: d.created_at
-      })),
-    ]
-    records.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
-
-    let running = maintenanceBalance ?? 0
-    for (const rec of records) {
-      if (rec.type === "deduction") {
-        map[rec.id] = running
-        running += rec.amount
-      }
-    }
-    setBalanceMap(map)
-  }, [reports, procurements, deposits, maintenanceBalance])
-
   const myReports = reports.filter(r => r.manager_id === officer?.manager_id)
   const filteredReports = filter === "All" ? myReports : myReports.filter(r => r.status === filter)
 
@@ -717,14 +682,6 @@ export default function TruckOfficerDashboard() {
 
       <div style={{ padding: isMobile ? "16px" : "32px", maxWidth: 1200, margin: "0 auto" }}>
 
-        {/* Maintenance Balance */}
-        <div style={{ background: "white", border: "1px solid #e2e8f0", borderRadius: 12, padding: isMobile ? 16 : 24, marginBottom: 24, boxShadow: "0 1px 3px rgba(0,0,0,0.05)" }}>
-          <p style={{ margin: "0 0 8px 0", fontWeight: 600, fontSize: fontSize.sm, color: "#94a3b8", letterSpacing: 0.5 }}>Maintenance Balance</p>
-          <p style={{ margin: 0, fontSize: isMobile ? fontSize["2xl"] : fontSize.xl, fontWeight: 700, color: "#0070f3" }}>
-            ₦{maintenanceBalance !== null ? maintenanceBalance.toLocaleString() : "—"}
-          </p>
-        </div>
-
         {/* Assigned Trucks */}
         <div style={{ background: "white", border: "1px solid #e2e8f0", borderRadius: 12, padding: isMobile ? 16 : 24, marginBottom: 24, boxShadow: "0 1px 3px rgba(0,0,0,0.05)" }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
@@ -840,11 +797,6 @@ export default function TruckOfficerDashboard() {
                     <div style={{ background: "#f8fafc", borderRadius: 8, padding: "10px 12px", marginBottom: 12, border: "1px solid #e2e8f0" }}>
                       <p style={{ margin: 0, fontSize: fontSize.xs, color: "#94a3b8" }}>Amount</p>
                       <p style={{ margin: "2px 0 0", fontWeight: 700, color: "#0070f3", fontSize: fontSize.base }}>₦{r.amount.toLocaleString()}</p>
-                      {r.status === "Validated" && balanceMap[r.report_id] !== undefined && (
-                        <span style={{ marginTop: 4, fontSize: fontSize.xs, fontWeight: 600, color: "#16a34a", background: "#f0fdf4", padding: "2px 8px", borderRadius: 4, display: "inline-block" }}>
-                          Balance after: ₦{balanceMap[r.report_id].toLocaleString()}
-                        </span>
-                      )}
                     </div>
                     {r.notes && <p style={{ margin: "0 0 8px 0", fontSize: fontSize.sm, color: "#64748b" }}><strong>Notes:</strong> {r.notes}</p>}
                     {r.status === "Rejected" && r.rejection_reason && (
