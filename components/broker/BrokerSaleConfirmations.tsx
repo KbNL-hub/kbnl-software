@@ -84,8 +84,6 @@ export default function BrokerSaleConfirmations() {
         sale.customer_name ?? "",
         sale.payment_mode,
         sale.delivery_mode,
-        sale.tricycle_id ?? "",
-        sale.truck_plate ?? "",
         sale.status,
       ].join("|")
 
@@ -144,7 +142,6 @@ export default function BrokerSaleConfirmations() {
   async function handleConfirm() {
     if (!confirmingGroup) return
 
-    // Validate all prices are filled
     for (const line of confirmingGroup.lines) {
       if (!linePrices[line.sale_id]) {
         setMessage(`Enter price per bag for ${line.product}`)
@@ -154,17 +151,32 @@ export default function BrokerSaleConfirmations() {
 
     setSubmitting(true)
     try {
-      for (const line of confirmingGroup.lines) {
+      const prices: Record<string, number> = {}
+      const saleQtyMap: Record<string, number> = {}
+      const saleIds = confirmingGroup.lines.map(line => {
         const price = parseAmount(linePrices[line.sale_id])
-        const total = price * line.quantity
+        prices[line.sale_id] = price
+        saleQtyMap[line.sale_id] = line.quantity
+        return line.sale_id
+      })
 
-        const { error } = await apiMutate("finance", {
-          action: "update", table: "store_sales",
-          data: { price_per_bag: price, total_amount: total, status: "Confirmed" },
-          filters: { sale_id: line.sale_id },
-        })
+      const { data, error } = await apiMutate("finance", {
+        action: "batch_confirm",
+        sale_ids: saleIds,
+        broker_id: brokerId!,
+        prices,
+        sale_qty_map: saleQtyMap,
+      })
 
-        if (error) { setMessage(`Failed to update ${line.product}: ${error}`); setSubmitting(false); return }
+      if (error) {
+        setMessage(`Failed to confirm: ${error}`)
+        setSubmitting(false)
+        return
+      }
+
+      const result = data as { confirmed: string[]; errors: { sale_id: string; error: string }[] } | null
+      if (result?.errors?.length) {
+        setMessage(`Some sales could not be confirmed (already processed by another broker).`)
       }
 
       closeConfirmModal()
@@ -184,14 +196,19 @@ export default function BrokerSaleConfirmations() {
 
     setSubmitting(true)
     try {
-      for (const line of rejectingGroup.lines) {
-        const { error } = await apiMutate("finance", {
-          action: "update", table: "store_sales",
-          data: { status: "Rejected" },
-          filters: { sale_id: line.sale_id },
-        })
+      const saleIds = rejectingGroup.lines.map(line => line.sale_id)
 
-        if (error) { setMessage(`Failed to reject ${line.product}: ${error}`); setSubmitting(false); return }
+      const { data, error } = await apiMutate("finance", {
+        action: "batch_reject",
+        sale_ids: saleIds,
+        broker_id: brokerId!,
+        rejection_reason: rejectReason.trim(),
+      })
+
+      if (error) {
+        setMessage(`Failed to reject: ${error}`)
+        setSubmitting(false)
+        return
       }
 
       closeRejectModal()

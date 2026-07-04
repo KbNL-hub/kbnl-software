@@ -20,6 +20,17 @@ export type MutationPayload = {
 } | {
   action: "transaction"
   sub_actions: SubAction[]
+} | {
+  action: "batch_confirm"
+  sale_ids: string[]
+  broker_id: string
+  prices: Record<string, number>
+  sale_qty_map: Record<string, number>
+} | {
+  action: "batch_reject"
+  sale_ids: string[]
+  broker_id: string
+  rejection_reason?: string
 }
 
 export type MutationResult<T = unknown> = {

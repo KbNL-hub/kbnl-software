@@ -109,7 +109,8 @@ export default function StoreSales() {
       .select("sale_id, store_name, product, quantity, price_per_bag, total_amount, customer_name, payment_mode, delivery_mode, tricycle_id, truck_plate, broker_id, sold_at, created_at, status")
       .order("sold_at", { ascending: false })
 
-    if (error || !data) return []
+    if (error) throw error
+    if (!data) return []
 
     const brokerIds = [...new Set(data.map(s => s.broker_id).filter(Boolean))]
     const brokerMap = new Map<string, string>()
@@ -127,8 +128,8 @@ export default function StoreSales() {
     }))
   }
 
-  async function loadAll() {
-    setLoading(true)
+  async function loadAll(showLoading = true) {
+    if (showLoading) setLoading(true)
     try {
       const data = await fetchSales()
       setSales(data)
@@ -136,7 +137,7 @@ export default function StoreSales() {
     } catch (err) {
       console.error("Error loading store sales:", err)
     } finally {
-      setLoading(false)
+      if (showLoading) setLoading(false)
     }
   }
 
@@ -145,7 +146,7 @@ export default function StoreSales() {
   }, [])
 
   useEffect(() => {
-    const interval = setInterval(loadAll, 30000)
+    const interval = setInterval(() => loadAll(false), 30000)
     return () => clearInterval(interval)
   }, [])
 

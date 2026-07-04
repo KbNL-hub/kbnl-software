@@ -366,9 +366,9 @@ export default function CashExpenses() {
       setSubmitting(false)
     }
   }
+  const isAssigned = isCashAuthorizer ? Boolean(assignedOffice && selectedOffice === assignedOffice) : true
 
-  const isAssigned = isCashAuthorizer ? (selectedOffice === assignedOffice) : true
-  const canDeposit = canEdit || (isCashAuthorizer && isAssigned)
+  const canDeposit = isCashAuthorizer ? isAssigned : canEdit
 
   const filteredExpenses = expenses.filter(e => {
     if (filter === "All") return true
