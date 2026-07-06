@@ -6,7 +6,10 @@ import { supabase } from "@/lib/supabase"
 import { apiMutate } from "@/lib/api-mutation"
 import { formatAmount, parseAmount } from "@/lib/formatAmount"
 import ModernInput from "@/components/ModernInput"
+import CustomerSelector from "@/components/CustomerSelector"
 import { useBreakpoint } from "@/app/hooks/useBreakpoint"
+
+type Customer = { customer_id: string; full_name: string; phone_number: string; isNew?: boolean }
 
 type SaleLine = {
   sale_id: string
@@ -48,10 +51,12 @@ export default function BrokerSaleConfirmations() {
   const [loading, setLoading] = useState(true)
 
   const [confirmingGroup, setConfirmingGroup] = useState<SaleGroup | null>(null)
+  const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null)
   const [linePrices, setLinePrices] = useState<Record<string, string>>({})
   const [rejectingGroup, setRejectingGroup] = useState<SaleGroup | null>(null)
   const [rejectReason, setRejectReason] = useState("")
   const [message, setMessage] = useState("")
+  const [notification, setNotification] = useState("")
   const [submitting, setSubmitting] = useState(false)
 
   useEffect(() => { initBroker() }, [])
@@ -117,12 +122,14 @@ export default function BrokerSaleConfirmations() {
       prices[line.sale_id] = line.price_per_bag ? formatAmount(String(line.price_per_bag)) : ""
     }
     setConfirmingGroup(group)
+    setSelectedCustomer(null)
     setLinePrices(prices)
     setMessage("")
   }
 
   function closeConfirmModal() {
     setConfirmingGroup(null)
+    setSelectedCustomer(null)
     setLinePrices({})
     setMessage("")
   }
@@ -151,36 +158,44 @@ export default function BrokerSaleConfirmations() {
 
     setSubmitting(true)
     try {
-      const prices: Record<string, number> = {}
-      const saleQtyMap: Record<string, number> = {}
-      const saleIds = confirmingGroup.lines.map(line => {
+      const customerName = selectedCustomer?.full_name || confirmingGroup.customer_name
+      const confirmed: string[] = []
+      const unconfirmed: string[] = []
+
+      for (const line of confirmingGroup.lines) {
         const price = parseAmount(linePrices[line.sale_id])
-        prices[line.sale_id] = price
-        saleQtyMap[line.sale_id] = line.quantity
-        return line.sale_id
-      })
 
-      const { data, error } = await apiMutate("finance", {
-        action: "batch_confirm",
-        sale_ids: saleIds,
-        broker_id: brokerId!,
-        prices,
-        sale_qty_map: saleQtyMap,
-      })
+        const updateData: Record<string, unknown> = {
+          price_per_bag: price,
+          status: "Confirmed",
+        }
+        if (customerName) updateData.customer_name = customerName
 
-      if (error) {
-        setMessage(`Failed to confirm: ${error}`)
+        const { data, error } = await apiMutate("finance", {
+          action: "update",
+          table: "store_sales",
+          data: updateData,
+          filters: { sale_id: line.sale_id, status: "Pending", broker_id: brokerId },
+        })
+
+        if (error || !data || (Array.isArray(data) && data.length === 0)) {
+          unconfirmed.push(line.product)
+        } else {
+          confirmed.push(line.product)
+        }
+      }
+
+      if (confirmed.length > 0) {
+        closeConfirmModal()
+        if (brokerId) fetchSales(brokerId)
+        if (unconfirmed.length > 0) {
+          setNotification(`Confirmed ${confirmed.join(", ")}, but could not confirm ${unconfirmed.join(", ")}`)
+        }
+      } else {
+        setMessage(`Could not confirm: ${unconfirmed.join(", ")}`)
         setSubmitting(false)
         return
       }
-
-      const result = data as { confirmed: string[]; errors: { sale_id: string; error: string }[] } | null
-      if (result?.errors?.length) {
-        setMessage(`Some sales could not be confirmed (already processed by another broker).`)
-      }
-
-      closeConfirmModal()
-      if (brokerId) fetchSales(brokerId)
     } catch {
       setMessage("Failed to confirm sale. Please try again.")
     } finally {
@@ -196,17 +211,35 @@ export default function BrokerSaleConfirmations() {
 
     setSubmitting(true)
     try {
+      const updateData: Record<string, unknown> = {
+        status: "Rejected",
+        rejection_reason: rejectReason.trim(),
+      }
       const saleIds = rejectingGroup.lines.map(line => line.sale_id)
 
       const { data, error } = await apiMutate("finance", {
-        action: "batch_reject",
-        sale_ids: saleIds,
-        broker_id: brokerId!,
-        rejection_reason: rejectReason.trim(),
+        action: "update",
+        table: "store_sales",
+        data: updateData,
+        filters: { sale_id: saleIds, status: "Pending", broker_id: brokerId },
       })
 
       if (error) {
-        setMessage(`Failed to reject: ${error}`)
+        setMessage("Could not reject the selected sales")
+        setSubmitting(false)
+        return
+      }
+
+      const rejected = Array.isArray(data) ? data.length : 0
+      if (rejected === 0) {
+        setMessage("Could not reject any of the selected sales")
+        setSubmitting(false)
+        return
+      }
+      if (rejected < saleIds.length) {
+        closeRejectModal()
+        if (brokerId) fetchSales(brokerId)
+        setNotification(`Rejected ${rejected} of ${saleIds.length} sales (${saleIds.length - rejected} had no matching pending sale)`)
         setSubmitting(false)
         return
       }
@@ -219,6 +252,12 @@ export default function BrokerSaleConfirmations() {
       setSubmitting(false)
     }
   }
+
+  useEffect(() => {
+    if (!notification) return
+    const t = setTimeout(() => setNotification(""), 5000)
+    return () => clearTimeout(t)
+  }, [notification])
 
   if (loading) return <p style={{ color: "#888" }}>Loading…</p>
 
@@ -274,6 +313,11 @@ export default function BrokerSaleConfirmations() {
 
   return (
     <div>
+      {notification && (
+        <div style={{ display: "flex", alignItems: "center", gap: 6, color: "#ef4444", marginBottom: 14, fontSize: 13, padding: "10px 14px", background: "#fef2f2", borderRadius: 8 }}>
+          <Icon icon="mdi:alert-circle" width={15} />{notification}
+        </div>
+      )}
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 20, flexWrap: "wrap", gap: 8 }}>
         <h2 style={{ margin: 0, fontSize: isMobile ? 22 : 20, color: "#171717" }}>Store Sales</h2>
       </div>
@@ -412,8 +456,17 @@ export default function BrokerSaleConfirmations() {
 
             <div style={{ padding: "12px 14px", background: "#f9f9f9", borderRadius: 10, marginBottom: 20 }}>
               <p style={{ margin: "0 0 8px", fontSize: 12, color: "#888" }}>
-                Customer: {confirmingGroup.customer_name || "Walk-in"} · {PAYMENT_LABELS[confirmingGroup.payment_mode] || confirmingGroup.payment_mode} · {DELIVERY_LABELS[confirmingGroup.delivery_mode] || confirmingGroup.delivery_mode}
+                {PAYMENT_LABELS[confirmingGroup.payment_mode] || confirmingGroup.payment_mode} · {DELIVERY_LABELS[confirmingGroup.delivery_mode] || confirmingGroup.delivery_mode}
               </p>
+            </div>
+
+            <div style={{ marginBottom: 16 }}>
+              <label style={labelStyle}>Customer (correct if needed)</label>
+              <CustomerSelector
+                key={confirmingGroup.group_id}
+                onSelect={(c) => setSelectedCustomer(c)}
+                initialValue={confirmingGroup.customer_name ?? ""}
+              />
             </div>
 
             {confirmingGroup.lines.map((line) => (

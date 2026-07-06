@@ -22,12 +22,7 @@ export async function getPrimaryRole(userId: string): Promise<string | null> {
 }
 
 export function generateTempPassword(): string {
-  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789'
-  let result = 'KbNL-'
   const values = new Uint32Array(5)
   crypto.getRandomValues(values)
-  for (let i = 0; i < 5; i++) {
-    result += chars.charAt(values[i] % chars.length)
-  }
-  return result
+  return Array.from(values).map(v => (v % 10).toString()).join('')
 }
