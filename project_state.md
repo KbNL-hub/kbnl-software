@@ -2293,3 +2293,5 @@ One ATF per truck at a time (blocked if open ATF exists for that truck)
 - Min touch target: 48px height on all interactive elements
 - Iconify (@iconify/react) installed for admin sidebar icons
 - xlsx installed for report exports
+
+# Just for the sake of it.
