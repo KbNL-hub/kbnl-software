@@ -15,6 +15,7 @@ type CreditEntry = {
   status: "Active" | "Cleared"
   created_at: string
   cleared_at: string | null
+  age_of_credit: number | null
 }
 
 type ViewMode = "card" | "table"
@@ -29,6 +30,7 @@ export default function BrokerCreditsView() {
   const [credits, setCredits] = useState<CreditEntry[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState("")
+  const [creditLimit, setCreditLimit] = useState<number | null>(null)
   const [viewMode, setViewMode] = useState<ViewMode>("card")
 
   useEffect(() => { fetchCredits() }, [])
@@ -44,12 +46,13 @@ export default function BrokerCreditsView() {
 
       const { data: brokerRecord, error: brokerErr } = await supabase
         .from("Brokers")
-        .select("broker_id")
+        .select("broker_id, credit_limit")
         .eq("broker_id", user.id)
         .maybeSingle()
 
       if (brokerRecord?.broker_id) {
         brokerId = brokerRecord.broker_id
+        setCreditLimit(brokerRecord.credit_limit)
       }
 
       const { data, error: queryError } = await supabase
@@ -101,6 +104,16 @@ export default function BrokerCreditsView() {
           ₦{formatAmount(String(activeTotal)) || "0"}
         </p>
       </div>
+
+      {/* Credit limit exceeded banner */}
+      {creditLimit != null && activeTotal > creditLimit && (
+        <div style={{ padding: "12px 16px", background: "#fefce8", border: "1px solid #facc15", borderRadius: 8, marginBottom: 16, display: "flex", alignItems: "center", gap: 8 }}>
+          <Icon icon="mdi:alert-circle" width={18} color="#ca8a04" />
+          <span style={{ fontSize: fontSize.sm, color: "#854d0e", fontWeight: 500 }}>
+            Your total credit (₦{formatAmount(String(activeTotal))}) has exceeded your limit of ₦{formatAmount(String(creditLimit))}. Please clear some credits.
+          </span>
+        </div>
+      )}
 
       {/* Error state */}
       {error && (
@@ -178,6 +191,7 @@ export default function BrokerCreditsView() {
                 <div style={{ display: "flex", gap: 16, marginTop: 4, fontSize: fontSize.sm, color: "#6b7280" }}>
                   <span>₦{formatAmount(String(c.amount))}</span>
                   <span>{new Date(c.created_at).toLocaleDateString()}</span>
+                  {c.age_of_credit != null && <span style={{ color: "#9ca3af" }}>{c.age_of_credit} days</span>}
                 </div>
               </div>
               {c.status === "Cleared" ? (
@@ -199,6 +213,7 @@ export default function BrokerCreditsView() {
               <tr style={{ background: "#f8fafc", borderBottom: "1px solid #e2e8f0" }}>
                 <th style={tblHeadStyle}>Customer</th>
                 <th style={{ ...tblHeadStyle, textAlign: "right" }}>Amount</th>
+                <th style={{ ...tblHeadStyle, textAlign: "right" }}>Age</th>
                 <th style={{ ...tblHeadStyle, textAlign: "right" }}>Date</th>
                 <th style={{ ...tblHeadStyle, textAlign: "right" }}>Status</th>
               </tr>
@@ -208,6 +223,7 @@ export default function BrokerCreditsView() {
                 <tr key={c.credit_id} style={{ borderBottom: idx === displayedCredits.length - 1 ? "none" : "1px solid #e2e8f0" }}>
                   <td style={{ padding: "12px 16px", color: "#0f172a", fontSize: fontSize.base, fontWeight: 500 }}>{c.customer_name}</td>
                   <td style={{ padding: "12px 16px", textAlign: "right", color: "#475569", fontSize: fontSize.sm, fontWeight: 600 }}>₦{formatAmount(String(c.amount))}</td>
+                  <td style={{ padding: "12px 16px", textAlign: "right", color: "#64748b", fontSize: fontSize.sm }}>{c.age_of_credit != null ? `${c.age_of_credit} days` : "—"}</td>
                   <td style={{ padding: "12px 16px", textAlign: "right", color: "#64748b", fontSize: fontSize.sm }}>{new Date(c.created_at).toLocaleDateString()}</td>
                   <td style={{ padding: "12px 16px", textAlign: "right" }}>
                     {c.status === "Cleared" ? (

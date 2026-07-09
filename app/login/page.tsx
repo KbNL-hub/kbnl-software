@@ -47,14 +47,42 @@ export default function LoginPage() {
       return
     }
 
+    function isNetworkError(err: any) {
+      const msg = err?.message?.toLowerCase() || ""
+      return msg.includes("failed to fetch") ||
+        msg.includes("networkerror") ||
+        msg.includes("network error") ||
+        msg.includes("timeout") ||
+        msg.includes("fetch")
+    }
+
+    function queryWithTimeout<T>(promise: PromiseLike<{ data: T | null; error: any }>, ms = 10000): Promise<{ data: T | null; error: any }> {
+      return Promise.race([
+        promise,
+        new Promise<{ data: null; error: { message: string } }>((resolve) =>
+          setTimeout(() => resolve({ data: null, error: { message: "timeout" } }), ms)
+        ),
+      ])
+    }
+
     // Fetch role from Profiles
-    const { data: profile, error: profileError } = await supabase
-      .from("Profiles")
-      .select("role, must_change_password")
-      .eq("user_id", data.user.id)
-      .single()
+    const profileResult = await queryWithTimeout<{ role: string; must_change_password: boolean }>(
+      supabase
+        .from("Profiles")
+        .select("role, must_change_password")
+        .eq("user_id", data.user.id)
+        .single()
+    )
+
+    const profile = profileResult.data
+    const profileError = profileResult.error
 
     if (profileError || !profile) {
+      if (isNetworkError(profileError)) {
+        setLoading(false)
+        setMessage("Network error. Please check your connection and try again.")
+        return
+      }
       await supabase.auth.signOut()
       setMessage("Profile not found. Contact admin.")
       setLoading(false)
@@ -62,13 +90,23 @@ export default function LoginPage() {
     }
 
     if (profile.role === "Driver") {
-      const { data: driverData, error: driverError } = await supabase
-        .from("Drivers")
-        .select("status")
-        .eq("driver_id", data.user.id)
-        .single()
+      const driverResult = await queryWithTimeout<{ status: string }>(
+        supabase
+          .from("Drivers")
+          .select("status")
+          .eq("driver_id", data.user.id)
+          .single()
+      )
+
+      const driverError = driverResult.error
+      const driverData = driverResult.data
 
       if (driverError || !driverData) {
+        if (isNetworkError(driverError)) {
+          setLoading(false)
+          setMessage("Network error. Please check your connection and try again.")
+          return
+        }
         await supabase.auth.signOut()
         setMessage("Unable to verify driver status. Contact admin.")
         setLoading(false)

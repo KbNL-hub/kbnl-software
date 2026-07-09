@@ -9,6 +9,7 @@ import { apiMutate } from "@/lib/api-mutation"
 import RoleSwitcher from "@/components/RoleSwitcher"
 import { useBreakpoint } from "@/app/hooks/useBreakpoint"
 import { toTitleCase } from "@/lib/title-case"
+import ReportModal from "@/components/ReportModal"
 
 const SECTION_IMPORTS = {
   trips: () => import("@/components/broker/BrokerActiveTrips"),
@@ -76,6 +77,8 @@ export default function BrokerPanel({ userProfile }: Props) {
   // Dual-role state
   const [isDualRole, setIsDualRole] = useState(false)
   const [clerkOfficeName, setClerkOfficeName] = useState("")
+
+  const [showReportModal, setShowReportModal] = useState(false)
 
   // Profile picture state
   const [profilePicUrl, setProfilePicUrl] = useState<string | undefined>(userProfile.profile_picture_url)
@@ -358,26 +361,52 @@ export default function BrokerPanel({ userProfile }: Props) {
                 <RoleSwitcher currentRole={userProfile.role} style={{ margin: 0, fontSize: 12, color: "rgba(255,255,255,0.7)" }} />
               </div>
             </div>
-            {isNarrow && (
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
               <button
-                onClick={() => setDrawerOpen(true)}
+                onClick={() => setShowReportModal(true)}
                 style={{
-                  background: "transparent",
-                  border: "none",
-                  color: "rgba(255,255,255,0.6)",
-                  cursor: "pointer",
-                  padding: "8px",
+                  padding: isMobile ? "6px 10px" : "8px 14px",
+                  background: "rgba(245, 166, 35, 0.15)",
+                  color: "#f5a623",
+                  border: "1px solid rgba(245, 166, 35, 0.3)",
                   borderRadius: 8,
+                  cursor: "pointer",
+                  fontSize: 12,
+                  fontWeight: 600,
+                  minHeight: 36,
                   display: "flex",
                   alignItems: "center",
+                  gap: 6,
+                  whiteSpace: "nowrap",
                   transition: "all 0.2s",
                 }}
-                onMouseEnter={e => { e.currentTarget.style.background = "rgba(255,255,255,0.1)"; e.currentTarget.style.color = "#fff" }}
-                onMouseLeave={e => { e.currentTarget.style.background = "transparent"; e.currentTarget.style.color = "rgba(255,255,255,0.6)" }}
+                onMouseEnter={e => { e.currentTarget.style.background = "rgba(245, 166, 35, 0.25)"; e.currentTarget.style.borderColor = "rgba(245, 166, 35, 0.5)" }}
+                onMouseLeave={e => { e.currentTarget.style.background = "rgba(245, 166, 35, 0.15)"; e.currentTarget.style.borderColor = "rgba(245, 166, 35, 0.3)" }}
               >
-                <Icon icon="mdi:menu" width={22} />
+                <Icon icon="mdi:alert-circle-outline" width={16} />
+                {!isMobile && "Report"}
               </button>
-            )}
+              {isNarrow && (
+                <button
+                  onClick={() => setDrawerOpen(true)}
+                  style={{
+                    background: "transparent",
+                    border: "none",
+                    color: "rgba(255,255,255,0.6)",
+                    cursor: "pointer",
+                    padding: "8px",
+                    borderRadius: 8,
+                    display: "flex",
+                    alignItems: "center",
+                    transition: "all 0.2s",
+                  }}
+                  onMouseEnter={e => { e.currentTarget.style.background = "rgba(255,255,255,0.1)"; e.currentTarget.style.color = "#fff" }}
+                  onMouseLeave={e => { e.currentTarget.style.background = "transparent"; e.currentTarget.style.color = "rgba(255,255,255,0.6)" }}
+                >
+                  <Icon icon="mdi:menu" width={22} />
+                </button>
+              )}
+            </div>
           </div>
         </div>
 
@@ -566,6 +595,14 @@ export default function BrokerPanel({ userProfile }: Props) {
           </div>
         </div>
       </div>
+
+      {/* Report Modal */}
+      <ReportModal
+        isOpen={showReportModal}
+        onClose={() => setShowReportModal(false)}
+        userId={userProfile.user_id}
+        userRole="Broker"
+      />
 
       {/* Profile Picture Upload Modal */}
       {showPictureModal && (

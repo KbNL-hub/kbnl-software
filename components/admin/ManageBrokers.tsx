@@ -6,12 +6,14 @@ import { apiMutate } from "@/lib/api-mutation"
 import ModernInput from "@/components/ModernInput"
 import InviteSuccessCard from "@/components/admin/InviteSuccessCard"
 import { usePermissions } from "@/lib/PermissionContext"
+import { formatAmount } from "@/lib/formatAmount"
 
 type Broker = {
   broker_id: string
   broker_name: string
   phone_number: string
   profile_picture_url?: string
+  credit_limit: number | null
 }
 
 type ViewMode = "card" | "table"
@@ -64,6 +66,7 @@ export default function ManageBrokers() {
   const [email, setEmail] = useState("")
   const [editName, setEditName] = useState("")
   const [editPhone, setEditPhone] = useState("")
+  const [editCreditLimit, setEditCreditLimit] = useState("")
   const [message, setMessage] = useState("")
   const [submitting, setSubmitting] = useState(false)
   const [inviteResult, setInviteResult] = useState<{ tempPassword: string; email: string } | null>(null)
@@ -75,7 +78,7 @@ export default function ManageBrokers() {
   async function fetchBrokers() {
     const { data, error } = await supabase
       .from("Brokers")
-      .select("broker_id, broker_name, phone_number, profile_picture_url")
+      .select("broker_id, broker_name, phone_number, profile_picture_url, credit_limit")
       .order("broker_name", { ascending: true })
 
     if (!error) setBrokers(data || [])
@@ -93,6 +96,7 @@ export default function ManageBrokers() {
     setEmail("")
     setEditName("")
     setEditPhone("")
+    setEditCreditLimit("")
     setMessage("")
     setInviteResult(null)
   }
@@ -134,10 +138,11 @@ export default function ManageBrokers() {
     setSubmitting(true)
 
     try {
+      const parsedCreditLimit = editCreditLimit === "" ? null : Number(editCreditLimit.replace(/,/g, ""))
       const { error } = await apiMutate("admin", {
         action: "update",
         table: "Brokers",
-        data: { broker_name: editName, phone_number: editPhone || null },
+        data: { broker_name: editName, phone_number: editPhone || null, credit_limit: parsedCreditLimit },
         filters: { broker_id: editingBroker.broker_id },
       })
 
@@ -335,6 +340,9 @@ export default function ManageBrokers() {
                       <div style={{ minWidth: 0 }}>
                         <h3 style={{ margin: "0 0 4px 0", color: "#0f172a", fontSize: fontSize.lg, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{broker.broker_name}</h3>
                         <p style={{ margin: 0, color: "#64748b", fontSize: fontSize.sm, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{broker.phone_number || "No phone number"}</p>
+                        {broker.credit_limit != null && (
+                          <p style={{ margin: "2px 0 0", color: "#9ca3af", fontSize: 11 }}>Limit: ₦{formatAmount(String(broker.credit_limit))}</p>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -346,6 +354,7 @@ export default function ManageBrokers() {
                         setEditingBroker(broker)
                         setEditName(broker.broker_name)
                         setEditPhone(broker.phone_number || "")
+                        setEditCreditLimit(broker.credit_limit != null ? formatAmount(String(broker.credit_limit)) : "")
                         setMessage("")
                       }}
                       disabled={!canEdit}
@@ -378,6 +387,7 @@ export default function ManageBrokers() {
                   <tr style={{ background: "#f8fafc", borderBottom: "1px solid #e2e8f0" }}>
                     <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: fontSize.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px" }}>Name</th>
                     <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: fontSize.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px" }}>Phone Number</th>
+                    <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: fontSize.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px" }}>Credit Limit</th>
                     <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: fontSize.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px", textAlign: "right" }}>Actions</th>
                   </tr>
                 </thead>
@@ -398,6 +408,9 @@ export default function ManageBrokers() {
                       </td>
                       <td style={{ padding: "12px 16px", color: "#475569", fontSize: fontSize.sm }}>
                         {broker.phone_number || <span style={{ color: "#94a3b8", fontStyle: "italic" }}>Not provided</span>}
+                      </td>
+                      <td style={{ padding: "12px 16px", color: "#475569", fontSize: fontSize.sm }}>
+                        {broker.credit_limit != null ? `₦${formatAmount(String(broker.credit_limit))}` : <span style={{ color: "#94a3b8", fontStyle: "italic" }}>No limit</span>}
                       </td>
                       <td style={{ padding: "12px 16px", textAlign: "right" }}>
                         <div style={{ display: "flex", gap: 6, justifyContent: "flex-end" }}>
@@ -541,6 +554,17 @@ export default function ManageBrokers() {
                       readOnly={!canEdit}
                       onChange={(e: any) => { setEditPhone(e.target.value); setMessage("") }}
                       onKeyDown={(e: any) => { if (e.key === "Enter") handleUpdate() }}
+                      style={inputStyle}
+                    />
+                  </div>
+                  <div>
+                    <label style={{ display: "block", marginBottom: 6, color: "#475569", fontSize: fontSize.sm, fontWeight: 500 }}>Credit Limit (₦)</label>
+                    <ModernInput
+                      type="text"
+                      placeholder="0"
+                      value={editCreditLimit}
+                      readOnly={!canEdit}
+                      onChange={(e: any) => { setEditCreditLimit(formatAmount(e.target.value)); setMessage("") }}
                       style={inputStyle}
                     />
                   </div>

@@ -221,6 +221,9 @@ const ModernInput = forwardRef<HTMLElement, ModernInputProps>(
         onBlur={handleBlur}
         onChange={handleChange}
         {...inputRest}
+        onWheel={(e) => {
+          if (inputType === "number") (e.target as HTMLElement).blur()
+        }}
       />
     )
   }

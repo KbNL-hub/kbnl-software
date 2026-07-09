@@ -28,7 +28,7 @@ export default function SetPassword() {
 
   async function handleSetPassword() {
     if (!password) return setMessage("Enter a password")
-    if (password.length < 6) return setMessage("Password must be at least 6 characters")
+    if (password.length < 4) return setMessage("Password must be at least 4 characters")
     if (password !== confirm) return setMessage("Passwords do not match")
 
     setSubmitting(true)

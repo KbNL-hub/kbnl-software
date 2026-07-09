@@ -8,8 +8,9 @@ import CustomerSelector from "@/components/CustomerSelector"
 import { formatAmount, parseAmount } from "@/lib/formatAmount"
 import { useBreakpoint } from "@/app/hooks/useBreakpoint"
 import { usePermissions } from "@/lib/PermissionContext"
+import ModernInput from "@/components/ModernInput"
 
-type Broker = { broker_id: string; broker_name: string }
+type Broker = { broker_id: string; broker_name: string; credit_limit: number | null }
 type CreditEntry = {
   credit_id: string
   broker_id: string
@@ -20,6 +21,7 @@ type CreditEntry = {
   cleared_at: string | null
   created_by: string
   created_at: string
+  age_of_credit: number | null
 }
 type BrokerTotal = Broker & { total_credit: number }
 type ViewMode = "card" | "table"
@@ -47,12 +49,14 @@ export default function BrokerCredits() {
   const [selectedCustomer, setSelectedCustomer] = useState<{ customer_id: string; full_name: string } | null>(null)
   const [amountInput, setAmountInput] = useState("")
   const [viewMode, setViewMode] = useState<ViewMode>("card")
+  const [ageOfCreditInput, setAgeOfCreditInput] = useState("")
+  const [limitConfirmRequired, setLimitConfirmRequired] = useState(false)
 
   const fetchBrokerTotals = useCallback(async () => {
     setLoading(true)
     const { data: brokers } = await supabase
       .from("Brokers")
-      .select("broker_id, broker_name")
+      .select("broker_id, broker_name, credit_limit")
       .order("broker_name", { ascending: true })
 
     if (!brokers) { setLoading(false); return }
@@ -124,6 +128,18 @@ export default function BrokerCredits() {
     const amount = parseAmount(amountInput)
     if (!amount || amount <= 0) { setErrorMsg("Enter a valid amount"); return }
 
+    const broker = brokerTotals.find(b => b.broker_id === selectedBroker.broker_id)
+    if (broker?.credit_limit != null && !limitConfirmRequired) {
+      const newTotal = broker.total_credit + amount
+      if (newTotal > broker.credit_limit) {
+        setLimitConfirmRequired(true)
+        setErrorMsg(`This will exceed the ₦${formatAmount(String(broker.credit_limit))} credit limit for ${broker.broker_name}. Continue?`)
+        return
+      }
+    }
+
+    const parsedAge = ageOfCreditInput === "" ? null : parseInt(ageOfCreditInput.replace(/,/g, ""), 10)
+
     setSubmitting(true)
     setErrorMsg("")
 
@@ -139,6 +155,7 @@ export default function BrokerCredits() {
           customer_id: selectedCustomer.customer_id || null,
           amount,
           created_by: user.id,
+          age_of_credit: parsedAge,
         },
       })
 
@@ -147,6 +164,8 @@ export default function BrokerCredits() {
       setShowAddModal(false)
       setSelectedCustomer(null)
       setAmountInput("")
+      setAgeOfCreditInput("")
+      setLimitConfirmRequired(false)
       await fetchBrokerCredits(selectedBroker.broker_id)
       await fetchBrokerTotals()
     } catch {
@@ -159,6 +178,7 @@ export default function BrokerCredits() {
   function openUpdateModal(credit: CreditEntry) {
     setUpdatingCredit(credit)
     setUpdateAmountInput(String(credit.amount))
+    setAgeOfCreditInput(credit.age_of_credit != null ? String(credit.age_of_credit) : "")
     setErrorMsg("")
     setShowUpdateModal(true)
   }
@@ -169,6 +189,8 @@ export default function BrokerCredits() {
     const parsed = parseAmount(updateAmountInput)
     if (isNaN(parsed) || parsed < 0) { setErrorMsg("Enter a valid amount (0 or more)"); return }
 
+    const parsedAge = ageOfCreditInput === "" ? null : parseInt(ageOfCreditInput.replace(/,/g, ""), 10)
+
     setSubmitting(true)
     setErrorMsg("")
 
@@ -178,7 +200,7 @@ export default function BrokerCredits() {
 
       const { error } = await apiMutate("finance", {
         action: "update", table: "broker_credits",
-        data: { amount: parsed, cleared_at: parsed === 0 ? new Date().toISOString() : null },
+        data: { amount: parsed, cleared_at: parsed === 0 ? new Date().toISOString() : null, age_of_credit: parsedAge },
         filters: { credit_id: updatingCredit.credit_id },
       })
 
@@ -187,6 +209,7 @@ export default function BrokerCredits() {
       setShowUpdateModal(false)
       setUpdatingCredit(null)
       setUpdateAmountInput("")
+      setAgeOfCreditInput("")
       await fetchBrokerCredits(selectedBroker!.broker_id)
       await fetchBrokerTotals()
     } catch {
@@ -199,7 +222,9 @@ export default function BrokerCredits() {
   function openAddModal() {
     setSelectedCustomer(null)
     setAmountInput("")
+    setAgeOfCreditInput("")
     setErrorMsg("")
+    setLimitConfirmRequired(false)
     setShowAddModal(true)
   }
 
@@ -224,6 +249,18 @@ export default function BrokerCredits() {
 
       {view === "overview" && (
         <>
+          {(() => {
+            const exceeded = brokerTotals.filter(b => b.credit_limit != null && b.total_credit > b.credit_limit)
+            if (exceeded.length === 0) return null
+            return (
+              <div style={{ padding: "12px 16px", background: "#fefce8", border: "1px solid #facc15", borderRadius: 8, marginBottom: 16, display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                <Icon icon="mdi:alert-circle" width={18} color="#ca8a04" />
+                <span style={{ fontSize: fontSize.sm, color: "#854d0e", fontWeight: 500 }}>
+                  Credit limit exceeded for: {exceeded.map(b => b.broker_name).join(", ")}
+                </span>
+              </div>
+            )
+          })()}
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16, flexWrap: "wrap", gap: 8 }}>
             <h2 style={{ fontSize: fontSize.lg, color: "#171717", margin: 0 }}>Brokers</h2>
             <div style={{ display: "flex", gap: 8 }}>
@@ -294,9 +331,21 @@ export default function BrokerCredits() {
                     <div style={{ width: 40, height: 40, borderRadius: 10, background: "#eff6ff", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
                       <Icon icon="mdi:handshake" width={20} color="#0070f3" />
                     </div>
-                    <span style={{ fontSize: fontSize.base, fontWeight: 600, color: "#171717" }}>{b.broker_name}</span>
+                    <div>
+                      <span style={{ fontSize: fontSize.base, fontWeight: 600, color: "#171717" }}>{b.broker_name}</span>
+                      {b.credit_limit != null && (
+                        <div style={{ fontSize: fontSize.xs, color: "#9ca3af", marginTop: 1 }}>
+                          Limit: ₦{formatAmount(String(b.credit_limit))}
+                        </div>
+                      )}
+                    </div>
                   </div>
                   <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
+                    {b.credit_limit != null && b.total_credit > b.credit_limit && (
+                      <div title="Credit limit exceeded" style={{ display: "flex" }}>
+                      <Icon icon="mdi:alert-circle" width={18} color="#dc2626" />
+                    </div>
+                    )}
                     <span style={{ fontSize: fontSize.md, fontWeight: "bold", color: b.total_credit > 0 ? "#dc2626" : "#6b7280" }}>
                       ₦{formatAmount(String(b.total_credit)) || "0"}
                     </span>
@@ -311,6 +360,7 @@ export default function BrokerCredits() {
                 <thead>
                   <tr style={{ background: "#f8fafc", borderBottom: "1px solid #e2e8f0" }}>
                     <th style={tblHeadStyle}>Broker</th>
+                    <th style={{ ...tblHeadStyle, textAlign: "right" }}>Credit Limit</th>
                     <th style={{ ...tblHeadStyle, textAlign: "right" }}>Total Credit</th>
                   </tr>
                 </thead>
@@ -331,8 +381,16 @@ export default function BrokerCredits() {
                           <span style={{ color: "#0f172a", fontSize: fontSize.base, fontWeight: 500 }}>{b.broker_name}</span>
                         </div>
                       </td>
+                      <td style={{ padding: "12px 16px", textAlign: "right", color: "#64748b", fontSize: fontSize.sm }}>
+                        {b.credit_limit != null ? `₦${formatAmount(String(b.credit_limit))}` : "—"}
+                      </td>
                       <td style={{ padding: "12px 16px", textAlign: "right" }}>
                         <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 6 }}>
+                          {b.credit_limit != null && b.total_credit > b.credit_limit && (
+                            <div title="Credit limit exceeded" style={{ display: "flex" }}>
+                            <Icon icon="mdi:alert-circle" width={16} color="#dc2626" />
+                          </div>
+                          )}
                           <span style={{ fontSize: fontSize.md, fontWeight: "bold", color: b.total_credit > 0 ? "#dc2626" : "#6b7280" }}>
                             ₦{formatAmount(String(b.total_credit)) || "0"}
                           </span>
@@ -425,9 +483,10 @@ export default function BrokerCredits() {
                 <div key={c.credit_id} style={{ background: "white", borderRadius: 12, padding: "16px 18px", border: "1px solid #e5e7eb", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
                   <div style={{ minWidth: 0, flex: 1 }}>
                     <span style={{ fontSize: fontSize.base, fontWeight: 600, color: "#171717" }}>{c.customer_name}</span>
-                    <div style={{ display: "flex", gap: 16, marginTop: 4, fontSize: fontSize.sm, color: "#6b7280" }}>
+                    <div style={{ display: "flex", gap: 16, marginTop: 4, fontSize: fontSize.sm, color: "#6b7280", flexWrap: "wrap" }}>
                       <span>₦{formatAmount(String(c.amount))}</span>
                       <span>{new Date(c.created_at).toLocaleDateString()}</span>
+                      {c.age_of_credit != null && <span style={{ color: "#9ca3af" }}>{c.age_of_credit} days</span>}
                     </div>
                   </div>
                   <button
@@ -447,6 +506,7 @@ export default function BrokerCredits() {
                   <tr style={{ background: "#f8fafc", borderBottom: "1px solid #e2e8f0" }}>
                     <th style={tblHeadStyle}>Customer</th>
                     <th style={{ ...tblHeadStyle, textAlign: "right" }}>Amount</th>
+                    <th style={{ ...tblHeadStyle, textAlign: "right" }}>Age</th>
                     <th style={{ ...tblHeadStyle, textAlign: "right" }}>Date</th>
                     <th style={{ ...tblHeadStyle, textAlign: "right" }}>Action</th>
                   </tr>
@@ -456,6 +516,7 @@ export default function BrokerCredits() {
                     <tr key={c.credit_id} style={{ borderBottom: idx === credits.length - 1 ? "none" : "1px solid #e2e8f0" }}>
                       <td style={{ padding: "12px 16px", color: "#0f172a", fontSize: fontSize.base, fontWeight: 500 }}>{c.customer_name}</td>
                       <td style={{ padding: "12px 16px", textAlign: "right", color: "#475569", fontSize: fontSize.sm, fontWeight: 600 }}>₦{formatAmount(String(c.amount))}</td>
+                      <td style={{ padding: "12px 16px", textAlign: "right", color: "#64748b", fontSize: fontSize.sm }}>{c.age_of_credit != null ? `${c.age_of_credit} days` : "—"}</td>
                       <td style={{ padding: "12px 16px", textAlign: "right", color: "#64748b", fontSize: fontSize.sm }}>{new Date(c.created_at).toLocaleDateString()}</td>
                       <td style={{ padding: "12px 16px", textAlign: "right" }}>
                         <button
@@ -495,16 +556,26 @@ export default function BrokerCredits() {
               style={{ width: "100%", padding: "12px 14px", boxSizing: "border-box", borderRadius: 8, border: "1.5px solid #ccc", fontSize: 14, background: "white", color: "#171717", outline: "none", minHeight: 48 }}
             />
 
+            <label style={{ display: "block", fontSize: fontSize.sm, fontWeight: 600, color: "#374151", marginBottom: 6, marginTop: 16 }}>Age of Credit (days)</label>
+            <ModernInput
+              type="text"
+              placeholder="e.g. 30"
+              value={ageOfCreditInput}
+              onChange={(e: any) => { setAgeOfCreditInput(formatAmount(e.target.value)); setLimitConfirmRequired(false) }}
+              readOnly={!canEdit}
+              style={{ width: "100%", boxSizing: "border-box", minHeight: 48 }}
+            />
+
             {errorMsg && <p style={{ color: "#dc2626", fontSize: fontSize.sm, margin: "12px 0 0 0" }}>{errorMsg}</p>}
 
             <div style={{ display: "flex", gap: 10, marginTop: 20 }}>
-              <button onClick={() => setShowAddModal(false)} style={{ flex: 1, padding: "12px 0", background: "white", border: "1.5px solid #d1d5db", borderRadius: 8, cursor: "pointer", fontSize: 14, minHeight: 48 }}>Cancel</button>
+              <button onClick={() => { setShowAddModal(false); setLimitConfirmRequired(false) }} style={{ flex: 1, padding: "12px 0", background: "white", border: "1.5px solid #d1d5db", borderRadius: 8, cursor: "pointer", fontSize: 14, minHeight: 48 }}>Cancel</button>
               <button
                 onClick={handleAddCredit}
                 disabled={submitting || !selectedCustomer || !parseAmount(amountInput) || !canEdit}
                 style={{ flex: 1, padding: "12px 0", background: submitting || !canEdit || !selectedCustomer || !parseAmount(amountInput) ? "#94a3b8" : "#0070f3", color: "white", border: "none", borderRadius: 8, cursor: (submitting || !canEdit || !selectedCustomer || !parseAmount(amountInput)) ? "not-allowed" : "pointer", fontWeight: "bold", fontSize: 14, minHeight: 48, opacity: (submitting || !selectedCustomer || !parseAmount(amountInput)) ? 0.5 : 1 }}
               >
-                {submitting ? "Adding..." : "Add Credit"}
+                {submitting ? "Adding..." : (limitConfirmRequired ? "Confirm & Add" : "Add Credit")}
               </button>
             </div>
           </div>
@@ -529,6 +600,16 @@ export default function BrokerCredits() {
               onChange={e => setUpdateAmountInput(formatAmount(e.target.value))}
               readOnly={!canEdit}
               style={{ width: "100%", padding: "12px 14px", boxSizing: "border-box", borderRadius: 8, border: "1.5px solid #ccc", fontSize: 14, background: "white", color: "#171717", outline: "none", minHeight: 48 }}
+            />
+
+            <label style={{ display: "block", fontSize: fontSize.sm, fontWeight: 600, color: "#374151", marginBottom: 6, marginTop: 16 }}>Age of Credit (days)</label>
+            <ModernInput
+              type="text"
+              placeholder="e.g. 30"
+              value={ageOfCreditInput}
+              onChange={(e: any) => setAgeOfCreditInput(formatAmount(e.target.value))}
+              readOnly={!canEdit}
+              style={{ width: "100%", boxSizing: "border-box", minHeight: 48 }}
             />
 
             {errorMsg && <p style={{ color: "#dc2626", fontSize: fontSize.sm, margin: "12px 0 0 0" }}>{errorMsg}</p>}
