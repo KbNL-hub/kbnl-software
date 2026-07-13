@@ -1,6 +1,7 @@
 "use client"
 
 import ModernInput from "@/components/ModernInput"
+import { Icon } from "@iconify/react"
 import { useState, useEffect, useRef } from "react"
 import { supabase } from "@/lib/supabase"
 import { apiMutate } from "@/lib/api-mutation"
@@ -15,6 +16,8 @@ export default function SetPasswordPage() {
   const [submitting, setSubmitting] = useState(false)
   const [ready, setReady] = useState(false)
   const [isError, setIsError] = useState(false)
+  const [showPassword, setShowPassword] = useState(false)
+  const [showConfirm, setShowConfirm] = useState(false)
   const router = useRouter()
   const confirmRef = useRef<HTMLInputElement>(null)
 
@@ -145,6 +148,17 @@ export default function SetPasswordPage() {
         }
         .sp-container { animation: containerSlideIn 0.6s ease-out; }
         .sp-fade { animation: fadeIn 0.6s ease-out; }
+        .password-wrapper { position: relative; }
+        .password-toggle {
+          position: absolute; right: 12px; top: 50%; transform: translateY(-50%);
+          background: none; border: none; cursor: pointer; padding: 4px;
+          display: flex; align-items: center; justify-content: center;
+          color: #94a3b8; transition: color 0.2s ease; z-index: 1;
+        }
+        .password-toggle:hover { color: #171717; }
+        input[type="password"]::-ms-reveal,
+        input[type="password"]::-ms-clear { display: none; }
+        input[type="password"]::-webkit-credentials-auto-fill-button { display: none !important; }
       `}</style>
 
       <div className="sp-container" style={{
@@ -194,24 +208,34 @@ export default function SetPasswordPage() {
             }}>
               New Password
             </label>
-            <ModernInput
-              type="password"
-              placeholder="••••••••"
-              value={password}
-              onChange={(e) => { setPassword(e.target.value); setMessage(""); setIsError(false) }}
-              onKeyDown={(e) => { if (e.key === "Enter") confirmRef.current?.focus() }}
-              style={{
-                width: "100%",
-                padding: "12px 16px",
-                boxSizing: "border-box",
-                fontSize: 16,
-                border: "1.5px solid #e5e5e5",
-                borderRadius: 10,
-                background: "#f9f9f9",
-                transition: "all 0.2s ease",
-              }}
-              data-modern-input="migrated"
-            />
+            <div className="password-wrapper">
+              <ModernInput
+                type={showPassword ? "text" : "password"}
+                placeholder="••••••••"
+                value={password}
+                onChange={(e) => { setPassword(e.target.value); setMessage(""); setIsError(false) }}
+                onKeyDown={(e) => { if (e.key === "Enter") confirmRef.current?.focus() }}
+                style={{
+                  width: "100%",
+                  padding: "12px 48px 12px 16px",
+                  boxSizing: "border-box",
+                  fontSize: 16,
+                  border: "1.5px solid #e5e5e5",
+                  borderRadius: 10,
+                  background: "#f9f9f9",
+                  transition: "all 0.2s ease",
+                }}
+                data-modern-input="migrated"
+              />
+              <button
+                type="button"
+                className="password-toggle"
+                onClick={() => setShowPassword((prev) => !prev)}
+                aria-label={showPassword ? "Hide password" : "Show password"}
+              >
+                <Icon icon={showPassword ? "mdi:eye-off" : "mdi:eye"} width={20} height={20} />
+              </button>
+            </div>
           </div>
 
           <div style={{ marginBottom: 28 }}>
@@ -226,25 +250,35 @@ export default function SetPasswordPage() {
             }}>
               Confirm Password
             </label>
-            <ModernInput
-              ref={confirmRef}
-              type="password"
-              placeholder="••••••••"
-              value={confirm}
-              onChange={(e) => { setConfirm(e.target.value); setMessage(""); setIsError(false) }}
-              onKeyDown={(e) => { if (e.key === "Enter") handleSetPassword() }}
-              style={{
-                width: "100%",
-                padding: "12px 16px",
-                boxSizing: "border-box",
-                fontSize: 16,
-                border: "1.5px solid #e5e5e5",
-                borderRadius: 10,
-                background: "#f9f9f9",
-                transition: "all 0.2s ease",
-              }}
-              data-modern-input="migrated"
-            />
+            <div className="password-wrapper">
+              <ModernInput
+                ref={confirmRef}
+                type={showConfirm ? "text" : "password"}
+                placeholder="••••••••"
+                value={confirm}
+                onChange={(e) => { setConfirm(e.target.value); setMessage(""); setIsError(false) }}
+                onKeyDown={(e) => { if (e.key === "Enter") handleSetPassword() }}
+                style={{
+                  width: "100%",
+                  padding: "12px 48px 12px 16px",
+                  boxSizing: "border-box",
+                  fontSize: 16,
+                  border: "1.5px solid #e5e5e5",
+                  borderRadius: 10,
+                  background: "#f9f9f9",
+                  transition: "all 0.2s ease",
+                }}
+                data-modern-input="migrated"
+              />
+              <button
+                type="button"
+                className="password-toggle"
+                onClick={() => setShowConfirm((prev) => !prev)}
+                aria-label={showConfirm ? "Hide password" : "Show password"}
+              >
+                <Icon icon={showConfirm ? "mdi:eye-off" : "mdi:eye"} width={20} height={20} />
+              </button>
+            </div>
           </div>
 
           <button
