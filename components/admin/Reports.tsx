@@ -1,5 +1,7 @@
 "use client"
 
+import { FONT_SIZE } from "@/lib/constants"
+
 import { useState, useEffect } from "react"
 import { supabase } from "@/lib/supabase"
 import { DataTable } from "./DataTable"
@@ -91,16 +93,7 @@ type DrillDown =
 type ViewMode = "card" | "table"
 
 // ── Constants ──────────────────────────────────────────────────────────────
-const fontSize = {
-  xs: 12,
-  sm: 13,
-  base: 14,
-  md: 15,
-  lg: 16,
-  xl: 20,
-  "2xl": 24,
-  "3xl": 28,
-}
+
 
 // ── Date helpers ───────────────────────────────────────────────────────────
 function thisMonthRange() {
@@ -642,10 +635,10 @@ export default function Reports() {
     <div style={{ minHeight: "100vh", background: "#f8fafc", padding: isMobile ? "16px" : "32px", fontFamily: "'Inter', sans-serif" }}>
       {/* Header */}
       <div style={{ marginBottom: 24 }}>
-        <h1 style={{ margin: 0, color: "#0f172a", fontSize: isMobile ? fontSize["2xl"] : fontSize["3xl"], fontWeight: 700, letterSpacing: "-0.5px" }}>
+        <h1 style={{ margin: 0, color: "#0f172a", fontSize: isMobile ? FONT_SIZE["2xl"] : FONT_SIZE["3xl"], fontWeight: 700, letterSpacing: "-0.5px" }}>
           Reports
         </h1>
-        <p style={{ margin: "8px 0 0", color: "#64748b", fontSize: fontSize.base }}>
+        <p style={{ margin: "8px 0 0", color: "#64748b", fontSize: FONT_SIZE.base }}>
            {section === "drivers" ? "Driver performance metrics and trip summaries" : section === "trucks" ? "Truck health, maintenance, and fuel analytics" : "Broker sales and revenue summaries"}
         </p>
       </div>
@@ -663,7 +656,7 @@ setDrillDown(null)
             style={{
               padding: "8px 16px",
 borderRadius: 20,
-fontSize: fontSize.sm,
+fontSize: FONT_SIZE.sm,
 cursor: "pointer",
               border: section === s ? "" : "1.5px solid #e2e8f0",
               background: section === s ? "#171717" : "white",
@@ -692,7 +685,7 @@ cursor: "pointer",
       {/* Filters Card */}
       <div style={{ background: "white", border: "1px solid #e2e8f0", borderRadius: 12, padding: isMobile ? 16 : 20, marginBottom: 24, boxShadow: "0 1px 3px rgba(0, 0, 0, 0.05)" }}>
         <div style={{ marginBottom: 16 }}>
-          <label style={{ display: "block", fontSize: fontSize.xs, color: "#475569", fontWeight: 500, marginBottom: 12, textTransform: "uppercase", letterSpacing: "0.5px" }}>
+          <label style={{ display: "block", fontSize: FONT_SIZE.xs, color: "#475569", fontWeight: 500, marginBottom: 12, textTransform: "uppercase", letterSpacing: "0.5px" }}>
             Quick Filters
           </label>
           <QuickFilterPills
@@ -711,7 +704,7 @@ cursor: "pointer",
 
                 {quickFilter === "custom" && (
           <div style={{ marginBottom: 16 }}>
-                          <label style={{ display: "block", fontSize: fontSize.xs, color: "#475569", fontWeight: 500, marginBottom: 12, textTransform: "uppercase", letterSpacing: "0.5px" }}>
+                          <label style={{ display: "block", fontSize: FONT_SIZE.xs, color: "#475569", fontWeight: 500, marginBottom: 12, textTransform: "uppercase", letterSpacing: "0.5px" }}>
               Date Range
             </label>
             <DateRangeSelector
@@ -737,7 +730,7 @@ border: "none",
 borderRadius: 8,
 cursor: loading ? "not-allowed" : "pointer",
             fontWeight: 600,
-            fontSize: fontSize.md,
+            fontSize: FONT_SIZE.md,
             minHeight: 44,
             opacity: loading ? 0.7 : 1,
             transition: "all 0.2s ease",
@@ -786,8 +779,8 @@ cursor: loading ? "not-allowed" : "pointer",
               {/* Header with View Toggle */}
             <div style={{ display: "flex", flexDirection: isMobile ? "column" : "row", justifyContent: "space-between", alignItems: isMobile ? "flex-start" : "center", gap: 12, marginBottom: 16 }}>
               <div>
-                  <h2 style={{ margin: 0, color: "#0f172a", fontSize: fontSize.lg, fontWeight: 600 }}>Driver Summary</h2>
-              <p style={{ margin: "4px 0 0", color: "#64748b", fontSize: fontSize.sm }}>{driverSummaries.length} drivers</p>
+                  <h2 style={{ margin: 0, color: "#0f172a", fontSize: FONT_SIZE.lg, fontWeight: 600 }}>Driver Summary</h2>
+              <p style={{ margin: "4px 0 0", color: "#64748b", fontSize: FONT_SIZE.sm }}>{driverSummaries.length} drivers</p>
               </div>
             <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
                   {/* View Toggle */}
@@ -801,7 +794,7 @@ cursor: loading ? "not-allowed" : "pointer",
                         border: "none",
                         borderRadius: 6,
                         cursor: "pointer",
-                        fontSize: fontSize.xs,
+                        fontSize: FONT_SIZE.xs,
                         fontWeight: 600,
                         minWidth: 44,
                         height: 40,
@@ -823,7 +816,7 @@ cursor: loading ? "not-allowed" : "pointer",
                         border: "none",
                         borderRadius: 6,
                         cursor: "pointer",
-                        fontSize: fontSize.xs,
+                        fontSize: FONT_SIZE.xs,
                         fontWeight: 600,
                         minWidth: 44,
                         height: 40,
@@ -848,7 +841,7 @@ cursor: loading ? "not-allowed" : "pointer",
                     <ReportCard key={driver.driver_id}>
                 <div>
                   <div style={{ marginBottom: 12 }}>
-                          <h3 style={{ margin: 0, color: "#0f172a", fontSize: fontSize.lg, fontWeight: 600 }}>{driver.driver_name}</h3>
+                          <h3 style={{ margin: 0, color: "#0f172a", fontSize: FONT_SIZE.lg, fontWeight: 600 }}>{driver.driver_name}</h3>
                 </div>
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, padding: "12px 0", borderTop: "1px solid #f1f5f9", borderBottom: "1px solid #f1f5f9" }}>
                           <ReportCardField label="Trips" value={driver.trips_count} />
@@ -868,7 +861,7 @@ cursor: loading ? "not-allowed" : "pointer",
                             borderRadius: 8,
                             cursor: "pointer",
                             fontWeight: 600,
-                            fontSize: fontSize.md,
+                            fontSize: FONT_SIZE.md,
                             minHeight: 40,
                             transition: "all 0.2s ease",
                           }}
@@ -907,7 +900,7 @@ cursor: loading ? "not-allowed" : "pointer",
                             borderRadius: 6,
                             cursor: "pointer",
                             fontWeight: 500,
-                            fontSize: fontSize.xs,
+                            fontSize: FONT_SIZE.xs,
                             transition: "all 0.2s ease",
                           }}
                           onMouseEnter={(e) => {
@@ -964,7 +957,7 @@ cursor: loading ? "not-allowed" : "pointer",
                         style={{
                           padding: "4px 8px",
                           borderRadius: 12,
-                          fontSize: fontSize.xs,
+                          fontSize: FONT_SIZE.xs,
                           fontWeight: 600,
                           background:
                             value === "Completed"
@@ -997,8 +990,8 @@ cursor: loading ? "not-allowed" : "pointer",
             <div>
               <div style={{ display: "flex", flexDirection: isMobile ? "column" : "row", justifyContent: "space-between", alignItems: isMobile ? "flex-start" : "center", gap: 12, marginBottom: 16 }}>
                 <div>
-                  <h2 style={{ margin: 0, color: "#0f172a", fontSize: fontSize.lg, fontWeight: 600 }}>Broker Summary</h2>
-                  <p style={{ margin: "4px 0 0", color: "#64748b", fontSize: fontSize.sm }}>{brokerSummaries.length} brokers</p>
+                  <h2 style={{ margin: 0, color: "#0f172a", fontSize: FONT_SIZE.lg, fontWeight: 600 }}>Broker Summary</h2>
+                  <p style={{ margin: "4px 0 0", color: "#64748b", fontSize: FONT_SIZE.sm }}>{brokerSummaries.length} brokers</p>
                 </div>
                 <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
                   <div style={{ display: "flex", background: "white", border: "1px solid #e2e8f0", borderRadius: 8, padding: 4, gap: 0 }}>
@@ -1007,7 +1000,7 @@ cursor: loading ? "not-allowed" : "pointer",
                       style={{
                         padding: "8px 12px", background: viewMode === "card" ? "#0070f3" : "transparent",
                         color: viewMode === "card" ? "white" : "#64748b", border: "none", borderRadius: 6,
-                        cursor: "pointer", fontSize: fontSize.xs, fontWeight: 600,
+                        cursor: "pointer", fontSize: FONT_SIZE.xs, fontWeight: 600,
                         minWidth: 44, height: 40, display: "flex", alignItems: "center", justifyContent: "center",
                       }}
                     >
@@ -1018,7 +1011,7 @@ cursor: loading ? "not-allowed" : "pointer",
                       style={{
                         padding: "8px 12px", background: viewMode === "table" ? "#0070f3" : "transparent",
                         color: viewMode === "table" ? "white" : "#64748b", border: "none", borderRadius: 6,
-                        cursor: "pointer", fontSize: fontSize.xs, fontWeight: 600,
+                        cursor: "pointer", fontSize: FONT_SIZE.xs, fontWeight: 600,
                         minWidth: 44, height: 40, display: "flex", alignItems: "center", justifyContent: "center",
                       }}
                     >
@@ -1035,7 +1028,7 @@ cursor: loading ? "not-allowed" : "pointer",
                     <ReportCard key={broker.broker_id}>
                       <div>
                         <div style={{ marginBottom: 12 }}>
-                          <h3 style={{ margin: 0, color: "#0f172a", fontSize: fontSize.lg, fontWeight: 600 }}>{broker.broker_name}</h3>
+                          <h3 style={{ margin: 0, color: "#0f172a", fontSize: FONT_SIZE.lg, fontWeight: 600 }}>{broker.broker_name}</h3>
                         </div>
                         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, padding: "12px 0", borderTop: "1px solid #f1f5f9", borderBottom: "1px solid #f1f5f9" }}>
                           <ReportCardField label="Confirmed Stops" value={broker.stops_count} />
@@ -1047,7 +1040,7 @@ cursor: loading ? "not-allowed" : "pointer",
                           style={{
                             width: "100%", marginTop: 12, padding: "10px 14px",
                             background: "#0070f3", color: "white", border: "none", borderRadius: 8,
-                            cursor: "pointer", fontWeight: 600, fontSize: fontSize.md, minHeight: 40,
+                            cursor: "pointer", fontWeight: 600, fontSize: FONT_SIZE.md, minHeight: 40,
                           }}
                           onMouseEnter={(e) => e.currentTarget.style.background = "#0057c7"}
                           onMouseLeave={(e) => e.currentTarget.style.background = "#0070f3"}
@@ -1078,7 +1071,7 @@ cursor: loading ? "not-allowed" : "pointer",
                           style={{
                             padding: "6px 10px", background: "white", color: "#0070f3",
                             border: "1px solid #e2e8f0", borderRadius: 6, cursor: "pointer",
-                            fontWeight: 500, fontSize: fontSize.xs,
+                            fontWeight: 500, fontSize: FONT_SIZE.xs,
                           }}
                           onMouseEnter={(e) => e.currentTarget.style.background = "#eff6ff"}
                           onMouseLeave={(e) => e.currentTarget.style.background = "white"}
@@ -1146,8 +1139,8 @@ cursor: loading ? "not-allowed" : "pointer",
               {/* Header with View Toggle */}
             <div style={{ display: "flex", flexDirection: isMobile ? "column" : "row", justifyContent: "space-between", alignItems: isMobile ? "flex-start" : "center", gap: 12, marginBottom: 16 }}>
               <div>
-                  <h2 style={{ margin: 0, color: "#0f172a", fontSize: fontSize.lg, fontWeight: 600 }}>Truck Summary</h2>
-                  <p style={{ margin: "4px 0 0", color: "#64748b", fontSize: fontSize.sm }}>{truckSummaries.length} trucks</p>
+                  <h2 style={{ margin: 0, color: "#0f172a", fontSize: FONT_SIZE.lg, fontWeight: 600 }}>Truck Summary</h2>
+                  <p style={{ margin: "4px 0 0", color: "#64748b", fontSize: FONT_SIZE.sm }}>{truckSummaries.length} trucks</p>
 </div>
               <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
                   {/* View Toggle */}
@@ -1161,7 +1154,7 @@ cursor: loading ? "not-allowed" : "pointer",
                         border: "none",
                         borderRadius: 6,
                         cursor: "pointer",
-                        fontSize: fontSize.xs,
+                        fontSize: FONT_SIZE.xs,
                         fontWeight: 600,
                         minWidth: 44,
                         height: 40,
@@ -1183,7 +1176,7 @@ cursor: loading ? "not-allowed" : "pointer",
                         border: "none",
                         borderRadius: 6,
                         cursor: "pointer",
-                        fontSize: fontSize.xs,
+                        fontSize: FONT_SIZE.xs,
                         fontWeight: 600,
                         minWidth: 44,
                         height: 40,
@@ -1208,11 +1201,11 @@ cursor: loading ? "not-allowed" : "pointer",
                     <ReportCard key={truck.plate_number}>
                       <div>
                         <div style={{ marginBottom: 12 }}>
-                      <h3 style={{ margin: 0, color: "#0f172a", fontSize: fontSize.lg, fontWeight: 600 }}>
+                      <h3 style={{ margin: 0, color: "#0f172a", fontSize: FONT_SIZE.lg, fontWeight: 600 }}>
                             {truck.plate_number}
-                            {truck.kbnl_truck_no && <span style={{ fontSize: fontSize.sm, color: "#64748b", fontWeight: 400 }}> · #{truck.kbnl_truck_no}</span>}
+                            {truck.kbnl_truck_no && <span style={{ fontSize: FONT_SIZE.sm, color: "#64748b", fontWeight: 400 }}> · #{truck.kbnl_truck_no}</span>}
                         </h3>
-                        <p style={{ margin: "4px 0 0", color: "#64748b", fontSize: fontSize.sm }}>{truck.truck_model}</p>
+                        <p style={{ margin: "4px 0 0", color: "#64748b", fontSize: FONT_SIZE.sm }}>{truck.truck_model}</p>
                       </div>
                       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, padding: "12px 0", borderTop: "1px solid #f1f5f9", borderBottom: "1px solid #f1f5f9" }}>
                           <ReportCardField label="Completed Trips" value={truck.completed_trips} />
@@ -1232,7 +1225,7 @@ cursor: loading ? "not-allowed" : "pointer",
                             borderRadius: 8,
                             cursor: "pointer",
                             fontWeight: 600,
-                            fontSize: fontSize.md,
+                            fontSize: FONT_SIZE.md,
                             minHeight: 40,
                             transition: "all 0.2s ease",
                           }}
@@ -1259,9 +1252,9 @@ cursor: loading ? "not-allowed" : "pointer",
                         <div>
                           <div style={{ fontWeight: 600, color: "#0f172a" }}>{truck.plate_number}</div>
                           {truck.kbnl_truck_no && (
-                            <div style={{ fontSize: fontSize.xs, color: "#64748b" }}>#{truck.kbnl_truck_no}</div>
+                            <div style={{ fontSize: FONT_SIZE.xs, color: "#64748b" }}>#{truck.kbnl_truck_no}</div>
                           )}
-                          <div style={{ fontSize: fontSize.xs, color: "#64748b" }}>{truck.truck_model}</div>
+                          <div style={{ fontSize: FONT_SIZE.xs, color: "#64748b" }}>{truck.truck_model}</div>
           </div>
 ),
                     },
@@ -1298,7 +1291,7 @@ cursor: loading ? "not-allowed" : "pointer",
                             borderRadius: 6,
                             cursor: "pointer",
                             fontWeight: 500,
-                            fontSize: fontSize.xs,
+                            fontSize: FONT_SIZE.xs,
                             transition: "all 0.2s ease",
                           }}
                           onMouseEnter={(e) => {
@@ -1348,7 +1341,7 @@ cursor: loading ? "not-allowed" : "pointer",
               {/* Maintenance Breakdown Pills */}
               {drillDown.truck.maintenance_breakdown.length > 0 && (
                 <div style={{ marginBottom: 20 }}>
-                  <p style={{ margin: "0 0 12px", fontSize: fontSize.xs, color: "#475569", fontWeight: 500, textTransform: "uppercase", letterSpacing: "0.5px" }}>
+                  <p style={{ margin: "0 0 12px", fontSize: FONT_SIZE.xs, color: "#475569", fontWeight: 500, textTransform: "uppercase", letterSpacing: "0.5px" }}>
 Maintenance by Type
 </p>
                   <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
@@ -1360,7 +1353,7 @@ style={{
 background: "#f8fafc",
 border: "1px solid #e2e8f0",
 borderRadius: 6,
-                            fontSize: fontSize.xs,
+                            fontSize: FONT_SIZE.xs,
                           }}
 >
                         <div style={{ fontWeight: 600, color: "#0f172a" }}>{b.count}×</div>
@@ -1374,7 +1367,7 @@ borderRadius: 6,
               {/* Maintenance Table */}
               {drillDown.maintenance.length > 0 && (
                   <div style={{ marginBottom: 20 }}>
-                    <p style={{ margin: "0 0 12px", fontSize: fontSize.xs, color: "#475569", fontWeight: 500, textTransform: "uppercase", letterSpacing: "0.5px" }}>
+                    <p style={{ margin: "0 0 12px", fontSize: FONT_SIZE.xs, color: "#475569", fontWeight: 500, textTransform: "uppercase", letterSpacing: "0.5px" }}>
                       Maintenance Log
                     </p>
                     <DataTable
@@ -1402,7 +1395,7 @@ borderRadius: 6,
               {/* Fuel Table */}
                 {drillDown.fuel.length > 0 && (
                   <div>
-                    <p style={{ margin: "0 0 12px", fontSize: fontSize.xs, color: "#475569", fontWeight: 500, textTransform: "uppercase", letterSpacing: "0.5px" }}>
+                    <p style={{ margin: "0 0 12px", fontSize: FONT_SIZE.xs, color: "#475569", fontWeight: 500, textTransform: "uppercase", letterSpacing: "0.5px" }}>
                       Fuel Log
                     </p>
                     <DataTable

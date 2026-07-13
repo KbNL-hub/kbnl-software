@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState, useRef } from "react"
+import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import { supabase } from "@/lib/supabase"
 import { apiMutate } from "@/lib/api-mutation"
@@ -10,7 +10,10 @@ import ModernInput from "@/components/ModernInput"
 import { Icon } from "@iconify/react"
 import { useBreakpoint } from "@/app/hooks/useBreakpoint"
 import ReportModal from "@/components/ReportModal"
+import ProfilePictureUpload from "@/components/ProfilePictureUpload"
 import TruckMonitorSection from "@/components/admin/TruckMonitorSection"
+import { FONT_SIZE, POLLING_INTERVAL } from "@/lib/constants"
+import { toISOString } from "@/lib/date-utils"
 
 type AssignedTruck = {
   plate_number: string
@@ -96,17 +99,6 @@ const MAINTENANCE_SUGGESTIONS = [
   "Exhaust repair", "General inspection",
 ]
 
-const fontSize = {
-  xs: 12,
-  sm: 13,
-  base: 14,
-  md: 15,
-  lg: 16,
-  xl: 20,
-  "2xl": 24,
-  "3xl": 28
-}
-
 const statusColor = (status: string) => {
   switch (status) {
     case "Pending": return { bg: "#fff8e1", color: "#f5a623", border: "#fde68a" }
@@ -132,8 +124,6 @@ export default function TruckOfficerDashboard() {
   const bp = useBreakpoint()
   const isMobile = bp === "mobile"
 
-  const fileInputRef = useRef<HTMLInputElement>(null)
-
   const [officer, setOfficer] = useState<TruckOfficer | null>(null)
   const [assignedTrucks, setAssignedTrucks] = useState<AssignedTruck[]>([])
   const [reports, setReports] = useState<MaintenanceReport[]>([])
@@ -148,13 +138,8 @@ export default function TruckOfficerDashboard() {
 
   const [allDrivers, setAllDrivers] = useState<Driver[]>([])
 
-  // Profile picture upload
   const [showPictureModal, setShowPictureModal] = useState(false)
   const [showReportModal, setShowReportModal] = useState(false)
-  const [selectedFile, setSelectedFile] = useState<File | null>(null)
-  const [picturePreview, setPicturePreview] = useState<string | null>(null)
-  const [pictureLoading, setPictureLoading] = useState(false)
-  const [pictureError, setPictureError] = useState("")
 
   // Log maintenance modal
   const [showLogModal, setShowLogModal] = useState(false)
@@ -188,13 +173,6 @@ export default function TruckOfficerDashboard() {
   const [fuelCompanies, setFuelCompanies] = useState<{ company_id: string; company_name: string }[]>([])
 
   const filters = ["All", "Pending", "Validated", "Rejected"]
-
-  useEffect(() => {
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
-      if (event === "SIGNED_OUT") router.push("/login")
-    })
-    return () => subscription.unsubscribe()
-  }, [])
 
   useEffect(() => {
     async function init() {
@@ -248,7 +226,7 @@ export default function TruckOfficerDashboard() {
       fetchDeposits()
       fetchFuelExpenses(officer.manager_id)
       fetchATFs(officer.manager_id)
-    }, 30000)
+    }, POLLING_INTERVAL)
     return () => clearInterval(interval)
   }, [officer])
 
@@ -301,104 +279,16 @@ export default function TruckOfficerDashboard() {
       .eq("initiated_by", mId)
       .order("requested_at", { ascending: false })
 
-    if (!raw) return
+    if (!raw) { setAtfs([]); return }
 
-    const enriched = await Promise.all(raw.map(async (r) => {
-      const { data: driver } = await supabase
-        .from("Drivers").select("full_name").eq("driver_id", r.driver_id).single()
-      return {
-        ...r,
-        driver_name: driver?.full_name ?? "Unknown",
-      }
-    }))
+    const driverIds = [...new Set(raw.map(r => r.driver_id).filter(Boolean))]
+    const { data: drivers } = driverIds.length
+      ? await supabase.from("Drivers").select("driver_id, full_name").in("driver_id", driverIds)
+      : { data: [] }
+    const driverMap = Object.fromEntries((drivers || []).map(d => [d.driver_id, d.full_name]))
+
+    const enriched = raw.map(r => ({ ...r, driver_name: driverMap[r.driver_id] ?? "Unknown" }))
     setAtfs(enriched)
-  }
-
-  function handleAvatarClick() {
-    setPictureError("")
-    setPicturePreview(null)
-    setSelectedFile(null)
-    setShowPictureModal(true)
-  }
-
-  function handleFileSelect(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0]
-    if (!file) return
-
-    if (!file.type.startsWith("image/")) {
-      setPictureError("Please select an image file")
-      return
-    }
-
-    if (file.size > 1 * 1024 * 1024) {
-      setPictureError("Image must be less than 1MB")
-      return
-    }
-
-    setSelectedFile(file)
-    setPictureError("")
-
-    const reader = new FileReader()
-    reader.onload = (event) => {
-      setPicturePreview(event.target?.result as string)
-    }
-    reader.readAsDataURL(file)
-  }
-
-  async function handleUploadPicture() {
-    if (!selectedFile || !officer) {
-      setPictureError("Please select an image")
-      return
-    }
-
-    setPictureLoading(true)
-    setPictureError("")
-
-    try {
-      const { data: { session } } = await supabase.auth.getSession()
-      if (!session) { setPictureError("Session expired"); setPictureLoading(false); return }
-
-      const fileExt = selectedFile.name.split(".").pop()
-      const fileName = `${officer.manager_id}-${Date.now()}.${fileExt}`
-      const filePath = `${officer.manager_id}/${fileName}`
-
-      const { error: uploadError } = await supabase.storage
-        .from("profile-pictures")
-        .upload(filePath, selectedFile, { upsert: false })
-
-      if (uploadError) { setPictureError("Upload failed"); setPictureLoading(false); return }
-
-      const { data: { publicUrl } } = supabase.storage
-        .from("profile-pictures")
-        .getPublicUrl(filePath)
-
-      const { error: updateError } = await supabase
-        .from("truck_officers")
-        .update({ profile_picture_url: publicUrl })
-        .eq("manager_id", officer.manager_id)
-
-      if (updateError) {
-        await supabase.storage.from("profile-pictures").remove([filePath])
-        setPictureError("Failed to save profile")
-        setPictureLoading(false)
-        return
-      }
-
-      if (officer.profile_picture_url) {
-        const oldPath = officer.profile_picture_url.split("/").slice(-2).join("/")
-        await supabase.storage.from("profile-pictures").remove([oldPath])
-      }
-
-      setOfficer({ ...officer, profile_picture_url: publicUrl })
-
-      setPictureLoading(false)
-      setShowPictureModal(false)
-      setSelectedFile(null)
-      setPicturePreview(null)
-    } catch (err) {
-      setPictureError("Something went wrong")
-      setPictureLoading(false)
-    }
   }
 
   async function handleFuelPlateChange(plate: string) {
@@ -547,14 +437,14 @@ export default function TruckOfficerDashboard() {
   const inputStyle: React.CSSProperties = {
     width: "100%", padding: "10px 12px", paddingRight: 36,
     boxSizing: "border-box", borderRadius: 8,
-    border: "1px solid #e2e8f0", fontSize: fontSize.base,
+    border: "1px solid #e2e8f0", fontSize: FONT_SIZE.base,
     background: "white", color: "#0f172a",
     minHeight: 48,
   }
 
   const labelStyle: React.CSSProperties = {
     fontWeight: 600, display: "block",
-    marginBottom: 6, fontSize: fontSize.sm, color: "#475569"
+    marginBottom: 6, fontSize: FONT_SIZE.sm, color: "#475569"
   }
 
   const modalOverlay: React.CSSProperties = {
@@ -579,7 +469,7 @@ export default function TruckOfficerDashboard() {
     <div style={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: "100vh", background: "#f8fafc", fontFamily: "'Inter', sans-serif" }}>
       <div style={{ textAlign: "center" }}>
         <div style={{ width: 40, height: 40, borderRadius: "50%", border: "3px solid #e2e8f0", borderTopColor: "#0070f3", animation: "spin 1s linear infinite", margin: "0 auto 12px" }} />
-        <p style={{ color: "#64748b", fontSize: fontSize.sm }}>Loading…</p>
+        <p style={{ color: "#64748b", fontSize: FONT_SIZE.sm }}>Loading…</p>
       </div>
       <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
     </div>
@@ -587,92 +477,80 @@ export default function TruckOfficerDashboard() {
 
   return (
     <div style={{ minHeight: "100vh", background: "#f8fafc", fontFamily: "'Inter', sans-serif" }}>
-      <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+      <style>{`
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .avatar-btn:hover { border-color: #0070f3 !important; transform: scale(1.05); }
+        .avatar-wrapper:hover .camera-overlay { opacity: 1 !important; }
+        .btn-hover-opacity:hover { opacity: 0.9 !important; }
+        .report-btn:hover { background: #fff0e1 !important; border-color: #f8ad5c !important; }
+        .logout-btn:hover { background: rgba(239,68,68,0.1) !important; border-color: #fca5a5 !important; }
+        .refresh-btn:hover { background: #f8fafc !important; border-color: #cbd5e1 !important; }
+        .tab-btn:hover:not(.tab-active) { border-color: #cbd5e1 !important; background: #f8fafc !important; }
+        .filter-btn:hover:not(.filter-active) { border-color: #cbd5e1 !important; background: #f8fafc !important; }
+        .card-hover:hover { box-shadow: 0 4px 12px rgba(0,0,0,0.08) !important; border-color: #cbd5e1 !important; }
+        .truck-row:hover { background: #f0f7ff !important; border-color: #bfdbfe !important; }
+        .invalidate-btn:hover { background: rgba(239,68,68,0.05) !important; border-color: #f87171 !important; }
+      `}</style>
 
       {/* Profile Banner */}
       <div style={{ background: "white", borderBottom: "1px solid #e2e8f0", padding: isMobile ? "16px" : "24px 32px", boxShadow: "0 1px 3px rgba(0,0,0,0.05)" }}>
         <div style={{ maxWidth: 1200, margin: "0 auto", display: "flex", alignItems: "center", gap: isMobile ? 12 : 16, justifyContent: "space-between" }}>
           <div style={{ display: "flex", alignItems: "center", gap: isMobile ? 12 : 16, flex: 1 }}>
-            <div
-              onClick={handleAvatarClick}
-              style={{
-                width: isMobile ? 48 : 56,
-                height: isMobile ? 48 : 56,
-                borderRadius: "50%",
-                background: officer?.profile_picture_url ? "transparent" : "#f0f7ff",
-                border: "2px solid #bfdbfe",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                flexShrink: 0,
-                cursor: "pointer",
-                position: "relative",
-                overflow: "hidden",
-                transition: "all 0.2s",
-              }}
-              onMouseEnter={e => {
-                e.currentTarget.style.borderColor = "#0070f3"
-                e.currentTarget.style.transform = "scale(1.05)"
-              }}
-              onMouseLeave={e => {
-                e.currentTarget.style.borderColor = "#bfdbfe"
-                e.currentTarget.style.transform = "scale(1)"
-              }}
-            >
-              {officer?.profile_picture_url ? (
-                <img
-                  src={officer.profile_picture_url}
-                  alt={officer.full_name}
-                  style={{
-                    width: "100%",
-                    height: "100%",
-                    objectFit: "cover",
-                  }}
-                />
-              ) : (
-                <span style={{ fontSize: isMobile ? 20 : 24, fontWeight: 700, color: "#0070f3" }}>
-                  {officer?.full_name.charAt(0).toUpperCase()}
-                </span>
-              )}
+            <div className="avatar-wrapper" style={{ position: "relative" }}>
               <div
+                onClick={() => setShowPictureModal(true)}
+                className="avatar-btn"
                 style={{
-                  position: "absolute",
-                  inset: 0,
-                  background: "rgba(0, 0, 0, 0.4)",
+                  width: isMobile ? 48 : 56,
+                  height: isMobile ? 48 : 56,
+                  borderRadius: "50%",
+                  background: officer?.profile_picture_url ? "transparent" : "#f0f7ff",
+                  border: "2px solid #bfdbfe",
                   display: "flex",
                   alignItems: "center",
                   justifyContent: "center",
-                  opacity: 0,
-                  transition: "opacity 0.2s",
+                  flexShrink: 0,
+                  cursor: "pointer",
+                  overflow: "hidden",
+                  transition: "all 0.2s",
                 }}
-                onMouseEnter={e => e.currentTarget.style.opacity = "1"}
-                onMouseLeave={e => e.currentTarget.style.opacity = "0"}
               >
-                <Icon icon="mdi:camera" width={20} height={20} color="white" />
+                {officer?.profile_picture_url ? (
+                  <img
+                    src={officer.profile_picture_url}
+                    alt={officer.full_name}
+                    style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                  />
+                ) : (
+                  <span style={{ fontSize: isMobile ? 20 : 24, fontWeight: 700, color: "#0070f3" }}>
+                    {officer?.full_name.charAt(0).toUpperCase()}
+                  </span>
+                )}
+                <div className="camera-overlay" style={{ position: "absolute", inset: 0, background: "rgba(0, 0, 0, 0.4)", display: "flex", alignItems: "center", justifyContent: "center", opacity: 0, transition: "opacity 0.2s" }}>
+                  <Icon icon="mdi:camera" width={20} height={20} color="white" />
+                </div>
               </div>
             </div>
             <div>
-              <h1 style={{ margin: 0, fontSize: isMobile ? fontSize.lg : fontSize.xl, fontWeight: 700, color: "#0070f3" }}>
+              <h1 style={{ margin: 0, fontSize: isMobile ? FONT_SIZE.lg : FONT_SIZE.xl, fontWeight: 700, color: "#0070f3" }}>
                 {officer?.full_name}
               </h1>
-              <RoleSwitcher currentRole="TruckOfficer" style={{ margin: "2px 0 0", fontSize: fontSize.sm, color: "#64748b" }} />
+              <RoleSwitcher currentRole="TruckOfficer" style={{ margin: "2px 0 0", fontSize: FONT_SIZE.sm, color: "#64748b" }} />
             </div>
           </div>
           <div style={{ display: "flex", gap: 8 }}>
             <button
               onClick={() => setShowReportModal(true)}
-              style={{ padding: "8px 14px", background: "#fff8e1", color: "#f5a623", border: "1.5px solid #f8ad5c", borderRadius: 8, cursor: "pointer", fontSize: fontSize.sm, minHeight: 40, fontWeight: 600, display: "flex", alignItems: "center", gap: 6, transition: "all 0.2s", whiteSpace: "nowrap" }}
-              onMouseEnter={e => { e.currentTarget.style.background = "#fff0e1"; e.currentTarget.style.borderColor = "#f8ad5c" }}
-              onMouseLeave={e => { e.currentTarget.style.background = "#fff8e1"; e.currentTarget.style.borderColor = "#f8ad5c" }}
+              className="report-btn"
+              style={{ padding: "8px 14px", background: "#fff8e1", color: "#f5a623", border: "1.5px solid #f8ad5c", borderRadius: 8, cursor: "pointer", fontSize: FONT_SIZE.sm, minHeight: 40, fontWeight: 600, display: "flex", alignItems: "center", gap: 6, transition: "all 0.2s", whiteSpace: "nowrap" }}
             >
               <Icon icon="mdi:alert-circle-outline" width={16} />
               {!isMobile && "Report"}
             </button>
             <button
               onClick={async () => { await supabase.auth.signOut(); router.push("/login") }}
-              style={{ padding: "8px 16px", background: "rgba(239, 68, 68, 0.05)", color: "#ef4444", border: "1.5px solid #fecaca", borderRadius: 6, cursor: "pointer", fontSize: fontSize.sm, minHeight: 40, fontWeight: 600, transition: "all 0.2s", whiteSpace: "nowrap" }}
-              onMouseEnter={e => { e.currentTarget.style.background = "rgba(239, 68, 68, 0.1)"; e.currentTarget.style.borderColor = "#fca5a5" }}
-              onMouseLeave={e => { e.currentTarget.style.background = "rgba(239, 68, 68, 0.05)"; e.currentTarget.style.borderColor = "#fecaca" }}
+              className="logout-btn"
+              style={{ padding: "8px 16px", background: "rgba(239, 68, 68, 0.05)", color: "#ef4444", border: "1.5px solid #fecaca", borderRadius: 6, cursor: "pointer", fontSize: FONT_SIZE.sm, minHeight: 40, fontWeight: 600, transition: "all 0.2s", whiteSpace: "nowrap" }}
             >
               Logout
             </button>
@@ -685,20 +563,20 @@ export default function TruckOfficerDashboard() {
         {/* Assigned Trucks */}
         <div style={{ background: "white", border: "1px solid #e2e8f0", borderRadius: 12, padding: isMobile ? 16 : 24, marginBottom: 24, boxShadow: "0 1px 3px rgba(0,0,0,0.05)" }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
-            <p style={{ margin: 0, fontWeight: 700, fontSize: fontSize.lg, color: "#0f172a" }}>My Trucks ({assignedTrucks.length})</p>
-            <button onClick={() => officer && fetchTrucks(officer.manager_id)} style={{ padding: "6px 12px", fontSize: fontSize.xs, cursor: "pointer", borderRadius: 6, border: "1px solid #e2e8f0", background: "white", color: "#64748b", transition: "all 0.2s", fontWeight: 600 }} onMouseEnter={e => { e.currentTarget.style.background = "#f8fafc"; e.currentTarget.style.borderColor = "#cbd5e1" }} onMouseLeave={e => { e.currentTarget.style.background = "white"; e.currentTarget.style.borderColor = "#e2e8f0" }}>
+            <p style={{ margin: 0, fontWeight: 700, fontSize: FONT_SIZE.lg, color: "#0f172a" }}>My Trucks ({assignedTrucks.length})</p>
+            <button onClick={() => officer && fetchTrucks(officer.manager_id)} className="refresh-btn" style={{ padding: "6px 12px", fontSize: FONT_SIZE.xs, cursor: "pointer", borderRadius: 6, border: "1px solid #e2e8f0", background: "white", color: "#64748b", transition: "all 0.2s", fontWeight: 600 }}>
               Refresh
             </button>
           </div>
-          {assignedTrucks.length === 0 && <p style={{ color: "#64748b", fontSize: fontSize.base, margin: 0 }}>No trucks assigned yet.</p>}
+          {assignedTrucks.length === 0 && <p style={{ color: "#64748b", fontSize: FONT_SIZE.base, margin: 0 }}>No trucks assigned yet.</p>}
           <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
             {assignedTrucks.map(t => (
-              <div key={t.plate_number} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "12px 14px", background: "#f8fafc", borderRadius: 10, border: "1px solid #e2e8f0", transition: "all 0.2s" }} onMouseEnter={e => { e.currentTarget.style.background = "#f0f7ff"; e.currentTarget.style.borderColor = "#bfdbfe" }} onMouseLeave={e => { e.currentTarget.style.background = "#f8fafc"; e.currentTarget.style.borderColor = "#e2e8f0" }}>
+              <div key={t.plate_number} className="truck-row" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "12px 14px", background: "#f8fafc", borderRadius: 10, border: "1px solid #e2e8f0", transition: "all 0.2s" }}>
                 <div>
-                  <p style={{ margin: 0, fontWeight: 700, fontSize: fontSize.base, color: "#0f172a" }}>{t.plate_number}</p>
-                  <p style={{ margin: "2px 0 0", fontSize: fontSize.xs, color: "#94a3b8" }}>{t.truck_model}{t.kbnl_truck_no ? ` · #${t.kbnl_truck_no}` : ""}</p>
+                  <p style={{ margin: 0, fontWeight: 700, fontSize: FONT_SIZE.base, color: "#0f172a" }}>{t.plate_number}</p>
+                  <p style={{ margin: "2px 0 0", fontSize: FONT_SIZE.xs, color: "#94a3b8" }}>{t.truck_model}{t.kbnl_truck_no ? ` · #${t.kbnl_truck_no}` : ""}</p>
                 </div>
-                <span style={{ fontSize: fontSize.sm, color: "#0070f3", fontWeight: 700, display: "flex", alignItems: "center", gap: 4 }}>
+                <span style={{ fontSize: FONT_SIZE.sm, color: "#0070f3", fontWeight: 700, display: "flex", alignItems: "center", gap: 4 }}>
                   <Icon icon="mdi:gas-station" width={16} />{t.fuel_balance}L
                 </span>
               </div>
@@ -717,8 +595,9 @@ export default function TruckOfficerDashboard() {
             <button
               key={t.key}
               onClick={() => setTab(t.key as any)}
+              className={tab !== t.key ? "tab-btn" : "tab-active"}
               style={{
-                padding: "8px 16px", borderRadius: 6, fontSize: fontSize.sm, cursor: "pointer",
+                padding: "8px 16px", borderRadius: 6, fontSize: FONT_SIZE.sm, cursor: "pointer",
                 border: `1.5px solid ${tab === t.key ? "" : "#e2e8f0"}`,
                 background: tab === t.key ? "#171717" : "white",
                 color: tab === t.key ? "white" : "#64748b",
@@ -729,8 +608,6 @@ export default function TruckOfficerDashboard() {
                 gap: 6,
                 minHeight: 40,
               }}
-              onMouseEnter={e => { if (tab !== t.key) { e.currentTarget.style.borderColor = "#cbd5e1"; e.currentTarget.style.background = "#f8fafc" } }}
-              onMouseLeave={e => { if (tab !== t.key) { e.currentTarget.style.borderColor = "#e2e8f0"; e.currentTarget.style.background = "white" } }}
             >
               <Icon icon={t.icon} width={16} />
               {t.label}
@@ -751,60 +628,59 @@ export default function TruckOfficerDashboard() {
                   if (f === "Rejected") { activeColor = "#ef4444"; activeBg = "rgba(239, 68, 68, 0.1)" }
 
                   return (
-                    <button key={f} onClick={() => setFilter(f)} style={{
-                      padding: "6px 14px", borderRadius: 20, fontSize: fontSize.xs, cursor: "pointer",
+                    <button key={f} onClick={() => setFilter(f)} className={filter !== f ? "filter-btn" : "filter-active"} style={{
+                      padding: "6px 14px", borderRadius: 20, fontSize: FONT_SIZE.xs, cursor: "pointer",
                       border: `1.5px solid ${filter === f ? activeColor : "#e2e8f0"}`,
                       background: filter === f ? activeBg : "white",
                       color: filter === f ? activeColor : "#64748b",
                       fontWeight: filter === f ? 600 : 500,
                       transition: "all 0.2s",
                       minHeight: 40,
-                    }} onMouseEnter={e => { if (filter !== f) { e.currentTarget.style.borderColor = "#cbd5e1"; e.currentTarget.style.background = "#f8fafc" } }} onMouseLeave={e => { if (filter !== f) { e.currentTarget.style.borderColor = "#e2e8f0"; e.currentTarget.style.background = "white" } }}>{f}</button>
+                    }}>{f}</button>
                   )
                 })}
               </div>
               <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                {lastUpdated && <span style={{ fontSize: fontSize.xs, color: "#94a3b8", whiteSpace: "nowrap" }}>Updated {lastUpdated.toLocaleTimeString()}</span>}
-                <button onClick={() => officer && fetchReports(officer.manager_id)} style={{ padding: "6px 12px", fontSize: fontSize.xs, cursor: "pointer", borderRadius: 6, border: "1px solid #e2e8f0", background: "white", color: "#64748b", transition: "all 0.2s", fontWeight: 600 }} onMouseEnter={e => { e.currentTarget.style.background = "#f8fafc"; e.currentTarget.style.borderColor = "#cbd5e1" }} onMouseLeave={e => { e.currentTarget.style.background = "white"; e.currentTarget.style.borderColor = "#e2e8f0" }}>
+                {lastUpdated && <span style={{ fontSize: FONT_SIZE.xs, color: "#94a3b8", whiteSpace: "nowrap" }}>Updated {lastUpdated.toLocaleTimeString()}</span>}
+                <button onClick={() => officer && fetchReports(officer.manager_id)} className="refresh-btn" style={{ padding: "6px 12px", fontSize: FONT_SIZE.xs, cursor: "pointer", borderRadius: 6, border: "1px solid #e2e8f0", background: "white", color: "#64748b", transition: "all 0.2s", fontWeight: 600 }}>
                   Refresh
                 </button>
                 <button
                   onClick={() => { setShowLogModal(true); setLogError("") }}
                   disabled={assignedTrucks.length === 0}
-                  style={{ padding: "8px 16px", fontSize: fontSize.sm, fontWeight: 700, cursor: "pointer", background: "#0070f3", color: "white", border: "none", borderRadius: 8, minHeight: 40, display: "flex", alignItems: "center", gap: 6, transition: "opacity 0.2s", whiteSpace: "nowrap", opacity: assignedTrucks.length === 0 ? 0.5 : 1 }}
-                  onMouseEnter={e => { if (assignedTrucks.length > 0) e.currentTarget.style.opacity = "0.9" }}
-                  onMouseLeave={e => { if (assignedTrucks.length > 0) e.currentTarget.style.opacity = "1" }}
+                  className="btn-hover-opacity"
+                  style={{ padding: "8px 16px", fontSize: FONT_SIZE.sm, fontWeight: 700, cursor: "pointer", background: "#0070f3", color: "white", border: "none", borderRadius: 8, minHeight: 40, display: "flex", alignItems: "center", gap: 6, transition: "opacity 0.2s", whiteSpace: "nowrap", opacity: assignedTrucks.length === 0 ? 0.5 : 1 }}
                 >
                   <Icon icon="mdi:plus" width={16} /> Log
                 </button>
               </div>
             </div>
 
-            {filteredReports.length === 0 && <p style={{ color: "#64748b", fontSize: fontSize.base }}>No {filter === "All" ? "" : filter.toLowerCase()} reports.</p>}
+            {filteredReports.length === 0 && <p style={{ color: "#64748b", fontSize: FONT_SIZE.base }}>No {filter === "All" ? "" : filter.toLowerCase()} reports.</p>}
             <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
               {filteredReports.map(r => {
                 const { bg, color, border } = statusColor(r.status)
                 return (
-                  <div key={r.report_id} style={{ background: "white", border: `1px solid ${border}`, borderRadius: 12, padding: 16, boxShadow: "0 1px 3px rgba(0,0,0,0.05)", transition: "all 0.2s" }} onMouseEnter={e => { e.currentTarget.style.boxShadow = "0 4px 12px rgba(0,0,0,0.08)"; e.currentTarget.style.borderColor = "#cbd5e1" }} onMouseLeave={e => { e.currentTarget.style.boxShadow = "0 1px 3px rgba(0,0,0,0.05)"; e.currentTarget.style.borderColor = border }}>
+                  <div key={r.report_id} className="card-hover" style={{ background: "white", border: `1px solid ${border}`, borderRadius: 12, padding: 16, boxShadow: "0 1px 3px rgba(0,0,0,0.05)", transition: "all 0.2s" }}>
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 12 }}>
                       <div>
-                        <p style={{ margin: 0, fontWeight: 700, fontSize: fontSize.lg, color: "#0f172a" }}>{r.plate_number}</p>
-                        <p style={{ margin: "4px 0 0", fontSize: fontSize.sm, color: "#64748b" }}>{r.maintenance_type}</p>
-                        {r.maintenance_location && <p style={{ margin: "4px 0 0", fontSize: fontSize.xs, color: "#94a3b8" }}>📍 {r.maintenance_location}</p>}
+                        <p style={{ margin: 0, fontWeight: 700, fontSize: FONT_SIZE.lg, color: "#0f172a" }}>{r.plate_number}</p>
+                        <p style={{ margin: "4px 0 0", fontSize: FONT_SIZE.sm, color: "#64748b" }}>{r.maintenance_type}</p>
+                        {r.maintenance_location && <p style={{ margin: "4px 0 0", fontSize: FONT_SIZE.xs, color: "#94a3b8" }}>📍 {r.maintenance_location}</p>}
                       </div>
-                      <span style={{ padding: "4px 10px", borderRadius: 20, fontSize: fontSize.xs, background: bg, color, fontWeight: 700, whiteSpace: "nowrap", border: `1px solid ${color}33` }}>{r.status}</span>
+                      <span style={{ padding: "4px 10px", borderRadius: 20, fontSize: FONT_SIZE.xs, background: bg, color, fontWeight: 700, whiteSpace: "nowrap", border: `1px solid ${color}33` }}>{r.status}</span>
                     </div>
                     <div style={{ background: "#f8fafc", borderRadius: 8, padding: "10px 12px", marginBottom: 12, border: "1px solid #e2e8f0" }}>
-                      <p style={{ margin: 0, fontSize: fontSize.xs, color: "#94a3b8" }}>Amount</p>
-                      <p style={{ margin: "2px 0 0", fontWeight: 700, color: "#0070f3", fontSize: fontSize.base }}>₦{r.amount.toLocaleString()}</p>
+                      <p style={{ margin: 0, fontSize: FONT_SIZE.xs, color: "#94a3b8" }}>Amount</p>
+                      <p style={{ margin: "2px 0 0", fontWeight: 700, color: "#0070f3", fontSize: FONT_SIZE.base }}>₦{r.amount.toLocaleString()}</p>
                     </div>
-                    {r.notes && <p style={{ margin: "0 0 8px 0", fontSize: fontSize.sm, color: "#64748b" }}><strong>Notes:</strong> {r.notes}</p>}
+                    {r.notes && <p style={{ margin: "0 0 8px 0", fontSize: FONT_SIZE.sm, color: "#64748b" }}><strong>Notes:</strong> {r.notes}</p>}
                     {r.status === "Rejected" && r.rejection_reason && (
                       <div style={{ marginTop: 8, padding: "10px 12px", background: "#fef2f2", border: "1px solid #fecaca", borderRadius: 8 }}>
-                        <p style={{ margin: 0, fontSize: fontSize.sm, color: "#b91c1c", fontWeight: 600 }}>{r.rejection_reason}</p>
+                        <p style={{ margin: 0, fontSize: FONT_SIZE.sm, color: "#b91c1c", fontWeight: 600 }}>{r.rejection_reason}</p>
                       </div>
                     )}
-                    <p style={{ margin: "8px 0 0", fontSize: fontSize.xs, color: "#94a3b8" }}>{new Date(r.reported_at).toLocaleString()}</p>
+                    <p style={{ margin: "8px 0 0", fontSize: FONT_SIZE.xs, color: "#94a3b8" }}>{new Date(r.reported_at).toLocaleString()}</p>
                   </div>
                 )
               })}
@@ -816,8 +692,8 @@ export default function TruckOfficerDashboard() {
         {tab === "monitor" && (
           <div>
             <div style={{ marginBottom: 16 }}>
-              <h2 style={{ margin: 0, color: "#0f172a", fontSize: fontSize.xl, fontWeight: 700 }}>Monitor Trucks</h2>
-              <p style={{ margin: "4px 0 0", color: "#64748b", fontSize: fontSize.base }}>
+              <h2 style={{ margin: 0, color: "#0f172a", fontSize: FONT_SIZE.xl, fontWeight: 700 }}>Monitor Trucks</h2>
+              <p style={{ margin: "4px 0 0", color: "#64748b", fontSize: FONT_SIZE.base }}>
                 Track active trucks and view their routes.
               </p>
             </div>
@@ -829,29 +705,28 @@ export default function TruckOfficerDashboard() {
         {tab === "fuel" && (
           <div>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
-              <p style={{ margin: 0, fontWeight: 700, fontSize: fontSize.lg, color: "#0f172a" }}>Fuel Consumption</p>
+              <p style={{ margin: 0, fontWeight: 700, fontSize: FONT_SIZE.lg, color: "#0f172a" }}>Fuel Consumption</p>
               <button
                 onClick={() => { setShowFuelModal(true); setFuelError("") }}
                 disabled={assignedTrucks.length === 0}
-                style={{ padding: "8px 16px", fontSize: fontSize.sm, fontWeight: 700, cursor: "pointer", background: "#0070f3", color: "white", border: "none", borderRadius: 8, minHeight: 40, display: "flex", alignItems: "center", gap: 6, transition: "opacity 0.2s", opacity: assignedTrucks.length === 0 ? 0.5 : 1 }}
-                onMouseEnter={e => { if (assignedTrucks.length > 0) e.currentTarget.style.opacity = "0.9" }}
-                onMouseLeave={e => { if (assignedTrucks.length > 0) e.currentTarget.style.opacity = "1" }}
+                className="btn-hover-opacity"
+                style={{ padding: "8px 16px", fontSize: FONT_SIZE.sm, fontWeight: 700, cursor: "pointer", background: "#0070f3", color: "white", border: "none", borderRadius: 8, minHeight: 40, display: "flex", alignItems: "center", gap: 6, transition: "opacity 0.2s", opacity: assignedTrucks.length === 0 ? 0.5 : 1 }}
               >
                 <Icon icon="mdi:plus" width={16} /> Log Consumption
               </button>
             </div>
-            {fuelExpenses.length === 0 && <p style={{ color: "#64748b", fontSize: fontSize.base }}>No fuel expenses logged yet.</p>}
+            {fuelExpenses.length === 0 && <p style={{ color: "#64748b", fontSize: FONT_SIZE.base }}>No fuel expenses logged yet.</p>}
             <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
               {fuelExpenses.map(e => (
-                <div key={e.expense_id} style={{ background: "white", border: "1px solid #e2e8f0", borderRadius: 12, padding: 16, boxShadow: "0 1px 3px rgba(0,0,0,0.05)", transition: "all 0.2s" }} onMouseEnter={e => { e.currentTarget.style.boxShadow = "0 4px 12px rgba(0,0,0,0.08)"; e.currentTarget.style.borderColor = "#cbd5e1" }} onMouseLeave={e => { e.currentTarget.style.boxShadow = "0 1px 3px rgba(0,0,0,0.05)"; e.currentTarget.style.borderColor = "#e2e8f0" }}>
+                <div key={e.expense_id} className="card-hover" style={{ background: "white", border: "1px solid #e2e8f0", borderRadius: 12, padding: 16, boxShadow: "0 1px 3px rgba(0,0,0,0.05)", transition: "all 0.2s" }}>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 8 }}>
                     <div>
-                      <p style={{ margin: 0, fontWeight: 700, fontSize: fontSize.base, color: "#0f172a" }}>{e.plate_number}</p>
-                      <p style={{ margin: "2px 0 0", fontSize: fontSize.xs, color: "#94a3b8" }}>{new Date(e.logged_at).toLocaleString()}</p>
+                      <p style={{ margin: 0, fontWeight: 700, fontSize: FONT_SIZE.base, color: "#0f172a" }}>{e.plate_number}</p>
+                      <p style={{ margin: "2px 0 0", fontSize: FONT_SIZE.xs, color: "#94a3b8" }}>{new Date(e.logged_at).toLocaleString()}</p>
                     </div>
-                    <span style={{ padding: "4px 10px", borderRadius: 20, fontSize: fontSize.sm, background: "#f0f7ff", color: "#0070f3", fontWeight: 700, border: "1px solid #bfdbfe" }}>{e.litres}L</span>
+                    <span style={{ padding: "4px 10px", borderRadius: 20, fontSize: FONT_SIZE.sm, background: "#f0f7ff", color: "#0070f3", fontWeight: 700, border: "1px solid #bfdbfe" }}>{e.litres}L</span>
                   </div>
-                  {e.notes && <p style={{ margin: "6px 0 0", fontSize: fontSize.sm, color: "#64748b" }}>{e.notes}</p>}
+                  {e.notes && <p style={{ margin: "6px 0 0", fontSize: FONT_SIZE.sm, color: "#64748b" }}>{e.notes}</p>}
                 </div>
               ))}
             </div>
@@ -862,43 +737,42 @@ export default function TruckOfficerDashboard() {
         {tab === "atf" && (
           <div>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
-              <p style={{ margin: 0, fontWeight: 700, fontSize: fontSize.lg, color: "#0f172a" }}>Authority to Fuel</p>
+              <p style={{ margin: 0, fontWeight: 700, fontSize: FONT_SIZE.lg, color: "#0f172a" }}>Authority to Fuel</p>
               <button
                 onClick={() => { setShowATFModal(true); setAtfError("") }}
-                style={{ padding: "8px 16px", fontSize: fontSize.sm, fontWeight: 700, cursor: "pointer", background: "#0070f3", color: "white", border: "none", borderRadius: 8, minHeight: 40, display: "flex", alignItems: "center", gap: 6, transition: "opacity 0.2s" }}
-                onMouseEnter={e => e.currentTarget.style.opacity = "0.9"}
-                onMouseLeave={e => e.currentTarget.style.opacity = "1"}
+                className="btn-hover-opacity"
+                style={{ padding: "8px 16px", fontSize: FONT_SIZE.sm, fontWeight: 700, cursor: "pointer", background: "#0070f3", color: "white", border: "none", borderRadius: 8, minHeight: 40, display: "flex", alignItems: "center", gap: 6, transition: "opacity 0.2s" }}
               >
                 <Icon icon="mdi:plus" width={16} /> Initiate ATF
               </button>
             </div>
 
-            {atfs.length === 0 && <p style={{ color: "#64748b", fontSize: fontSize.base }}>No ATFs initiated yet.</p>}
+            {atfs.length === 0 && <p style={{ color: "#64748b", fontSize: FONT_SIZE.base }}>No ATFs initiated yet.</p>}
             <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
               {atfs.map(atf => {
                 const { bg, color, border } = atfStatusColor(atf.atf_status)
                 return (
-                  <div key={atf.request_id} style={{ background: "white", border: `1px solid ${border}`, borderRadius: 12, padding: 16, boxShadow: "0 1px 3px rgba(0,0,0,0.05)", transition: "all 0.2s" }} onMouseEnter={e => { e.currentTarget.style.boxShadow = "0 4px 12px rgba(0,0,0,0.08)"; e.currentTarget.style.borderColor = "#cbd5e1" }} onMouseLeave={e => { e.currentTarget.style.boxShadow = "0 1px 3px rgba(0,0,0,0.05)"; e.currentTarget.style.borderColor = border }}>
+                  <div key={atf.request_id} className="card-hover" style={{ background: "white", border: `1px solid ${border}`, borderRadius: 12, padding: 16, boxShadow: "0 1px 3px rgba(0,0,0,0.05)", transition: "all 0.2s" }}>
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 12 }}>
                       <div>
-                        <p style={{ margin: 0, fontWeight: 700, fontSize: fontSize.base, fontFamily: "monospace", letterSpacing: 1, color: "#0f172a" }}>{atf.atf_code ?? "Pending"}</p>
-                        <p style={{ margin: "4px 0 0", fontSize: fontSize.sm, color: "#64748b" }}>{atf.plate_number} · {atf.driver_name}</p>
+                        <p style={{ margin: 0, fontWeight: 700, fontSize: FONT_SIZE.base, fontFamily: "monospace", letterSpacing: 1, color: "#0f172a" }}>{atf.atf_code ?? "Pending"}</p>
+                        <p style={{ margin: "4px 0 0", fontSize: FONT_SIZE.sm, color: "#64748b" }}>{atf.plate_number} · {atf.driver_name}</p>
                       </div>
-                      <span style={{ padding: "4px 10px", borderRadius: 20, fontSize: fontSize.xs, background: bg, color, fontWeight: 700, whiteSpace: "nowrap", border: `1px solid ${color}33` }}>{atf.atf_status}</span>
+                      <span style={{ padding: "4px 10px", borderRadius: 20, fontSize: FONT_SIZE.xs, background: bg, color, fontWeight: 700, whiteSpace: "nowrap", border: `1px solid ${color}33` }}>{atf.atf_status}</span>
                     </div>
                     <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
                       <div style={{ background: "#f8fafc", borderRadius: 8, padding: "10px 12px", border: "1px solid #e2e8f0" }}>
-                        <p style={{ margin: 0, fontSize: fontSize.xs, color: "#94a3b8" }}>Litres Requested</p>
-                        <p style={{ margin: "2px 0 0", fontWeight: 700, color: "#0f172a", fontSize: fontSize.base }}>{atf.litres}L</p>
+                        <p style={{ margin: 0, fontSize: FONT_SIZE.xs, color: "#94a3b8" }}>Litres Requested</p>
+                        <p style={{ margin: "2px 0 0", fontWeight: 700, color: "#0f172a", fontSize: FONT_SIZE.base }}>{atf.litres}L</p>
                       </div>
                       {atf.total_amount && (
                         <div style={{ background: "#f8fafc", borderRadius: 8, padding: "10px 12px", border: "1px solid #e2e8f0" }}>
-                          <p style={{ margin: 0, fontSize: fontSize.xs, color: "#94a3b8" }}>Total Amount</p>
-                          <p style={{ margin: "2px 0 0", fontWeight: 700, color: "#0070f3", fontSize: fontSize.base }}>₦{atf.total_amount.toLocaleString()}</p>
+                          <p style={{ margin: 0, fontSize: FONT_SIZE.xs, color: "#94a3b8" }}>Total Amount</p>
+                          <p style={{ margin: "2px 0 0", fontWeight: 700, color: "#0070f3", fontSize: FONT_SIZE.base }}>₦{atf.total_amount.toLocaleString()}</p>
                         </div>
                       )}
                     </div>
-                    <p style={{ margin: "8px 0 0", fontSize: fontSize.xs, color: "#94a3b8" }}>{new Date(atf.requested_at).toLocaleString()}</p>
+                    <p style={{ margin: "8px 0 0", fontSize: FONT_SIZE.xs, color: "#94a3b8" }}>{new Date(atf.requested_at).toLocaleString()}</p>
                   </div>
                 )
               })}
@@ -907,114 +781,22 @@ export default function TruckOfficerDashboard() {
         )}
       </div>
 
-      {/* Profile Picture Upload Modal */}
-      {showPictureModal && (
-        <div onClick={() => { setShowPictureModal(false); setSelectedFile(null); setPicturePreview(null); setPictureError("") }} style={modalOverlay}>
-          <div onClick={e => e.stopPropagation()} style={modalBox}>
-            <h3 style={{ margin: "0 0 6px 0", fontSize: fontSize.xl, fontWeight: 700, color: "#0f172a" }}>Update Profile Picture</h3>
-            <p style={{ margin: "0 0 20px 0", fontSize: fontSize.sm, color: "#64748b" }}>PNG, JPG up to 1MB</p>
-
-            {picturePreview ? (
-              <div style={{ marginBottom: 20 }}>
-                <p style={{ margin: "0 0 8px 0", fontSize: fontSize.sm, fontWeight: 600, color: "#0f172a" }}>Preview</p>
-                <img
-                  src={picturePreview}
-                  alt="Preview"
-                  style={{
-                    width: "100%",
-                    height: 200,
-                    objectFit: "cover",
-                    borderRadius: 12,
-                    border: "2px solid #e2e8f0",
-                  }}
-                />
-              </div>
-            ) : (
-              <div
-                onClick={() => fileInputRef.current?.click()}
-                style={{
-                  border: "2px dashed #0070f3",
-                  borderRadius: 12,
-                  padding: "32px 16px",
-                  cursor: "pointer",
-                  background: "#f0f7ff",
-                  transition: "all 0.2s",
-                  marginBottom: 20,
-                  display: "flex",
-                  flexDirection: "column",
-                  alignItems: "center",
-                  justifyContent: "center",
-                }}
-                onMouseEnter={e => {
-                  e.currentTarget.style.background = "#e0efff"
-                  e.currentTarget.style.borderColor = "#0055d4"
-                }}
-                onMouseLeave={e => {
-                  e.currentTarget.style.background = "#f0f7ff"
-                  e.currentTarget.style.borderColor = "#0070f3"
-                }}
-              >
-                <Icon icon="mdi:cloud-upload" width={40} height={40} color="#0070f3" style={{ marginBottom: 8 }} />
-                <p style={{ margin: "0 0 4px 0", fontSize: fontSize.base, fontWeight: 700, color: "#0070f3" }}>
-                  Click to upload
-                </p>
-                <p style={{ margin: 0, fontSize: fontSize.sm, color: "#64748b" }}>
-                  or drag and drop
-                </p>
-              </div>
-            )}
-
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept="image/*"
-              onChange={handleFileSelect}
-              style={{ display: "none" }}
-            />
-
-            {pictureError && (
-              <div style={{ padding: 12, background: "#fef2f2", borderLeft: "4px solid #ef4444", borderRadius: 4, marginBottom: 16, color: "#b91c1c", fontSize: fontSize.sm, fontWeight: 600 }}>
-                {pictureError}
-              </div>
-            )}
-
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-              <button
-                onClick={() => { setShowPictureModal(false); setSelectedFile(null); setPicturePreview(null); setPictureError("") }}
-                style={{ padding: "12px 16px", background: "white", border: "1px solid #cbd5e1", color: "#475569", borderRadius: 8, cursor: "pointer", fontWeight: 700, fontSize: fontSize.md, minHeight: 44 }}
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleUploadPicture}
-                disabled={pictureLoading || !selectedFile}
-                style={{
-                  padding: "12px 16px",
-                  background: selectedFile ? "#0070f3" : "#bfdbfe",
-                  color: "white",
-                  border: "none",
-                  borderRadius: 8,
-                  cursor: selectedFile && !pictureLoading ? "pointer" : "not-allowed",
-                  fontWeight: 700,
-                  fontSize: fontSize.md,
-                  minHeight: 44,
-                  opacity: pictureLoading ? 0.7 : 1,
-                  transition: "opacity 0.2s",
-                }}
-              >
-                {pictureLoading ? "Uploading..." : "Upload"}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <ProfilePictureUpload
+        isOpen={showPictureModal}
+        onClose={() => setShowPictureModal(false)}
+        userId={officer?.manager_id || ""}
+        table="truck_officers"
+        idField="manager_id"
+        currentUrl={officer?.profile_picture_url}
+        onSuccess={(url) => setOfficer(prev => prev ? { ...prev, profile_picture_url: url } : prev)}
+      />
 
       {/* Log Maintenance Modal */}
       {showLogModal && (
         <div onClick={() => { setShowLogModal(false); setLogPlate(""); setLogType(""); setLogTypeCustom(""); setLogAmount(""); setLogLocation(""); setLogNotes(""); setLogError("") }} style={modalOverlay}>
           <div onClick={e => e.stopPropagation()} style={modalBox}>
-            <h3 style={{ marginBottom: 6, color: "#0f172a", fontSize: fontSize.xl, fontWeight: 700 }}>Log Maintenance</h3>
-            <p style={{ margin: "0 0 20px", fontSize: fontSize.sm, color: "#64748b" }}>Record a maintenance expense</p>
+            <h3 style={{ marginBottom: 6, color: "#0f172a", fontSize: FONT_SIZE.xl, fontWeight: 700 }}>Log Maintenance</h3>
+            <p style={{ margin: "0 0 20px", fontSize: FONT_SIZE.sm, color: "#64748b" }}>Record a maintenance expense</p>
 
             <div style={{ marginBottom: 16 }}>
               <label style={labelStyle}>Truck *</label>
@@ -1031,12 +813,12 @@ export default function TruckOfficerDashboard() {
               <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 10 }}>
                 {MAINTENANCE_SUGGESTIONS.map(s => (
                   <button key={s} onClick={() => { setLogType(s); setLogTypeCustom(""); setLogError("") }}
-                    style={{ padding: "6px 12px", borderRadius: 20, fontSize: fontSize.xs, cursor: "pointer", border: `1.5px solid ${logType === s ? "#0070f3" : "#e2e8f0"}`, background: logType === s ? "rgba(0, 112, 243, 0.1)" : "white", color: logType === s ? "#0070f3" : "#64748b", fontWeight: logType === s ? 600 : 500, transition: "all 0.2s", minHeight: 36 }}>
+                    style={{ padding: "6px 12px", borderRadius: 20, fontSize: FONT_SIZE.xs, cursor: "pointer", border: `1.5px solid ${logType === s ? "#0070f3" : "#e2e8f0"}`, background: logType === s ? "rgba(0, 112, 243, 0.1)" : "white", color: logType === s ? "#0070f3" : "#64748b", fontWeight: logType === s ? 600 : 500, transition: "all 0.2s", minHeight: 36 }}>
                     {s}
                   </button>
                 ))}
                 <button onClick={() => { setLogType("__custom__"); setLogError("") }}
-                  style={{ padding: "6px 12px", borderRadius: 20, fontSize: fontSize.xs, cursor: "pointer", border: `1.5px solid ${logType === "__custom__" ? "#0070f3" : "#e2e8f0"}`, background: logType === "__custom__" ? "rgba(0, 112, 243, 0.1)" : "white", color: logType === "__custom__" ? "#0070f3" : "#64748b", fontWeight: logType === "__custom__" ? 600 : 500, transition: "all 0.2s", minHeight: 36 }}>
+                  style={{ padding: "6px 12px", borderRadius: 20, fontSize: FONT_SIZE.xs, cursor: "pointer", border: `1.5px solid ${logType === "__custom__" ? "#0070f3" : "#e2e8f0"}`, background: logType === "__custom__" ? "rgba(0, 112, 243, 0.1)" : "white", color: logType === "__custom__" ? "#0070f3" : "#64748b", fontWeight: logType === "__custom__" ? 600 : 500, transition: "all 0.2s", minHeight: 36 }}>
                   Other...
                 </button>
               </div>
@@ -1057,10 +839,10 @@ export default function TruckOfficerDashboard() {
               <label style={labelStyle}>Notes (optional)</label>
               <ModernInput as="textarea" placeholder="Any additional details..." value={logNotes} onChange={e => setLogNotes(e.target.value)} rows={3} style={{ ...inputStyle, resize: "none", minHeight: 100, paddingRight: 12 }} />
             </div>
-            {logError && <div style={{ padding: 12, background: "#fef2f2", borderLeft: "4px solid #ef4444", borderRadius: 4, marginBottom: 16, color: "#b91c1c", fontSize: fontSize.sm, fontWeight: 600 }}>{logError}</div>}
+            {logError && <div style={{ padding: 12, background: "#fef2f2", borderLeft: "4px solid #ef4444", borderRadius: 4, marginBottom: 16, color: "#b91c1c", fontSize: FONT_SIZE.sm, fontWeight: 600 }}>{logError}</div>}
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-              <button onClick={() => { setShowLogModal(false); setLogPlate(""); setLogType(""); setLogTypeCustom(""); setLogAmount(""); setLogLocation(""); setLogNotes(""); setLogError("") }} style={{ padding: "12px 16px", background: "white", border: "1px solid #cbd5e1", color: "#475569", borderRadius: 8, cursor: "pointer", fontWeight: 700, fontSize: fontSize.md, minHeight: 44 }}>Cancel</button>
-              <button onClick={handleLogReport} disabled={logLoading} style={{ padding: "12px 16px", background: "#0070f3", color: "white", border: "none", borderRadius: 8, cursor: logLoading ? "not-allowed" : "pointer", fontWeight: 700, fontSize: fontSize.md, minHeight: 44, opacity: logLoading ? 0.7 : 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>{logLoading ? <><Icon icon="mdi:loading" width={16} style={{ animation: "spin 1s linear infinite" }} /> Logging...</> : "Log Report"}</button>
+              <button onClick={() => { setShowLogModal(false); setLogPlate(""); setLogType(""); setLogTypeCustom(""); setLogAmount(""); setLogLocation(""); setLogNotes(""); setLogError("") }} style={{ padding: "12px 16px", background: "white", border: "1px solid #cbd5e1", color: "#475569", borderRadius: 8, cursor: "pointer", fontWeight: 700, fontSize: FONT_SIZE.md, minHeight: 44 }}>Cancel</button>
+              <button onClick={handleLogReport} disabled={logLoading} style={{ padding: "12px 16px", background: "#0070f3", color: "white", border: "none", borderRadius: 8, cursor: logLoading ? "not-allowed" : "pointer", fontWeight: 700, fontSize: FONT_SIZE.md, minHeight: 44, opacity: logLoading ? 0.7 : 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>{logLoading ? <><Icon icon="mdi:loading" width={16} style={{ animation: "spin 1s linear infinite" }} /> Logging...</> : "Log Report"}</button>
             </div>
           </div>
         </div>
@@ -1070,8 +852,8 @@ export default function TruckOfficerDashboard() {
       {showFuelModal && (
         <div onClick={() => { setShowFuelModal(false); setFuelPlate(""); setFuelTripId(""); setFuelTrips([]); setFuelLitres(""); setFuelNotes(""); setFuelError("") }} style={modalOverlay}>
           <div onClick={e => e.stopPropagation()} style={modalBox}>
-            <h3 style={{ marginBottom: 6, color: "#0f172a", fontSize: fontSize.xl, fontWeight: 700 }}>Log Fuel Expense</h3>
-            <p style={{ margin: "0 0 20px", fontSize: fontSize.sm, color: "#64748b" }}>Record fuel consumption for a completed trip</p>
+            <h3 style={{ marginBottom: 6, color: "#0f172a", fontSize: FONT_SIZE.xl, fontWeight: 700 }}>Log Fuel Expense</h3>
+            <p style={{ margin: "0 0 20px", fontSize: FONT_SIZE.sm, color: "#64748b" }}>Record fuel consumption for a completed trip</p>
 
             <div style={{ marginBottom: 16 }}>
               <label style={labelStyle}>Truck *</label>
@@ -1092,7 +874,7 @@ export default function TruckOfficerDashboard() {
                 <label style={labelStyle}>Trip *</label>
 
                 {fuelTrips.length === 0 ? (
-                  <p style={{ fontSize: fontSize.sm, color: "#94a3b8", marginTop: 4, margin: 0 }}>
+                  <p style={{ fontSize: FONT_SIZE.sm, color: "#94a3b8", marginTop: 4, margin: 0 }}>
                     No completed trips found for this truck.
                   </p>
                 ) : (
@@ -1122,11 +904,11 @@ export default function TruckOfficerDashboard() {
               <ModernInput as="textarea" placeholder="e.g. Long haul — 400km" value={fuelNotes} onChange={e => setFuelNotes(e.target.value)} rows={3} style={{ ...inputStyle, resize: "none", minHeight: 100, paddingRight: 12 }} />
             </div>
 
-            {fuelError && <div style={{ padding: 12, background: "#fef2f2", borderLeft: "4px solid #ef4444", borderRadius: 4, marginBottom: 16, color: "#b91c1c", fontSize: fontSize.sm, fontWeight: 600 }}>{fuelError}</div>}
+            {fuelError && <div style={{ padding: 12, background: "#fef2f2", borderLeft: "4px solid #ef4444", borderRadius: 4, marginBottom: 16, color: "#b91c1c", fontSize: FONT_SIZE.sm, fontWeight: 600 }}>{fuelError}</div>}
 
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-              <button onClick={() => { setShowFuelModal(false); setFuelPlate(""); setFuelTripId(""); setFuelTrips([]); setFuelLitres(""); setFuelNotes(""); setFuelError("") }} style={{ padding: "12px 16px", background: "white", border: "1px solid #cbd5e1", color: "#475569", borderRadius: 8, cursor: "pointer", fontWeight: 700, fontSize: fontSize.md, minHeight: 44 }}>Cancel</button>
-              <button onClick={handleLogFuelExpense} disabled={fuelLoading} style={{ padding: "12px 16px", background: "#0070f3", color: "white", border: "none", borderRadius: 8, cursor: fuelLoading ? "not-allowed" : "pointer", fontWeight: 700, fontSize: fontSize.md, minHeight: 44, opacity: fuelLoading ? 0.7 : 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>{fuelLoading ? <><Icon icon="mdi:loading" width={16} style={{ animation: "spin 1s linear infinite" }} /> Logging...</> : "Log Consumption"}</button>
+              <button onClick={() => { setShowFuelModal(false); setFuelPlate(""); setFuelTripId(""); setFuelTrips([]); setFuelLitres(""); setFuelNotes(""); setFuelError("") }} style={{ padding: "12px 16px", background: "white", border: "1px solid #cbd5e1", color: "#475569", borderRadius: 8, cursor: "pointer", fontWeight: 700, fontSize: FONT_SIZE.md, minHeight: 44 }}>Cancel</button>
+              <button onClick={handleLogFuelExpense} disabled={fuelLoading} style={{ padding: "12px 16px", background: "#0070f3", color: "white", border: "none", borderRadius: 8, cursor: fuelLoading ? "not-allowed" : "pointer", fontWeight: 700, fontSize: FONT_SIZE.md, minHeight: 44, opacity: fuelLoading ? 0.7 : 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>{fuelLoading ? <><Icon icon="mdi:loading" width={16} style={{ animation: "spin 1s linear infinite" }} /> Logging...</> : "Log Consumption"}</button>
             </div>
           </div>
         </div>
@@ -1136,8 +918,8 @@ export default function TruckOfficerDashboard() {
       {showATFModal && (
         <div onClick={() => { setShowATFModal(false); setAtfPlate(""); setAtfDriverId(""); setAtfLitres(""); setAtfCompanyId(""); setAtfError("") }} style={modalOverlay}>
           <div onClick={e => e.stopPropagation()} style={modalBox}>
-            <h3 style={{ marginBottom: 6, color: "#0f172a", fontSize: fontSize.xl, fontWeight: 700 }}>Initiate ATF</h3>
-            <p style={{ margin: "0 0 20px", fontSize: fontSize.sm, color: "#64748b" }}>Authority to Fuel — this will be sent to the Truck Admin for authorisation</p>
+            <h3 style={{ marginBottom: 6, color: "#0f172a", fontSize: FONT_SIZE.xl, fontWeight: 700 }}>Initiate ATF</h3>
+            <p style={{ margin: "0 0 20px", fontSize: FONT_SIZE.sm, color: "#64748b" }}>Authority to Fuel — this will be sent to the Truck Admin for authorisation</p>
 
             <div style={{ marginBottom: 16 }}>
               <label style={labelStyle}>Truck *</label>
@@ -1174,10 +956,10 @@ export default function TruckOfficerDashboard() {
               <ModernInput type="number" step="0.1" placeholder="e.g. 200" value={atfLitres} onChange={e => { setAtfLitres(e.target.value); setAtfError("") }} style={inputStyle} />
             </div>
 
-            {atfError && <div style={{ padding: 12, background: "#fef2f2", borderLeft: "4px solid #ef4444", borderRadius: 4, marginBottom: 16, color: "#b91c1c", fontSize: fontSize.sm, fontWeight: 600 }}>{atfError}</div>}
+            {atfError && <div style={{ padding: 12, background: "#fef2f2", borderLeft: "4px solid #ef4444", borderRadius: 4, marginBottom: 16, color: "#b91c1c", fontSize: FONT_SIZE.sm, fontWeight: 600 }}>{atfError}</div>}
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-              <button onClick={() => { setShowATFModal(false); setAtfPlate(""); setAtfDriverId(""); setAtfLitres(""); setAtfCompanyId(""); setAtfError("") }} style={{ padding: "12px 16px", background: "white", border: "1px solid #cbd5e1", color: "#475569", borderRadius: 8, cursor: "pointer", fontWeight: 700, fontSize: fontSize.md, minHeight: 44 }}>Cancel</button>
-              <button onClick={handleInitiateATF} disabled={atfLoading} style={{ padding: "12px 16px", background: "#0070f3", color: "white", border: "none", borderRadius: 8, cursor: atfLoading ? "not-allowed" : "pointer", fontWeight: 700, fontSize: fontSize.md, minHeight: 44, opacity: atfLoading ? 0.7 : 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>{atfLoading ? <><Icon icon="mdi:loading" width={16} style={{ animation: "spin 1s linear infinite" }} /> Initiating...</> : "Submit ATF"}</button>
+              <button onClick={() => { setShowATFModal(false); setAtfPlate(""); setAtfDriverId(""); setAtfLitres(""); setAtfCompanyId(""); setAtfError("") }} style={{ padding: "12px 16px", background: "white", border: "1px solid #cbd5e1", color: "#475569", borderRadius: 8, cursor: "pointer", fontWeight: 700, fontSize: FONT_SIZE.md, minHeight: 44 }}>Cancel</button>
+              <button onClick={handleInitiateATF} disabled={atfLoading} style={{ padding: "12px 16px", background: "#0070f3", color: "white", border: "none", borderRadius: 8, cursor: atfLoading ? "not-allowed" : "pointer", fontWeight: 700, fontSize: FONT_SIZE.md, minHeight: 44, opacity: atfLoading ? 0.7 : 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>{atfLoading ? <><Icon icon="mdi:loading" width={16} style={{ animation: "spin 1s linear infinite" }} /> Initiating...</> : "Submit ATF"}</button>
             </div>
           </div>
         </div>

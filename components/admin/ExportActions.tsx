@@ -1,5 +1,7 @@
 "use client"
 
+import { FONT_SIZE } from "@/lib/constants"
+
 import React from "react"
 
 interface ExportActionsProps {
@@ -8,16 +10,7 @@ interface ExportActionsProps {
   disabled?: boolean
 }
 
-const fontSize = {
-  xs: 12,
-  sm: 13,
-  base: 14,
-  md: 15,
-  lg: 16,
-  xl: 20,
-  "2xl": 24,
-  "3xl": 28,
-}
+
 
 export function ExportActions({ onExportCSV, onExportXLSX, disabled = false }: ExportActionsProps) {
   return (
@@ -33,7 +26,7 @@ export function ExportActions({ onExportCSV, onExportXLSX, disabled = false }: E
           borderRadius: 6,
           cursor: disabled ? "not-allowed" : "pointer",
           fontWeight: 500,
-          fontSize: fontSize.sm,
+          fontSize: FONT_SIZE.sm,
           opacity: disabled ? 0.5 : 1,
           transition: "all 0.2s ease",
         }}
@@ -63,7 +56,7 @@ export function ExportActions({ onExportCSV, onExportXLSX, disabled = false }: E
           borderRadius: 6,
           cursor: disabled ? "not-allowed" : "pointer",
           fontWeight: 500,
-          fontSize: fontSize.sm,
+          fontSize: FONT_SIZE.sm,
           opacity: disabled ? 0.5 : 1,
           transition: "all 0.2s ease",
         }}

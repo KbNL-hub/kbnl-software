@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState, useRef } from "react"
+import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import { supabase } from "@/lib/supabase"
 import { apiMutate } from "@/lib/api-mutation"
@@ -10,6 +10,10 @@ import { Icon } from "@iconify/react"
 import CustomerSelector from "@/components/CustomerSelector"
 import ReportModal from "@/components/ReportModal"
 import ModernInput from "@/components/ModernInput"
+import ProfilePictureUpload from "@/components/ProfilePictureUpload"
+import { FONT_SIZE } from "@/lib/constants"
+import { saleDateWithTime } from "@/lib/date-utils"
+import { useBreakpoint } from "@/app/hooks/useBreakpoint"
 
 type Officer = { officer_id: string; full_name: string; store_name: string; profile_picture_url?: string }
 
@@ -66,40 +70,11 @@ type SaleLine = { product: string; quantity: string; price_per_bag: string }
 
 const PAYMENT_MODES = ["Cash", "Transfer", "POS", "Broker"]
 
-function useBreakpoint() {
-  const [isDesktop, setIsDesktop] = useState(false)
-  const [isMobile, setIsMobile] = useState(true)
-
-  useEffect(() => {
-    const handleResize = () => {
-      setIsMobile(window.innerWidth < 640)
-      setIsDesktop(window.innerWidth >= 640)
-    }
-
-    handleResize()
-    window.addEventListener("resize", handleResize)
-    return () => window.removeEventListener("resize", handleResize)
-  }, [])
-
-  return { isMobile, isDesktop }
-}
-
-const fontSize = {
-  xs: 12,
-  sm: 13,
-  base: 14,
-  md: 15,
-  lg: 16,
-  xl: 20,
-  "2xl": 24,
-  "3xl": 28
-}
-
 export default function StoreOfficerDashboard() {
-  const { isMobile } = useBreakpoint()
+  const bp = useBreakpoint()
+  const isMobile = bp === "mobile"
   const router = useRouter()
-  const fileInputRef = useRef<HTMLInputElement>(null)
-  
+
   const [officer, setOfficer] = useState<Officer | null>(null)
   const [pendingStops, setPendingStops] = useState<PendingStop[]>([])
   const [stock, setStock] = useState<StockBalance[]>([])
@@ -136,31 +111,13 @@ export default function StoreOfficerDashboard() {
   const [isBrokerLinked, setIsBrokerLinked] = useState(false)
   const [saleDate, setSaleDate] = useState(new Date().toISOString().split("T")[0])
 
-  function saleDateWithTime(dateStr: string) {
-    const now = new Date()
-    const [y, m, d] = dateStr.split("-").map(Number)
-    return new Date(y, m - 1, d, now.getHours(), now.getMinutes(), now.getSeconds()).toISOString()
-  }
-
   const [updatedStockProducts, setUpdatedStockProducts] = useState<string[]>([])
   const [salesFilter, setSalesFilter] = useState("All")
   const [salesDateFilter, setSalesDateFilter] = useState("")
   const [salesSortByAdded, setSalesSortByAdded] = useState(true)
 
-  // Profile picture upload states
   const [showPictureModal, setShowPictureModal] = useState(false)
   const [showReportModal, setShowReportModal] = useState(false)
-  const [selectedFile, setSelectedFile] = useState<File | null>(null)
-  const [picturePreview, setPicturePreview] = useState<string | null>(null)
-  const [pictureLoading, setPictureLoading] = useState(false)
-  const [pictureError, setPictureError] = useState("")
-
-  useEffect(() => {
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
-      if (event === "SIGNED_OUT") router.push("/login")
-    })
-    return () => subscription.unsubscribe()
-  }, [])
 
   useEffect(() => { init() }, [])
 
@@ -223,24 +180,31 @@ export default function StoreOfficerDashboard() {
       .eq("disputed", false)
       .order("stop_time", { ascending: false })
 
-    if (!stops) return
+    if (!stops) { setPendingStops([]); return }
 
-    const enriched = await Promise.all(stops.map(async (s) => {
-      const { data: trip } = await supabase
-        .from("Trips").select("plate_number, driver_id").eq("trip_id", s.trip_id).single()
-      const { data: driver } = trip?.driver_id
-        ? await supabase.from("Drivers").select("full_name").eq("driver_id", trip.driver_id).single()
-        : { data: null }
+    const tripIds = [...new Set(stops.map(s => s.trip_id).filter(Boolean))]
+    const { data: trips } = tripIds.length
+      ? await supabase.from("Trips").select("trip_id, plate_number, driver_id").in("trip_id", tripIds)
+      : { data: [] }
+    const tripMap = Object.fromEntries((trips || []).map(t => [t.trip_id, t]))
 
+    const driverIds = [...new Set((trips || []).map(t => t.driver_id).filter(Boolean))]
+    const { data: drivers } = driverIds.length
+      ? await supabase.from("Drivers").select("driver_id, full_name").in("driver_id", driverIds)
+      : { data: [] }
+    const driverMap = Object.fromEntries((drivers || []).map(d => [d.driver_id, d.full_name]))
+
+    const enriched = stops.map(s => {
+      const trip = tripMap[s.trip_id]
       return {
         stop_id: s.stop_id,
         trip_id: s.trip_id,
         plate_number: trip?.plate_number ?? "Unknown",
-        driver_name: (driver as any)?.full_name ?? "Unknown",
+        driver_name: trip?.driver_id ? (driverMap[trip.driver_id] ?? "Unknown") : "Unknown",
         quantity_offloaded: s.quantity_offloaded,
         stop_time: s.stop_time,
       }
-    }))
+    })
 
     setPendingStops(enriched)
     setLastUpdated(new Date())
@@ -262,25 +226,23 @@ export default function StoreOfficerDashboard() {
       .eq("officer_id", officerId)
       .order("sold_at", { ascending: false })
 
-    if (!data) return
+    if (!data) { setSales([]); return }
 
-    const enriched = await Promise.all(data.map(async s => {
-      let tricycle_number: string | null = null
-      let broker_name: string | null = null
+    const tricycleIds = [...new Set(data.map(s => s.tricycle_id).filter(Boolean))]
+    const brokerIds = [...new Set(data.map(s => s.broker_id).filter(Boolean))]
 
-      if (s.tricycle_id) {
-        const { data: t } = await supabase
-          .from("tricycles").select("tricycle_number").eq("tricycle_id", s.tricycle_id).single()
-        tricycle_number = t?.tricycle_number ?? null
-      }
+    const [{ data: tricycles }, { data: brokers }] = await Promise.all([
+      tricycleIds.length ? supabase.from("tricycles").select("tricycle_id, tricycle_number").in("tricycle_id", tricycleIds) : Promise.resolve({ data: [] }),
+      brokerIds.length ? supabase.from("Brokers").select("broker_id, broker_name").in("broker_id", brokerIds) : Promise.resolve({ data: [] }),
+    ])
 
-      if (s.broker_id) {
-        const { data: b } = await supabase
-          .from("Brokers").select("broker_name").eq("broker_id", s.broker_id).single()
-        broker_name = b?.broker_name ?? null
-      }
+    const tricycleMap = Object.fromEntries((tricycles || []).map(t => [t.tricycle_id, t.tricycle_number]))
+    const brokerMap = Object.fromEntries((brokers || []).map(b => [b.broker_id, b.broker_name]))
 
-      return { ...s, tricycle_number, broker_name }
+    const enriched = data.map(s => ({
+      ...s,
+      tricycle_number: s.tricycle_id ? (tricycleMap[s.tricycle_id] ?? null) : null,
+      broker_name: s.broker_id ? (brokerMap[s.broker_id] ?? null) : null,
     }))
 
     setSales(enriched)
@@ -410,21 +372,20 @@ export default function StoreOfficerDashboard() {
   function addSaleLine() {
     setSaleLines([...saleLines, { product: "", quantity: "", price_per_bag: "" }])
   }
-  
+
   function removeSaleLine(index: number) {
     if (saleLines.length === 1) return
     setSaleLines(saleLines.filter((_, i) => i !== index))
   }
-  
+
   function updateSaleLine(index: number, field: "product" | "quantity" | "price_per_bag", value: string) {
     setSaleLines(saleLines.map((l, i) => i === index ? { ...l, [field]: value } : l))
     setSaleError("")
   }
-  
+
   async function handleLogSale() {
     if (!officer) return
-  
-    // Validate lines
+
     if (saleLines.some(l => !l.product)) return setSaleError("Select a product for each line")
     if (saleLines.some(l => !l.quantity || parseInt(l.quantity) <= 0)) return setSaleError("Enter a valid quantity for each line")
 
@@ -436,32 +397,28 @@ export default function StoreOfficerDashboard() {
     if (deliveryMode === "truck" && !saleTruckPlate) return setSaleError("Select a truck")
     if (!saleDate) return setSaleError("Select a sale date")
 
-    // Broker-linked validation
     if (isBrokerLinked) {
       if (!saleBroker) return setSaleError("Select a broker")
     }
-    // Self / Truck / non-broker tricycle: all lines must have price
     if (!isBrokerLinked) {
       if (saleLines.some(l => !l.price_per_bag)) return setSaleError("Enter a price per bag for each line")
       if (saleLines.some(l => parseAmount(l.price_per_bag) <= 0)) return setSaleError("Enter valid prices")
     }
-  
-    // Check stock for all products
+
     const insufficientStock = saleLines.find(line => {
       const stockItem = stock.find(s => s.product === line.product)
       const qty = parseInt(line.quantity)
       return !stockItem || stockItem.balance < qty
     })
-  
+
     if (insufficientStock) {
       const stockItem = stock.find(s => s.product === insufficientStock.product)
       return setSaleError(`Insufficient ${insufficientStock.product} — only ${stockItem?.balance ?? 0} bags available`)
     }
-  
+
     setSaleLoading(true)
-  
+
     try {
-      // Insert one row per product line
       const salesToInsert = saleLines.map(line => ({
         officer_id: officer.officer_id,
         store_name: officer.store_name,
@@ -477,8 +434,7 @@ export default function StoreOfficerDashboard() {
         status: isBrokerLinked ? "Pending" : "Confirmed",
         sold_at: saleDateWithTime(saleDate),
       }))
-  
-      // Insert one row per product line (batch insert not supported, insert individually)
+
       let saleErr: string | null = null
       for (const sale of salesToInsert) {
         const { error } = await apiMutate("finance", {
@@ -491,8 +447,7 @@ export default function StoreOfficerDashboard() {
         setSaleLoading(false)
         return
       }
-  
-      // Deduct stock for each product
+
       for (const line of saleLines) {
         const stockItem = stock.find(s => s.product === line.product)
         if (!stockItem) continue
@@ -509,7 +464,7 @@ export default function StoreOfficerDashboard() {
           return
         }
       }
-  
+
       setSaleLoading(false)
       setShowSaleModal(false)
       setSaleLines([{ product: "", quantity: "", price_per_bag: "" }])
@@ -530,94 +485,6 @@ export default function StoreOfficerDashboard() {
     } catch (err) {
       setSaleError("An error occurred")
       setSaleLoading(false)
-    }
-  }
-
-  function handleAvatarClick() {
-    setPictureError("")
-    setPicturePreview(null)
-    setSelectedFile(null)
-    setShowPictureModal(true)
-  }
-
-  function handleFileSelect(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0]
-    if (!file) return
-
-    if (!file.type.startsWith("image/")) {
-      setPictureError("Please select an image file")
-      return
-    }
-
-    if (file.size > 1 * 1024 * 1024) {
-      setPictureError("Image must be less than 1MB")
-      return
-    }
-
-    setSelectedFile(file)
-    setPictureError("")
-
-    const reader = new FileReader()
-    reader.onload = (event) => {
-      setPicturePreview(event.target?.result as string)
-    }
-    reader.readAsDataURL(file)
-  }
-
-  async function handleUploadPicture() {
-    if (!selectedFile || !officer) {
-      setPictureError("Please select an image")
-      return
-    }
-
-    setPictureLoading(true)
-    setPictureError("")
-
-    try {
-      const { data: { session } } = await supabase.auth.getSession()
-      if (!session) { setPictureError("Session expired"); setPictureLoading(false); return }
-
-      const fileExt = selectedFile.name.split(".").pop()
-      const fileName = `${officer.officer_id}-${Date.now()}.${fileExt}`
-      const filePath = `${officer.officer_id}/${fileName}`
-
-      const { error: uploadError } = await supabase.storage
-        .from("profile-pictures")
-        .upload(filePath, selectedFile, { upsert: false })
-
-      if (uploadError) { setPictureError("Upload failed"); setPictureLoading(false); return }
-
-      const { data: { publicUrl } } = supabase.storage
-        .from("profile-pictures")
-        .getPublicUrl(filePath)
-
-      const { error: updateError } = await apiMutate("finance", {
-        action: "update", table: "store_officers",
-        data: { profile_picture_url: publicUrl },
-        filters: { officer_id: officer.officer_id },
-      })
-
-      if (updateError) {
-        await supabase.storage.from("profile-pictures").remove([filePath])
-        setPictureError("Failed to save profile")
-        setPictureLoading(false)
-        return
-      }
-
-      if (officer.profile_picture_url) {
-        const oldPath = officer.profile_picture_url.split("/").slice(-2).join("/")
-        await supabase.storage.from("profile-pictures").remove([oldPath])
-      }
-
-      setOfficer({ ...officer, profile_picture_url: publicUrl })
-
-      setPictureLoading(false)
-      setShowPictureModal(false)
-      setSelectedFile(null)
-      setPicturePreview(null)
-    } catch (err) {
-      setPictureError("Something went wrong")
-      setPictureLoading(false)
     }
   }
 
@@ -703,7 +570,7 @@ export default function StoreOfficerDashboard() {
         <div style={{ maxWidth: 1200, margin: "0 auto", display: "flex", alignItems: "center", gap: isMobile ? 12 : 16, justifyContent: "space-between" }}>
           <div style={{ display: "flex", alignItems: "center", gap: isMobile ? 12 : 16, flex: 1 }}>
             <div
-              onClick={handleAvatarClick}
+              onClick={() => setShowPictureModal(true)}
               style={{
                 width: isMobile ? 48 : 56,
                 height: isMobile ? 48 : 56,
@@ -719,24 +586,12 @@ export default function StoreOfficerDashboard() {
                 overflow: "hidden",
                 transition: "all 0.2s",
               }}
-              onMouseEnter={e => {
-                e.currentTarget.style.borderColor = "#0070f3"
-                e.currentTarget.style.transform = "scale(1.05)"
-              }}
-              onMouseLeave={e => {
-                e.currentTarget.style.borderColor = "#bfdbfe"
-                e.currentTarget.style.transform = "scale(1)"
-              }}
             >
               {officer?.profile_picture_url ? (
                 <img
                   src={officer.profile_picture_url}
                   alt={officer.full_name}
-                  style={{
-                    width: "100%",
-                    height: "100%",
-                    objectFit: "cover",
-                  }}
+                  style={{ width: "100%", height: "100%", objectFit: "cover" }}
                 />
               ) : (
                 <span style={{ fontSize: isMobile ? 20 : 24, fontWeight: 700, color: "#0070f3" }}>
@@ -745,43 +600,32 @@ export default function StoreOfficerDashboard() {
               )}
               <div
                 style={{
-                  position: "absolute",
-                  inset: 0,
-                  background: "rgba(0, 0, 0, 0.4)",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  opacity: 0,
-                  transition: "opacity 0.2s",
+                  position: "absolute", inset: 0, background: "rgba(0, 0, 0, 0.4)",
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                  opacity: 0, transition: "opacity 0.2s",
                 }}
-                onMouseEnter={e => e.currentTarget.style.opacity = "1"}
-                onMouseLeave={e => e.currentTarget.style.opacity = "0"}
               >
                 <Icon icon="mdi:camera" width={20} height={20} color="white" />
               </div>
             </div>
             <div>
-              <h1 style={{ margin: 0, fontSize: isMobile ? fontSize.lg : fontSize.xl, fontWeight: 700, color: "#0070f3" }}>
+              <h1 style={{ margin: 0, fontSize: isMobile ? FONT_SIZE.lg : FONT_SIZE.xl, fontWeight: 700, color: "#0070f3" }}>
                 {officer?.full_name}
               </h1>
-              <RoleSwitcher currentRole="StoreOfficer" style={{ margin: "2px 0 0", fontSize: fontSize.sm, color: "#64748b" }} />
+              <RoleSwitcher currentRole="StoreOfficer" style={{ margin: "2px 0 0", fontSize: FONT_SIZE.sm, color: "#64748b" }} />
             </div>
           </div>
           <div style={{ display: "flex", gap: 8 }}>
             <button
               onClick={() => setShowReportModal(true)}
-              style={{ padding: "8px 14px", background: "#fff8e1", color: "#f5a623", border: "1.5px solid #f8ad5c", borderRadius: 8, cursor: "pointer", fontSize: fontSize.sm, minHeight: 40, fontWeight: 600, display: "flex", alignItems: "center", gap: 6, transition: "all 0.2s", whiteSpace: "nowrap" }}
-              onMouseEnter={e => { e.currentTarget.style.background = "#fff0e1"; e.currentTarget.style.borderColor = "#f8ad5c" }}
-              onMouseLeave={e => { e.currentTarget.style.background = "#fff8e1"; e.currentTarget.style.borderColor = "#f8ad5c" }}
+              style={{ padding: "8px 14px", background: "#fff8e1", color: "#f5a623", border: "1.5px solid #f8ad5c", borderRadius: 8, cursor: "pointer", fontSize: FONT_SIZE.sm, minHeight: 40, fontWeight: 600, display: "flex", alignItems: "center", gap: 6, transition: "all 0.2s", whiteSpace: "nowrap" }}
             >
               <Icon icon="mdi:alert-circle-outline" width={16} />
               {!isMobile && "Report"}
             </button>
             <button
               onClick={async () => { await supabase.auth.signOut(); router.push("/login") }}
-              style={{ padding: "8px 16px", background: "rgba(239, 68, 68, 0.05)", color: "#ef4444", border: "1.5px solid #fecaca", borderRadius: 6, cursor: "pointer", fontSize: fontSize.sm, fontWeight: 600, transition: "all 0.2s", minHeight: 40, whiteSpace: "nowrap" }}
-              onMouseEnter={e => { e.currentTarget.style.background = "rgba(239, 68, 68, 0.1)"; e.currentTarget.style.borderColor = "#fca5a5" }}
-              onMouseLeave={e => { e.currentTarget.style.background = "rgba(239, 68, 68, 0.05)"; e.currentTarget.style.borderColor = "#fecaca" }}
+              style={{ padding: "8px 16px", background: "rgba(239, 68, 68, 0.05)", color: "#ef4444", border: "1.5px solid #fecaca", borderRadius: 6, cursor: "pointer", fontSize: FONT_SIZE.sm, fontWeight: 600, transition: "all 0.2s", minHeight: 40, whiteSpace: "nowrap" }}
             >
               Logout
             </button>
@@ -794,13 +638,13 @@ export default function StoreOfficerDashboard() {
         {/* Stock Summary */}
         <div style={{ background: "white", border: "1px solid #e2e8f0", borderRadius: 12, padding: isMobile ? 16 : 24, marginBottom: 24, boxShadow: "0 1px 3px rgba(0,0,0,0.05)" }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
-            <p style={{ margin: 0, fontWeight: 700, fontSize: fontSize.lg, color: "#0f172a" }}>Stock Balance</p>
-            <p style={{ margin: 0, fontWeight: 700, fontSize: fontSize.lg, color: "#0f172a" }}>
-              Total: <span style={{ color: "#0070f3" }}>{stock.reduce((sum, s) => sum + s.balance, 0).toLocaleString()}</span> <span style={{ fontSize: fontSize.sm, fontWeight: 500, color: "#64748b" }}>bags</span>
+            <p style={{ margin: 0, fontWeight: 700, fontSize: FONT_SIZE.lg, color: "#0f172a" }}>Stock Balance</p>
+            <p style={{ margin: 0, fontWeight: 700, fontSize: FONT_SIZE.lg, color: "#0f172a" }}>
+              Total: <span style={{ color: "#0070f3" }}>{stock.reduce((sum, s) => sum + s.balance, 0).toLocaleString()}</span> <span style={{ fontSize: FONT_SIZE.sm, fontWeight: 500, color: "#64748b" }}>bags</span>
             </p>
           </div>
           {stock.length === 0
-            ? <p style={{ color: "#64748b", fontSize: fontSize.base, margin: 0 }}>No stock recorded yet.</p>
+            ? <p style={{ color: "#64748b", fontSize: FONT_SIZE.base, margin: 0 }}>No stock recorded yet.</p>
             : (
               <div style={{ display: "grid", gridTemplateColumns: isMobile ? "repeat(2, 1fr)" : "repeat(auto-fit, minmax(160px, 1fr))", gap: 12 }}>
                 {stock.map(s => {
@@ -814,9 +658,9 @@ export default function StoreOfficerDashboard() {
                     animation: isUpdated ? "pulseGlow 0.6s ease 3" : undefined,
                     transition: "box-shadow 0.3s, border-color 0.3s",
                   }}>
-                    <p style={{ margin: 0, fontSize: fontSize.xs, color: "#64748b" }}>{s.product}</p>
-                    <p style={{ margin: "6px 0 0", fontWeight: 700, fontSize: fontSize["2xl"], color: s.balance === 0 ? "#ef4444" : s.balance < 50 ? "#f5a623" : "#0070f3" }}>
-                      {s.balance}<span style={{ fontSize: fontSize.xs, fontWeight: 500, color: "#64748b", marginLeft: 4 }}>bags</span>
+                    <p style={{ margin: 0, fontSize: FONT_SIZE.xs, color: "#64748b" }}>{s.product}</p>
+                    <p style={{ margin: "6px 0 0", fontWeight: 700, fontSize: FONT_SIZE["2xl"], color: s.balance === 0 ? "#ef4444" : s.balance < 50 ? "#f5a623" : "#0070f3" }}>
+                      {s.balance}<span style={{ fontSize: FONT_SIZE.xs, fontWeight: 500, color: "#64748b", marginLeft: 4 }}>bags</span>
                     </p>
                   </div>
                   )
@@ -835,7 +679,7 @@ export default function StoreOfficerDashboard() {
               style={{
                 padding: "8px 16px",
                 borderRadius: 6,
-                fontSize: fontSize.sm,
+                fontSize: FONT_SIZE.sm,
                 cursor: "pointer",
                 border: `1.5px solid ${tab === t ? "" : "#e2e8f0"}`,
                 background: tab === t ? "#171717" : "white",
@@ -845,15 +689,13 @@ export default function StoreOfficerDashboard() {
                 position: "relative",
                 minHeight: 40,
               }}
-              onMouseEnter={e => { if (tab !== t) { e.currentTarget.style.borderColor = "#cbd5e1"; e.currentTarget.style.background = "#f8fafc" } }}
-              onMouseLeave={e => { if (tab !== t) { e.currentTarget.style.borderColor = "#e2e8f0"; e.currentTarget.style.background = "white" } }}
             >
               {t === "supply" ? "Supplies" : t === "sales" ? "Sales" : "Stock"}
               {t === "supply" && pendingStops.length > 0 && (
                 <span style={{
                   position: "absolute", top: -8, right: -8,
                   background: "#ef4444", color: "white", borderRadius: "50%",
-                  width: 20, height: 20, fontSize: fontSize.xs, fontWeight: 700,
+                  width: 20, height: 20, fontSize: FONT_SIZE.xs, fontWeight: 700,
                   display: "flex", alignItems: "center", justifyContent: "center"
                 }}>
                   {pendingStops.length}
@@ -867,36 +709,34 @@ export default function StoreOfficerDashboard() {
         {tab === "supply" && (
           <div>
             <div style={{ display: "flex", flexDirection: isMobile ? "column" : "row", justifyContent: "space-between", alignItems: isMobile ? "flex-start" : "center", gap: 12, marginBottom: 16 }}>
-              <p style={{ margin: 0, fontWeight: 700, fontSize: fontSize.lg, color: "#0f172a" }}>Pending Supplies ({pendingStops.length})</p>
-              <div style={{ display: "flex", alignItems: "center", gap: 12, fontSize: fontSize.xs, color: "#94a3b8" }}>
+              <p style={{ margin: 0, fontWeight: 700, fontSize: FONT_SIZE.lg, color: "#0f172a" }}>Pending Supplies ({pendingStops.length})</p>
+              <div style={{ display: "flex", alignItems: "center", gap: 12, fontSize: FONT_SIZE.xs, color: "#94a3b8" }}>
                 {lastUpdated && `Updated: ${lastUpdated.toLocaleTimeString()}`}
-                <button onClick={() => officer && fetchPendingStops(officer.store_name)} style={{ padding: "6px 12px", fontSize: fontSize.xs, cursor: "pointer", borderRadius: 6, border: "1px solid #e2e8f0", background: "white", color: "#64748b", transition: "all 0.2s" }} onMouseEnter={e => { e.currentTarget.style.background = "#f8fafc"; e.currentTarget.style.borderColor = "#cbd5e1" }} onMouseLeave={e => { e.currentTarget.style.background = "white"; e.currentTarget.style.borderColor = "#e2e8f0" }}>
+                <button onClick={() => officer && fetchPendingStops(officer.store_name)} style={{ padding: "6px 12px", fontSize: FONT_SIZE.xs, cursor: "pointer", borderRadius: 6, border: "1px solid #e2e8f0", background: "white", color: "#64748b", transition: "all 0.2s" }}>
                   Refresh
                 </button>
               </div>
             </div>
 
-            {pendingStops.length === 0 && <p style={{ color: "#64748b", fontSize: fontSize.base }}>No pending supplies.</p>}
+            {pendingStops.length === 0 && <p style={{ color: "#64748b", fontSize: FONT_SIZE.base }}>No pending supplies.</p>}
 
             <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
               {pendingStops.map(stop => (
-                <div key={stop.stop_id} style={{ background: "white", border: "1px solid #e2e8f0", borderRadius: 12, padding: 16, boxShadow: "0 1px 3px rgba(0,0,0,0.05)", transition: "all 0.2s ease" }} onMouseEnter={e => { e.currentTarget.style.boxShadow = "0 4px 12px rgba(0,0,0,0.08)"; e.currentTarget.style.borderColor = "#cbd5e1" }} onMouseLeave={e => { e.currentTarget.style.boxShadow = "0 1px 3px rgba(0,0,0,0.05)"; e.currentTarget.style.borderColor = "#e2e8f0" }}>
+                <div key={stop.stop_id} style={{ background: "white", border: "1px solid #e2e8f0", borderRadius: 12, padding: 16, boxShadow: "0 1px 3px rgba(0,0,0,0.05)" }}>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 12 }}>
                     <div>
-                      <p style={{ margin: 0, fontWeight: 700, fontSize: fontSize.lg, color: "#0f172a" }}>{stop.plate_number}</p>
-                      <p style={{ margin: "4px 0 0", fontSize: fontSize.sm, color: "#64748b" }}>{stop.driver_name}</p>
-                      <p style={{ margin: "4px 0 0", fontSize: fontSize.xs, color: "#94a3b8" }}>{new Date(stop.stop_time).toLocaleString()}</p>
+                      <p style={{ margin: 0, fontWeight: 700, fontSize: FONT_SIZE.lg, color: "#0f172a" }}>{stop.plate_number}</p>
+                      <p style={{ margin: "4px 0 0", fontSize: FONT_SIZE.sm, color: "#64748b" }}>{stop.driver_name}</p>
+                      <p style={{ margin: "4px 0 0", fontSize: FONT_SIZE.xs, color: "#94a3b8" }}>{new Date(stop.stop_time).toLocaleString()}</p>
                     </div>
                     <div style={{ textAlign: "right" }}>
-                      <p style={{ margin: "0 0 4px 0", fontSize: fontSize.xs, color: "#94a3b8" }}>Bags delivered</p>
-                      <p style={{ margin: 0, fontWeight: 700, fontSize: fontSize["2xl"], color: "#0070f3" }}>{stop.quantity_offloaded}</p>
+                      <p style={{ margin: "0 0 4px 0", fontSize: FONT_SIZE.xs, color: "#94a3b8" }}>Bags delivered</p>
+                      <p style={{ margin: 0, fontWeight: 700, fontSize: FONT_SIZE["2xl"], color: "#0070f3" }}>{stop.quantity_offloaded}</p>
                     </div>
                   </div>
                   <button
                     onClick={() => { setConfirmingStop(stop); setSupplyLines([{ product: "", quantity: "" }]); setConfirmError("") }}
-                    style={{ width: "100%", padding: "10px 14px", background: "#0070f3", color: "white", border: "none", borderRadius: 8, cursor: "pointer", fontWeight: 600, fontSize: fontSize.md, minHeight: 44, transition: "opacity 0.2s" }}
-                    onMouseEnter={e => e.currentTarget.style.opacity = "0.9"}
-                    onMouseLeave={e => e.currentTarget.style.opacity = "1"}
+                    style={{ width: "100%", padding: "10px 14px", background: "#0070f3", color: "white", border: "none", borderRadius: 8, cursor: "pointer", fontWeight: 600, fontSize: FONT_SIZE.md, minHeight: 44 }}
                   >
                     Confirm Supply
                   </button>
@@ -914,19 +754,9 @@ export default function StoreOfficerDashboard() {
                 <button
                   onClick={() => setSalesSortByAdded(!salesSortByAdded)}
                   style={{
-                    padding: "8px 12px",
-                    borderRadius: 8,
-                    fontSize: fontSize.xs,
-                    cursor: "pointer",
-                    border: `1.5px solid #e2e8f0`,
-                    background: "white",
-                    color: "#64748b",
-                    fontWeight: 500,
-                    minHeight: 40,
-                    whiteSpace: "nowrap",
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 4,
+                    padding: "8px 12px", borderRadius: 8, fontSize: FONT_SIZE.xs, cursor: "pointer",
+                    border: `1.5px solid #e2e8f0`, background: "white", color: "#64748b",
+                    fontWeight: 500, minHeight: 40, whiteSpace: "nowrap", display: "flex", alignItems: "center", gap: 4,
                   }}
                 >
                   <Icon icon={salesSortByAdded ? "mdi:clock-outline" : "mdi:calendar"} width={14} />
@@ -936,10 +766,10 @@ export default function StoreOfficerDashboard() {
                   type="date"
                   value={salesDateFilter}
                   onChange={e => setSalesDateFilter(e.target.value)}
-                  style={{ padding: "8px 12px", borderRadius: 8, border: `1.5px solid ${salesDateFilter ? "#0070f3" : "#e2e8f0"}`, fontSize: fontSize.sm, minHeight: 40, outline: "none", cursor: "pointer", background: salesDateFilter ? "rgba(0, 112, 243, 0.05)" : "white", color: "#0f172a" }}
+                  style={{ padding: "8px 12px", borderRadius: 8, border: `1.5px solid ${salesDateFilter ? "#0070f3" : "#e2e8f0"}`, fontSize: FONT_SIZE.sm, minHeight: 40, outline: "none", cursor: "pointer", background: salesDateFilter ? "rgba(0, 112, 243, 0.05)" : "white", color: "#0f172a" }}
                 />
                 {salesDateFilter && (
-                  <button onClick={() => setSalesDateFilter("")} style={{ background: "none", border: "none", cursor: "pointer", color: "#ef4444", fontSize: fontSize.sm, padding: "4px 8px", fontWeight: 600 }}>
+                  <button onClick={() => setSalesDateFilter("")} style={{ background: "none", border: "none", cursor: "pointer", color: "#ef4444", fontSize: FONT_SIZE.sm, padding: "4px 8px", fontWeight: 600 }}>
                     ✕ Clear
                   </button>
                 )}
@@ -948,19 +778,12 @@ export default function StoreOfficerDashboard() {
                     key={f}
                     onClick={() => setSalesFilter(f)}
                     style={{
-                      padding: "8px 14px",
-                      borderRadius: 20,
-                      fontSize: fontSize.sm,
-                      cursor: "pointer",
+                      padding: "8px 14px", borderRadius: 20, fontSize: FONT_SIZE.sm, cursor: "pointer",
                       border: `1.5px solid ${salesFilter === f ? "#0070f3" : "#e2e8f0"}`,
                       background: salesFilter === f ? "rgba(0, 112, 243, 0.1)" : "white",
                       color: salesFilter === f ? "#0070f3" : "#64748b",
-                      fontWeight: salesFilter === f ? 600 : 500,
-                      transition: "all 0.2s",
-                      minHeight: 40
+                      fontWeight: salesFilter === f ? 600 : 500, minHeight: 40,
                     }}
-                    onMouseEnter={e => { if (salesFilter !== f) { e.currentTarget.style.borderColor = "#cbd5e1"; e.currentTarget.style.background = "#f8fafc" } }}
-                    onMouseLeave={e => { if (salesFilter !== f) { e.currentTarget.style.borderColor = "#e2e8f0"; e.currentTarget.style.background = "white" } }}
                   >
                     {f}
                   </button>
@@ -968,15 +791,13 @@ export default function StoreOfficerDashboard() {
               </div>
               <button
                 onClick={() => { setShowSaleModal(true); setSaleError(""); setIsBrokerLinked(false); setSaleBroker(null) }}
-                style={{ padding: "8px 16px", background: "#0070f3", color: "white", border: "none", borderRadius: 8, cursor: "pointer", fontWeight: 600, fontSize: fontSize.md, minHeight: 40, whiteSpace: "nowrap", transition: "opacity 0.2s" }}
-                onMouseEnter={e => e.currentTarget.style.opacity = "0.9"}
-                onMouseLeave={e => e.currentTarget.style.opacity = "1"}
+                style={{ padding: "8px 16px", background: "#0070f3", color: "white", border: "none", borderRadius: 8, cursor: "pointer", fontWeight: 600, fontSize: FONT_SIZE.md, minHeight: 40, whiteSpace: "nowrap" }}
               >
                 + Log Sale
               </button>
             </div>
 
-            {filteredSales.length === 0 && <p style={{ color: "#64748b", fontSize: fontSize.base }}>No sales logged yet.</p>}
+            {filteredSales.length === 0 && <p style={{ color: "#64748b", fontSize: FONT_SIZE.base }}>No sales logged yet.</p>}
 
             <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
               {filteredSales.map(sale => {
@@ -984,51 +805,44 @@ export default function StoreOfficerDashboard() {
                 const hasBrokerPricing = sale.lines.some(line => line.price_per_bag === null)
 
                 return (
-                <div key={sale.group_id} style={{ background: "white", border: "1px solid #e2e8f0", borderRadius: 12, padding: 16, boxShadow: "0 1px 3px rgba(0,0,0,0.05)", transition: "all 0.2s ease" }} onMouseEnter={e => { e.currentTarget.style.boxShadow = "0 4px 12px rgba(0,0,0,0.08)"; e.currentTarget.style.borderColor = "#cbd5e1" }} onMouseLeave={e => { e.currentTarget.style.boxShadow = "0 1px 3px rgba(0,0,0,0.05)"; e.currentTarget.style.borderColor = "#e2e8f0" }}>
+                <div key={sale.group_id} style={{ background: "white", border: "1px solid #e2e8f0", borderRadius: 12, padding: 16, boxShadow: "0 1px 3px rgba(0,0,0,0.05)" }}>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 12 }}>
                     <div style={{ flex: 1 }}>
-                      <p style={{ margin: 0, fontWeight: 700, fontSize: fontSize.lg, color: "#0f172a" }}>
+                      <p style={{ margin: 0, fontWeight: 700, fontSize: FONT_SIZE.lg, color: "#0f172a" }}>
                         {sale.lines.length === 1 ? sale.lines[0].product : `${sale.lines.length} products`}
                       </p>
-                      {sale.customer_name && <p style={{ margin: "4px 0 0", fontSize: fontSize.sm, color: "#64748b" }}>{sale.customer_name}</p>}
-                      {sale.broker_name && <p style={{ margin: "4px 0 0", fontSize: fontSize.sm, color: "#0070f3", fontWeight: 500 }}>Broker: {sale.broker_name}</p>}
-                      <p style={{ margin: "4px 0 0", fontSize: fontSize.xs, color: "#94a3b8" }}>{new Date(sale.sold_at).toLocaleString()}</p>
+                      {sale.customer_name && <p style={{ margin: "4px 0 0", fontSize: FONT_SIZE.sm, color: "#64748b" }}>{sale.customer_name}</p>}
+                      {sale.broker_name && <p style={{ margin: "4px 0 0", fontSize: FONT_SIZE.sm, color: "#0070f3", fontWeight: 500 }}>Broker: {sale.broker_name}</p>}
+                      <p style={{ margin: "4px 0 0", fontSize: FONT_SIZE.xs, color: "#94a3b8" }}>{new Date(sale.sold_at).toLocaleString()}</p>
                     </div>
                     <div style={{ textAlign: "right" }}>
                       {!hasBrokerPricing ? (
                         <>
-                          <p style={{ margin: 0, fontWeight: 700, fontSize: fontSize.lg, color: "#16a34a" }}>₦{totalAmount.toLocaleString()}</p>
-                          <span style={{ fontSize: fontSize.xs, padding: "3px 8px", borderRadius: 6, background: "#f0f7ff", color: "#0070f3", fontWeight: 600, display: "inline-block", marginTop: 4 }}>{sale.payment_mode}</span>
+                          <p style={{ margin: 0, fontWeight: 700, fontSize: FONT_SIZE.lg, color: "#16a34a" }}>₦{totalAmount.toLocaleString()}</p>
+                          <span style={{ fontSize: FONT_SIZE.xs, padding: "3px 8px", borderRadius: 6, background: "#f0f7ff", color: "#0070f3", fontWeight: 600, display: "inline-block", marginTop: 4 }}>{sale.payment_mode}</span>
                         </>
                       ) : (
                         <>
-                          <p style={{ margin: 0, fontWeight: 700, fontSize: fontSize.lg, color: "#94a3b8", fontStyle: "italic" }}>Provided by broker</p>
-                          <span style={{ fontSize: fontSize.xs, padding: "3px 8px", borderRadius: 6, background: "#f0f7ff", color: "#0070f3", fontWeight: 600, display: "inline-block", marginTop: 4 }}>{sale.payment_mode}</span>
+                          <p style={{ margin: 0, fontWeight: 700, fontSize: FONT_SIZE.lg, color: "#94a3b8", fontStyle: "italic" }}>Provided by broker</p>
+                          <span style={{ fontSize: FONT_SIZE.xs, padding: "3px 8px", borderRadius: 6, background: "#f0f7ff", color: "#0070f3", fontWeight: 600, display: "inline-block", marginTop: 4 }}>{sale.payment_mode}</span>
                         </>
                       )}
                     </div>
                   </div>
 
-                  {/* Status Badge */}
                   {sale.broker_id && (
                     <div style={{ background: "#f8fafc", borderRadius: 8, padding: "10px 12px", marginBottom: 10, border: "1px solid #e2e8f0" }}>
-                      <p style={{ margin: 0, fontSize: fontSize.xs, color: "#94a3b8" }}>Status</p>
+                      <p style={{ margin: 0, fontSize: FONT_SIZE.xs, color: "#94a3b8" }}>Status</p>
                       <span style={{
-                        fontSize: fontSize.xs,
-                        padding: "4px 10px",
-                        borderRadius: 6,
+                        fontSize: FONT_SIZE.xs, padding: "4px 10px", borderRadius: 6,
                         background: sale.status === "Pending" ? "#fffbeb" : sale.status === "Confirmed" ? "#ecfdf5" : "#fef2f2",
-                        color: getStatusColor(sale.status),
-                        fontWeight: 600,
-                        display: "inline-block",
-                        marginTop: 4
+                        color: getStatusColor(sale.status), fontWeight: 600, display: "inline-block", marginTop: 4,
                       }}>
                         {sale.status}
                       </span>
                     </div>
                   )}
 
-                  {/* Delivery Mode */}
                   {(() => {
                     const deliveryModeConfig: Record<string, { label: string; icon: string; bg: string; border: string; color: string }> = {
                       self: { label: "Self", icon: "mdi:account", bg: "#f0fdf4", border: "#bbf7d0", color: "#16a34a" },
@@ -1039,12 +853,10 @@ export default function StoreOfficerDashboard() {
                     if (!cfg) return null
                     return (
                       <div style={{ background: cfg.bg, borderRadius: 8, padding: "10px 12px", marginBottom: 10, border: `1px solid ${cfg.border}` }}>
-                        <p style={{ margin: 0, fontSize: fontSize.xs, color: "#94a3b8" }}>Delivery Mode</p>
+                        <p style={{ margin: 0, fontSize: FONT_SIZE.xs, color: "#94a3b8" }}>Delivery Mode</p>
                         <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 4 }}>
                           <Icon icon={cfg.icon} width={18} height={18} color={cfg.color} />
-                          <p style={{ margin: 0, fontWeight: 600, fontSize: fontSize.base, color: cfg.color }}>
-                            {cfg.label}
-                          </p>
+                          <p style={{ margin: 0, fontWeight: 600, fontSize: FONT_SIZE.base, color: cfg.color }}>{cfg.label}</p>
                         </div>
                       </div>
                     )
@@ -1054,23 +866,17 @@ export default function StoreOfficerDashboard() {
                     {sale.lines.map(line => (
                       <div key={line.sale_id} style={{ display: "grid", gridTemplateColumns: line.price_per_bag !== null ? "1.4fr 0.7fr 0.9fr" : "1.4fr 0.7fr", gap: 8 }}>
                         <div style={{ background: "#f8fafc", borderRadius: 8, padding: "8px 12px" }}>
-                          <p style={{ margin: 0, fontSize: fontSize.xs, color: "#94a3b8" }}>Product</p>
-                          <p style={{ margin: "2px 0 0", fontWeight: 600, fontSize: fontSize.base, color: "#0f172a" }}>
-                            {line.product}
-                          </p>
+                          <p style={{ margin: 0, fontSize: FONT_SIZE.xs, color: "#94a3b8" }}>Product</p>
+                          <p style={{ margin: "2px 0 0", fontWeight: 600, fontSize: FONT_SIZE.base, color: "#0f172a" }}>{line.product}</p>
                         </div>
                         <div style={{ background: "#f8fafc", borderRadius: 8, padding: "8px 12px" }}>
-                          <p style={{ margin: 0, fontSize: fontSize.xs, color: "#94a3b8" }}>Bags</p>
-                          <p style={{ margin: "2px 0 0", fontWeight: 600, fontSize: fontSize.base, color: "#0f172a" }}>
-                            {line.quantity}
-                          </p>
+                          <p style={{ margin: 0, fontSize: FONT_SIZE.xs, color: "#94a3b8" }}>Bags</p>
+                          <p style={{ margin: "2px 0 0", fontWeight: 600, fontSize: FONT_SIZE.base, color: "#0f172a" }}>{line.quantity}</p>
                         </div>
                         {line.price_per_bag !== null && (
                           <div style={{ background: "#f8fafc", borderRadius: 8, padding: "8px 12px" }}>
-                            <p style={{ margin: 0, fontSize: fontSize.xs, color: "#94a3b8" }}>Price/Bag</p>
-                            <p style={{ margin: "2px 0 0", fontWeight: 600, fontSize: fontSize.base, color: "#0f172a" }}>
-                              ₦{line.price_per_bag.toLocaleString()}
-                            </p>
+                            <p style={{ margin: 0, fontSize: FONT_SIZE.xs, color: "#94a3b8" }}>Price/Bag</p>
+                            <p style={{ margin: "2px 0 0", fontWeight: 600, fontSize: FONT_SIZE.base, color: "#0f172a" }}>₦{line.price_per_bag.toLocaleString()}</p>
                           </div>
                         )}
                       </div>
@@ -1086,14 +892,14 @@ export default function StoreOfficerDashboard() {
         {/* Stock Tab */}
         {tab === "stock" && (
           <div>
-            <p style={{ margin: "0 0 16px 0", fontWeight: 700, fontSize: fontSize.lg, color: "#0f172a" }}>Current Stock</p>
-            {stock.length === 0 && <p style={{ color: "#64748b", fontSize: fontSize.base }}>No stock data yet.</p>}
+            <p style={{ margin: "0 0 16px 0", fontWeight: 700, fontSize: FONT_SIZE.lg, color: "#0f172a" }}>Current Stock</p>
+            {stock.length === 0 && <p style={{ color: "#64748b", fontSize: FONT_SIZE.base }}>No stock data yet.</p>}
             <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
               {stock.map(s => (
                 <div key={s.product} style={{ background: "white", border: "1px solid #e2e8f0", borderRadius: 12, padding: 16, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                  <p style={{ margin: 0, fontWeight: 600, fontSize: fontSize.lg, color: "#0f172a" }}>{s.product}</p>
-                  <p style={{ margin: 0, fontWeight: 700, fontSize: fontSize.lg, color: s.balance === 0 ? "#ef4444" : s.balance < 50 ? "#f5a623" : "#0070f3" }}>
-                    {s.balance} <span style={{ fontSize: fontSize.sm, fontWeight: 500, color: "#64748b", marginLeft: 4 }}>bags</span>
+                  <p style={{ margin: 0, fontWeight: 600, fontSize: FONT_SIZE.lg, color: "#0f172a" }}>{s.product}</p>
+                  <p style={{ margin: 0, fontWeight: 700, fontSize: FONT_SIZE.lg, color: s.balance === 0 ? "#ef4444" : s.balance < 50 ? "#f5a623" : "#0070f3" }}>
+                    {s.balance} <span style={{ fontSize: FONT_SIZE.sm, fontWeight: 500, color: "#64748b", marginLeft: 4 }}>bags</span>
                   </p>
                 </div>
               ))}
@@ -1106,16 +912,16 @@ export default function StoreOfficerDashboard() {
       {confirmingStop && (
         <div onClick={() => { setConfirmingStop(null); setSupplyLines([{ product: "", quantity: "" }]); setConfirmError("") }} style={{ position: "fixed", inset: 0, background: "rgba(15, 23, 42, 0.6)", backdropFilter: "blur(4px)", display: "flex", alignItems: isMobile ? "flex-end" : "center", justifyContent: "center", zIndex: 100, padding: isMobile ? 0 : 24 }}>
           <div onClick={e => e.stopPropagation()} style={{ background: "white", borderRadius: isMobile ? "20px 20px 0 0" : 12, padding: isMobile ? "28px 20px" : 32, width: "100%", maxWidth: 480, maxHeight: "90vh", overflowY: "auto", boxShadow: "0 25px 50px -12px rgba(0, 0, 0, 0.25)" }}>
-            <h3 style={{ margin: "0 0 6px 0", fontSize: fontSize.xl, fontWeight: 700, color: "#0f172a" }}>Confirm Supply</h3>
-            <p style={{ color: "#94a3b8", fontSize: fontSize.sm, margin: "0 0 4px 0" }}>
+            <h3 style={{ margin: "0 0 6px 0", fontSize: FONT_SIZE.xl, fontWeight: 700, color: "#0f172a" }}>Confirm Supply</h3>
+            <p style={{ color: "#94a3b8", fontSize: FONT_SIZE.sm, margin: "0 0 4px 0" }}>
               {confirmingStop.plate_number} · {confirmingStop.driver_name}
             </p>
-            <p style={{ color: "#64748b", fontSize: fontSize.sm, margin: "0 0 20px 0" }}>
+            <p style={{ color: "#64748b", fontSize: FONT_SIZE.sm, margin: "0 0 20px 0" }}>
               Total: <strong>{confirmingStop.quantity_offloaded} bags</strong>
             </p>
 
-            <p style={{ fontWeight: 700, fontSize: fontSize.base, margin: "0 0 4px 0", color: "#0f172a" }}>Breakdown by Product *</p>
-            <p style={{ fontSize: fontSize.xs, color: "#94a3b8", margin: "0 0 12px 0" }}>Total must equal bags delivered</p>
+            <p style={{ fontWeight: 700, fontSize: FONT_SIZE.base, margin: "0 0 4px 0", color: "#0f172a" }}>Breakdown by Product *</p>
+            <p style={{ fontSize: FONT_SIZE.xs, color: "#94a3b8", margin: "0 0 12px 0" }}>Total must equal bags delivered</p>
 
             <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 16 }}>
               {supplyLines.map((line, i) => (
@@ -1124,7 +930,7 @@ export default function StoreOfficerDashboard() {
                     as="select"
                     value={line.product}
                     onChange={e => updateSupplyLine(i, "product", e.target.value)}
-                    style={{ flex: 1, minWidth: 0, padding: "10px 12px", borderRadius: 6, border: "1px solid #e0e0e0", fontSize: fontSize.sm, boxSizing: "border-box" }}
+                    style={{ flex: 1, minWidth: 0, padding: "10px 12px", borderRadius: 6, border: "1px solid #e0e0e0", fontSize: FONT_SIZE.sm, boxSizing: "border-box" }}
                   >
                     <option value="">Select product</option>
                     {allProducts.map(p => (<option key={p} value={p}>{p}</option>))}
@@ -1135,7 +941,7 @@ export default function StoreOfficerDashboard() {
                     value={line.quantity}
                     onChange={e => updateSupplyLine(i, "quantity", e.target.value)}
                     onKeyDown={(e: any) => { if (e.key === "-" || e.key === "e") e.preventDefault() }}
-                    style={{ flex: 1, width: isMobile ? 90 : 110, flexShrink: 0, padding: "10px 12px", borderRadius: 6, border: "1px solid #e0e0e0", fontSize: fontSize.sm, boxSizing: "border-box" }}
+                    style={{ flex: 1, width: isMobile ? 90 : 110, flexShrink: 0, padding: "10px 12px", borderRadius: 6, border: "1px solid #e0e0e0", fontSize: FONT_SIZE.sm, boxSizing: "border-box" }}
                   />
                   {supplyLines.length > 1 && (
                     <button onClick={() => removeSupplyLine(i)} style={{ background: "none", border: "none", cursor: "pointer", color: "#ef4444", fontSize: 18, lineHeight: 1, padding: 0, width: 24, height: 24, display: "flex", alignItems: "center", justifyContent: "center" }}>✕</button>
@@ -1145,22 +951,22 @@ export default function StoreOfficerDashboard() {
             </div>
 
             <div style={{ padding: "8px 12px", background: "#f8fafc", borderRadius: 6, marginBottom: 16, border: "1px solid #e2e8f0" }}>
-              <p style={{ margin: 0, fontSize: fontSize.sm, color: "#0f172a" }}>
+              <p style={{ margin: 0, fontSize: FONT_SIZE.sm, color: "#0f172a" }}>
                 Total entered: <strong style={{ color: supplyLines.reduce((s, l) => s + (parseInt(l.quantity) || 0), 0) === confirmingStop.quantity_offloaded ? "#16a34a" : "#f5a623" }}>
                   {supplyLines.reduce((s, l) => s + (parseInt(l.quantity) || 0), 0)}
                 </strong> / {confirmingStop.quantity_offloaded}
               </p>
             </div>
 
-            <button onClick={addSupplyLine} style={{ width: "100%", padding: "8px 12px", background: "white", border: "1px dashed #0070f3", color: "#0070f3", borderRadius: 6, cursor: "pointer", fontSize: fontSize.sm, fontWeight: 600, marginBottom: 20, minHeight: 40 }}>
+            <button onClick={addSupplyLine} style={{ width: "100%", padding: "8px 12px", background: "white", border: "1px dashed #0070f3", color: "#0070f3", borderRadius: 6, cursor: "pointer", fontSize: FONT_SIZE.sm, fontWeight: 600, marginBottom: 20, minHeight: 40 }}>
               + Add Product Line
             </button>
 
-            {confirmError && <div style={{ padding: 12, background: "#fef2f2", borderLeft: "4px solid #ef4444", borderRadius: 4, marginBottom: 16, color: "#b91c1c", fontSize: fontSize.sm }}>{confirmError}</div>}
+            {confirmError && <div style={{ padding: 12, background: "#fef2f2", borderLeft: "4px solid #ef4444", borderRadius: 4, marginBottom: 16, color: "#b91c1c", fontSize: FONT_SIZE.sm }}>{confirmError}</div>}
 
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-              <button onClick={() => { setConfirmingStop(null); setSupplyLines([{ product: "", quantity: "" }]); setConfirmError("") }} style={{ padding: "12px 16px", background: "white", border: "1px solid #cbd5e1", color: "#475569", borderRadius: 8, cursor: "pointer", fontWeight: 600, fontSize: fontSize.md, minHeight: 44 }}>Cancel</button>
-              <button onClick={handleConfirmSupply} disabled={confirmLoading} style={{ padding: "12px 16px", background: "#0070f3", color: "white", border: "none", borderRadius: 8, cursor: confirmLoading ? "not-allowed" : "pointer", fontWeight: 600, fontSize: fontSize.md, opacity: confirmLoading ? 0.7 : 1, minHeight: 44 }}>
+              <button onClick={() => { setConfirmingStop(null); setSupplyLines([{ product: "", quantity: "" }]); setConfirmError("") }} style={{ padding: "12px 16px", background: "white", border: "1px solid #cbd5e1", color: "#475569", borderRadius: 8, cursor: "pointer", fontWeight: 600, fontSize: FONT_SIZE.md, minHeight: 44 }}>Cancel</button>
+              <button onClick={handleConfirmSupply} disabled={confirmLoading} style={{ padding: "12px 16px", background: "#0070f3", color: "white", border: "none", borderRadius: 8, cursor: confirmLoading ? "not-allowed" : "pointer", fontWeight: 600, fontSize: FONT_SIZE.md, opacity: confirmLoading ? 0.7 : 1, minHeight: 44 }}>
                 {confirmLoading ? "Confirming..." : "Confirm Supply"}
               </button>
             </div>
@@ -1187,8 +993,8 @@ export default function StoreOfficerDashboard() {
           setSaleDate(new Date().toISOString().split("T")[0])
         }} style={{ position: "fixed", inset: 0, background: "rgba(15, 23, 42, 0.6)", backdropFilter: "blur(4px)", display: "flex", alignItems: isMobile ? "flex-end" : "center", justifyContent: "center", zIndex: 100, padding: isMobile ? 0 : 24 }}>
           <div onClick={e => e.stopPropagation()} style={{ background: "white", borderRadius: isMobile ? "20px 20px 0 0" : 12, padding: isMobile ? "28px 20px" : 32, width: "100%", maxWidth: 600, maxHeight: "90vh", overflowY: "auto", boxShadow: "0 25px 50px -12px rgba(0, 0, 0, 0.25)" }}>
-            <h3 style={{ margin: "0 0 20px 0", fontSize: fontSize.xl, fontWeight: 700, color: "#0f172a" }}>Log Sales</h3>
-      
+            <h3 style={{ margin: "0 0 20px 0", fontSize: FONT_SIZE.xl, fontWeight: 700, color: "#0f172a" }}>Log Sales</h3>
+
             {/* Broker Linked Toggle */}
             <div style={{ marginBottom: 20, padding: "12px", background: "#f0f7ff", borderRadius: 8, border: "1px solid #bfdbfe" }}>
               <label style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer" }}>
@@ -1198,46 +1004,43 @@ export default function StoreOfficerDashboard() {
                   onChange={e => { setIsBrokerLinked(e.target.checked); setSaleBroker(null); setSaleError("") }}
                   style={{ width: 18, height: 18, cursor: "pointer" }}
                 />
-                <span style={{ margin: "4px 0 0", fontWeight: 600, color: "#0070f3", fontSize: fontSize.sm }}>Broker-linked sales</span>
+                <span style={{ margin: "4px 0 0", fontWeight: 600, color: "#0070f3", fontSize: FONT_SIZE.sm }}>Broker-linked sales</span>
               </label>
-              <p style={{ margin: "6px 0 0", fontSize: fontSize.xs, color: "#64748b" }}>
+              <p style={{ margin: "6px 0 0", fontSize: FONT_SIZE.xs, color: "#64748b" }}>
                 {isBrokerLinked ? "Broker will provide the prices" : ""}
               </p>
             </div>
-      
+
             {/* Products Section */}
             <div style={{ marginBottom: 20 }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-                <label style={{ fontWeight: 700, fontSize: fontSize.base, color: "#0f172a" }}>Products *</label>
-                <p style={{ margin: 0, fontSize: fontSize.xs, color: "#94a3b8" }}>{saleLines.length} product(s)</p>
+                <label style={{ fontWeight: 700, fontSize: FONT_SIZE.base, color: "#0f172a" }}>Products *</label>
+                <p style={{ margin: 0, fontSize: FONT_SIZE.xs, color: "#94a3b8" }}>{saleLines.length} product(s)</p>
               </div>
-      
+
               <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 12 }}>
                 {saleLines.map((line, i) => (
                   <div key={i} style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr 1fr" : "2fr 1fr " + (isBrokerLinked ? "0fr" : "1fr") + " auto", gap: 8, alignItems: "center" }}>
-                    {/* Product Select */}
                     <ModernInput
                       as="select"
                       value={line.product}
                       onChange={e => updateSaleLine(i, "product", e.target.value)}
-                      style={{ padding: "10px 12px", borderRadius: 6, border: "1px solid #e0e0e0", fontSize: fontSize.sm, boxSizing: "border-box", minHeight: 44 }}
+                      style={{ padding: "10px 12px", borderRadius: 6, border: "1px solid #e0e0e0", fontSize: FONT_SIZE.sm, boxSizing: "border-box", minHeight: 44 }}
                     >
                       <option value="">Select product</option>
                       {stock.filter(s => s.balance > 0).map(s => (
                         <option key={s.product} value={s.product}>{s.product} ({s.balance})</option>
                       ))}
                     </ModernInput>
-      
-                    {/* Quantity */}
+
                     <ModernInput
                       type="number"
                       placeholder="Qty"
                       value={line.quantity}
                       onChange={e => updateSaleLine(i, "quantity", e.target.value)}
-                      style={{ padding: "10px 12px", borderRadius: 6, border: "1px solid #e0e0e0", fontSize: fontSize.sm, boxSizing: "border-box", minHeight: 44 }}
+                      style={{ padding: "10px 12px", borderRadius: 6, border: "1px solid #e0e0e0", fontSize: FONT_SIZE.sm, boxSizing: "border-box", minHeight: 44 }}
                     />
-      
-                    {/* Price (self / truck / non-broker tricycle) */}
+
                     {!isBrokerLinked && (
                       <ModernInput
                         type="text"
@@ -1245,29 +1048,28 @@ export default function StoreOfficerDashboard() {
                         placeholder="Price per bag"
                         value={line.price_per_bag}
                         onChange={e => updateSaleLine(i, "price_per_bag", formatAmount(e.target.value))}
-                        style={{ padding: "10px 12px", borderRadius: 6, border: "1px solid #e0e0e0", fontSize: fontSize.sm, boxSizing: "border-box", minHeight: 44 }}
+                        style={{ padding: "10px 12px", borderRadius: 6, border: "1px solid #e0e0e0", fontSize: FONT_SIZE.sm, boxSizing: "border-box", minHeight: 44 }}
                       />
                     )}
-      
-                    {/* Remove Button */}
+
                     {saleLines.length > 1 && (
                       <button onClick={() => removeSaleLine(i)} style={{ background: "none", border: "none", cursor: "pointer", color: "#ef4444", fontSize: 18, lineHeight: 1, padding: 0, width: 24, height: 24, display: "flex", alignItems: "center", justifyContent: "center" }}>✕</button>
                     )}
                   </div>
                 ))}
               </div>
-      
-              <button onClick={addSaleLine} style={{ width: "100%", padding: "8px 12px", background: "white", border: "1px dashed #0070f3", color: "#0070f3", borderRadius: 6, cursor: "pointer", fontSize: fontSize.sm, fontWeight: 600, minHeight: 40 }}>
+
+              <button onClick={addSaleLine} style={{ width: "100%", padding: "8px 12px", background: "white", border: "1px dashed #0070f3", color: "#0070f3", borderRadius: 6, cursor: "pointer", fontSize: FONT_SIZE.sm, fontWeight: 600, minHeight: 40 }}>
                 + Add Another Product
               </button>
             </div>
-      
-            {/* Broker Selection (if broker-linked) */}
+
+            {/* Broker Selection */}
             {isBrokerLinked && (
               <div style={{ marginBottom: 16, position: "relative" }}>
-                <label style={{ display: "block", fontWeight: 600, marginBottom: 6, fontSize: fontSize.sm, color: "#475569" }}>Broker *</label>
+                <label style={{ display: "block", fontWeight: 600, marginBottom: 6, fontSize: FONT_SIZE.sm, color: "#475569" }}>Broker *</label>
                 {brokers.length === 0
-                  ? <p style={{ fontSize: fontSize.sm, color: "#94a3b8", margin: 0 }}>No brokers available.</p>
+                  ? <p style={{ fontSize: FONT_SIZE.sm, color: "#94a3b8", margin: 0 }}>No brokers available.</p>
                   : (
                     <div style={{ position: "relative" }}>
                       <ModernInput
@@ -1277,7 +1079,7 @@ export default function StoreOfficerDashboard() {
                         onChange={e => { setBrokerSearch(e.target.value); setBrokerDropOpen(true) }}
                         onFocus={() => setBrokerDropOpen(true)}
                         onBlur={() => setTimeout(() => setBrokerDropOpen(false), 150)}
-                        style={{ width: "100%", padding: "10px 12px", borderRadius: 6, border: "1px solid #e0e0e0", fontSize: fontSize.base, boxSizing: "border-box", minHeight: 44 }}
+                        style={{ width: "100%", padding: "10px 12px", borderRadius: 6, border: "1px solid #e0e0e0", fontSize: FONT_SIZE.base, boxSizing: "border-box", minHeight: 44 }}
                       />
                       {brokerDropOpen && (
                         <ul style={{ position: "absolute", top: "calc(100% + 4px)", left: 0, right: 0, background: "white", border: "1px solid #e2e8f0", borderRadius: 8, listStyle: "none", margin: 0, padding: 4, maxHeight: 200, overflowY: "auto", zIndex: 50, boxShadow: "0 4px 12px rgba(0,0,0,0.1)" }}>
@@ -1287,9 +1089,7 @@ export default function StoreOfficerDashboard() {
                               <li
                                 key={b.broker_id}
                                 onMouseDown={() => { setSaleBroker(b); setBrokerSearch(b.broker_name); setBrokerDropOpen(false); setSaleError("") }}
-                                style={{ padding: "10px 12px", cursor: "pointer", fontSize: fontSize.base, background: saleBroker?.broker_id === b.broker_id ? "#eff6ff" : "white", borderRadius: 6, transition: "all 0.2s" }}
-                                onMouseEnter={e => { if (saleBroker?.broker_id !== b.broker_id) e.currentTarget.style.background = "#f8fafc" }}
-                                onMouseLeave={e => { e.currentTarget.style.background = saleBroker?.broker_id === b.broker_id ? "#eff6ff" : "white" }}
+                                style={{ padding: "10px 12px", cursor: "pointer", fontSize: FONT_SIZE.base, background: saleBroker?.broker_id === b.broker_id ? "#eff6ff" : "white", borderRadius: 6 }}
                               >
                                 {b.broker_name}
                               </li>
@@ -1300,50 +1100,43 @@ export default function StoreOfficerDashboard() {
                   )
                 }
                 {saleBroker && (
-                  <div style={{ marginTop: 8, padding: "8px 12px", background: "#eff6ff", borderRadius: 6, fontSize: fontSize.sm, color: "#0070f3", fontWeight: 500 }}>
+                  <div style={{ marginTop: 8, padding: "8px 12px", background: "#eff6ff", borderRadius: 6, fontSize: FONT_SIZE.sm, color: "#0070f3", fontWeight: 500 }}>
                     Selected: {saleBroker.broker_name}
                   </div>
                 )}
               </div>
             )}
-      
-            {/* Customer Name (optional) */}
+
+            {/* Customer Name */}
             <div style={{ marginBottom: 16 }}>
-              <label style={{ display: "block", fontWeight: 600, marginBottom: 6, fontSize: fontSize.sm, color: "#475569" }}>Customer Name <span style={{ fontWeight: 400, color: "#94a3b8" }}>(optional)</span></label>
+              <label style={{ display: "block", fontWeight: 600, marginBottom: 6, fontSize: FONT_SIZE.sm, color: "#475569" }}>Customer Name <span style={{ fontWeight: 400, color: "#94a3b8" }}>(optional)</span></label>
               <CustomerSelector 
                 onSelect={(c: any) => { setSaleCustomer(c); setSaleError("") }} 
                 allowUnsavedNew={true}
                 initialValue={saleCustomer?.full_name || ""}
               />
               {saleCustomer && (
-                <div style={{ marginTop: 8, padding: "8px 12px", background: "#eff6ff", borderRadius: 6, fontSize: fontSize.sm, color: "#0070f3", fontWeight: 500 }}>
+                <div style={{ marginTop: 8, padding: "8px 12px", background: "#eff6ff", borderRadius: 6, fontSize: FONT_SIZE.sm, color: "#0070f3", fontWeight: 500 }}>
                   Selected: {saleCustomer.full_name}
                 </div>
               )}
             </div>
-      
+
             {/* Delivery Mode */}
             <div style={{ marginBottom: 16 }}>
-              <label style={{ display: "block", fontWeight: 600, marginBottom: 6, fontSize: fontSize.sm, color: "#475569" }}>Delivery Mode</label>
+              <label style={{ display: "block", fontWeight: 600, marginBottom: 6, fontSize: FONT_SIZE.sm, color: "#475569" }}>Delivery Mode</label>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8 }}>
                 {(["self", "tricycle", "truck"] as const).map(type => (
                   <button
                     key={type}
                     onClick={() => { setDeliveryMode(type); setSaleTricycleId(""); setSaleTruckPlate(""); setTruckSearch(""); setSaleError("") }}
                     style={{
-                      padding: "10px 12px",
-                      borderRadius: 8,
-                      cursor: "pointer",
+                      padding: "10px 12px", borderRadius: 8, cursor: "pointer",
                       border: `1.5px solid ${deliveryMode === type ? "#0070f3" : "#e2e8f0"}`,
                       background: deliveryMode === type ? "#0070f3" : "white",
                       color: deliveryMode === type ? "white" : "#64748b",
-                      fontWeight: deliveryMode === type ? 600 : 500,
-                      fontSize: fontSize.sm,
-                      minHeight: 44,
-                      transition: "all 0.2s"
+                      fontWeight: deliveryMode === type ? 600 : 500, fontSize: FONT_SIZE.sm, minHeight: 44,
                     }}
-                    onMouseEnter={e => { if (deliveryMode !== type) { e.currentTarget.style.borderColor = "#cbd5e1"; e.currentTarget.style.background = "#f8fafc" } }}
-                    onMouseLeave={e => { if (deliveryMode !== type) { e.currentTarget.style.borderColor = "#e2e8f0"; e.currentTarget.style.background = "white" } }}
                   >
                     {type === "self" ? "Self" : type === "truck" ? "Truck" : "Tricycle"}
                   </button>
@@ -1354,9 +1147,9 @@ export default function StoreOfficerDashboard() {
             {/* Tricycle Selection */}
             {deliveryMode === "tricycle" && (
               <div style={{ marginBottom: 16, position: "relative" }}>
-                <label style={{ display: "block", fontWeight: 600, marginBottom: 6, fontSize: fontSize.sm, color: "#475569" }}>Tricycle *</label>
+                <label style={{ display: "block", fontWeight: 600, marginBottom: 6, fontSize: FONT_SIZE.sm, color: "#475569" }}>Tricycle *</label>
                 {tricycles.length === 0
-                  ? <p style={{ fontSize: fontSize.sm, color: "#94a3b8", margin: 0 }}>No tricycles available.</p>
+                  ? <p style={{ fontSize: FONT_SIZE.sm, color: "#94a3b8", margin: 0 }}>No tricycles available.</p>
                   : (
                     <div style={{ position: "relative" }}>
                       <ModernInput
@@ -1366,7 +1159,7 @@ export default function StoreOfficerDashboard() {
                         onChange={e => { setTricycleSearch(e.target.value); setTricycleDropOpen(true) }}
                         onFocus={() => setTricycleDropOpen(true)}
                         onBlur={() => setTimeout(() => setTricycleDropOpen(false), 150)}
-                        style={{ width: "100%", padding: "10px 12px", borderRadius: 6, border: "1px solid #e0e0e0", fontSize: fontSize.base, boxSizing: "border-box", minHeight: 44 }}
+                        style={{ width: "100%", padding: "10px 12px", borderRadius: 6, border: "1px solid #e0e0e0", fontSize: FONT_SIZE.base, boxSizing: "border-box", minHeight: 44 }}
                       />
                       {tricycleDropOpen && (
                         <ul style={{ position: "absolute", top: "calc(100% + 4px)", left: 0, right: 0, background: "white", border: "1px solid #e2e8f0", borderRadius: 8, listStyle: "none", margin: 0, padding: 4, maxHeight: 200, overflowY: "auto", zIndex: 50, boxShadow: "0 4px 12px rgba(0,0,0,0.1)" }}>
@@ -1376,9 +1169,7 @@ export default function StoreOfficerDashboard() {
                               <li
                                 key={t.tricycle_id}
                                 onMouseDown={() => { setSaleTricycleId(t.tricycle_id); setTricycleSearch(t.tricycle_number); setTricycleDropOpen(false); setSaleError("") }}
-                                style={{ padding: "10px 12px", cursor: "pointer", fontSize: fontSize.base, background: saleTricycleId === t.tricycle_id ? "#eff6ff" : "white", borderRadius: 6, transition: "all 0.2s" }}
-                                onMouseEnter={e => { if (saleTricycleId !== t.tricycle_id) e.currentTarget.style.background = "#f8fafc" }}
-                                onMouseLeave={e => { e.currentTarget.style.background = saleTricycleId === t.tricycle_id ? "#eff6ff" : "white" }}
+                                style={{ padding: "10px 12px", cursor: "pointer", fontSize: FONT_SIZE.base, background: saleTricycleId === t.tricycle_id ? "#eff6ff" : "white", borderRadius: 6 }}
                               >
                                 {t.tricycle_number}
                               </li>
@@ -1390,13 +1181,13 @@ export default function StoreOfficerDashboard() {
                 }
               </div>
             )}
-      
+
             {/* Truck Selection */}
             {deliveryMode === "truck" && (
               <div style={{ marginBottom: 16, position: "relative" }}>
-                <label style={{ display: "block", fontWeight: 600, marginBottom: 6, fontSize: fontSize.sm, color: "#475569" }}>Truck *</label>
+                <label style={{ display: "block", fontWeight: 600, marginBottom: 6, fontSize: FONT_SIZE.sm, color: "#475569" }}>Truck *</label>
                 {trucks.length === 0
-                  ? <p style={{ fontSize: fontSize.sm, color: "#94a3b8", margin: 0 }}>No trucks available.</p>
+                  ? <p style={{ fontSize: FONT_SIZE.sm, color: "#94a3b8", margin: 0 }}>No trucks available.</p>
                   : (
                     <div style={{ position: "relative" }}>
                       <ModernInput
@@ -1406,7 +1197,7 @@ export default function StoreOfficerDashboard() {
                         onChange={e => { setTruckSearch(e.target.value); setTruckDropOpen(true) }}
                         onFocus={() => setTruckDropOpen(true)}
                         onBlur={() => setTimeout(() => setTruckDropOpen(false), 150)}
-                        style={{ width: "100%", padding: "10px 12px", borderRadius: 6, border: "1px solid #e0e0e0", fontSize: fontSize.base, boxSizing: "border-box", minHeight: 44 }}
+                        style={{ width: "100%", padding: "10px 12px", borderRadius: 6, border: "1px solid #e0e0e0", fontSize: FONT_SIZE.base, boxSizing: "border-box", minHeight: 44 }}
                       />
                       {truckDropOpen && (
                         <ul style={{ position: "absolute", top: "calc(100% + 4px)", left: 0, right: 0, background: "white", border: "1px solid #e2e8f0", borderRadius: 8, listStyle: "none", margin: 0, padding: 4, maxHeight: 200, overflowY: "auto", zIndex: 50, boxShadow: "0 4px 12px rgba(0,0,0,0.1)" }}>
@@ -1416,9 +1207,7 @@ export default function StoreOfficerDashboard() {
                               <li
                                 key={t.plate_number}
                                 onMouseDown={() => { setSaleTruckPlate(t.plate_number); setTruckSearch(`${t.plate_number}${t.kbnl_truck_no ? ` · #${t.kbnl_truck_no}` : ""}`); setTruckDropOpen(false); setSaleError("") }}
-                                style={{ padding: "10px 12px", cursor: "pointer", fontSize: fontSize.base, background: saleTruckPlate === t.plate_number ? "#eff6ff" : "white", borderRadius: 6, transition: "all 0.2s" }}
-                                onMouseEnter={e => { if (saleTruckPlate !== t.plate_number) e.currentTarget.style.background = "#f8fafc" }}
-                                onMouseLeave={e => { e.currentTarget.style.background = saleTruckPlate === t.plate_number ? "#eff6ff" : "white" }}
+                                style={{ padding: "10px 12px", cursor: "pointer", fontSize: FONT_SIZE.base, background: saleTruckPlate === t.plate_number ? "#eff6ff" : "white", borderRadius: 6 }}
                               >
                                 {t.plate_number}{t.kbnl_truck_no ? ` · #${t.kbnl_truck_no}` : ""}
                               </li>
@@ -1429,40 +1218,40 @@ export default function StoreOfficerDashboard() {
                   )
                 }
                 {saleTruckPlate && (
-                  <div style={{ marginTop: 8, padding: "8px 12px", background: "#fefce8", borderRadius: 6, fontSize: fontSize.sm, color: "#ca8a04", fontWeight: 500, border: "1px solid #fde68a" }}>
+                  <div style={{ marginTop: 8, padding: "8px 12px", background: "#fefce8", borderRadius: 6, fontSize: FONT_SIZE.sm, color: "#ca8a04", fontWeight: 500, border: "1px solid #fde68a" }}>
                     Selected: {saleTruckPlate}
                   </div>
                 )}
               </div>
             )}
-      
+
             {/* Sale Date */}
             <div style={{ marginBottom: 16 }}>
-              <label style={{ display: "block", fontWeight: 600, marginBottom: 6, fontSize: fontSize.sm, color: "#475569" }}>Date of Sale</label>
+              <label style={{ display: "block", fontWeight: 600, marginBottom: 6, fontSize: FONT_SIZE.sm, color: "#475569" }}>Date of Sale</label>
               <ModernInput
                 type="date"
                 value={saleDate}
                 onChange={e => { setSaleDate(e.target.value); setSaleError("") }}
-                style={{ width: "100%", padding: "10px 12px", borderRadius: 6, border: "1px solid #e0e0e0", fontSize: fontSize.base, boxSizing: "border-box", minHeight: 44 }}
+                style={{ width: "100%", padding: "10px 12px", borderRadius: 6, border: "1px solid #e0e0e0", fontSize: FONT_SIZE.base, boxSizing: "border-box", minHeight: 44 }}
               />
             </div>
 
             {/* Payment Mode */}
             <div style={{ marginBottom: 24 }}>
-              <label style={{ display: "block", fontWeight: 600, marginBottom: 6, fontSize: fontSize.sm, color: "#475569" }}>Payment Mode *</label>
+              <label style={{ display: "block", fontWeight: 600, marginBottom: 6, fontSize: FONT_SIZE.sm, color: "#475569" }}>Payment Mode *</label>
               <ModernInput
                 as="select"
                 value={salePayment}
                 onChange={e => { setSalePayment(e.target.value); setSaleError("") }}
-                style={{ width: "100%", padding: "10px 12px", borderRadius: 6, border: "1px solid #e0e0e0", fontSize: fontSize.base, boxSizing: "border-box", minHeight: 44 }}
+                style={{ width: "100%", padding: "10px 12px", borderRadius: 6, border: "1px solid #e0e0e0", fontSize: FONT_SIZE.base, boxSizing: "border-box", minHeight: 44 }}
               >
                 <option value="">Select payment mode</option>
                 {PAYMENT_MODES.map(m => (<option key={m} value={m}>{m}</option>))}
               </ModernInput>
             </div>
-      
-            {saleError && <div style={{ padding: 12, background: "#fef2f2", borderLeft: "4px solid #ef4444", borderRadius: 4, marginBottom: 16, color: "#b91c1c", fontSize: fontSize.sm }}>{saleError}</div>}
-      
+
+            {saleError && <div style={{ padding: 12, background: "#fef2f2", borderLeft: "4px solid #ef4444", borderRadius: 4, marginBottom: 16, color: "#b91c1c", fontSize: FONT_SIZE.sm }}>{saleError}</div>}
+
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
               <button onClick={() => { 
                 setShowSaleModal(false)
@@ -1479,8 +1268,8 @@ export default function StoreOfficerDashboard() {
                 setSaleBroker(null)
                 setBrokerSearch("")
                 setSaleDate(new Date().toISOString().split("T")[0])
-              }} style={{ padding: "12px 16px", background: "white", border: "1px solid #cbd5e1", color: "#475569", borderRadius: 8, cursor: "pointer", fontWeight: 600, fontSize: fontSize.md, minHeight: 44 }}>Cancel</button>
-              <button onClick={handleLogSale} disabled={saleLoading} style={{ padding: "12px 16px", background: "#0070f3", color: "white", border: "none", borderRadius: 8, cursor: saleLoading ? "not-allowed" : "pointer", fontWeight: 600, fontSize: fontSize.md, opacity: saleLoading ? 0.7 : 1, minHeight: 44 }}>
+              }} style={{ padding: "12px 16px", background: "white", border: "1px solid #cbd5e1", color: "#475569", borderRadius: 8, cursor: "pointer", fontWeight: 600, fontSize: FONT_SIZE.md, minHeight: 44 }}>Cancel</button>
+              <button onClick={handleLogSale} disabled={saleLoading} style={{ padding: "12px 16px", background: "#0070f3", color: "white", border: "none", borderRadius: 8, cursor: saleLoading ? "not-allowed" : "pointer", fontWeight: 600, fontSize: FONT_SIZE.md, opacity: saleLoading ? 0.7 : 1, minHeight: 44 }}>
                 {saleLoading ? "Logging..." : `Log ${saleLines.filter(l => l.product).length} Sale(s)`}
               </button>
             </div>
@@ -1488,106 +1277,15 @@ export default function StoreOfficerDashboard() {
         </div>
       )}
 
-      {/* Profile Picture Upload Modal */}
-      {showPictureModal && (
-        <div onClick={() => { setShowPictureModal(false); setSelectedFile(null); setPicturePreview(null); setPictureError("") }} style={{ position: "fixed", inset: 0, background: "rgba(15, 23, 42, 0.6)", backdropFilter: "blur(4px)", display: "flex", alignItems: isMobile ? "flex-end" : "center", justifyContent: "center", zIndex: 100, padding: isMobile ? 0 : 24 }}>
-          <div onClick={e => e.stopPropagation()} style={{ background: "white", borderRadius: isMobile ? "20px 20px 0 0" : 12, padding: isMobile ? "28px 20px" : 32, width: "100%", maxWidth: 420, maxHeight: "90vh", overflowY: "auto", boxShadow: "0 25px 50px -12px rgba(0, 0, 0, 0.25)" }}>
-            <h3 style={{ margin: "0 0 6px 0", fontSize: fontSize.xl, fontWeight: 700, color: "#0f172a" }}>Update Profile Picture</h3>
-            <p style={{ margin: "0 0 20px 0", fontSize: fontSize.sm, color: "#64748b" }}>Click to upload or drag and drop. PNG, JPG up to 1MB.</p>
-
-            {picturePreview ? (
-              <div style={{ marginBottom: 20 }}>
-                <p style={{ margin: "0 0 8px 0", fontSize: fontSize.sm, fontWeight: 600, color: "#0f172a" }}>Preview</p>
-                <img
-                  src={picturePreview}
-                  alt="Preview"
-                  style={{
-                    width: "100%",
-                    height: 200,
-                    objectFit: "cover",
-                    borderRadius: 12,
-                    border: "2px solid #e2e8f0",
-                  }}
-                />
-              </div>
-            ) : (
-              <div
-                onClick={() => fileInputRef.current?.click()}
-                style={{
-                  border: "1.5px dashed #0070f3",
-                  borderRadius: 12,
-                  padding: "32px 16px",
-                  cursor: "pointer",
-                  background: "#f0f7ff",
-                  transition: "all 0.2s",
-                  marginBottom: 20,
-                  display: "flex",
-                  flexDirection: "column",
-                  alignItems: "center",
-                  justifyContent: "center",
-                }}
-                onMouseEnter={e => {
-                  e.currentTarget.style.background = "#e0efff"
-                  e.currentTarget.style.borderColor = "#0055d4"
-                }}
-                onMouseLeave={e => {
-                  e.currentTarget.style.background = "#f0f7ff"
-                  e.currentTarget.style.borderColor = "#0070f3"
-                }}
-              >
-                <Icon icon="mdi:cloud-upload" width={40} height={40} color="#0070f3" style={{ marginBottom: 8 }} />
-                <p style={{ margin: "0 0 4px 0", fontSize: fontSize.base, fontWeight: 600, color: "#0070f3" }}>
-                  Click to upload
-                </p>
-                <p style={{ margin: 0, fontSize: fontSize.sm, color: "#64748b" }}>
-                  or drag and drop
-                </p>
-              </div>
-            )}
-
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept="image/*"
-              onChange={handleFileSelect}
-              style={{ display: "none" }}
-            />
-
-            {pictureError && (
-              <div style={{ padding: 12, background: "#fef2f2", borderLeft: "4px solid #ef4444", borderRadius: 4, marginBottom: 16, color: "#b91c1c", fontSize: fontSize.sm }}>
-                {pictureError}
-              </div>
-            )}
-
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-              <button
-                onClick={() => { setShowPictureModal(false); setSelectedFile(null); setPicturePreview(null); setPictureError("") }}
-                style={{ padding: "12px 16px", background: "white", border: "1px solid #cbd5e1", color: "#475569", borderRadius: 8, cursor: "pointer", fontWeight: 600, fontSize: fontSize.md, minHeight: 44 }}
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleUploadPicture}
-                disabled={pictureLoading || !selectedFile}
-                style={{
-                  padding: "12px 16px",
-                  background: selectedFile ? "#0070f3" : "#bfdbfe",
-                  color: "white",
-                  border: "none",
-                  borderRadius: 8,
-                  cursor: selectedFile && !pictureLoading ? "pointer" : "not-allowed",
-                  fontWeight: 600,
-                  fontSize: fontSize.md,
-                  minHeight: 44,
-                  opacity: pictureLoading ? 0.7 : 1,
-                }}
-              >
-                {pictureLoading ? "Uploading..." : "Upload"}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <ProfilePictureUpload
+        isOpen={showPictureModal}
+        onClose={() => setShowPictureModal(false)}
+        userId={officer?.officer_id || ""}
+        table="store_officers"
+        idField="officer_id"
+        currentUrl={officer?.profile_picture_url}
+        onSuccess={(url) => setOfficer(prev => prev ? { ...prev, profile_picture_url: url } : prev)}
+      />
 
       <ReportModal
         isOpen={showReportModal}

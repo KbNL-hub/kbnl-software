@@ -1,5 +1,6 @@
 import { createClient } from "@supabase/supabase-js"
 import { NextRequest, NextResponse } from "next/server"
+import { requireRole, handleApiError } from "@/lib/auth-middleware"
 
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -8,10 +9,21 @@ const supabaseAdmin = createClient(
 
 const ALLOWED_TABLES = ["customer_payments", "broker_credits", "store_sales", "store_supply_confirmations", "store_supply_lines", "cash_expenses", "cash_expense_items", "cash_offices", "cash_deposits", "admin_office_assignments", "Customers", "Brokers", "store_stock", "store_officers"] as const
 
-async function authorizeUser(token: string) {
-  const { data: { user }, error } = await supabaseAdmin.auth.getUser(token)
-  if (error || !user) return null
-  return user
+const TABLE_ROLES: Record<string, string[]> = {
+  customer_payments: ["Broker", "Admin", "SuperAdmin", "DeskOfficer", "Supervisor"],
+  broker_credits: ["Broker", "Admin", "SuperAdmin", "DeskOfficer"],
+  store_sales: ["StoreOfficer", "Admin", "SuperAdmin", "Supervisor"],
+  store_supply_confirmations: ["StoreOfficer", "Admin", "SuperAdmin"],
+  store_supply_lines: ["StoreOfficer", "Admin", "SuperAdmin"],
+  cash_expenses: ["CashOfficer", "Admin", "SuperAdmin", "Broker", "CashAuthorizer"],
+  cash_expense_items: ["CashOfficer", "Admin", "SuperAdmin", "Broker"],
+  cash_offices: ["CashOfficer", "Admin", "SuperAdmin"],
+  cash_deposits: ["CashOfficer", "Admin", "SuperAdmin"],
+  admin_office_assignments: ["Admin", "SuperAdmin"],
+  Customers: ["Broker", "StoreOfficer", "Admin", "SuperAdmin", "DeskOfficer", "CashOfficer"],
+  Brokers: ["Broker", "Admin", "SuperAdmin", "DeskOfficer"],
+  store_stock: ["StoreOfficer", "Admin", "SuperAdmin"],
+  store_officers: ["StoreOfficer", "Admin", "SuperAdmin"],
 }
 
 function buildError(msg: string, status: number) {
@@ -30,12 +42,6 @@ function applyFilters(query: any, filters: Record<string, unknown>) {
 }
 
 export async function POST(req: NextRequest) {
-  const authHeader = req.headers.get("Authorization")
-  if (!authHeader?.startsWith("Bearer ")) return buildError("Unauthorized", 401)
-
-  const user = await authorizeUser(authHeader.slice(7))
-  if (!user) return buildError("Unauthorized", 401)
-
   try {
     const body = await req.json()
     const { action, table, data, filters, conflict } = body as {
@@ -53,6 +59,9 @@ export async function POST(req: NextRequest) {
     if (!["insert", "update", "delete", "upsert"].includes(action)) {
       return buildError(`Invalid action "${action}"`, 400)
     }
+
+    const rolesForTable = TABLE_ROLES[table] || ["Admin"]
+    await requireRole(req, rolesForTable)
 
     switch (action) {
       case "insert": {
@@ -106,7 +115,6 @@ export async function POST(req: NextRequest) {
       }
     }
   } catch (err) {
-    console.error("Mutation error", err)
-    return buildError("Internal server error", 500)
+    return handleApiError(err)
   }
 }

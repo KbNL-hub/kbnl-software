@@ -1,5 +1,7 @@
 "use client"
 
+import { FONT_SIZE } from "@/lib/constants"
+
 import React from "react"
 
 interface ReportModalProps {
@@ -12,16 +14,7 @@ interface ReportModalProps {
   isMobile?: boolean
 }
 
-const fontSize = {
-  xs: 12,
-  sm: 13,
-  base: 14,
-  md: 15,
-  lg: 16,
-  xl: 20,
-  "2xl": 24,
-  "3xl": 28,
-}
+
 
 export function ReportModal({ isOpen, onClose, title, subtitle, children, actions, isMobile }: ReportModalProps) {
   if (!isOpen) return null
@@ -70,8 +63,8 @@ export function ReportModal({ isOpen, onClose, title, subtitle, children, action
           {/* Header */}
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 20 }}>
             <div>
-              <h3 style={{ margin: 0, color: "#0f172a", fontSize: fontSize.xl, fontWeight: 700 }}>{title}</h3>
-              {subtitle && <p style={{ margin: "6px 0 0", color: "#64748b", fontSize: fontSize.sm }}>{subtitle}</p>}
+              <h3 style={{ margin: 0, color: "#0f172a", fontSize: FONT_SIZE.xl, fontWeight: 700 }}>{title}</h3>
+              {subtitle && <p style={{ margin: "6px 0 0", color: "#64748b", fontSize: FONT_SIZE.sm }}>{subtitle}</p>}
             </div>
             <button
               onClick={onClose}

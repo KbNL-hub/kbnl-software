@@ -1,5 +1,7 @@
 "use client"
 
+import { FONT_SIZE } from "@/lib/constants"
+
 import React from "react"
 
 interface QuickFilterPillsProps {
@@ -8,16 +10,7 @@ interface QuickFilterPillsProps {
   onSelect: (id: string) => void
 }
 
-const fontSize = {
-  xs: 12,
-  sm: 13,
-  base: 14,
-  md: 15,
-  lg: 16,
-  xl: 20,
-  "2xl": 24,
-  "3xl": 28,
-}
+
 
 export function QuickFilterPills({ options, selectedId, onSelect }: QuickFilterPillsProps) {
   return (
@@ -31,7 +24,7 @@ export function QuickFilterPills({ options, selectedId, onSelect }: QuickFilterP
             style={{
               padding: "8px 14px",
               borderRadius: 20,
-              fontSize: fontSize.sm,
+              fontSize: FONT_SIZE.sm,
               cursor: "pointer",
               border: isSelected ? "1.5px solid #0070f3" : "1.5px solid #e2e8f0",
               background: isSelected ? "#eff6ff" : "white",

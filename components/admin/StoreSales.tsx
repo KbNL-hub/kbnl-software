@@ -1,5 +1,7 @@
 "use client"
 
+import { FONT_SIZE, POLLING_INTERVAL } from "@/lib/constants"
+
 import { useState, useEffect } from "react"
 import { Icon } from "@iconify/react"
 import { supabase } from "@/lib/supabase"
@@ -44,16 +46,7 @@ function useBreakpoint() {
   return { isMobile, isDesktop }
 }
 
-const fontSize = {
-  xs: 12,
-  sm: 13,
-  base: 14,
-  md: 15,
-  lg: 16,
-  xl: 20,
-  "2xl": 24,
-  "3xl": 28
-}
+
 
 const getPillStyle = (filter: string, isActive: boolean) => {
   if (!isActive) {
@@ -146,7 +139,7 @@ export default function StoreSales() {
   }, [])
 
   useEffect(() => {
-    const interval = setInterval(() => loadAll(false), 30000)
+    const interval = setInterval(() => loadAll(false), POLLING_INTERVAL)
     return () => clearInterval(interval)
   }, [])
 
@@ -187,10 +180,10 @@ export default function StoreSales() {
     <div style={{ minHeight: "100vh", background: "#f8fafc", padding: isMobile ? "16px" : "32px", fontFamily: "'Inter', sans-serif" }}>
       <div style={{ display: "flex", flexDirection: isMobile ? "column" : "row", justifyContent: "space-between", alignItems: isMobile ? "flex-start" : "center", gap: 16, marginBottom: 24 }}>
         <div>
-          <h1 style={{ margin: 0, color: "#0f172a", fontSize: isMobile ? fontSize["2xl"] : fontSize["3xl"], fontWeight: 700, letterSpacing: "-0.5px" }}>
+          <h1 style={{ margin: 0, color: "#0f172a", fontSize: isMobile ? FONT_SIZE["2xl"] : FONT_SIZE["3xl"], fontWeight: 700, letterSpacing: "-0.5px" }}>
             Store Sales
           </h1>
-          <p style={{ margin: "8px 0 0", color: "#64748b", fontSize: fontSize.base }}>
+          <p style={{ margin: "8px 0 0", color: "#64748b", fontSize: FONT_SIZE.base }}>
             View all sales recorded by store officers.
           </p>
         </div>
@@ -207,7 +200,7 @@ export default function StoreSales() {
                   border: "none",
                   borderRadius: 6,
                   cursor: "pointer",
-                  fontSize: fontSize.xs,
+                  fontSize: FONT_SIZE.xs,
                   fontWeight: 600,
                   minWidth: 44,
                   height: 40,
@@ -229,7 +222,7 @@ export default function StoreSales() {
                   border: "none",
                   borderRadius: 6,
                   cursor: "pointer",
-                  fontSize: fontSize.xs,
+                  fontSize: FONT_SIZE.xs,
                   fontWeight: 600,
                   minWidth: 44,
                   height: 40,
@@ -253,7 +246,7 @@ export default function StoreSales() {
               border: "1px solid #e2e8f0",
               borderRadius: 8,
               cursor: "pointer",
-              fontSize: fontSize.xs,
+              fontSize: FONT_SIZE.xs,
               fontWeight: 500,
               minHeight: 40,
               minWidth: 40,
@@ -272,7 +265,7 @@ export default function StoreSales() {
       </div>
 
       {lastUpdated && (
-        <p style={{ margin: "0 0 20px 0", color: "#94a3b8", fontSize: fontSize.xs }}>
+        <p style={{ margin: "0 0 20px 0", color: "#94a3b8", fontSize: FONT_SIZE.xs }}>
           Updated: {lastUpdated.toLocaleTimeString()}
         </p>
       )}
@@ -288,7 +281,7 @@ export default function StoreSales() {
               style={{
                 padding: "8px 14px",
                 borderRadius: 24,
-                fontSize: fontSize.sm,
+                fontSize: FONT_SIZE.sm,
                 cursor: "pointer",
                 border: `1.5px solid ${pill.borderColor}`,
                 background: pill.bg,
@@ -314,7 +307,7 @@ export default function StoreSales() {
             padding: "8px 12px",
             borderRadius: 8,
             border: `1.5px solid ${filterProduct ? "#0070f3" : "#e2e8f0"}`,
-            fontSize: fontSize.sm,
+            fontSize: FONT_SIZE.sm,
             color: filterProduct ? "#0f172a" : "#94a3b8",
             background: "white",
             minHeight: 40,
@@ -336,7 +329,7 @@ export default function StoreSales() {
             padding: "8px 12px",
             borderRadius: 8,
             border: `1.5px solid ${filterStore ? "#0070f3" : "#e2e8f0"}`,
-            fontSize: fontSize.sm,
+            fontSize: FONT_SIZE.sm,
             color: filterStore ? "#0f172a" : "#94a3b8",
             background: "white",
             minHeight: 40,
@@ -369,7 +362,7 @@ export default function StoreSales() {
             }}
           >
             <Icon icon="mdi:calendar-outline" style={{ color: filterDateFrom ? "#0070f3" : "#888", flexShrink: 0 }} />
-            <span style={{ fontSize: fontSize.sm, color: filterDateFrom ? "#333" : "#aaa", flex: 1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+            <span style={{ fontSize: FONT_SIZE.sm, color: filterDateFrom ? "#333" : "#aaa", flex: 1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
               {dateLabel}
             </span>
             {filterDateFrom ? (
@@ -409,7 +402,7 @@ export default function StoreSales() {
                       border: "none",
                       borderRadius: 6,
                       cursor: "pointer",
-                      fontSize: fontSize.xs,
+                      fontSize: FONT_SIZE.xs,
                       fontWeight: "bold",
                       background: dateMode === m ? "#0070f3" : "#f0f0f0",
                       color: dateMode === m ? "white" : "#666",
@@ -423,27 +416,27 @@ export default function StoreSales() {
 
               {dateMode === "single" ? (
                 <div>
-                  <label style={{ display: "block", fontSize: fontSize.xs, color: "#888", marginBottom: 4 }}>Select date</label>
+                  <label style={{ display: "block", fontSize: FONT_SIZE.xs, color: "#888", marginBottom: 4 }}>Select date</label>
                   <input
                     type="date"
                     value={filterDateFrom}
                     onChange={e => { setFilterDateFrom(e.target.value); setDateDropOpen(false) }}
-                    style={{ width: "100%", padding: "8px 10px", border: "1px solid #e2e8f0", borderRadius: 6, fontSize: fontSize.sm, color: "#333", boxSizing: "border-box" }}
+                    style={{ width: "100%", padding: "8px 10px", border: "1px solid #e2e8f0", borderRadius: 6, fontSize: FONT_SIZE.sm, color: "#333", boxSizing: "border-box" }}
                     autoFocus
                   />
                 </div>
               ) : (
                 <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                   <div>
-                    <label style={{ display: "block", fontSize: fontSize.xs, color: "#888", marginBottom: 4 }}>From</label>
-                    <input type="date" value={filterDateFrom} onChange={e => setFilterDateFrom(e.target.value)} style={{ width: "100%", padding: "8px 10px", border: "1px solid #e2e8f0", borderRadius: 6, fontSize: fontSize.sm, color: "#333", boxSizing: "border-box" }} autoFocus />
+                    <label style={{ display: "block", fontSize: FONT_SIZE.xs, color: "#888", marginBottom: 4 }}>From</label>
+                    <input type="date" value={filterDateFrom} onChange={e => setFilterDateFrom(e.target.value)} style={{ width: "100%", padding: "8px 10px", border: "1px solid #e2e8f0", borderRadius: 6, fontSize: FONT_SIZE.sm, color: "#333", boxSizing: "border-box" }} autoFocus />
                   </div>
                   <div>
-                    <label style={{ display: "block", fontSize: fontSize.xs, color: "#888", marginBottom: 4 }}>To</label>
-                    <input type="date" value={filterDateTo} min={filterDateFrom || undefined} onChange={e => setFilterDateTo(e.target.value)} style={{ width: "100%", padding: "8px 10px", border: "1px solid #e2e8f0", borderRadius: 6, fontSize: fontSize.sm, color: "#333", boxSizing: "border-box" }} />
+                    <label style={{ display: "block", fontSize: FONT_SIZE.xs, color: "#888", marginBottom: 4 }}>To</label>
+                    <input type="date" value={filterDateTo} min={filterDateFrom || undefined} onChange={e => setFilterDateTo(e.target.value)} style={{ width: "100%", padding: "8px 10px", border: "1px solid #e2e8f0", borderRadius: 6, fontSize: FONT_SIZE.sm, color: "#333", boxSizing: "border-box" }} />
                   </div>
                   {filterDateFrom && filterDateTo && (
-                    <button onClick={() => setDateDropOpen(false)} style={{ padding: "8px 0", background: "#0070f3", color: "white", border: "none", borderRadius: 6, cursor: "pointer", fontSize: fontSize.sm, fontWeight: "bold" }}>
+                    <button onClick={() => setDateDropOpen(false)} style={{ padding: "8px 0", background: "#0070f3", color: "white", border: "none", borderRadius: 6, cursor: "pointer", fontSize: FONT_SIZE.sm, fontWeight: "bold" }}>
                       Apply Range
                     </button>
                   )}
@@ -463,7 +456,7 @@ export default function StoreSales() {
               border: "1px solid #fecaca",
               borderRadius: 8,
               cursor: "pointer",
-              fontSize: fontSize.xs,
+              fontSize: FONT_SIZE.xs,
               fontWeight: 600,
               minHeight: 40,
               display: "flex",
@@ -491,8 +484,8 @@ export default function StoreSales() {
           <div style={{ width: 64, height: 64, background: "#f1f5f9", borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 16px" }}>
             <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2"/></svg>
           </div>
-          <h3 style={{ margin: "0 0 8px", color: "#0f172a", fontSize: fontSize.xl, fontWeight: 600 }}>No sales found</h3>
-          <p style={{ color: "#64748b", fontSize: fontSize.base, margin: 0 }}>
+          <h3 style={{ margin: "0 0 8px", color: "#0f172a", fontSize: FONT_SIZE.xl, fontWeight: 600 }}>No sales found</h3>
+          <p style={{ color: "#64748b", fontSize: FONT_SIZE.base, margin: 0 }}>
             {filterStatus !== "All" || hasActiveFilters
               ? "No sales match the current filters."
               : "No sales have been recorded yet."}
@@ -506,33 +499,33 @@ export default function StoreSales() {
                 <div key={sale.sale_id} style={{ background: "white", borderRadius: 12, padding: 20, border: "1px solid #e2e8f0", boxShadow: "0 1px 3px rgba(0, 0, 0, 0.05)", transition: "all 0.2s ease" }} onMouseEnter={e => !isMobile && (e.currentTarget.style.boxShadow = "0 4px 12px rgba(0, 0, 0, 0.08)", e.currentTarget.style.borderColor = "#cbd5e1")} onMouseLeave={e => !isMobile && (e.currentTarget.style.boxShadow = "0 1px 3px rgba(0, 0, 0, 0.05)", e.currentTarget.style.borderColor = "#e2e8f0")}>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 16 }}>
                     <div>
-                      <h3 style={{ margin: 0, color: "#0f172a", fontSize: fontSize.lg, fontWeight: 700 }}>{sale.store_name}</h3>
-                      <p style={{ margin: "4px 0 0", color: "#64748b", fontSize: fontSize.sm }}>{sale.product}</p>
+                      <h3 style={{ margin: 0, color: "#0f172a", fontSize: FONT_SIZE.lg, fontWeight: 700 }}>{sale.store_name}</h3>
+                      <p style={{ margin: "4px 0 0", color: "#64748b", fontSize: FONT_SIZE.sm }}>{sale.product}</p>
                     </div>
-                    <span style={{ padding: "6px 12px", borderRadius: 16, fontSize: fontSize.xs, fontWeight: 600, background: sale.status === "Confirmed" ? "#f0fdf4" : sale.status === "Pending" ? "#fffbeb" : sale.status === "Rejected" ? "#fef2f2" : "#f1f5f9", color: sale.status === "Confirmed" ? "#16a34a" : sale.status === "Pending" ? "#f5a623" : sale.status === "Rejected" ? "#ef4444" : "#475569", border: `1.5px solid ${sale.status === "Confirmed" ? "#16a34a" : sale.status === "Pending" ? "#f5a623" : sale.status === "Rejected" ? "#ef4444" : "#cbd5e1"}`, whiteSpace: "nowrap" }}>
+                    <span style={{ padding: "6px 12px", borderRadius: 16, fontSize: FONT_SIZE.xs, fontWeight: 600, background: sale.status === "Confirmed" ? "#f0fdf4" : sale.status === "Pending" ? "#fffbeb" : sale.status === "Rejected" ? "#fef2f2" : "#f1f5f9", color: sale.status === "Confirmed" ? "#16a34a" : sale.status === "Pending" ? "#f5a623" : sale.status === "Rejected" ? "#ef4444" : "#475569", border: `1.5px solid ${sale.status === "Confirmed" ? "#16a34a" : sale.status === "Pending" ? "#f5a623" : sale.status === "Rejected" ? "#ef4444" : "#cbd5e1"}`, whiteSpace: "nowrap" }}>
                       {sale.status}
                     </span>
                   </div>
 
                   <div style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 16, paddingBottom: 16, borderBottom: "1px solid #f1f5f9" }}>
-                    <p style={{ margin: 0, fontSize: fontSize.sm, color: "#475569" }}><span style={{ color: "#94a3b8", width: 90, display: "inline-block" }}>Qty:</span> <span style={{ fontWeight: 500 }}>{sale.quantity} bags</span></p>
-                    <p style={{ margin: 0, fontSize: fontSize.sm, color: "#475569" }}><span style={{ color: "#94a3b8", width: 90, display: "inline-block" }}>Price/bag:</span> <span style={{ fontWeight: 500 }}>{sale.price_per_bag ? formatAmount(sale.price_per_bag) : "—"}</span></p>
-                    <p style={{ margin: 0, fontSize: fontSize.sm, color: "#475569" }}><span style={{ color: "#94a3b8", width: 90, display: "inline-block" }}>Total:</span> <span style={{ fontWeight: 600, color: "#059669" }}>{sale.total_amount ? formatAmount(sale.total_amount) : "—"}</span></p>
-                    <p style={{ margin: 0, fontSize: fontSize.sm, color: "#475569" }}><span style={{ color: "#94a3b8", width: 90, display: "inline-block" }}>Payment:</span> {sale.payment_mode}</p>
-                    <p style={{ margin: 0, fontSize: fontSize.sm, color: "#475569" }}><span style={{ color: "#94a3b8", width: 90, display: "inline-block" }}>Delivery:</span> {sale.delivery_mode}{sale.truck_plate ? ` (${sale.truck_plate})` : ""}</p>
+                    <p style={{ margin: 0, fontSize: FONT_SIZE.sm, color: "#475569" }}><span style={{ color: "#94a3b8", width: 90, display: "inline-block" }}>Qty:</span> <span style={{ fontWeight: 500 }}>{sale.quantity} bags</span></p>
+                    <p style={{ margin: 0, fontSize: FONT_SIZE.sm, color: "#475569" }}><span style={{ color: "#94a3b8", width: 90, display: "inline-block" }}>Price/bag:</span> <span style={{ fontWeight: 500 }}>{sale.price_per_bag ? formatAmount(sale.price_per_bag) : "—"}</span></p>
+                    <p style={{ margin: 0, fontSize: FONT_SIZE.sm, color: "#475569" }}><span style={{ color: "#94a3b8", width: 90, display: "inline-block" }}>Total:</span> <span style={{ fontWeight: 600, color: "#059669" }}>{sale.total_amount ? formatAmount(sale.total_amount) : "—"}</span></p>
+                    <p style={{ margin: 0, fontSize: FONT_SIZE.sm, color: "#475569" }}><span style={{ color: "#94a3b8", width: 90, display: "inline-block" }}>Payment:</span> {sale.payment_mode}</p>
+                    <p style={{ margin: 0, fontSize: FONT_SIZE.sm, color: "#475569" }}><span style={{ color: "#94a3b8", width: 90, display: "inline-block" }}>Delivery:</span> {sale.delivery_mode}{sale.truck_plate ? ` (${sale.truck_plate})` : ""}</p>
                     {sale.customer_name && (
-                      <p style={{ margin: 0, fontSize: fontSize.sm, color: "#475569" }}><span style={{ color: "#94a3b8", width: 90, display: "inline-block" }}>Customer:</span> {sale.customer_name}</p>
+                      <p style={{ margin: 0, fontSize: FONT_SIZE.sm, color: "#475569" }}><span style={{ color: "#94a3b8", width: 90, display: "inline-block" }}>Customer:</span> {sale.customer_name}</p>
                     )}
                     {sale.broker_name && (
-                      <p style={{ margin: 0, fontSize: fontSize.sm, color: "#475569" }}><span style={{ color: "#94a3b8", width: 90, display: "inline-block" }}>Broker:</span> {sale.broker_name}</p>
+                      <p style={{ margin: 0, fontSize: FONT_SIZE.sm, color: "#475569" }}><span style={{ color: "#94a3b8", width: 90, display: "inline-block" }}>Broker:</span> {sale.broker_name}</p>
                     )}
                   </div>
 
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                    <span style={{ color: "#94a3b8", fontSize: fontSize.xs }}>
+                    <span style={{ color: "#94a3b8", fontSize: FONT_SIZE.xs }}>
                       {new Date(sale.sold_at).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}
                     </span>
-                    <span style={{ color: "#94a3b8", fontSize: fontSize.xs }}>
+                    <span style={{ color: "#94a3b8", fontSize: FONT_SIZE.xs }}>
                       {new Date(sale.sold_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
                     </span>
                   </div>
@@ -546,37 +539,37 @@ export default function StoreSales() {
               <table style={{ width: "100%", borderCollapse: "collapse", textAlign: "left", minWidth: 900 }}>
                 <thead>
                   <tr style={{ background: "#f8fafc", borderBottom: "1px solid #e2e8f0" }}>
-                    <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: fontSize.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px" }}>Store</th>
-                    <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: fontSize.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px" }}>Product</th>
-                    <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: fontSize.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px" }}>Qty</th>
-                    <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: fontSize.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px" }}>Price/Bag</th>
-                    <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: fontSize.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px" }}>Total</th>
-                    <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: fontSize.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px" }}>Customer</th>
-                    <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: fontSize.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px" }}>Payment</th>
-                    <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: fontSize.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px" }}>Delivery</th>
-                    <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: fontSize.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px" }}>Broker</th>
-                    <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: fontSize.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px" }}>Status</th>
-                    <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: fontSize.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px" }}>Sale Date</th>
+                    <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: FONT_SIZE.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px" }}>Store</th>
+                    <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: FONT_SIZE.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px" }}>Product</th>
+                    <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: FONT_SIZE.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px" }}>Qty</th>
+                    <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: FONT_SIZE.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px" }}>Price/Bag</th>
+                    <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: FONT_SIZE.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px" }}>Total</th>
+                    <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: FONT_SIZE.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px" }}>Customer</th>
+                    <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: FONT_SIZE.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px" }}>Payment</th>
+                    <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: FONT_SIZE.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px" }}>Delivery</th>
+                    <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: FONT_SIZE.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px" }}>Broker</th>
+                    <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: FONT_SIZE.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px" }}>Status</th>
+                    <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: FONT_SIZE.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px" }}>Sale Date</th>
                   </tr>
                 </thead>
                 <tbody>
                   {filteredSales.map((sale) => (
                     <tr key={sale.sale_id} style={{ borderBottom: "1px solid #e2e8f0", transition: "background 0.2s ease" }} onMouseEnter={e => e.currentTarget.style.background = "#f8fafc"} onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
-                      <td style={{ padding: "12px 16px", color: "#0f172a", fontSize: fontSize.base, fontWeight: 600 }}>{sale.store_name}</td>
-                      <td style={{ padding: "12px 16px", color: "#0f172a", fontSize: fontSize.base }}>{sale.product}</td>
-                      <td style={{ padding: "12px 16px", color: "#0f172a", fontSize: fontSize.base, fontWeight: 500 }}>{sale.quantity}</td>
-                      <td style={{ padding: "12px 16px", color: "#64748b", fontSize: fontSize.sm }}>{formatAmount(sale.price_per_bag)}</td>
-                      <td style={{ padding: "12px 16px", color: "#059669", fontSize: fontSize.base, fontWeight: 600 }}>{formatAmount(sale.total_amount)}</td>
-                      <td style={{ padding: "12px 16px", color: "#64748b", fontSize: fontSize.sm }}>{sale.customer_name || "—"}</td>
-                      <td style={{ padding: "12px 16px", color: "#64748b", fontSize: fontSize.sm }}>{sale.payment_mode}</td>
-                      <td style={{ padding: "12px 16px", color: "#64748b", fontSize: fontSize.sm }}>{sale.delivery_mode}{sale.truck_plate ? ` (${sale.truck_plate})` : ""}</td>
-                      <td style={{ padding: "12px 16px", color: "#64748b", fontSize: fontSize.sm }}>{sale.broker_name || "—"}</td>
+                      <td style={{ padding: "12px 16px", color: "#0f172a", fontSize: FONT_SIZE.base, fontWeight: 600 }}>{sale.store_name}</td>
+                      <td style={{ padding: "12px 16px", color: "#0f172a", fontSize: FONT_SIZE.base }}>{sale.product}</td>
+                      <td style={{ padding: "12px 16px", color: "#0f172a", fontSize: FONT_SIZE.base, fontWeight: 500 }}>{sale.quantity}</td>
+                      <td style={{ padding: "12px 16px", color: "#64748b", fontSize: FONT_SIZE.sm }}>{formatAmount(sale.price_per_bag)}</td>
+                      <td style={{ padding: "12px 16px", color: "#059669", fontSize: FONT_SIZE.base, fontWeight: 600 }}>{formatAmount(sale.total_amount)}</td>
+                      <td style={{ padding: "12px 16px", color: "#64748b", fontSize: FONT_SIZE.sm }}>{sale.customer_name || "—"}</td>
+                      <td style={{ padding: "12px 16px", color: "#64748b", fontSize: FONT_SIZE.sm }}>{sale.payment_mode}</td>
+                      <td style={{ padding: "12px 16px", color: "#64748b", fontSize: FONT_SIZE.sm }}>{sale.delivery_mode}{sale.truck_plate ? ` (${sale.truck_plate})` : ""}</td>
+                      <td style={{ padding: "12px 16px", color: "#64748b", fontSize: FONT_SIZE.sm }}>{sale.broker_name || "—"}</td>
                       <td style={{ padding: "12px 16px" }}>
-                        <span style={{ padding: "6px 10px", borderRadius: 14, fontSize: fontSize.xs, fontWeight: 600, background: sale.status === "Confirmed" ? "#f0fdf4" : sale.status === "Pending" ? "#fffbeb" : sale.status === "Rejected" ? "#fef2f2" : "#f1f5f9", color: sale.status === "Confirmed" ? "#16a34a" : sale.status === "Pending" ? "#f5a623" : sale.status === "Rejected" ? "#ef4444" : "#475569", border: `1.5px solid ${sale.status === "Confirmed" ? "#16a34a" : sale.status === "Pending" ? "#f5a623" : sale.status === "Rejected" ? "#ef4444" : "#cbd5e1"}` }}>
+                        <span style={{ padding: "6px 10px", borderRadius: 14, fontSize: FONT_SIZE.xs, fontWeight: 600, background: sale.status === "Confirmed" ? "#f0fdf4" : sale.status === "Pending" ? "#fffbeb" : sale.status === "Rejected" ? "#fef2f2" : "#f1f5f9", color: sale.status === "Confirmed" ? "#16a34a" : sale.status === "Pending" ? "#f5a623" : sale.status === "Rejected" ? "#ef4444" : "#475569", border: `1.5px solid ${sale.status === "Confirmed" ? "#16a34a" : sale.status === "Pending" ? "#f5a623" : sale.status === "Rejected" ? "#ef4444" : "#cbd5e1"}` }}>
                           {sale.status}
                         </span>
                       </td>
-                      <td style={{ padding: "12px 16px", color: "#94a3b8", fontSize: fontSize.xs }}>{new Date(sale.sold_at).toLocaleString()}</td>
+                      <td style={{ padding: "12px 16px", color: "#94a3b8", fontSize: FONT_SIZE.xs }}>{new Date(sale.sold_at).toLocaleString()}</td>
                     </tr>
                   ))}
                 </tbody>

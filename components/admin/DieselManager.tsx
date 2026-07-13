@@ -1,5 +1,7 @@
 "use client"
 
+import { FONT_SIZE, POLLING_INTERVAL } from "@/lib/constants"
+
 import { useState, useEffect, useMemo } from "react"
 import ModernInput from "@/components/ModernInput"
 import { supabase } from "@/lib/supabase"
@@ -61,7 +63,7 @@ function useBreakpoint() {
   return { isMobile, isDesktop }
 }
 
-const fontSize = { xs: 12, sm: 13, base: 14, md: 15, lg: 16, xl: 20, "2xl": 24, "3xl": 28 }
+
 
 const atfStatusColor = (status: string) => {
   switch (status) {
@@ -98,12 +100,12 @@ export default function DieselManager() {
 
   const inputStyle: React.CSSProperties = {
     width: "100%", padding: "12px 14px", boxSizing: "border-box", borderRadius: 8,
-    border: "1px solid #e2e8f0", fontSize: fontSize.base, background: "white", color: "#0f172a", minHeight: 48, transition: "border-color 0.2s ease"
+    border: "1px solid #e2e8f0", fontSize: FONT_SIZE.base, background: "white", color: "#0f172a", minHeight: 48, transition: "border-color 0.2s ease"
   }
 
   useEffect(() => {
     fetchAll()
-    const interval = setInterval(fetchAll, 30000)
+    const interval = setInterval(fetchAll, POLLING_INTERVAL)
     return () => clearInterval(interval)
   }, [])
 
@@ -221,11 +223,11 @@ export default function DieselManager() {
       {/* Header */}
       <div style={{ display: "flex", flexDirection: isMobile ? "column" : "row", justifyContent: "space-between", alignItems: isMobile ? "stretch" : "flex-start", gap: 16, marginBottom: 32 }}>
         <div>
-          <h1 style={{ margin: 0, color: "#0f172a", fontSize: isMobile ? fontSize["2xl"] : fontSize["3xl"], fontWeight: 700, letterSpacing: "-0.5px" }}>
+          <h1 style={{ margin: 0, color: "#0f172a", fontSize: isMobile ? FONT_SIZE["2xl"] : FONT_SIZE["3xl"], fontWeight: 700, letterSpacing: "-0.5px" }}>
             Diesel Manager
           </h1>
           {lastUpdated && (
-            <p style={{ margin: "4px 0 0", color: "#64748b", fontSize: fontSize.sm }}>
+            <p style={{ margin: "4px 0 0", color: "#64748b", fontSize: FONT_SIZE.sm }}>
               Updated {lastUpdated.toLocaleTimeString()}
             </p>
           )}
@@ -234,18 +236,18 @@ export default function DieselManager() {
         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
           {atfs.length > 0 && (
             <div style={{ display: "flex", background: "white", border: "1px solid #e2e8f0", borderRadius: 8, padding: 4, gap: 0 }}>
-              <button onClick={() => setViewMode("card")} style={{ padding: "8px 12px", background: viewMode === "card" ? "#0070f3" : "transparent", color: viewMode === "card" ? "white" : "#64748b", border: "none", borderRadius: 6, cursor: "pointer", fontSize: fontSize.xs, fontWeight: 600, transition: "all 0.2s ease", minWidth: 44, height: 40, display: "flex", alignItems: "center", justifyContent: "center" }} title="Card view">
+              <button onClick={() => setViewMode("card")} style={{ padding: "8px 12px", background: viewMode === "card" ? "#0070f3" : "transparent", color: viewMode === "card" ? "white" : "#64748b", border: "none", borderRadius: 6, cursor: "pointer", fontSize: FONT_SIZE.xs, fontWeight: 600, transition: "all 0.2s ease", minWidth: 44, height: 40, display: "flex", alignItems: "center", justifyContent: "center" }} title="Card view">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M3 3h8v8H3V3zm10 0h8v8h-8V3zM3 13h8v8H3v-8zm10 0h8v8h-8v-8z" /></svg>
               </button>
-              <button onClick={() => setViewMode("table")} style={{ padding: "8px 12px", background: viewMode === "table" ? "#0070f3" : "transparent", color: viewMode === "table" ? "white" : "#64748b", border: "none", borderRadius: 6, cursor: "pointer", fontSize: fontSize.xs, fontWeight: 600, transition: "all 0.2s ease", minWidth: 44, height: 40, display: "flex", alignItems: "center", justifyContent: "center" }} title="Table view">
+              <button onClick={() => setViewMode("table")} style={{ padding: "8px 12px", background: viewMode === "table" ? "#0070f3" : "transparent", color: viewMode === "table" ? "white" : "#64748b", border: "none", borderRadius: 6, cursor: "pointer", fontSize: FONT_SIZE.xs, fontWeight: 600, transition: "all 0.2s ease", minWidth: 44, height: 40, display: "flex", alignItems: "center", justifyContent: "center" }} title="Table view">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M3 4h18v2H3V4zm0 7h18v2H3v-2zm0 7h18v2H3v-2z" /></svg>
               </button>
             </div>
           )}
-          <button onClick={fetchAll} style={{ padding: "10px 16px", background: "white", color: "#0070f3", border: "1px solid #e2e8f0", borderRadius: 8, cursor: "pointer", fontWeight: 500, fontSize: fontSize.sm, transition: "all 0.2s ease", display: "flex", alignItems: "center", gap: 6, minHeight: 40, height: 48 }} onMouseEnter={e => { e.currentTarget.style.background = "#f8fafc"; e.currentTarget.style.borderColor = "#0070f3" }} onMouseLeave={e => { e.currentTarget.style.background = "white"; e.currentTarget.style.borderColor = "#e2e8f0" }}>
+          <button onClick={fetchAll} style={{ padding: "10px 16px", background: "white", color: "#0070f3", border: "1px solid #e2e8f0", borderRadius: 8, cursor: "pointer", fontWeight: 500, fontSize: FONT_SIZE.sm, transition: "all 0.2s ease", display: "flex", alignItems: "center", gap: 6, minHeight: 40, height: 48 }} onMouseEnter={e => { e.currentTarget.style.background = "#f8fafc"; e.currentTarget.style.borderColor = "#0070f3" }} onMouseLeave={e => { e.currentTarget.style.background = "white"; e.currentTarget.style.borderColor = "#e2e8f0" }}>
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M23 4v6h-6" /><path d="M1 20v-6h6" /><path d="M3.51 9a9 9 0 0 1 14.85-3.36M20.49 15a9 9 0 0 1-14.85 3.36" /></svg>
           </button>
-          <button onClick={() => setShowDepositModal(true)} style={{ padding: "0 20px", background: "#0070f3", color: "white", border: "none", borderRadius: 8, cursor: "pointer", fontWeight: 600, fontSize: fontSize.sm, transition: "all 0.2s ease", minHeight: 48, flex: isMobile ? 1 : "none" }} onMouseEnter={e => !isMobile && (e.currentTarget.style.transform = "translateY(-1px)")} onMouseLeave={e => !isMobile && (e.currentTarget.style.transform = "translateY(0)")}>
+          <button onClick={() => setShowDepositModal(true)} style={{ padding: "0 20px", background: "#0070f3", color: "white", border: "none", borderRadius: 8, cursor: "pointer", fontWeight: 600, fontSize: FONT_SIZE.sm, transition: "all 0.2s ease", minHeight: 48, flex: isMobile ? 1 : "none" }} onMouseEnter={e => !isMobile && (e.currentTarget.style.transform = "translateY(-1px)")} onMouseLeave={e => !isMobile && (e.currentTarget.style.transform = "translateY(0)")}>
             + Top Up
           </button>
         </div>
@@ -260,8 +262,8 @@ export default function DieselManager() {
               {low && <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 4, background: "#ef4444" }} />}
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
                 <div>
-                  <p style={{ margin: "0 0 4px", fontSize: fontSize.sm, color: "#64748b", fontWeight: 500 }}>{c.company_name}</p>
-                  <p style={{ margin: 0, fontWeight: 700, fontSize: fontSize.xl, color: "#0f172a" }}>
+                  <p style={{ margin: "0 0 4px", fontSize: FONT_SIZE.sm, color: "#64748b", fontWeight: 500 }}>{c.company_name}</p>
+                  <p style={{ margin: 0, fontWeight: 700, fontSize: FONT_SIZE.xl, color: "#0f172a" }}>
                     ₦{c.current_balance.toLocaleString()}
                   </p>
                 </div>
@@ -269,7 +271,7 @@ export default function DieselManager() {
                   <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" /></svg>
                 </div>
               </div>
-              {low && <p style={{ margin: "12px 0 0", fontSize: fontSize.xs, color: "#ef4444", fontWeight: 500, display: "flex", alignItems: "center", gap: 4 }}><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0zM12 9v4M12 17h.01" /></svg> Balance below threshold</p>}
+              {low && <p style={{ margin: "12px 0 0", fontSize: FONT_SIZE.xs, color: "#ef4444", fontWeight: 500, display: "flex", alignItems: "center", gap: 4 }}><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0zM12 9v4M12 17h.01" /></svg> Balance below threshold</p>}
             </div>
           )
         })}
@@ -294,7 +296,7 @@ export default function DieselManager() {
               style={{
                 padding: "6px 14px",
                 borderRadius: 24,
-                fontSize: fontSize.xs,
+                fontSize: FONT_SIZE.xs,
                 cursor: "pointer",
                 border: `1px solid ${colorProps.border}`,
                 background: colorProps.bg,
@@ -320,8 +322,8 @@ export default function DieselManager() {
           <div style={{ width: 64, height: 64, background: "#f1f5f9", borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 16px" }}>
             <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><polyline points="14 2 14 8 20 8" /><line x1="16" y1="13" x2="8" y2="13" /><line x1="16" y1="17" x2="8" y2="17" /><polyline points="10 9 9 9 8 9" /></svg>
           </div>
-          <h3 style={{ margin: "0 0 8px", color: "#0f172a", fontSize: fontSize.xl, fontWeight: 600 }}>No {filter.toLowerCase()} ATFs</h3>
-          <p style={{ color: "#64748b", fontSize: fontSize.base }}>No fuel requests match this status.</p>
+          <h3 style={{ margin: "0 0 8px", color: "#0f172a", fontSize: FONT_SIZE.xl, fontWeight: 600 }}>No {filter.toLowerCase()} ATFs</h3>
+          <p style={{ color: "#64748b", fontSize: FONT_SIZE.base }}>No fuel requests match this status.</p>
         </div>
       ) : (
         <>
@@ -334,38 +336,38 @@ export default function DieselManager() {
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 16 }}>
                       <div>
                         {atf.atf_code
-                          ? <p style={{ margin: 0, fontWeight: 700, fontSize: fontSize.lg, fontFamily: "monospace", letterSpacing: 1, color: "#0f172a" }}>{atf.atf_code}</p>
-                          : <p style={{ margin: 0, fontSize: fontSize.sm, color: "#94a3b8", fontStyle: "italic" }}>Pending Code</p>
+                          ? <p style={{ margin: 0, fontWeight: 700, fontSize: FONT_SIZE.lg, fontFamily: "monospace", letterSpacing: 1, color: "#0f172a" }}>{atf.atf_code}</p>
+                          : <p style={{ margin: 0, fontSize: FONT_SIZE.sm, color: "#94a3b8", fontStyle: "italic" }}>Pending Code</p>
                         }
-                        <p style={{ margin: "4px 0 0", fontSize: fontSize.sm, color: "#64748b" }}>{atf.plate_number}{atf.kbnl_truck_no ? ` · #${atf.kbnl_truck_no}` : ""}</p>
-                        <p style={{ margin: "4px 0 0", fontSize: fontSize.xs, color: "#94a3b8" }}>{new Date(atf.requested_at).toLocaleString()}</p>
+                        <p style={{ margin: "4px 0 0", fontSize: FONT_SIZE.sm, color: "#64748b" }}>{atf.plate_number}{atf.kbnl_truck_no ? ` · #${atf.kbnl_truck_no}` : ""}</p>
+                        <p style={{ margin: "4px 0 0", fontSize: FONT_SIZE.xs, color: "#94a3b8" }}>{new Date(atf.requested_at).toLocaleString()}</p>
                       </div>
-                      <span style={{ padding: "4px 10px", borderRadius: 6, fontSize: fontSize.xs, background: bg, color, border: `1px solid ${border}`, fontWeight: 600 }}>{atf.atf_status}</span>
+                      <span style={{ padding: "4px 10px", borderRadius: 6, fontSize: FONT_SIZE.xs, background: bg, color, border: `1px solid ${border}`, fontWeight: 600 }}>{atf.atf_status}</span>
                     </div>
 
                     <div style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 16, paddingBottom: 16, borderBottom: "1px solid #f1f5f9" }}>
-                      <p style={{ margin: 0, fontSize: fontSize.sm, color: "#475569" }}><span style={{ color: "#94a3b8", width: 60, display: "inline-block" }}>Driver:</span> <span style={{ fontWeight: 500 }}>{atf.driver_name}</span></p>
-                      <p style={{ margin: 0, fontSize: fontSize.sm, color: "#475569" }}><span style={{ color: "#94a3b8", width: 60, display: "inline-block" }}>Officer:</span> {atf.officer_name}</p>
-                      <p style={{ margin: 0, fontSize: fontSize.sm, color: "#475569" }}><span style={{ color: "#94a3b8", width: 60, display: "inline-block" }}>Station:</span> {atf.company_name}</p>
+                      <p style={{ margin: 0, fontSize: FONT_SIZE.sm, color: "#475569" }}><span style={{ color: "#94a3b8", width: 60, display: "inline-block" }}>Driver:</span> <span style={{ fontWeight: 500 }}>{atf.driver_name}</span></p>
+                      <p style={{ margin: 0, fontSize: FONT_SIZE.sm, color: "#475569" }}><span style={{ color: "#94a3b8", width: 60, display: "inline-block" }}>Officer:</span> {atf.officer_name}</p>
+                      <p style={{ margin: 0, fontSize: FONT_SIZE.sm, color: "#475569" }}><span style={{ color: "#94a3b8", width: 60, display: "inline-block" }}>Station:</span> {atf.company_name}</p>
                     </div>
 
                     <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
                       <div style={{ flex: 1, background: "#f8fafc", borderRadius: 8, padding: "10px 12px" }}>
-                        <p style={{ margin: 0, fontSize: fontSize.xs, color: "#64748b" }}>Volume</p>
-                        <p style={{ margin: "2px 0 0", fontWeight: 600, color: "#0f172a", fontSize: fontSize.md }}>{atf.litres}L</p>
+                        <p style={{ margin: 0, fontSize: FONT_SIZE.xs, color: "#64748b" }}>Volume</p>
+                        <p style={{ margin: "2px 0 0", fontWeight: 600, color: "#0f172a", fontSize: FONT_SIZE.md }}>{atf.litres}L</p>
                       </div>
                       {atf.rate_per_litre && (
                         <div style={{ flex: 1, background: "#f8fafc", borderRadius: 8, padding: "10px 12px" }}>
-                          <p style={{ margin: 0, fontSize: fontSize.xs, color: "#64748b" }}>Rate/L</p>
-                          <p style={{ margin: "2px 0 0", fontWeight: 600, color: "#0f172a", fontSize: fontSize.md }}>₦{atf.rate_per_litre.toLocaleString()}</p>
+                          <p style={{ margin: 0, fontSize: FONT_SIZE.xs, color: "#64748b" }}>Rate/L</p>
+                          <p style={{ margin: "2px 0 0", fontWeight: 600, color: "#0f172a", fontSize: FONT_SIZE.md }}>₦{atf.rate_per_litre.toLocaleString()}</p>
                         </div>
                       )}
                       {atf.total_amount && (
                         <div style={{ flex: 1, background: "#f0f7ff", borderRadius: 8, padding: "10px 12px", border: "1px solid #e0f2fe" }}>
-                          <p style={{ margin: 0, fontSize: fontSize.xs, color: "#0284c7" }}>Total</p>
-                          <p style={{ margin: "2px 0 0", fontWeight: 700, color: "#0369a1", fontSize: fontSize.md }}>₦{atf.total_amount.toLocaleString()}</p>
+                          <p style={{ margin: 0, fontSize: FONT_SIZE.xs, color: "#0284c7" }}>Total</p>
+                          <p style={{ margin: "2px 0 0", fontWeight: 700, color: "#0369a1", fontSize: FONT_SIZE.md }}>₦{atf.total_amount.toLocaleString()}</p>
                           {atf.atf_status === "Confirmed" && balanceMap[atf.request_id] !== undefined && (
-                            <span style={{ marginTop: 4, fontSize: fontSize.xs, fontWeight: 600, color: "#16a34a", background: "#f0fdf4", padding: "2px 8px", borderRadius: 4, display: "inline-block" }}>
+                            <span style={{ marginTop: 4, fontSize: FONT_SIZE.xs, fontWeight: 600, color: "#16a34a", background: "#f0fdf4", padding: "2px 8px", borderRadius: 4, display: "inline-block" }}>
                               Balance after: ₦{balanceMap[atf.request_id].toLocaleString()}
                             </span>
                           )}
@@ -375,7 +377,7 @@ export default function DieselManager() {
 
                     {atf.invalidation_reason && (
                       <div style={{ marginTop: 16, padding: "10px 12px", background: "#fef2f2", border: "1px solid #fecaca", borderRadius: 8 }}>
-                        <p style={{ margin: 0, fontSize: fontSize.sm, color: "#b91c1c" }}><strong>Reason:</strong> {atf.invalidation_reason}</p>
+                        <p style={{ margin: 0, fontSize: FONT_SIZE.sm, color: "#b91c1c" }}><strong>Reason:</strong> {atf.invalidation_reason}</p>
                       </div>
                     )}
                   </div>
@@ -389,12 +391,12 @@ export default function DieselManager() {
               <table style={{ width: "100%", borderCollapse: "collapse", textAlign: "left", minWidth: 800 }}>
                 <thead>
                   <tr style={{ background: "#f8fafc", borderBottom: "1px solid #e2e8f0" }}>
-                    <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: fontSize.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px" }}>ATF Code</th>
-                    <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: fontSize.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px" }}>Truck & Driver</th>
-                    <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: fontSize.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px" }}>Station</th>
-                    <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: fontSize.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px", textAlign: "right" }}>Volume</th>
-                    <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: fontSize.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px", textAlign: "right" }}>Amount</th>
-                    <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: fontSize.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px" }}>Status</th>
+                    <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: FONT_SIZE.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px" }}>ATF Code</th>
+                    <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: FONT_SIZE.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px" }}>Truck & Driver</th>
+                    <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: FONT_SIZE.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px" }}>Station</th>
+                    <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: FONT_SIZE.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px", textAlign: "right" }}>Volume</th>
+                    <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: FONT_SIZE.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px", textAlign: "right" }}>Amount</th>
+                    <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: FONT_SIZE.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px" }}>Status</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -402,24 +404,24 @@ export default function DieselManager() {
                     const { bg, color, border } = atfStatusColor(atf.atf_status)
                     return (
                       <tr key={atf.request_id} style={{ borderBottom: idx === filteredATFs.length - 1 ? "none" : "1px solid #e2e8f0", transition: "background 0.2s ease" }} onMouseEnter={e => e.currentTarget.style.background = "#f8fafc"} onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
-                        <td style={{ padding: "12px 16px", color: "#0f172a", fontSize: fontSize.sm, fontFamily: "monospace", fontWeight: 600 }}>
+                        <td style={{ padding: "12px 16px", color: "#0f172a", fontSize: FONT_SIZE.sm, fontFamily: "monospace", fontWeight: 600 }}>
                           {atf.atf_code || <span style={{ color: "#94a3b8", fontStyle: "italic", fontWeight: "normal" }}>Pending</span>}
                         </td>
                         <td style={{ padding: "12px 16px" }}>
-                          <p style={{ margin: 0, color: "#0f172a", fontSize: fontSize.sm, fontWeight: 500 }}>{atf.plate_number}{atf.kbnl_truck_no ? ` (#${atf.kbnl_truck_no})` : ""}</p>
-                          <p style={{ margin: "2px 0 0", color: "#64748b", fontSize: fontSize.xs }}>{atf.driver_name}</p>
+                          <p style={{ margin: 0, color: "#0f172a", fontSize: FONT_SIZE.sm, fontWeight: 500 }}>{atf.plate_number}{atf.kbnl_truck_no ? ` (#${atf.kbnl_truck_no})` : ""}</p>
+                          <p style={{ margin: "2px 0 0", color: "#64748b", fontSize: FONT_SIZE.xs }}>{atf.driver_name}</p>
                         </td>
-                        <td style={{ padding: "12px 16px", color: "#475569", fontSize: fontSize.sm }}>
+                        <td style={{ padding: "12px 16px", color: "#475569", fontSize: FONT_SIZE.sm }}>
                           {atf.company_name}
                         </td>
-                        <td style={{ padding: "12px 16px", color: "#0f172a", fontSize: fontSize.sm, textAlign: "right", fontWeight: 500 }}>
+                        <td style={{ padding: "12px 16px", color: "#0f172a", fontSize: FONT_SIZE.sm, textAlign: "right", fontWeight: 500 }}>
                           {atf.litres}L
                         </td>
-                        <td style={{ padding: "12px 16px", color: "#0f172a", fontSize: fontSize.sm, textAlign: "right", fontWeight: 500 }}>
+                        <td style={{ padding: "12px 16px", color: "#0f172a", fontSize: FONT_SIZE.sm, textAlign: "right", fontWeight: 500 }}>
                           {atf.total_amount ? `₦${atf.total_amount.toLocaleString()}` : "—"}
                         </td>
                         <td style={{ padding: "12px 16px" }}>
-                          <span style={{ padding: "4px 10px", borderRadius: 6, fontSize: fontSize.xs, fontWeight: 500, background: bg, color, border: `1px solid ${border}`, whiteSpace: "nowrap" }}>
+                          <span style={{ padding: "4px 10px", borderRadius: 6, fontSize: FONT_SIZE.xs, fontWeight: 500, background: bg, color, border: `1px solid ${border}`, whiteSpace: "nowrap" }}>
                             {atf.atf_status}
                           </span>
                         </td>
@@ -440,13 +442,13 @@ export default function DieselManager() {
           <div style={{ background: "white", borderRadius: isMobile ? "20px 20px 0 0" : 12, padding: isMobile ? "28px 20px" : 32, width: "100%", maxWidth: 420, maxHeight: "90vh", overflowY: "auto", boxShadow: "0 25px 50px -12px rgba(0, 0, 0, 0.25)", animation: "slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1)" }}>
             
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24 }}>
-              <h3 style={{ margin: 0, color: "#0f172a", fontSize: fontSize.xl, fontWeight: 700 }}>Top Up Fuel Balance</h3>
+              <h3 style={{ margin: 0, color: "#0f172a", fontSize: FONT_SIZE.xl, fontWeight: 700 }}>Top Up Fuel Balance</h3>
               <button onClick={() => { setShowDepositModal(false); setDepositCompanyId(""); setDepositAmount(""); setDepositNote(""); setDepositError("") }} style={{ background: "none", border: "none", color: "#94a3b8", cursor: "pointer", padding: 4 }}><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg></button>
             </div>
 
             <div style={{ display: "flex", flexDirection: "column", gap: 14, marginBottom: 24 }}>
               <div>
-                <label style={{ display: "block", marginBottom: 6, color: "#475569", fontSize: fontSize.sm, fontWeight: 500 }}>Fuel Company *</label>
+                <label style={{ display: "block", marginBottom: 6, color: "#475569", fontSize: FONT_SIZE.sm, fontWeight: 500 }}>Fuel Company *</label>
                 <ModernInput
                   as="select"
                   value={depositCompanyId}
@@ -458,7 +460,7 @@ export default function DieselManager() {
                 </ModernInput>
               </div>
               <div>
-                <label style={{ display: "block", marginBottom: 6, color: "#475569", fontSize: fontSize.sm, fontWeight: 500 }}>Amount (₦) *</label>
+                <label style={{ display: "block", marginBottom: 6, color: "#475569", fontSize: FONT_SIZE.sm, fontWeight: 500 }}>Amount (₦) *</label>
                 <ModernInput
                   type="text"
                   inputMode="numeric"
@@ -470,7 +472,7 @@ export default function DieselManager() {
                 />
               </div>
               <div>
-                <label style={{ display: "block", marginBottom: 6, color: "#475569", fontSize: fontSize.sm, fontWeight: 500 }}>Note (optional)</label>
+                <label style={{ display: "block", marginBottom: 6, color: "#475569", fontSize: FONT_SIZE.sm, fontWeight: 500 }}>Note (optional)</label>
                 <ModernInput
                   type="text"
                   placeholder="e.g. Monthly top-up"
@@ -482,13 +484,13 @@ export default function DieselManager() {
               </div>
             </div>
 
-            {depositError && <div style={{ padding: 12, background: "#fef2f2", borderLeft: "4px solid #ef4444", borderRadius: 4, marginBottom: 24, color: "#b91c1c", fontSize: fontSize.sm }}>{depositError}</div>}
+            {depositError && <div style={{ padding: 12, background: "#fef2f2", borderLeft: "4px solid #ef4444", borderRadius: 4, marginBottom: 24, color: "#b91c1c", fontSize: FONT_SIZE.sm }}>{depositError}</div>}
 
             <div style={{ display: "flex", gap: 10 }}>
-              <button onClick={() => { setShowDepositModal(false); setDepositCompanyId(""); setDepositAmount(""); setDepositNote(""); setDepositError("") }} style={{ flex: 1, padding: "12px 16px", background: "white", color: "#0f172a", border: "1px solid #cbd5e1", borderRadius: 8, cursor: "pointer", fontWeight: 600, fontSize: fontSize.md, minHeight: 44 }}>
+              <button onClick={() => { setShowDepositModal(false); setDepositCompanyId(""); setDepositAmount(""); setDepositNote(""); setDepositError("") }} style={{ flex: 1, padding: "12px 16px", background: "white", color: "#0f172a", border: "1px solid #cbd5e1", borderRadius: 8, cursor: "pointer", fontWeight: 600, fontSize: FONT_SIZE.md, minHeight: 44 }}>
                 Cancel
               </button>
-              <button onClick={handleDeposit} disabled={depositLoading || !canEdit} style={{ flex: 1, padding: "12px 16px", background: depositLoading || !canEdit ? "#94a3b8" : "#0070f3", color: "white", border: "none", borderRadius: 8, cursor: depositLoading || !canEdit ? "not-allowed" : "pointer", fontWeight: 600, fontSize: fontSize.md, minHeight: 44, opacity: depositLoading || !canEdit ? 0.7 : 1 }}>
+              <button onClick={handleDeposit} disabled={depositLoading || !canEdit} style={{ flex: 1, padding: "12px 16px", background: depositLoading || !canEdit ? "#94a3b8" : "#0070f3", color: "white", border: "none", borderRadius: 8, cursor: depositLoading || !canEdit ? "not-allowed" : "pointer", fontWeight: 600, fontSize: FONT_SIZE.md, minHeight: 44, opacity: depositLoading || !canEdit ? 0.7 : 1 }}>
                 {depositLoading ? "Adding..." : "Top Up"}
               </button>
             </div>

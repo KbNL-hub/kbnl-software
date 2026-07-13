@@ -26,6 +26,7 @@ type Stop = {
   plate_number: string
   material_centre: string
   atc: string | null
+  product: string
   confirmed: boolean
   disputed: boolean
 }
@@ -47,6 +48,10 @@ export default function MyStops() {
   const [disputeReason, setDisputeReason] = useState("")
   const [message, setMessage] = useState("")
   const [submitting, setSubmitting] = useState(false)
+  const [companyPriceMap, setCompanyPriceMap] = useState<Record<string, number>>({})
+  const [soldAtDifferentPrice, setSoldAtDifferentPrice] = useState(false)
+  const [discount, setDiscount] = useState("")
+  const [salePrice, setSalePrice] = useState("")
 
   useEffect(() => { initBroker() }, [])
 
@@ -54,6 +59,10 @@ export default function MyStops() {
     const { data: { session } } = await supabase.auth.getSession()
     if (!session) { window.location.href = "/login"; return }
     setBrokerId(session.user.id)
+    const { data: priceData } = await supabase.from("company_prices").select("*")
+    const priceMap: Record<string, number> = {}
+    for (const p of (priceData || [])) priceMap[p.product] = p.price
+    setCompanyPriceMap(priceMap)
     await fetchStops(session.user.id)
     setLoading(false)
   }
@@ -63,7 +72,7 @@ export default function MyStops() {
       .from("Stops")
       .select(`
         stop_id, trip_id, customer_id, quantity_offloaded, stop_location, stop_time, confirmed, disputed,
-        Trips!inner(plate_number, material_centre, ATC),
+        Trips!inner(plate_number, material_centre, ATC, product),
         Customers(full_name)
       `)
       .eq("broker_id", bId)
@@ -83,6 +92,7 @@ export default function MyStops() {
       plate_number: stop.Trips?.plate_number ?? "Unknown",
       material_centre: stop.Trips?.material_centre ?? "",
       atc: stop.Trips?.ATC ?? null,
+      product: stop.Trips?.product ?? "",
       customer_name: stop.Customers?.full_name ?? "Not provided",
     }))
 
@@ -90,11 +100,56 @@ export default function MyStops() {
   }
 
   function openConfirmModal(stop: Stop) {
-    setSelectedStop(stop); setSelectedCustomer(null); setPricePerBag(""); setMessage("")
+    const cp = companyPriceMap[stop.product]
+    setSelectedStop(stop)
+    setSelectedCustomer(null)
+    setPricePerBag(cp ? formatAmount(cp.toString()) : "")
+    setSoldAtDifferentPrice(false)
+    setDiscount("")
+    setSalePrice("")
+    setMessage("")
   }
 
   function closeModal() {
-    setSelectedStop(null); setSelectedCustomer(null); setPricePerBag(""); setMessage("")
+    setSelectedStop(null); setSelectedCustomer(null); setPricePerBag(""); setMessage(""); setSoldAtDifferentPrice(false); setDiscount(""); setSalePrice("")
+  }
+
+  function handleDiscountChange(raw: string) {
+    const digits = raw.replace(/[^0-9]/g, "")
+    if (digits === "") { setDiscount(""); setSalePrice(""); setPricePerBag(""); return }
+    const discountVal = parseInt(digits)
+    const cp = selectedStop ? companyPriceMap[selectedStop.product] ?? 0 : 0
+    const saleAmount = Math.max(0, cp - discountVal)
+    setDiscount(formatAmount(discountVal.toString()))
+    setSalePrice(formatAmount(saleAmount.toString()))
+    setPricePerBag(formatAmount(saleAmount.toString()))
+    setMessage("")
+  }
+
+  function handleSalePriceChange(raw: string) {
+    const digits = raw.replace(/[^0-9]/g, "")
+    if (digits === "") { setSalePrice(""); setDiscount(""); setPricePerBag(""); return }
+    const saleVal = parseInt(digits)
+    const cp = selectedStop ? companyPriceMap[selectedStop.product] ?? 0 : 0
+    const discountAmount = Math.max(0, cp - saleVal)
+    setSalePrice(formatAmount(saleVal.toString()))
+    setDiscount(formatAmount(discountAmount.toString()))
+    setPricePerBag(formatAmount(saleVal.toString()))
+    setMessage("")
+  }
+
+  function handleToggleDifferentPrice(checked: boolean) {
+    setSoldAtDifferentPrice(checked)
+    if (!checked) {
+      const cp = selectedStop ? companyPriceMap[selectedStop.product] ?? 0 : 0
+      setDiscount("")
+      setSalePrice("")
+      setPricePerBag(cp ? formatAmount(cp.toString()) : "")
+    } else {
+      const cp = selectedStop ? companyPriceMap[selectedStop.product] ?? 0 : 0
+      setDiscount("0")
+      setSalePrice(cp ? formatAmount(cp.toString()) : "")
+    }
   }
 
   async function handleDispute() {
@@ -348,14 +403,45 @@ export default function MyStops() {
             </div>
 
             <div style={{ marginBottom: 16 }}>
-              <label style={labelStyle}>Correct Customer (if different)</label>
+              <label style={labelStyle}>Correct Customer (if not provided)</label>
               <CustomerSelector onSelect={(c) => setSelectedCustomer(c)} />
             </div>
 
-            <div style={{ marginBottom: 24 }}>
+            {companyPriceMap[selectedStop.product] !== undefined && (
+              <div style={{ marginBottom: 12, padding: "8px 12px", background: "#f0fff4", borderRadius: 8, border: "1px solid #00aa00", display: "flex", alignItems: "center", gap: 8 }}>
+                <Icon icon="mdi:information" width={16} color="#00aa00" />
+                <span style={{ fontSize: 13, color: "#00aa00" }}>Company price: <strong>₦{companyPriceMap[selectedStop.product].toLocaleString()}</strong>/bag</span>
+              </div>
+            )}
+
+            <div style={{ marginBottom: 12 }}>
               <label style={labelStyle}>Price Per Bag (₦) *</label>
               <ModernInput type="text" inputMode="numeric" placeholder="e.g. 10,500" value={pricePerBag} onChange={(e) => { setPricePerBag(formatAmount(e.target.value)); setMessage("") }} style={inputStyle} />
             </div>
+
+            {companyPriceMap[selectedStop.product] !== undefined && (
+              <>
+                <div style={{ marginBottom: 16 }}>
+                  <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", fontWeight: 500, fontSize: 13, color: "#444" }}>
+                    <input type="checkbox" checked={soldAtDifferentPrice} onChange={e => handleToggleDifferentPrice(e.target.checked)} style={{ width: 16, height: 16, cursor: "pointer" }} />
+                    Sold at a different price?
+                  </label>
+                </div>
+
+                {soldAtDifferentPrice && (
+                  <div style={{ display: "flex", gap: 10, marginBottom: 16 }}>
+                    <div style={{ flex: 1 }}>
+                      <label style={labelStyle}>Discount (₦)</label>
+                      <ModernInput type="text" inputMode="numeric" placeholder="0" value={discount} onChange={e => handleDiscountChange(e.target.value)} style={inputStyle} />
+                    </div>
+                    <div style={{ flex: 1 }}>
+                      <label style={labelStyle}>Sale Price (₦)</label>
+                      <ModernInput type="text" inputMode="numeric" placeholder="Sale price" value={salePrice} onChange={e => handleSalePriceChange(e.target.value)} style={inputStyle} />
+                    </div>
+                  </div>
+                )}
+              </>
+            )}
 
             {message && <div style={{ display: "flex", alignItems: "center", gap: 6, color: "#ff4444", marginBottom: 14, fontSize: 13 }}><Icon icon="mdi:alert-circle" width={15} />{message}</div>}
 

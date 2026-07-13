@@ -1,5 +1,7 @@
 "use client"
 
+import { FONT_SIZE } from "@/lib/constants"
+
 import { useState, useEffect, useRef } from "react"
 import { supabase } from "@/lib/supabase"
 import { apiMutate } from "@/lib/api-mutation"
@@ -40,16 +42,7 @@ function useBreakpoint() {
 }
 
 // Fixed typography scale
-const fontSize = {
-  xs: 12,
-  sm: 13,
-  base: 14,
-  md: 15,
-  lg: 16,
-  xl: 20,
-  "2xl": 24,
-  "3xl": 28,
-}
+
 
 export default function CashOfficers() {
   const { getAccess } = usePermissions()
@@ -195,7 +188,7 @@ export default function CashOfficers() {
     boxSizing: "border-box",
     borderRadius: 8,
     border: "1px solid #e2e8f0",
-    fontSize: fontSize.base,
+    fontSize: FONT_SIZE.base,
     background: "white",
     color: "#0f172a",
     minHeight: 48,
@@ -227,7 +220,7 @@ export default function CashOfficers() {
             style={{
               margin: 0,
               color: "#0f172a",
-              fontSize: isMobile ? fontSize["2xl"] : fontSize["3xl"],
+              fontSize: isMobile ? FONT_SIZE["2xl"] : FONT_SIZE["3xl"],
               fontWeight: 700,
               letterSpacing: "-0.5px",
             }}
@@ -238,7 +231,7 @@ export default function CashOfficers() {
             style={{
               margin: "8px 0 0",
               color: "#64748b",
-              fontSize: fontSize.base,
+              fontSize: FONT_SIZE.base,
             }}
           >
             Manage cash officers and their assigned locations.
@@ -274,7 +267,7 @@ export default function CashOfficers() {
                   border: "none",
                   borderRadius: 6,
                   cursor: "pointer",
-                  fontSize: fontSize.xs,
+                  fontSize: FONT_SIZE.xs,
                   fontWeight: 600,
                   transition: "all 0.2s ease",
                   minWidth: 44,
@@ -298,7 +291,7 @@ export default function CashOfficers() {
                   border: "none",
                   borderRadius: 6,
                   cursor: "pointer",
-                  fontSize: fontSize.xs,
+                  fontSize: FONT_SIZE.xs,
                   fontWeight: 600,
                   transition: "all 0.2s ease",
                   minWidth: 44,
@@ -331,7 +324,7 @@ export default function CashOfficers() {
               borderRadius: 8,
               cursor: canEdit ? "pointer" : "not-allowed",
               fontWeight: 600,
-              fontSize: fontSize.md,
+              fontSize: FONT_SIZE.md,
               flex: isMobile ? 1 : "0 0 auto",
               boxShadow: "0 4px 12px rgba(0, 112, 243, 0.2)",
               transition: "all 0.2s ease",
@@ -406,7 +399,7 @@ export default function CashOfficers() {
             style={{
               margin: "0 0 8px",
               color: "#0f172a",
-              fontSize: fontSize.xl,
+              fontSize: FONT_SIZE.xl,
               fontWeight: 600,
             }}
           >
@@ -415,7 +408,7 @@ export default function CashOfficers() {
           <p
             style={{
               color: "#64748b",
-              fontSize: fontSize.base,
+              fontSize: FONT_SIZE.base,
               margin: "0 0 24px",
               maxWidth: 400,
               marginLeft: "auto",
@@ -438,7 +431,7 @@ export default function CashOfficers() {
               borderRadius: 8,
               cursor: canEdit ? "pointer" : "not-allowed",
               fontWeight: 500,
-              fontSize: fontSize.base,
+              fontSize: FONT_SIZE.base,
               transition: "all 0.2s ease",
             }}
             onMouseEnter={(e) => (e.currentTarget.style.background = "#f8fafc")}
@@ -486,7 +479,7 @@ export default function CashOfficers() {
                           alignItems: "center",
                           justifyContent: "center",
                           fontWeight: 600,
-                          fontSize: fontSize.md,
+                          fontSize: FONT_SIZE.md,
                           flexShrink: 0,
                           overflow: "hidden",
                         }}>
@@ -501,7 +494,7 @@ export default function CashOfficers() {
                             style={{
                               margin: "0 0 4px 0",
                               color: "#0f172a",
-                              fontSize: fontSize.lg,
+                              fontSize: FONT_SIZE.lg,
                               fontWeight: 600,
                               overflow: "hidden",
                               textOverflow: "ellipsis",
@@ -514,7 +507,7 @@ export default function CashOfficers() {
                             style={{
                               margin: 0,
                               color: "#64748b",
-                              fontSize: fontSize.sm,
+                              fontSize: FONT_SIZE.sm,
                               overflow: "hidden",
                               textOverflow: "ellipsis",
                               whiteSpace: "nowrap",
@@ -528,7 +521,7 @@ export default function CashOfficers() {
                         style={{
                           padding: "4px 10px",
                           borderRadius: 6,
-                          fontSize: fontSize.xs,
+                          fontSize: FONT_SIZE.xs,
                           background: bg,
                           color: color,
                           border: `1px solid ${border}`,
@@ -540,7 +533,7 @@ export default function CashOfficers() {
                       </span>
                     </div>
 
-                    <p style={{ margin: "12px 0 0", color: "#475569", fontSize: fontSize.sm }}>
+                    <p style={{ margin: "12px 0 0", color: "#475569", fontSize: FONT_SIZE.sm }}>
                       {clerk.phone_number || (
                         <span style={{ color: "#94a3b8", fontStyle: "italic" }}>No phone number</span>
                       )}
@@ -559,7 +552,7 @@ export default function CashOfficers() {
                         style={{
                           flex: 1, padding: "8px 12px", cursor: canEdit ? "pointer" : "not-allowed", borderRadius: 6,
                           border: "1px solid #e2e8f0", color: canEdit ? "#0070f3" : "#94a3b8", background: canEdit ? "#f0f7ff" : "#e2e8f0",
-                          fontSize: fontSize.sm, fontWeight: 500, transition: "all 0.2s",
+                          fontSize: FONT_SIZE.sm, fontWeight: 500, transition: "all 0.2s",
                         }}
                         onMouseEnter={(e) => { if (!canEdit) return; e.currentTarget.style.background = "#e0efff"; e.currentTarget.style.borderColor = "#0070f3" }}
                         onMouseLeave={(e) => { if (!canEdit) return; e.currentTarget.style.background = "#f0f7ff"; e.currentTarget.style.borderColor = "#e2e8f0" }}
@@ -571,7 +564,7 @@ export default function CashOfficers() {
                         style={{
                           flex: 1, padding: "8px 12px", cursor: canEdit ? "pointer" : "not-allowed", borderRadius: 6,
                           border: "1px solid #fee2e2", color: canEdit ? "#ef4444" : "#94a3b8", background: canEdit ? "#fef2f2" : "#e2e8f0",
-                          fontSize: fontSize.sm, fontWeight: 500, transition: "all 0.2s",
+                          fontSize: FONT_SIZE.sm, fontWeight: 500, transition: "all 0.2s",
                         }}
                         onMouseEnter={(e) => { if (!canEdit) return; e.currentTarget.style.background = "#fee2e2" }}
                         onMouseLeave={(e) => { if (!canEdit) return; e.currentTarget.style.background = "#fef2f2" }}
@@ -599,11 +592,11 @@ export default function CashOfficers() {
               <table style={{ width: "100%", borderCollapse: "collapse", textAlign: "left" }}>
                 <thead>
                   <tr style={{ background: "#f8fafc", borderBottom: "1px solid #e2e8f0" }}>
-                    <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: fontSize.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px" }}>Name</th>
-                    <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: fontSize.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px" }}>Phone</th>
-                    <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: fontSize.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px" }}>Office</th>
-                    <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: fontSize.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px" }}>Status</th>
-                    <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: fontSize.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px", textAlign: "right" }}>Actions</th>
+                    <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: FONT_SIZE.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px" }}>Name</th>
+                    <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: FONT_SIZE.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px" }}>Phone</th>
+                    <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: FONT_SIZE.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px" }}>Office</th>
+                    <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: FONT_SIZE.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px" }}>Status</th>
+                    <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: FONT_SIZE.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px", textAlign: "right" }}>Actions</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -626,7 +619,7 @@ export default function CashOfficers() {
                                 width: 36, height: 36, borderRadius: "50%",
                                 background: clerk.profile_picture_url ? "transparent" : "linear-gradient(135deg, #0070f3 0%, #0056d4 100%)",
                                 color: "white", display: "flex", alignItems: "center", justifyContent: "center",
-                                fontWeight: 600, fontSize: fontSize.base, flexShrink: 0, overflow: "hidden",
+                                fontWeight: 600, fontSize: FONT_SIZE.base, flexShrink: 0, overflow: "hidden",
                               }}
                             >
                               {clerk.profile_picture_url ? (
@@ -635,23 +628,23 @@ export default function CashOfficers() {
                                 clerk.full_name.charAt(0).toUpperCase()
                               )}
                             </div>
-                            <span style={{ color: "#0f172a", fontSize: fontSize.base, fontWeight: 500 }}>
+                            <span style={{ color: "#0f172a", fontSize: FONT_SIZE.base, fontWeight: 500 }}>
                               {clerk.full_name}
                             </span>
                           </div>
                         </td>
-                        <td style={{ padding: "12px 16px", color: "#475569", fontSize: fontSize.sm }}>
+                        <td style={{ padding: "12px 16px", color: "#475569", fontSize: FONT_SIZE.sm }}>
                           {clerk.phone_number || (
                             <span style={{ color: "#94a3b8", fontStyle: "italic" }}>Not provided</span>
                           )}
                         </td>
-                        <td style={{ padding: "12px 16px", color: "#475569", fontSize: fontSize.sm }}>
+                        <td style={{ padding: "12px 16px", color: "#475569", fontSize: FONT_SIZE.sm }}>
                           {clerk.office_name} Office
                         </td>
                         <td style={{ padding: "12px 16px" }}>
                           <span
                             style={{
-                              padding: "4px 10px", borderRadius: 6, fontSize: fontSize.xs,
+                              padding: "4px 10px", borderRadius: 6, fontSize: FONT_SIZE.xs,
                               background: bg, color: color, border: `1px solid ${border}`,
                               fontWeight: 500, display: "inline-block",
                             }}
@@ -672,7 +665,7 @@ export default function CashOfficers() {
                               style={{
                                 padding: "6px 10px", cursor: canEdit ? "pointer" : "not-allowed", borderRadius: 5,
                                 border: "1px solid #e2e8f0", color: canEdit ? "#0070f3" : "#94a3b8", background: canEdit ? "#f0f7ff" : "#e2e8f0",
-                                fontSize: fontSize.sm, fontWeight: 500, transition: "all 0.2s",
+                                fontSize: FONT_SIZE.sm, fontWeight: 500, transition: "all 0.2s",
                                 minHeight: 32, minWidth: 32, display: "flex", alignItems: "center", justifyContent: "center",
                               }}
                               onMouseEnter={(e) => { if (!canEdit) return; e.currentTarget.style.background = "#e0efff"; e.currentTarget.style.borderColor = "#0070f3" }}
@@ -685,7 +678,7 @@ export default function CashOfficers() {
                               style={{
                                 padding: "6px 10px", cursor: canEdit ? "pointer" : "not-allowed", borderRadius: 5,
                                 border: "1px solid #fee2e2", color: canEdit ? "#ef4444" : "#94a3b8", background: canEdit ? "#fef2f2" : "#e2e8f0",
-                                fontSize: fontSize.sm, fontWeight: 500, transition: "all 0.2s",
+                                fontSize: FONT_SIZE.sm, fontWeight: 500, transition: "all 0.2s",
                                 minHeight: 32, minWidth: 32, display: "flex", alignItems: "center", justifyContent: "center",
                               }}
                               onMouseEnter={(e) => { if (!canEdit) return; e.currentTarget.style.background = "#fee2e2" }}
@@ -737,7 +730,7 @@ export default function CashOfficers() {
                 ) : (
                   <>
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24 }}>
-                      <h3 style={{ margin: 0, color: "#0f172a", fontSize: fontSize.xl, fontWeight: 700 }}>
+                      <h3 style={{ margin: 0, color: "#0f172a", fontSize: FONT_SIZE.xl, fontWeight: 700 }}>
                         Add Cash Officer
                       </h3>
                       <button
@@ -754,19 +747,19 @@ export default function CashOfficers() {
 
                     <div style={{ display: "flex", flexDirection: "column", gap: 14, marginBottom: 20 }}>
                       <div>
-                        <label style={{ display: "block", marginBottom: 6, color: "#475569", fontSize: fontSize.sm, fontWeight: 500 }}>Full Name *</label>
+                        <label style={{ display: "block", marginBottom: 6, color: "#475569", fontSize: FONT_SIZE.sm, fontWeight: 500 }}>Full Name *</label>
                         <ModernInput type="text" placeholder="e.g. John Doe" value={fullName} onChange={(e: any) => { setFullName(e.target.value); setMessage("") }} onKeyDown={(e: any) => { if (e.key === "Enter") phoneRef.current?.focus() }} readOnly={!canEdit} style={inputStyle} autoFocus />
                       </div>
                       <div>
-                        <label style={{ display: "block", marginBottom: 6, color: "#475569", fontSize: fontSize.sm, fontWeight: 500 }}>Phone Number</label>
+                        <label style={{ display: "block", marginBottom: 6, color: "#475569", fontSize: FONT_SIZE.sm, fontWeight: 500 }}>Phone Number</label>
                         <ModernInput ref={phoneRef} type="text" placeholder="e.g. 08012345678" value={phoneNumber} onChange={(e: any) => { setPhoneNumber(e.target.value); setMessage("") }} onKeyDown={(e: any) => { if (e.key === "Enter") emailRef.current?.focus() }} readOnly={!canEdit} style={inputStyle} />
                       </div>
                       <div>
-                        <label style={{ display: "block", marginBottom: 6, color: "#475569", fontSize: fontSize.sm, fontWeight: 500 }}>Email Address *</label>
+                        <label style={{ display: "block", marginBottom: 6, color: "#475569", fontSize: FONT_SIZE.sm, fontWeight: 500 }}>Email Address *</label>
                         <ModernInput ref={emailRef} type="email" placeholder="e.g. clerk@example.com" value={email} onChange={(e: any) => { setEmail(e.target.value); setMessage("") }} readOnly={!canEdit} style={inputStyle} />
                       </div>
                       <div>
-                        <label style={{ display: "block", marginBottom: 6, color: "#475569", fontSize: fontSize.sm, fontWeight: 500 }}>Assigned Office *</label>
+                        <label style={{ display: "block", marginBottom: 6, color: "#475569", fontSize: FONT_SIZE.sm, fontWeight: 500 }}>Assigned Office *</label>
                         <select value={officeName} onChange={(e) => { setOfficeName(e.target.value); setMessage("") }} disabled={!canEdit} style={inputStyle}>
                           <option value="">Select office</option>
                           {OFFICE_LOCATIONS.map(o => (<option key={o} value={o}>{o} Office</option>))}
@@ -775,7 +768,7 @@ export default function CashOfficers() {
                     </div>
 
                     {message && (
-                      <div style={{ padding: 12, background: "#fef2f2", borderLeft: "4px solid #ef4444", borderRadius: 4, marginBottom: 20, color: "#b91c1c", fontSize: fontSize.sm }}>
+                      <div style={{ padding: 12, background: "#fef2f2", borderLeft: "4px solid #ef4444", borderRadius: 4, marginBottom: 20, color: "#b91c1c", fontSize: FONT_SIZE.sm }}>
                         {message}
                       </div>
                     )}
@@ -786,7 +779,7 @@ export default function CashOfficers() {
                       style={{
                         width: "100%", padding: "12px 16px", background: submitting || !canEdit ? "#94a3b8" : "#0070f3", color: "white",
                         border: "none", borderRadius: 8, cursor: submitting || !canEdit ? "not-allowed" : "pointer",
-                        fontWeight: 600, fontSize: fontSize.md, transition: "opacity 0.2s",
+                        fontWeight: 600, fontSize: FONT_SIZE.md, transition: "opacity 0.2s",
                         opacity: submitting ? 0.7 : 1, minHeight: 44,
                       }}
                     >
@@ -801,7 +794,7 @@ export default function CashOfficers() {
             {editingClerk && (
               <>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24 }}>
-                  <h3 style={{ margin: 0, color: "#0f172a", fontSize: fontSize.xl, fontWeight: 700 }}>
+                  <h3 style={{ margin: 0, color: "#0f172a", fontSize: FONT_SIZE.xl, fontWeight: 700 }}>
                     Edit Clerk
                   </h3>
                   <button
@@ -818,21 +811,21 @@ export default function CashOfficers() {
 
                 <div style={{ display: "flex", flexDirection: "column", gap: 14, marginBottom: 20 }}>
                   <div>
-                    <label style={{ display: "block", marginBottom: 6, color: "#475569", fontSize: fontSize.sm, fontWeight: 500 }}>Full Name *</label>
+                    <label style={{ display: "block", marginBottom: 6, color: "#475569", fontSize: FONT_SIZE.sm, fontWeight: 500 }}>Full Name *</label>
                     <ModernInput type="text" value={editName} onChange={(e: any) => { setEditName(e.target.value); setMessage("") }} onKeyDown={(e: any) => { if (e.key === "Enter") editPhoneRef.current?.focus() }} readOnly={!canEdit} style={inputStyle} autoFocus />
                   </div>
                   <div>
-                    <label style={{ display: "block", marginBottom: 6, color: "#475569", fontSize: fontSize.sm, fontWeight: 500 }}>Phone Number</label>
+                    <label style={{ display: "block", marginBottom: 6, color: "#475569", fontSize: FONT_SIZE.sm, fontWeight: 500 }}>Phone Number</label>
                     <ModernInput ref={editPhoneRef} type="text" value={editPhone} onChange={(e: any) => { setEditPhone(e.target.value); setMessage("") }} onKeyDown={(e: any) => { if (e.key === "Enter") handleUpdate() }} readOnly={!canEdit} style={inputStyle} />
                   </div>
                 </div>
 
-                <div style={{ padding: 12, background: "#f1f5f9", borderRadius: 6, marginBottom: 20, fontSize: fontSize.sm, color: "#475569" }}>
+                <div style={{ padding: 12, background: "#f1f5f9", borderRadius: 6, marginBottom: 20, fontSize: FONT_SIZE.sm, color: "#475569" }}>
                   <strong>Office:</strong> {editingClerk.office_name}
                 </div>
 
                 {message && (
-                  <div style={{ padding: 12, background: "#fef2f2", borderLeft: "4px solid #ef4444", borderRadius: 4, marginBottom: 20, color: "#b91c1c", fontSize: fontSize.sm }}>
+                  <div style={{ padding: 12, background: "#fef2f2", borderLeft: "4px solid #ef4444", borderRadius: 4, marginBottom: 20, color: "#b91c1c", fontSize: FONT_SIZE.sm }}>
                     {message}
                   </div>
                 )}
@@ -843,7 +836,7 @@ export default function CashOfficers() {
                   style={{
                     width: "100%", padding: "12px 16px", background: submitting || !canEdit ? "#94a3b8" : "#0070f3", color: "white",
                     border: "none", borderRadius: 8, cursor: submitting || !canEdit ? "not-allowed" : "pointer",
-                    fontWeight: 600, fontSize: fontSize.md, transition: "opacity 0.2s",
+                    fontWeight: 600, fontSize: FONT_SIZE.md, transition: "opacity 0.2s",
                     opacity: submitting ? 0.7 : 1, minHeight: 44,
                   }}
                 >
@@ -869,15 +862,15 @@ export default function CashOfficers() {
                       <line x1="14" y1="11" x2="14" y2="17" />
                     </svg>
                   </div>
-                  <h3 style={{ margin: "0 0 12px", color: "#0f172a", fontSize: fontSize.xl, fontWeight: 700 }}>
+                  <h3 style={{ margin: "0 0 12px", color: "#0f172a", fontSize: FONT_SIZE.xl, fontWeight: 700 }}>
                     Delete Cash Officer
                   </h3>
-                  <p style={{ margin: "0 0 20px", color: "#64748b", fontSize: fontSize.base, lineHeight: 1.5 }}>
+                  <p style={{ margin: "0 0 20px", color: "#64748b", fontSize: FONT_SIZE.base, lineHeight: 1.5 }}>
                     Are you sure you want to delete this cash officer? This action cannot be undone and will permanently remove their data.
                   </p>
 
                   {message && (
-                    <div style={{ padding: 12, background: "#fef2f2", borderLeft: "4px solid #ef4444", borderRadius: 4, marginBottom: 20, color: "#b91c1c", fontSize: fontSize.sm, width: "100%", textAlign: "left" }}>
+                    <div style={{ padding: 12, background: "#fef2f2", borderLeft: "4px solid #ef4444", borderRadius: 4, marginBottom: 20, color: "#b91c1c", fontSize: FONT_SIZE.sm, width: "100%", textAlign: "left" }}>
                       {message}
                     </div>
                   )}
@@ -888,7 +881,7 @@ export default function CashOfficers() {
                       style={{
                         padding: "12px 16px", background: "white", color: "#475569",
                         border: "1px solid #cbd5e1", borderRadius: 8, cursor: "pointer",
-                        fontWeight: 600, fontSize: fontSize.md, minHeight: 44, transition: "all 0.2s",
+                        fontWeight: 600, fontSize: FONT_SIZE.md, minHeight: 44, transition: "all 0.2s",
                       }}
                       onMouseEnter={(e) => { e.currentTarget.style.background = "#f8fafc"; e.currentTarget.style.borderColor = "#0070f3"; e.currentTarget.style.color = "#0070f3" }}
                       onMouseLeave={(e) => { e.currentTarget.style.background = "white"; e.currentTarget.style.borderColor = "#cbd5e1"; e.currentTarget.style.color = "#475569" }}
@@ -901,7 +894,7 @@ export default function CashOfficers() {
                       style={{
                         padding: "12px 16px", background: submitting || !canEdit ? "#94a3b8" : "#ef4444", color: "white",
                         border: "none", borderRadius: 8, cursor: submitting || !canEdit ? "not-allowed" : "pointer",
-                        fontWeight: 600, fontSize: fontSize.md, opacity: submitting ? 0.7 : 1,
+                        fontWeight: 600, fontSize: FONT_SIZE.md, opacity: submitting ? 0.7 : 1,
                         minHeight: 44, transition: "all 0.2s",
                       }}
                       onMouseEnter={(e) => { if (!submitting && canEdit) e.currentTarget.style.background = "#dc2626" }}

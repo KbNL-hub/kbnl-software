@@ -26,6 +26,7 @@ export const ALL_SECTIONS = [
   'cash-expenses',
   'complaints',
   'reports',
+  'company-prices',
   'store-sales',
 ] as const
 

@@ -1,5 +1,6 @@
 import { createClient } from "@supabase/supabase-js"
 import { NextRequest, NextResponse } from "next/server"
+import { requireRole, handleApiError } from "@/lib/auth-middleware"
 
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -7,11 +8,20 @@ const supabaseAdmin = createClient(
 )
 
 const ALLOWED_TABLES = ["maintenance_reports", "maintenance_assignments", "maintenance_balance", "maintenance_deposits", "bulk_procurement"] as const
+const ALLOWED_RPCS = ["validate_maintenance_report", "deduct_maintenance_balance", "add_maintenance_deposit"] as const
 
-async function authorizeUser(token: string) {
-  const { data: { user }, error } = await supabaseAdmin.auth.getUser(token)
-  if (error || !user) return null
-  return user
+const TABLE_ROLES: Record<string, string[]> = {
+  maintenance_reports: ["TruckOfficer", "TruckAdmin", "Admin", "SuperAdmin"],
+  maintenance_assignments: ["TruckAdmin", "Admin", "SuperAdmin"],
+  maintenance_balance: ["TruckAdmin", "Admin", "SuperAdmin"],
+  maintenance_deposits: ["TruckAdmin", "Admin", "SuperAdmin"],
+  bulk_procurement: ["TruckAdmin", "Admin", "SuperAdmin"],
+}
+
+const RPC_ROLES: Record<string, string[]> = {
+  validate_maintenance_report: ["TruckAdmin", "Admin", "SuperAdmin"],
+  deduct_maintenance_balance: ["TruckAdmin", "Admin", "SuperAdmin"],
+  add_maintenance_deposit: ["TruckAdmin", "Admin", "SuperAdmin"],
 }
 
 function buildError(msg: string, status: number) {
@@ -19,29 +29,44 @@ function buildError(msg: string, status: number) {
 }
 
 export async function POST(req: NextRequest) {
-  const authHeader = req.headers.get("Authorization")
-  if (!authHeader?.startsWith("Bearer ")) return buildError("Unauthorized", 401)
-
-  const user = await authorizeUser(authHeader.slice(7))
-  if (!user) return buildError("Unauthorized", 401)
-
   try {
     const body = await req.json()
-    const { action, table, data, filters, conflict } = body as {
+    const { action, table, data, filters, conflict, function: fnName, params } = body as {
       action: string
-      table: string
+      table?: string
       data?: Record<string, unknown>
       filters?: Record<string, unknown>
       conflict?: string
+      function?: string
+      params?: Record<string, unknown>
     }
 
-    if (!ALLOWED_TABLES.includes(table as any)) {
+    if (action === "rpc") {
+      if (!fnName || !ALLOWED_RPCS.includes(fnName as any)) {
+        return buildError(`RPC function "${fnName}" is not supported by this endpoint`, 400)
+      }
+      const rolesForRpc = RPC_ROLES[fnName] || ["Admin"]
+      const auth = await requireRole(req, rolesForRpc)
+      const result = await supabaseAdmin.rpc(fnName as any, {
+        ...params,
+        p_admin_id: auth.userId,
+      })
+      if (result.error) {
+        return buildError(result.error.message || "RPC failed", 500)
+      }
+      return NextResponse.json({ data: result.data })
+    }
+
+    if (!table || !ALLOWED_TABLES.includes(table as any)) {
       return buildError(`Table "${table}" is not supported by this endpoint`, 400)
     }
 
     if (!["insert", "update", "delete", "upsert"].includes(action)) {
       return buildError(`Invalid action "${action}"`, 400)
     }
+
+    const rolesForTable = TABLE_ROLES[table] || ["Admin"]
+    await requireRole(req, rolesForTable)
 
     switch (action) {
       case "insert": {
@@ -99,7 +124,6 @@ export async function POST(req: NextRequest) {
       }
     }
   } catch (err) {
-    console.error("Mutation error", err)
-    return buildError("Internal server error", 500)
+    return handleApiError(err)
   }
 }

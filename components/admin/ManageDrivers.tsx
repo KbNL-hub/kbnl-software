@@ -1,5 +1,7 @@
 "use client"
 
+import { FONT_SIZE } from "@/lib/constants"
+
 import { useState, useEffect, useRef } from "react"
 import { supabase } from "@/lib/supabase"
 import ModernInput from "@/components/ModernInput"
@@ -36,16 +38,7 @@ function useBreakpoint() {
   return { isMobile, isDesktop }
 }
 
-const fontSize = {
-  xs: 12,
-  sm: 13,
-  base: 14,
-  md: 15,
-  lg: 16,
-  xl: 20,
-  "2xl": 24,
-  "3xl": 28
-}
+
 
 const getPillStyle = (filter: string, isActive: boolean) => {
   if (!isActive) {
@@ -247,7 +240,7 @@ export default function ManageDrivers() {
     boxSizing: "border-box",
     borderRadius: 8,
     border: "1px solid #e0e0e0",
-    fontSize: fontSize.base,
+    fontSize: FONT_SIZE.base,
     background: "white",
     color: "#171717",
     minHeight: 48,
@@ -258,10 +251,10 @@ export default function ManageDrivers() {
     <div style={{ minHeight: "100vh", background: "#f8fafc", padding: isMobile ? "16px" : "32px", fontFamily: "'Inter', sans-serif" }}>
       <div style={{ display: "flex", flexDirection: isMobile ? "column" : "row", justifyContent: "space-between", alignItems: isMobile ? "flex-start" : "center", gap: 16, marginBottom: 24 }}>
         <div>
-          <h1 style={{ margin: 0, color: "#0f172a", fontSize: isMobile ? fontSize["2xl"] : fontSize["3xl"], fontWeight: 700, letterSpacing: "-0.5px" }}>
+          <h1 style={{ margin: 0, color: "#0f172a", fontSize: isMobile ? FONT_SIZE["2xl"] : FONT_SIZE["3xl"], fontWeight: 700, letterSpacing: "-0.5px" }}>
             Drivers
           </h1>
-          <p style={{ margin: "8px 0 0", color: "#64748b", fontSize: fontSize.base }}>
+          <p style={{ margin: "8px 0 0", color: "#64748b", fontSize: FONT_SIZE.base }}>
             Manage driver accounts and status.
           </p>
         </div>
@@ -278,7 +271,7 @@ export default function ManageDrivers() {
                   border: "none",
                   borderRadius: 6,
                   cursor: "pointer",
-                  fontSize: fontSize.xs,
+                  fontSize: FONT_SIZE.xs,
                   fontWeight: 600,
                   minWidth: 44,
                   height: 40,
@@ -298,7 +291,7 @@ export default function ManageDrivers() {
                   border: "none",
                   borderRadius: 6,
                   cursor: "pointer",
-                  fontSize: fontSize.xs,
+                  fontSize: FONT_SIZE.xs,
                   fontWeight: 600,
                   minWidth: 44,
                   height: 40,
@@ -323,7 +316,7 @@ export default function ManageDrivers() {
               borderRadius: 8,
               cursor: !canEdit ? "not-allowed" : "pointer",
               fontWeight: 600,
-              fontSize: fontSize.md,
+              fontSize: FONT_SIZE.md,
               flex: isMobile ? 1 : "0 0 auto",
               boxShadow: "0 4px 12px rgba(0, 112, 243, 0.2)",
               transition: "all 0.2s ease",
@@ -358,7 +351,7 @@ export default function ManageDrivers() {
               style={{
                 padding: "8px 14px",
                 borderRadius: 20,
-                fontSize: fontSize.sm,
+                fontSize: FONT_SIZE.sm,
                 cursor: "pointer",
                 border: `1.5px solid ${pill.borderColor}`,
                 background: pill.bg,
@@ -382,8 +375,8 @@ export default function ManageDrivers() {
         </div>
       ) : filteredDrivers.length === 0 ? (
         <div style={{ textAlign: "center", padding: "64px 24px", background: "white", borderRadius: 12, border: "1px solid #e2e8f0", boxShadow: "0 1px 3px rgba(0, 0, 0, 0.05)" }}>
-          <h3 style={{ margin: "0 0 8px", color: "#0f172a", fontSize: fontSize.xl, fontWeight: 600 }}>No drivers found</h3>
-          <p style={{ color: "#64748b", fontSize: fontSize.base, margin: 0 }}>
+          <h3 style={{ margin: "0 0 8px", color: "#0f172a", fontSize: FONT_SIZE.xl, fontWeight: 600 }}>No drivers found</h3>
+          <p style={{ color: "#64748b", fontSize: FONT_SIZE.base, margin: 0 }}>
             {filterStatus === "All" ? "No drivers in the system." : `No drivers with status "${filterStatus}".`}
           </p>
         </div>
@@ -397,7 +390,7 @@ export default function ManageDrivers() {
                   <div key={driver.driver_id} style={{ background: "white", borderRadius: 12, padding: 16, border: "1px solid #e2e8f0", boxShadow: "0 1px 3px rgba(0, 0, 0, 0.05)", transition: "all 0.2s ease" }} onMouseEnter={e => { e.currentTarget.style.boxShadow = "0 4px 12px rgba(0, 0, 0, 0.08)"; e.currentTarget.style.borderColor = "#cbd5e1" }} onMouseLeave={e => { e.currentTarget.style.boxShadow = "0 1px 3px rgba(0, 0, 0, 0.05)"; e.currentTarget.style.borderColor = "#e2e8f0" }}>
                     <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12, marginBottom: 12 }}>
                       <div style={{ display: "flex", alignItems: "center", gap: 12, flex: 1, minWidth: 0 }}>
-                        <div style={{ width: 40, height: 40, borderRadius: "50%", background: driver.profile_picture_url ? "transparent" : "linear-gradient(135deg, #0070f3 0%, #0056d4 100%)", color: "white", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 600, fontSize: fontSize.md, flexShrink: 0, overflow: "hidden" }}>
+                        <div style={{ width: 40, height: 40, borderRadius: "50%", background: driver.profile_picture_url ? "transparent" : "linear-gradient(135deg, #0070f3 0%, #0056d4 100%)", color: "white", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 600, fontSize: FONT_SIZE.md, flexShrink: 0, overflow: "hidden" }}>
                           {driver.profile_picture_url ? (
                             <img src={driver.profile_picture_url} alt={driver.full_name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
                           ) : (
@@ -405,16 +398,16 @@ export default function ManageDrivers() {
                           )}
                         </div>
                         <div style={{ minWidth: 0 }}>
-                          <h3 style={{ margin: "0 0 4px 0", color: "#0f172a", fontSize: fontSize.lg, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{driver.full_name}</h3>
-                          <p style={{ margin: 0, color: "#64748b", fontSize: fontSize.sm, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{driver.phone_number || "No phone"}</p>
+                          <h3 style={{ margin: "0 0 4px 0", color: "#0f172a", fontSize: FONT_SIZE.lg, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{driver.full_name}</h3>
+                          <p style={{ margin: 0, color: "#64748b", fontSize: FONT_SIZE.sm, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{driver.phone_number || "No phone"}</p>
                         </div>
                       </div>
-                      <span style={{ padding: "6px 12px", borderRadius: 16, fontSize: fontSize.xs, fontWeight: 600, background: pill.bg, color: pill.color, border: `1.5px solid ${pill.border}`, whiteSpace: "nowrap" }}>
+                      <span style={{ padding: "6px 12px", borderRadius: 16, fontSize: FONT_SIZE.xs, fontWeight: 600, background: pill.bg, color: pill.color, border: `1.5px solid ${pill.border}`, whiteSpace: "nowrap" }}>
                         {driver.status}
                       </span>
                     </div>
 
-                    <p style={{ margin: "12px 0", padding: "12px 0", borderTop: "1px solid #f1f5f9", borderBottom: "1px solid #f1f5f9", color: "#94a3b8", fontSize: fontSize.xs }}>
+                    <p style={{ margin: "12px 0", padding: "12px 0", borderTop: "1px solid #f1f5f9", borderBottom: "1px solid #f1f5f9", color: "#94a3b8", fontSize: FONT_SIZE.xs }}>
                       Joined {new Date(driver.created_at).toLocaleDateString()}
                     </p>
 
@@ -422,7 +415,7 @@ export default function ManageDrivers() {
                       <button
                         onClick={() => startEdit(driver)}
                         disabled={!canEdit}
-                        style={{ flex: 1, padding: "8px 12px", cursor: !canEdit ? "not-allowed" : "pointer", borderRadius: 6, border: "1px solid #e2e8f0", color: "#0070f3", background: !canEdit ? "#94a3b8" : "#f0f7ff", fontSize: fontSize.sm, fontWeight: 500, transition: "all 0.2s" }}
+                        style={{ flex: 1, padding: "8px 12px", cursor: !canEdit ? "not-allowed" : "pointer", borderRadius: 6, border: "1px solid #e2e8f0", color: "#0070f3", background: !canEdit ? "#94a3b8" : "#f0f7ff", fontSize: FONT_SIZE.sm, fontWeight: 500, transition: "all 0.2s" }}
                         onMouseEnter={e => { if (canEdit) { e.currentTarget.style.background = "#e0efff"; e.currentTarget.style.borderColor = "#0070f3" } }}
                         onMouseLeave={e => { if (canEdit) { e.currentTarget.style.background = "#f0f7ff"; e.currentTarget.style.borderColor = "#e2e8f0" } }}
                       >
@@ -431,7 +424,7 @@ export default function ManageDrivers() {
                       <button
                         onClick={() => handleSuspend(driver)}
                         disabled={!canEdit}
-                        style={{ flex: 1, padding: "8px 12px", cursor: !canEdit ? "not-allowed" : "pointer", borderRadius: 6, border: `1px solid ${!canEdit ? "#94a3b8" : driver.status === "Suspended" ? "#16a34a" : "#f5a623"}`, color: !canEdit ? "#94a3b8" : driver.status === "Suspended" ? "#16a34a" : "#f5a623", background: !canEdit ? "#e2e8f0" : driver.status === "Suspended" ? "#f0fdf4" : "#fffbeb", fontSize: fontSize.sm, fontWeight: 500, transition: "all 0.2s" }}
+                        style={{ flex: 1, padding: "8px 12px", cursor: !canEdit ? "not-allowed" : "pointer", borderRadius: 6, border: `1px solid ${!canEdit ? "#94a3b8" : driver.status === "Suspended" ? "#16a34a" : "#f5a623"}`, color: !canEdit ? "#94a3b8" : driver.status === "Suspended" ? "#16a34a" : "#f5a623", background: !canEdit ? "#e2e8f0" : driver.status === "Suspended" ? "#f0fdf4" : "#fffbeb", fontSize: FONT_SIZE.sm, fontWeight: 500, transition: "all 0.2s" }}
                         onMouseEnter={e => { if (!canEdit) return; e.currentTarget.style.opacity = "0.8" }}
                         onMouseLeave={e => { if (!canEdit) return; e.currentTarget.style.opacity = "1" }}
                       >
@@ -440,7 +433,7 @@ export default function ManageDrivers() {
                       <button
                         onClick={() => { setDeletingId(driver.driver_id); setMessage("") }}
                         disabled={!canEdit}
-                        style={{ flex: 1, padding: "8px 12px", cursor: !canEdit ? "not-allowed" : "pointer", borderRadius: 6, border: "1px solid #fee2e2", color: "#ef4444", background: !canEdit ? "#94a3b8" : "#fef2f2", fontSize: fontSize.sm, fontWeight: 500, transition: "all 0.2s" }}
+                        style={{ flex: 1, padding: "8px 12px", cursor: !canEdit ? "not-allowed" : "pointer", borderRadius: 6, border: "1px solid #fee2e2", color: "#ef4444", background: !canEdit ? "#94a3b8" : "#fef2f2", fontSize: FONT_SIZE.sm, fontWeight: 500, transition: "all 0.2s" }}
                         onMouseEnter={e => { if (canEdit) e.currentTarget.style.background = "#fee2e2" }}
                         onMouseLeave={e => { if (canEdit) e.currentTarget.style.background = "#fef2f2" }}
                       >
@@ -458,11 +451,11 @@ export default function ManageDrivers() {
               <table style={{ width: "100%", borderCollapse: "collapse", textAlign: "left" }}>
                 <thead>
                   <tr style={{ background: "#f8fafc", borderBottom: "1px solid #e2e8f0" }}>
-                    <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: fontSize.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px" }}>Name</th>
-                    <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: fontSize.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px" }}>Phone</th>
-                    <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: fontSize.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px" }}>Status</th>
-                    <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: fontSize.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px" }}>Joined</th>
-                    <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: fontSize.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px", textAlign: "right" }}>Actions</th>
+                    <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: FONT_SIZE.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px" }}>Name</th>
+                    <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: FONT_SIZE.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px" }}>Phone</th>
+                    <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: FONT_SIZE.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px" }}>Status</th>
+                    <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: FONT_SIZE.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px" }}>Joined</th>
+                    <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: FONT_SIZE.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px", textAlign: "right" }}>Actions</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -472,23 +465,23 @@ export default function ManageDrivers() {
                       <tr key={driver.driver_id} style={{ borderBottom: idx === filteredDrivers.length - 1 ? "none" : "1px solid #e2e8f0", transition: "background 0.2s ease" }} onMouseEnter={e => e.currentTarget.style.background = "#f8fafc"} onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
                         <td style={{ padding: "12px 16px" }}>
                           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                            <div style={{ width: 36, height: 36, borderRadius: "50%", background: driver.profile_picture_url ? "transparent" : "linear-gradient(135deg, #0070f3 0%, #0056d4 100%)", color: "white", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 600, fontSize: fontSize.base, flexShrink: 0, overflow: "hidden" }}>
+                            <div style={{ width: 36, height: 36, borderRadius: "50%", background: driver.profile_picture_url ? "transparent" : "linear-gradient(135deg, #0070f3 0%, #0056d4 100%)", color: "white", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 600, fontSize: FONT_SIZE.base, flexShrink: 0, overflow: "hidden" }}>
                               {driver.profile_picture_url ? (
                                 <img src={driver.profile_picture_url} alt={driver.full_name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
                               ) : (
                                 driver.full_name.charAt(0).toUpperCase()
                               )}
                             </div>
-                            <span style={{ color: "#0f172a", fontSize: fontSize.base, fontWeight: 500 }}>{driver.full_name}</span>
+                            <span style={{ color: "#0f172a", fontSize: FONT_SIZE.base, fontWeight: 500 }}>{driver.full_name}</span>
                           </div>
                         </td>
-                        <td style={{ padding: "12px 16px", color: "#64748b", fontSize: fontSize.sm }}>{driver.phone_number || "—"}</td>
+                        <td style={{ padding: "12px 16px", color: "#64748b", fontSize: FONT_SIZE.sm }}>{driver.phone_number || "—"}</td>
                         <td style={{ padding: "12px 16px" }}>
-                          <span style={{ padding: "6px 10px", borderRadius: 14, fontSize: fontSize.xs, fontWeight: 600, background: pill.bg, color: pill.color, border: `1.5px solid ${pill.border}` }}>
+                          <span style={{ padding: "6px 10px", borderRadius: 14, fontSize: FONT_SIZE.xs, fontWeight: 600, background: pill.bg, color: pill.color, border: `1.5px solid ${pill.border}` }}>
                             {driver.status}
                           </span>
                         </td>
-                        <td style={{ padding: "12px 16px", color: "#94a3b8", fontSize: fontSize.sm }}>
+                        <td style={{ padding: "12px 16px", color: "#94a3b8", fontSize: FONT_SIZE.sm }}>
                           {new Date(driver.created_at).toLocaleDateString()}
                         </td>
                         <td style={{ padding: "12px 16px", textAlign: "right" }}>
@@ -496,7 +489,7 @@ export default function ManageDrivers() {
                             <button
                               onClick={() => startEdit(driver)}
                               disabled={!canEdit}
-                              style={{ padding: "6px 10px", cursor: !canEdit ? "not-allowed" : "pointer", borderRadius: 6, border: "1px solid #e2e8f0", color: "#0070f3", background: !canEdit ? "#94a3b8" : "#f0f7ff", fontSize: fontSize.xs, fontWeight: 500, transition: "all 0.2s", minHeight: 32 }}
+                              style={{ padding: "6px 10px", cursor: !canEdit ? "not-allowed" : "pointer", borderRadius: 6, border: "1px solid #e2e8f0", color: "#0070f3", background: !canEdit ? "#94a3b8" : "#f0f7ff", fontSize: FONT_SIZE.xs, fontWeight: 500, transition: "all 0.2s", minHeight: 32 }}
                               onMouseEnter={e => { if (canEdit) { e.currentTarget.style.background = "#e0efff"; e.currentTarget.style.borderColor = "#0070f3" } }}
                               onMouseLeave={e => { if (canEdit) { e.currentTarget.style.background = "#f0f7ff"; e.currentTarget.style.borderColor = "#e2e8f0" } }}
                             >
@@ -505,7 +498,7 @@ export default function ManageDrivers() {
                             <button
                               onClick={() => handleSuspend(driver)}
                               disabled={!canEdit}
-                              style={{ padding: "6px 10px", cursor: !canEdit ? "not-allowed" : "pointer", borderRadius: 6, border: `1px solid ${!canEdit ? "#94a3b8" : driver.status === "Suspended" ? "#16a34a" : "#f5a623"}`, color: !canEdit ? "#94a3b8" : driver.status === "Suspended" ? "#16a34a" : "#f5a623", background: !canEdit ? "#e2e8f0" : driver.status === "Suspended" ? "#f0fdf4" : "#fffbeb", fontSize: fontSize.xs, fontWeight: 500, transition: "all 0.2s", minHeight: 32 }}
+                              style={{ padding: "6px 10px", cursor: !canEdit ? "not-allowed" : "pointer", borderRadius: 6, border: `1px solid ${!canEdit ? "#94a3b8" : driver.status === "Suspended" ? "#16a34a" : "#f5a623"}`, color: !canEdit ? "#94a3b8" : driver.status === "Suspended" ? "#16a34a" : "#f5a623", background: !canEdit ? "#e2e8f0" : driver.status === "Suspended" ? "#f0fdf4" : "#fffbeb", fontSize: FONT_SIZE.xs, fontWeight: 500, transition: "all 0.2s", minHeight: 32 }}
                               onMouseEnter={e => { if (!canEdit) return; e.currentTarget.style.opacity = "0.8" }}
                               onMouseLeave={e => { if (!canEdit) return; e.currentTarget.style.opacity = "1" }}
                             >
@@ -514,7 +507,7 @@ export default function ManageDrivers() {
                             <button
                               onClick={() => { setDeletingId(driver.driver_id); setMessage("") }}
                               disabled={!canEdit}
-                              style={{ padding: "6px 10px", cursor: !canEdit ? "not-allowed" : "pointer", borderRadius: 6, border: "1px solid #fee2e2", color: "#ef4444", background: !canEdit ? "#94a3b8" : "#fef2f2", fontSize: fontSize.xs, fontWeight: 500, transition: "all 0.2s", minHeight: 32 }}
+                              style={{ padding: "6px 10px", cursor: !canEdit ? "not-allowed" : "pointer", borderRadius: 6, border: "1px solid #fee2e2", color: "#ef4444", background: !canEdit ? "#94a3b8" : "#fef2f2", fontSize: FONT_SIZE.xs, fontWeight: 500, transition: "all 0.2s", minHeight: 32 }}
                               onMouseEnter={e => { if (canEdit) e.currentTarget.style.background = "#fee2e2" }}
                               onMouseLeave={e => { if (canEdit) e.currentTarget.style.background = "#fef2f2" }}
                             >
@@ -554,13 +547,13 @@ export default function ManageDrivers() {
                 ) : (
                   <>
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24 }}>
-                      <h3 style={{ margin: 0, color: "#0f172a", fontSize: fontSize.xl, fontWeight: 700 }}>Add New Driver</h3>
+                      <h3 style={{ margin: 0, color: "#0f172a", fontSize: FONT_SIZE.xl, fontWeight: 700 }}>Add New Driver</h3>
                       <button onClick={closeModals} style={{ background: "none", border: "none", color: "#94a3b8", cursor: "pointer", padding: 0, width: 32, height: 32, display: "flex", alignItems: "center", justifyContent: "center", transition: "color 0.2s" }} onMouseEnter={e => e.currentTarget.style.color = "#64748b"} onMouseLeave={e => e.currentTarget.style.color = "#94a3b8"}><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
                     </div>
 
                     <div style={{ display: "flex", flexDirection: "column", gap: 14, marginBottom: 20 }}>
                       <div>
-                        <label style={{ display: "block", marginBottom: 6, color: "#475569", fontSize: fontSize.sm, fontWeight: 500 }}>Full Name *</label>
+                        <label style={{ display: "block", marginBottom: 6, color: "#475569", fontSize: FONT_SIZE.sm, fontWeight: 500 }}>Full Name *</label>
                         <ModernInput
                           type="text"
                           placeholder="e.g. John Doe"
@@ -572,7 +565,7 @@ export default function ManageDrivers() {
                         />
                       </div>
                       <div>
-                        <label style={{ display: "block", marginBottom: 6, color: "#475569", fontSize: fontSize.sm, fontWeight: 500 }}>Phone Number</label>
+                        <label style={{ display: "block", marginBottom: 6, color: "#475569", fontSize: FONT_SIZE.sm, fontWeight: 500 }}>Phone Number</label>
                         <ModernInput
                           ref={phoneRef}
                           type="text"
@@ -585,7 +578,7 @@ export default function ManageDrivers() {
                         />
                       </div>
                       <div>
-                        <label style={{ display: "block", marginBottom: 6, color: "#475569", fontSize: fontSize.sm, fontWeight: 500 }}>Email Address *</label>
+                        <label style={{ display: "block", marginBottom: 6, color: "#475569", fontSize: FONT_SIZE.sm, fontWeight: 500 }}>Email Address *</label>
                         <ModernInput
                           ref={emailRef}
                           type="email"
@@ -599,12 +592,12 @@ export default function ManageDrivers() {
                       </div>
                     </div>
 
-                    {message && <div style={{ padding: 12, background: "#fef2f2", borderLeft: "4px solid #ef4444", borderRadius: 4, marginBottom: 20, color: "#b91c1c", fontSize: fontSize.sm }}>{message}</div>}
+                    {message && <div style={{ padding: 12, background: "#fef2f2", borderLeft: "4px solid #ef4444", borderRadius: 4, marginBottom: 20, color: "#b91c1c", fontSize: FONT_SIZE.sm }}>{message}</div>}
 
                     <button
                       onClick={handleInvite}
                       disabled={submitting || !canEdit}
-                      style={{ width: "100%", padding: "12px 16px", background: submitting || !canEdit ? "#94a3b8" : "#0070f3", color: "white", border: "none", borderRadius: 8, cursor: submitting || !canEdit ? "not-allowed" : "pointer", fontWeight: 600, fontSize: fontSize.md, transition: "opacity 0.2s", opacity: submitting || !canEdit ? 0.7 : 1, minHeight: 44 }}
+                      style={{ width: "100%", padding: "12px 16px", background: submitting || !canEdit ? "#94a3b8" : "#0070f3", color: "white", border: "none", borderRadius: 8, cursor: submitting || !canEdit ? "not-allowed" : "pointer", fontWeight: 600, fontSize: FONT_SIZE.md, transition: "opacity 0.2s", opacity: submitting || !canEdit ? 0.7 : 1, minHeight: 44 }}
                     >
                       {submitting ? "Adding User..." : "Add User"}
                     </button>
@@ -616,25 +609,25 @@ export default function ManageDrivers() {
             {editingDriver && (
               <>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24 }}>
-                  <h3 style={{ margin: 0, color: "#0f172a", fontSize: fontSize.xl, fontWeight: 700 }}>Edit Driver</h3>
+                  <h3 style={{ margin: 0, color: "#0f172a", fontSize: FONT_SIZE.xl, fontWeight: 700 }}>Edit Driver</h3>
                   <button onClick={closeModals} style={{ background: "none", border: "none", color: "#94a3b8", cursor: "pointer", padding: 0, width: 32, height: 32, display: "flex", alignItems: "center", justifyContent: "center", transition: "color 0.2s" }} onMouseEnter={e => e.currentTarget.style.color = "#64748b"} onMouseLeave={e => e.currentTarget.style.color = "#94a3b8"}><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
                 </div>
 
                 <div style={{ display: "flex", flexDirection: "column", gap: 14, marginBottom: 20 }}>
                   <div>
-                    <label style={{ display: "block", marginBottom: 6, color: "#475569", fontSize: fontSize.sm, fontWeight: 500 }}>Full Name *</label>
+                    <label style={{ display: "block", marginBottom: 6, color: "#475569", fontSize: FONT_SIZE.sm, fontWeight: 500 }}>Full Name *</label>
                     <input type="text" value={editName} readOnly={!canEdit} onChange={(e) => { setEditName(e.target.value); setMessage("") }} onKeyDown={(e) => { if (e.key === "Enter") editPhoneRef.current?.focus() }} style={inputStyle} />
                   </div>
 
                   <div>
-                    <label style={{ display: "block", marginBottom: 6, color: "#475569", fontSize: fontSize.sm, fontWeight: 500 }}>Phone Number</label>
+                    <label style={{ display: "block", marginBottom: 6, color: "#475569", fontSize: FONT_SIZE.sm, fontWeight: 500 }}>Phone Number</label>
                     <input ref={editPhoneRef} type="text" value={editPhone} readOnly={!canEdit} onChange={(e) => { setEditPhone(e.target.value); setMessage("") }} onKeyDown={(e) => { if (e.key === "Enter") handleUpdate() }} style={inputStyle} />
                   </div>
                 </div>
 
-                {message && <div style={{ padding: 12, background: "#fef2f2", borderLeft: "4px solid #ef4444", borderRadius: 4, marginBottom: 20, color: "#b91c1c", fontSize: fontSize.sm }}>{message}</div>}
+                {message && <div style={{ padding: 12, background: "#fef2f2", borderLeft: "4px solid #ef4444", borderRadius: 4, marginBottom: 20, color: "#b91c1c", fontSize: FONT_SIZE.sm }}>{message}</div>}
 
-                <button onClick={handleUpdate} disabled={submitting || !canEdit} style={{ width: "100%", padding: "12px 16px", background: submitting || !canEdit ? "#94a3b8" : "#0070f3", color: "white", border: "none", borderRadius: 8, cursor: submitting || !canEdit ? "not-allowed" : "pointer", fontWeight: 600, fontSize: fontSize.md, transition: "opacity 0.2s", opacity: submitting || !canEdit ? 0.7 : 1, minHeight: 44 }}>
+                <button onClick={handleUpdate} disabled={submitting || !canEdit} style={{ width: "100%", padding: "12px 16px", background: submitting || !canEdit ? "#94a3b8" : "#0070f3", color: "white", border: "none", borderRadius: 8, cursor: submitting || !canEdit ? "not-allowed" : "pointer", fontWeight: 600, fontSize: FONT_SIZE.md, transition: "opacity 0.2s", opacity: submitting || !canEdit ? 0.7 : 1, minHeight: 44 }}>
                   {submitting ? "Saving..." : "Save Changes"}
                 </button>
               </>
@@ -646,16 +639,16 @@ export default function ManageDrivers() {
                   <div style={{ width: 64, height: 64, background: "#fef2f2", color: "#ef4444", borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 20 }}>
                     <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>
                   </div>
-                  <h3 style={{ margin: "0 0 12px", color: "#0f172a", fontSize: fontSize.xl, fontWeight: 700 }}>Delete Driver</h3>
-                  <p style={{ margin: "0 0 20px", color: "#64748b", fontSize: fontSize.base, lineHeight: 1.5 }}>Are you sure you want to delete this driver? This action cannot be undone and will permanently remove their data.</p>
+                  <h3 style={{ margin: "0 0 12px", color: "#0f172a", fontSize: FONT_SIZE.xl, fontWeight: 700 }}>Delete Driver</h3>
+                  <p style={{ margin: "0 0 20px", color: "#64748b", fontSize: FONT_SIZE.base, lineHeight: 1.5 }}>Are you sure you want to delete this driver? This action cannot be undone and will permanently remove their data.</p>
 
-                  {message && <div style={{ padding: 12, background: "#fef2f2", borderLeft: "4px solid #ef4444", borderRadius: 4, marginBottom: 20, color: "#b91c1c", fontSize: fontSize.sm, width: "100%", textAlign: "left" }}>{message}</div>}
+                  {message && <div style={{ padding: 12, background: "#fef2f2", borderLeft: "4px solid #ef4444", borderRadius: 4, marginBottom: 20, color: "#b91c1c", fontSize: FONT_SIZE.sm, width: "100%", textAlign: "left" }}>{message}</div>}
 
                   <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, width: "100%" }}>
-                    <button onClick={closeModals} style={{ padding: "12px 16px", background: "white", color: "#475569", border: "1px solid #cbd5e1", borderRadius: 8, cursor: "pointer", fontWeight: 600, fontSize: fontSize.md, minHeight: 44, transition: "all 0.2s" }} onMouseEnter={e => { e.currentTarget.style.background = "#f8fafc"; e.currentTarget.style.borderColor = "#0070f3"; e.currentTarget.style.color = "#0070f3" }} onMouseLeave={e => { e.currentTarget.style.background = "white"; e.currentTarget.style.borderColor = "#cbd5e1"; e.currentTarget.style.color = "#475569" }}>
+                    <button onClick={closeModals} style={{ padding: "12px 16px", background: "white", color: "#475569", border: "1px solid #cbd5e1", borderRadius: 8, cursor: "pointer", fontWeight: 600, fontSize: FONT_SIZE.md, minHeight: 44, transition: "all 0.2s" }} onMouseEnter={e => { e.currentTarget.style.background = "#f8fafc"; e.currentTarget.style.borderColor = "#0070f3"; e.currentTarget.style.color = "#0070f3" }} onMouseLeave={e => { e.currentTarget.style.background = "white"; e.currentTarget.style.borderColor = "#cbd5e1"; e.currentTarget.style.color = "#475569" }}>
                       Cancel
                     </button>
-                    <button onClick={() => handleDelete(deletingId)} disabled={submitting || !canEdit} style={{ padding: "12px 16px", background: submitting || !canEdit ? "#94a3b8" : "#ef4444", color: "white", border: "none", borderRadius: 8, cursor: submitting || !canEdit ? "not-allowed" : "pointer", fontWeight: 600, fontSize: fontSize.md, opacity: submitting || !canEdit ? 0.7 : 1, minHeight: 44, transition: "all 0.2s" }} onMouseEnter={e => { if (!submitting && canEdit) e.currentTarget.style.background = "#dc2626" }} onMouseLeave={e => { e.currentTarget.style.background = "#ef4444" }}>
+                    <button onClick={() => handleDelete(deletingId)} disabled={submitting || !canEdit} style={{ padding: "12px 16px", background: submitting || !canEdit ? "#94a3b8" : "#ef4444", color: "white", border: "none", borderRadius: 8, cursor: submitting || !canEdit ? "not-allowed" : "pointer", fontWeight: 600, fontSize: FONT_SIZE.md, opacity: submitting || !canEdit ? 0.7 : 1, minHeight: 44, transition: "all 0.2s" }} onMouseEnter={e => { if (!submitting && canEdit) e.currentTarget.style.background = "#dc2626" }} onMouseLeave={e => { e.currentTarget.style.background = "#ef4444" }}>
                       {submitting ? "Deleting..." : "Yes, Delete"}
                     </button>
                   </div>

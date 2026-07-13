@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useRef } from "react"
+import { useState, useEffect } from "react"
 import { Icon } from "@iconify/react"
 import { supabase } from "@/lib/supabase"
 import { apiMutate } from "@/lib/api-mutation"
@@ -9,9 +9,10 @@ import ReportModal from "@/components/ReportModal"
 import { formatAmount, parseAmount } from "@/lib/formatAmount"
 import ModernInput from "@/components/ModernInput"
 import CustomerSelector from "@/components/CustomerSelector"
-import CashOfficerPanel from "@/components/CashOfficerPanel"
 import CustomerPayments from "@/components/CustomerPayments"
+import ProfilePictureUpload from "@/components/ProfilePictureUpload"
 import { useBreakpoint } from "@/app/hooks/useBreakpoint"
+import { FONT_SIZE } from "@/lib/constants"
 
 type Broker = {
   broker_id: string
@@ -36,46 +37,16 @@ type Stop = {
   plate_number: string
   material_centre: string
   atc: string | null
+  product: string
   confirmed: boolean
   disputed: boolean
 }
 
-function useResponsive() {
-  const [isMobile, setIsMobile] = useState(true)
-  const [isDesktop, setIsDesktop] = useState(false)
-
-  useEffect(() => {
-    const handleResize = () => {
-      setIsMobile(window.innerWidth < 640)
-      setIsDesktop(window.innerWidth >= 640)
-    }
-
-    handleResize()
-    window.addEventListener("resize", handleResize)
-    return () => window.removeEventListener("resize", handleResize)
-  }, [])
-
-  return { isMobile, isDesktop }
-}
-
-const fontSize = {
-  xs: 12,
-  sm: 13,
-  base: 14,
-  md: 15,
-  lg: 16,
-  xl: 20,
-  "2xl": 24,
-  "3xl": 28
-}
-
 export default function BrokerDashboard() {
   const bp = useBreakpoint()
-  const { isMobile, isDesktop } = useResponsive()
+  const isMobile = bp === "mobile"
   const isTablet = bp === "tablet"
   const isNarrow = isMobile || isTablet
-
-  const fileInputRef = useRef<HTMLInputElement>(null)
 
   const [brokerId, setBrokerId] = useState<string | null>(null)
   const [broker, setBroker] = useState<Broker | null>(null)
@@ -87,30 +58,18 @@ export default function BrokerDashboard() {
   const [message, setMessage] = useState("")
   const [submitting, setSubmitting] = useState(false)
   const [loading, setLoading] = useState(true)
+  const [companyPriceMap, setCompanyPriceMap] = useState<Record<string, number>>({})
+  const [soldAtDifferentPrice, setSoldAtDifferentPrice] = useState(false)
+  const [discount, setDiscount] = useState("")
+  const [salePrice, setSalePrice] = useState("")
   const [activeFilter, setActiveFilter] = useState<"pending" | "confirmed" | "disputed">("pending")
   const [allStops, setAllStops] = useState<Stop[]>([])
 
-  // Dual-role state
-  const [isDualRole, setIsDualRole] = useState(false)
-  const [clerkOfficeName, setClerkOfficeName] = useState("")
-  const [activeView, setActiveView] = useState<"broker" | "expenses" | "payments">("broker")
-
-  // Profile picture upload states
   const [showPictureModal, setShowPictureModal] = useState(false)
   const [showReportModal, setShowReportModal] = useState(false)
-  const [selectedFile, setSelectedFile] = useState<File | null>(null)
-  const [picturePreview, setPicturePreview] = useState<string | null>(null)
-  const [pictureLoading, setPictureLoading] = useState(false)
-  const [pictureError, setPictureError] = useState("")
+  const [activeView, setActiveView] = useState<"broker" | "payments">("broker")
 
   useEffect(() => { initBroker() }, [])
-
-  useEffect(() => {
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
-      if (event === "SIGNED_OUT") window.location.href = "/login"
-    })
-    return () => subscription.unsubscribe()
-  }, [])
 
   async function initBroker() {
     const { data: { session } } = await supabase.auth.getSession()
@@ -119,17 +78,16 @@ export default function BrokerDashboard() {
 
     setBrokerId(user.id)
 
-    // Fetch broker profile
     const { data: brokerData } = await supabase
       .from("Profiles").select("full_name").eq("user_id", user.id).single()
-    
+
     if (brokerData) {
       const { data: brokerDetails } = await supabase
         .from("brokers")
         .select("broker_id, full_name, profile_picture_url")
         .eq("broker_id", user.id)
         .single()
-      
+
       if (brokerDetails) {
         setBroker(brokerDetails)
       } else {
@@ -137,15 +95,10 @@ export default function BrokerDashboard() {
       }
     }
 
-    const { data: clerkRecord } = await supabase
-      .from("cash_officers").select("office_name")
-      .eq("clerk_id", user.id).eq("status", "Active").single()
-
-    if (clerkRecord) {
-      setIsDualRole(true)
-      setClerkOfficeName(clerkRecord.office_name)
-    }
-
+    const { data: priceData } = await supabase.from("company_prices").select("*")
+    const priceMap: Record<string, number> = {}
+    for (const p of (priceData || [])) priceMap[p.product] = p.price
+    setCompanyPriceMap(priceMap)
     await fetchStops(user.id)
     setLoading(false)
   }
@@ -157,131 +110,85 @@ export default function BrokerDashboard() {
       .eq("broker_id", bId)
       .order("stop_time", { ascending: false })
 
-    const enrich = async (stops: any[]) => {
-      return await Promise.all(stops.map(async (stop) => {
-        const { data: trip } = await supabase
-          .from("Trips").select("plate_number, material_centre, ATC")
-          .eq("trip_id", stop.trip_id).single()
+    if (!stops) { setAllStops([]); return }
 
-        let customerName = "Not provided"
-        if (stop.customer_id) {
-          const { data: customer } = await supabase
-            .from("Customers").select("full_name")
-            .eq("customer_id", stop.customer_id).single()
-          customerName = customer?.full_name ?? "Not provided"
-        }
+    const tripIds = [...new Set(stops.map(s => s.trip_id).filter(Boolean))]
+    const customerIds = [...new Set(stops.map(s => s.customer_id).filter(Boolean))]
 
-        return {
-          ...stop,
-          plate_number: trip?.plate_number ?? "Unknown",
-          material_centre: trip?.material_centre ?? "",
-          atc: trip?.ATC ?? null,
-          customer_name: customerName,
-        }
-      }))
-    }
+    const [{ data: trips }, { data: customers }] = await Promise.all([
+      tripIds.length ? supabase.from("Trips").select("trip_id, plate_number, material_centre, ATC, product").in("trip_id", tripIds) : Promise.resolve({ data: [] }),
+      customerIds.length ? supabase.from("Customers").select("customer_id, full_name").in("customer_id", customerIds) : Promise.resolve({ data: [] }),
+    ])
 
-    setAllStops(await enrich(stops || []))
-  }
+    const tripMap = Object.fromEntries((trips || []).map(t => [t.trip_id, t]))
+    const customerMap = Object.fromEntries((customers || []).map(c => [c.customer_id, c.full_name]))
 
-  // Profile picture upload handlers
-  function handleAvatarClick() {
-    setPictureError("")
-    setPicturePreview(null)
-    setSelectedFile(null)
-    setShowPictureModal(true)
-  }
-
-  function handleFileSelect(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0]
-    if (!file) return
-
-    // Validate file type
-    if (!file.type.startsWith("image/")) {
-      setPictureError("Please select an image file")
-      return
-    }
-
-    // Validate file size (max 1MB)
-    if (file.size > 1 * 1024 * 1024) {
-      setPictureError("Image must be less than 1MB")
-      return
-    }
-
-    setSelectedFile(file)
-    setPictureError("")
-
-    // Create preview
-    const reader = new FileReader()
-    reader.onload = (event) => {
-      setPicturePreview(event.target?.result as string)
-    }
-    reader.readAsDataURL(file)
-  }
-
-  async function handleUploadPicture() {
-    if (!selectedFile || !broker) {
-      setPictureError("Please select an image")
-      return
-    }
-
-    setPictureLoading(true)
-    setPictureError("")
-
-    try {
-      const { data: { session } } = await supabase.auth.getSession()
-      if (!session) { setPictureError("Session expired"); setPictureLoading(false); return }
-
-      const fileExt = selectedFile.name.split(".").pop()
-      const fileName = `${broker.broker_id}-${Date.now()}.${fileExt}`
-      const filePath = `${broker.broker_id}/${fileName}`
-
-      // Delete old picture if exists
-      if (broker.profile_picture_url) {
-        const oldPath = broker.profile_picture_url.split("/").slice(-2).join("/")
-        await supabase.storage.from("profile-pictures").remove([oldPath])
+    const enriched = stops.map(stop => {
+      const trip = tripMap[stop.trip_id]
+      return {
+        ...stop,
+        plate_number: trip?.plate_number ?? "Unknown",
+        material_centre: trip?.material_centre ?? "",
+        atc: trip?.ATC ?? null,
+        product: trip?.product ?? "",
+        customer_name: stop.customer_id ? (customerMap[stop.customer_id] ?? "Not provided") : "Not provided",
       }
+    })
 
-      // Upload new picture
-      const { error: uploadError } = await supabase.storage
-        .from("profile-pictures")
-        .upload(filePath, selectedFile, { upsert: false })
-
-      if (uploadError) { setPictureError("Upload failed"); setPictureLoading(false); return }
-
-      // Get public URL
-      const { data: { publicUrl } } = supabase.storage
-        .from("profile-pictures")
-        .getPublicUrl(filePath)
-
-      // Update broker profile
-      const { error: updateError } = await supabase
-        .from("brokers")
-        .update({ profile_picture_url: publicUrl })
-        .eq("broker_id", broker.broker_id)
-
-      if (updateError) { setPictureError("Failed to save profile"); setPictureLoading(false); return }
-
-      // Update local state
-      setBroker({ ...broker, profile_picture_url: publicUrl })
-
-      // Close modal
-      setPictureLoading(false)
-      setShowPictureModal(false)
-      setSelectedFile(null)
-      setPicturePreview(null)
-    } catch (err) {
-      setPictureError("Something went wrong")
-      setPictureLoading(false)
-    }
+    setAllStops(enriched)
   }
 
   function openConfirmModal(stop: Stop) {
-    setSelectedStop(stop); setSelectedCustomer(null); setPricePerBag(""); setMessage("")
+    const cp = companyPriceMap[stop.product]
+    setSelectedStop(stop)
+    setSelectedCustomer(null)
+    setPricePerBag(cp ? formatAmount(cp.toString()) : "")
+    setSoldAtDifferentPrice(false)
+    setDiscount("")
+    setSalePrice("")
+    setMessage("")
   }
 
   function closeModal() {
-    setSelectedStop(null); setSelectedCustomer(null); setPricePerBag(""); setMessage("")
+    setSelectedStop(null); setSelectedCustomer(null); setPricePerBag(""); setMessage(""); setSoldAtDifferentPrice(false); setDiscount(""); setSalePrice("")
+  }
+
+  function handleDiscountChange(raw: string) {
+    const digits = raw.replace(/[^0-9]/g, "")
+    if (digits === "") { setDiscount(""); setSalePrice(""); setPricePerBag(""); return }
+    const discountVal = parseInt(digits)
+    const cp = selectedStop ? companyPriceMap[selectedStop.product] ?? 0 : 0
+    const saleAmount = Math.max(0, cp - discountVal)
+    setDiscount(formatAmount(discountVal.toString()))
+    setSalePrice(formatAmount(saleAmount.toString()))
+    setPricePerBag(formatAmount(saleAmount.toString()))
+    setMessage("")
+  }
+
+  function handleSalePriceChange(raw: string) {
+    const digits = raw.replace(/[^0-9]/g, "")
+    if (digits === "") { setSalePrice(""); setDiscount(""); setPricePerBag(""); return }
+    const saleVal = parseInt(digits)
+    const cp = selectedStop ? companyPriceMap[selectedStop.product] ?? 0 : 0
+    const discountAmount = Math.max(0, cp - saleVal)
+    setSalePrice(formatAmount(saleVal.toString()))
+    setDiscount(formatAmount(discountAmount.toString()))
+    setPricePerBag(formatAmount(saleVal.toString()))
+    setMessage("")
+  }
+
+  function handleToggleDifferentPrice(checked: boolean) {
+    setSoldAtDifferentPrice(checked)
+    if (!checked) {
+      const cp = selectedStop ? companyPriceMap[selectedStop.product] ?? 0 : 0
+      setDiscount("")
+      setSalePrice("")
+      setPricePerBag(cp ? formatAmount(cp.toString()) : "")
+    } else {
+      const cp = selectedStop ? companyPriceMap[selectedStop.product] ?? 0 : 0
+      setDiscount("0")
+      setSalePrice(cp ? formatAmount(cp.toString()) : "")
+    }
   }
 
   async function handleDispute() {
@@ -355,7 +262,6 @@ export default function BrokerDashboard() {
     { key: "disputed", label: "Disputed", count: disputedStops.length, color: "#ff4444" },
   ]
 
-  // ── Shared styles ──
   const maxW = isNarrow ? "100%" : 520
   const sidePad = isMobile ? "0 16px" : isTablet ? "0 24px" : 0
 
@@ -400,92 +306,73 @@ export default function BrokerDashboard() {
 
   return (
     <div style={{ fontFamily: "'Inter', sans-serif", background: "#f8fafc", minHeight: "100vh" }}>
+      <style>{`
+        @keyframes spin { from { transform: rotate(0deg) } to { transform: rotate(360deg) } }
+        .avatar-btn:hover { border-color: #0070f3 !important; transform: scale(1.05); }
+        .avatar-wrapper:hover .camera-overlay { opacity: 1 !important; }
+        .report-btn:hover { background: #fff0e1 !important; border-color: #f8ad5c !important; }
+        .logout-btn:hover { background: rgba(239,68,68,0.1) !important; border-color: #fca5a5 !important; }
+      `}</style>
 
       {/* Profile Banner */}
       <div style={{ background: "white", borderBottom: "1px solid #e2e8f0", padding: isMobile ? "16px" : "24px 32px" }}>
         <div style={{ maxWidth: 1200, margin: "0 auto", display: "flex", alignItems: "center", gap: isMobile ? 12 : 16, justifyContent: "space-between" }}>
           <div style={{ display: "flex", alignItems: "center", gap: isMobile ? 12 : 16, flex: 1 }}>
-            <div
-              onClick={handleAvatarClick}
-              style={{
-                width: isMobile ? 48 : 56,
-                height: isMobile ? 48 : 56,
-                borderRadius: "50%",
-                background: broker?.profile_picture_url ? "transparent" : "#f0f7ff",
-                border: "2px solid #bfdbfe",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                flexShrink: 0,
-                cursor: "pointer",
-                position: "relative",
-                overflow: "hidden",
-                transition: "all 0.2s",
-              }}
-              onMouseEnter={e => {
-                e.currentTarget.style.borderColor = "#0070f3"
-                e.currentTarget.style.transform = "scale(1.05)"
-              }}
-              onMouseLeave={e => {
-                e.currentTarget.style.borderColor = "#bfdbfe"
-                e.currentTarget.style.transform = "scale(1)"
-              }}
-            >
-              {broker?.profile_picture_url ? (
-                <img
-                  src={broker.profile_picture_url}
-                  alt={broker.full_name}
-                  style={{
-                    width: "100%",
-                    height: "100%",
-                    objectFit: "cover",
-                  }}
-                />
-              ) : (
-                <span style={{ fontSize: isMobile ? 20 : 24, fontWeight: 700, color: "#0070f3" }}>
-                  {broker?.full_name.charAt(0).toUpperCase()}
-                </span>
-              )}
-              {/* Camera overlay hint */}
+            <div className="avatar-wrapper" style={{ position: "relative" }}>
               <div
+                onClick={() => setShowPictureModal(true)}
+                className="avatar-btn"
                 style={{
-                  position: "absolute",
-                  inset: 0,
-                  background: "rgba(0, 0, 0, 0.4)",
+                  width: isMobile ? 48 : 56,
+                  height: isMobile ? 48 : 56,
+                  borderRadius: "50%",
+                  background: broker?.profile_picture_url ? "transparent" : "#f0f7ff",
+                  border: "2px solid #bfdbfe",
                   display: "flex",
                   alignItems: "center",
                   justifyContent: "center",
-                  opacity: 0,
-                  transition: "opacity 0.2s",
+                  flexShrink: 0,
+                  cursor: "pointer",
+                  overflow: "hidden",
+                  transition: "all 0.2s",
                 }}
-                onMouseEnter={e => e.currentTarget.style.opacity = "1"}
-                onMouseLeave={e => e.currentTarget.style.opacity = "0"}
               >
-                <Icon icon="mdi:camera" width={20} height={20} color="white" />
+                {broker?.profile_picture_url ? (
+                  <img
+                    src={broker.profile_picture_url}
+                    alt={broker.full_name}
+                    style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                  />
+                ) : (
+                  <span style={{ fontSize: isMobile ? 20 : 24, fontWeight: 700, color: "#0070f3" }}>
+                    {broker?.full_name.charAt(0).toUpperCase()}
+                  </span>
+                )}
+                <div className="camera-overlay" style={{ position: "absolute", inset: 0, background: "rgba(0, 0, 0, 0.4)", display: "flex", alignItems: "center", justifyContent: "center", opacity: 0, transition: "opacity 0.2s" }}>
+                  <Icon icon="mdi:camera" width={20} height={20} color="white" />
+                </div>
               </div>
             </div>
             <div>
-              <h1 style={{ margin: 0, fontSize: isMobile ? fontSize.lg : fontSize.xl, fontWeight: 700, color: "#0070f3" }}>
+              <h1 style={{ margin: 0, fontSize: isMobile ? FONT_SIZE.lg : FONT_SIZE.xl, fontWeight: 700, color: "#0070f3" }}>
                 {broker?.full_name}
               </h1>
-              <RoleSwitcher currentRole="Broker" style={{ margin: "2px 0 0", fontSize: fontSize.sm, color: "#64748b" }} />
+              <RoleSwitcher currentRole="Broker" style={{ margin: "2px 0 0", fontSize: FONT_SIZE.sm, color: "#64748b" }} />
             </div>
           </div>
           <div style={{ display: "flex", gap: 8 }}>
             <button
               onClick={() => setShowReportModal(true)}
-              style={{ padding: "8px 14px", background: "#fff8e1", color: "#f5a623", border: "1.5px solid #f8ad5c", borderRadius: 8, cursor: "pointer", fontSize: fontSize.sm, minHeight: 40, fontWeight: 600, display: "flex", alignItems: "center", gap: 6, transition: "all 0.2s", whiteSpace: "nowrap" }}
-              onMouseEnter={e => { e.currentTarget.style.background = "#fff0e1"; e.currentTarget.style.borderColor = "#f8ad5c" }}
-              onMouseLeave={e => { e.currentTarget.style.background = "#fff8e1"; e.currentTarget.style.borderColor = "#f8ad5c" }}
+              className="report-btn"
+              style={{ padding: "8px 14px", background: "#fff8e1", color: "#f5a623", border: "1.5px solid #f8ad5c", borderRadius: 8, cursor: "pointer", fontSize: FONT_SIZE.sm, minHeight: 40, fontWeight: 600, display: "flex", alignItems: "center", gap: 6, transition: "all 0.2s", whiteSpace: "nowrap" }}
             >
               <Icon icon="mdi:alert-circle-outline" width={16} />
               {!isMobile && "Report"}
             </button>
             <button
               onClick={async () => { await supabase.auth.signOut(); window.location.href = "/login" }}
-              style={{ padding: "8px 16px", background: "rgba(239, 68, 68, 0.05)", color: "#ef4444", border: "1.5px solid #fecaca", borderRadius: 6, cursor: "pointer", fontSize: fontSize.sm, fontWeight: 600, transition: "all 0.2s", minHeight: 40, whiteSpace: "nowrap" }}
-              onMouseEnter={e => { e.currentTarget.style.background = "rgba(239, 68, 68, 0.1)"; e.currentTarget.style.borderColor = "#fca5a5" }}
-              onMouseLeave={e => { e.currentTarget.style.background = "rgba(239, 68, 68, 0.05)"; e.currentTarget.style.borderColor = "#fecaca" }}
+              className="logout-btn"
+              style={{ padding: "8px 16px", background: "rgba(239, 68, 68, 0.05)", color: "#ef4444", border: "1.5px solid #fecaca", borderRadius: 6, cursor: "pointer", fontSize: FONT_SIZE.sm, fontWeight: 600, transition: "all 0.2s", minHeight: 40, whiteSpace: "nowrap" }}
             >
               Logout
             </button>
@@ -498,20 +385,19 @@ export default function BrokerDashboard() {
 
           {/* ── View Switcher ── */}
           <div style={{
-            display: "grid", gridTemplateColumns: isDualRole ? "1fr 1fr 1fr" : "1fr 1fr",
+            display: "grid", gridTemplateColumns: "1fr 1fr",
             gap: 10, padding: isMobile ? "16px 16px 0" : "20px 0 0",
             background: isMobile ? "#f8fafc" : "transparent",
           }}>
             {[
               { key: "broker", label: "My Stops", icon: "mdi:truck-delivery", count: allStops.length },
               { key: "payments", label: "Payments", icon: "mdi:cash-register" },
-              ...(isDualRole ? [{ key: "expenses", label: "Cash Expenses", icon: "mdi:cash-multiple" }] : []),
             ].map(tab => {
               const isActive = activeView === tab.key
               return (
                 <button
                   key={tab.key}
-                  onClick={() => setActiveView(tab.key as "broker" | "expenses" | "payments")}
+                  onClick={() => setActiveView(tab.key as "broker" | "payments")}
                   style={{
                     padding: isMobile ? "14px 12px" : "13px 12px",
                     background: isActive ? "rgba(0, 112, 243, 0.1)" : "white",
@@ -542,27 +428,14 @@ export default function BrokerDashboard() {
             </div>
           )}
 
-          {/* ── Expenses View ── */}
-          {activeView === "expenses" && isDualRole && brokerId && (
-            <div style={{ padding: isMobile ? "16px 0" : "20px 0" }}>
-              <CashOfficerPanel
-                clerkId={brokerId}
-                officeName={clerkOfficeName}
-                fullName={broker?.full_name || ""}
-              />
-            </div>
-          )}
-
           {/* ── Broker Stops View ── */}
           {activeView === "broker" && (
             <div style={{ padding: isMobile ? "20px 0" : "24px 0" }}>
 
-              {!isDualRole && (
-                <h2 style={{ margin: "0 0 20px", fontSize: isMobile ? 22 : 20, color: "#171717",
-                  padding: isMobile ? "0 16px" : 0 }}>
-                  My Stops
-                </h2>
-              )}
+              <h2 style={{ margin: "0 0 20px", fontSize: isMobile ? 22 : 20, color: "#171717",
+                padding: isMobile ? "0 16px" : 0 }}>
+                My Stops
+              </h2>
 
               {/* Filter Pills */}
               <div style={{
@@ -759,11 +632,18 @@ export default function BrokerDashboard() {
             </div>
 
             <div style={{ marginBottom: 16 }}>
-              <label style={labelStyle}>Correct Customer (if different)</label>
+              <label style={labelStyle}>Correct Customer (if not provided)</label>
               <CustomerSelector onSelect={(c) => setSelectedCustomer(c)} />
             </div>
 
-            <div style={{ marginBottom: 24 }}>
+            {companyPriceMap[selectedStop.product] !== undefined && (
+              <div style={{ marginBottom: 12, padding: "8px 12px", background: "#f0f7ff", borderRadius: 8, border: "1px solid #bfdbfe", display: "flex", alignItems: "center", gap: 8 }}>
+                <Icon icon="mdi:information" width={16} color="#0070f3" />
+                <span style={{ fontSize: 13, color: "#0c4a6e" }}>Company price: <strong>₦{companyPriceMap[selectedStop.product].toLocaleString()}</strong>/bag</span>
+              </div>
+            )}
+
+            <div style={{ marginBottom: 12 }}>
               <label style={labelStyle}>Price Per Bag (₦) *</label>
               <ModernInput
                 type="text"
@@ -774,6 +654,30 @@ export default function BrokerDashboard() {
                 style={inputStyle}
               />
             </div>
+
+            {companyPriceMap[selectedStop.product] !== undefined && (
+              <>
+                <div style={{ marginBottom: 16 }}>
+                  <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", fontWeight: 500, fontSize: 13, color: "#444" }}>
+                    <input type="checkbox" checked={soldAtDifferentPrice} onChange={e => handleToggleDifferentPrice(e.target.checked)} style={{ width: 16, height: 16, cursor: "pointer" }} />
+                    Sold at a different price?
+                  </label>
+                </div>
+
+                {soldAtDifferentPrice && (
+                  <div style={{ display: "flex", gap: 10, marginBottom: 16 }}>
+                    <div style={{ flex: 1 }}>
+                      <label style={labelStyle}>Discount (₦)</label>
+                      <ModernInput type="text" inputMode="numeric" placeholder="0" value={discount} onChange={e => handleDiscountChange(e.target.value)} style={inputStyle} />
+                    </div>
+                    <div style={{ flex: 1 }}>
+                      <label style={labelStyle}>Sale Price (₦)</label>
+                      <ModernInput type="text" inputMode="numeric" placeholder="Sale price" value={salePrice} onChange={e => handleSalePriceChange(e.target.value)} style={inputStyle} />
+                    </div>
+                  </div>
+                )}
+              </>
+            )}
 
             {message && (
               <div style={{ display: "flex", alignItems: "center", gap: 6, color: "#ff4444", marginBottom: 14, fontSize: 13 }}>
@@ -844,109 +748,15 @@ export default function BrokerDashboard() {
         </div>
       )}
 
-      {/* Profile Picture Upload Modal */}
-      {showPictureModal && (
-        <div onClick={() => { setShowPictureModal(false); setSelectedFile(null); setPicturePreview(null); setPictureError("") }} style={{ position: "fixed", inset: 0, background: "rgba(15, 23, 42, 0.6)", backdropFilter: "blur(4px)", display: "flex", alignItems: isMobile ? "flex-end" : "center", justifyContent: "center", zIndex: 100, padding: isMobile ? 0 : 24 }}>
-          <div onClick={e => e.stopPropagation()} style={{ background: "white", borderRadius: isMobile ? "20px 20px 0 0" : 12, padding: isMobile ? "28px 20px" : 32, width: "100%", maxWidth: 420, maxHeight: "90vh", overflowY: "auto", boxShadow: "0 25px 50px -12px rgba(0, 0, 0, 0.25)" }}>
-            <h3 style={{ margin: "0 0 6px 0", fontSize: fontSize.xl, fontWeight: 700, color: "#0f172a" }}>Update Profile Picture</h3>
-            <p style={{ margin: "0 0 20px 0", fontSize: fontSize.sm, color: "#64748b" }}>Click to upload or drag and drop. PNG, JPG up to 1MB.</p>
-
-            {/* Preview or Upload Area */}
-            {picturePreview ? (
-              <div style={{ marginBottom: 20 }}>
-                <p style={{ margin: "0 0 8px 0", fontSize: fontSize.sm, fontWeight: 600, color: "#0f172a" }}>Preview</p>
-                <img
-                  src={picturePreview}
-                  alt="Preview"
-                  style={{
-                    width: "100%",
-                    height: 200,
-                    objectFit: "cover",
-                    borderRadius: 12,
-                    border: "2px solid #e2e8f0",
-                  }}
-                />
-              </div>
-            ) : (
-              <div
-                onClick={() => fileInputRef.current?.click()}
-                style={{
-                  border: "1.5px dashed #0070f3",
-                  borderRadius: 12,
-                  padding: "32px 16px",
-                  cursor: "pointer",
-                  background: "#f0f7ff",
-                  transition: "all 0.2s",
-                  marginBottom: 20,
-                  display: "flex",
-                  flexDirection: "column",
-                  alignItems: "center",
-                  justifyContent: "center",
-                }}
-                onMouseEnter={e => {
-                  e.currentTarget.style.background = "#e0efff"
-                  e.currentTarget.style.borderColor = "#0055d4"
-                }}
-                onMouseLeave={e => {
-                  e.currentTarget.style.background = "#f0f7ff"
-                  e.currentTarget.style.borderColor = "#0070f3"
-                }}
-              >
-                <Icon icon="mdi:cloud-upload" width={40} height={40} color="#0070f3" style={{ marginBottom: 8 }} />
-                <p style={{ margin: "0 0 4px 0", fontSize: fontSize.base, fontWeight: 600, color: "#0070f3" }}>
-                  Click to upload
-                </p>
-                <p style={{ margin: 0, fontSize: fontSize.sm, color: "#64748b" }}>
-                  or drag and drop
-                </p>
-              </div>
-            )}
-
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept="image/*"
-              onChange={handleFileSelect}
-              style={{ display: "none" }}
-            />
-
-            {pictureError && (
-              <div style={{ padding: 12, background: "#fef2f2", borderLeft: "4px solid #ef4444", borderRadius: 4, marginBottom: 16, color: "#b91c1c", fontSize: fontSize.sm }}>
-                {pictureError}
-              </div>
-            )}
-
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-              <button
-                onClick={() => { setShowPictureModal(false); setSelectedFile(null); setPicturePreview(null); setPictureError("") }}
-                style={{ padding: "12px 16px", background: "white", border: "1px solid #cbd5e1", color: "#475569", borderRadius: 8, cursor: "pointer", fontWeight: 600, fontSize: fontSize.md, minHeight: 44 }}
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleUploadPicture}
-                disabled={pictureLoading || !selectedFile}
-                style={{
-                  padding: "12px 16px",
-                  background: selectedFile ? "#0070f3" : "#bfdbfe",
-                  color: "white",
-                  border: "none",
-                  borderRadius: 8,
-                  cursor: selectedFile && !pictureLoading ? "pointer" : "not-allowed",
-                  fontWeight: 600,
-                  fontSize: fontSize.md,
-                  minHeight: 44,
-                  opacity: pictureLoading ? 0.7 : 1,
-                }}
-              >
-                {pictureLoading ? "Uploading..." : "Upload"}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      <style>{`@keyframes spin { from { transform: rotate(0deg) } to { transform: rotate(360deg) } }`}</style>
+      <ProfilePictureUpload
+        isOpen={showPictureModal}
+        onClose={() => setShowPictureModal(false)}
+        userId={broker?.broker_id || ""}
+        table="brokers"
+        idField="broker_id"
+        currentUrl={broker?.profile_picture_url}
+        onSuccess={(url) => setBroker(prev => prev ? { ...prev, profile_picture_url: url } : prev)}
+      />
 
       <ReportModal
         isOpen={showReportModal}

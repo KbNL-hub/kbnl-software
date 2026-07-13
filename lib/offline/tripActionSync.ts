@@ -96,7 +96,12 @@ export class TripActionSyncManager {
 
 export const tripActionSyncManager = new TripActionSyncManager();
 
+let _autoSyncInitialized = false;
+
 export function initTripActionAutoSync() {
+  if (_autoSyncInitialized) return;
+  _autoSyncInitialized = true;
+
   window.addEventListener('online', async () => {
     console.log('[TripSync] Connection restored, syncing pending actions...');
     await tripActionSyncManager.syncAll();

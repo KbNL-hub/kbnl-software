@@ -1,5 +1,7 @@
 "use client"
 
+import { FONT_SIZE, POLLING_INTERVAL } from "@/lib/constants"
+
 import { useState, useEffect, useRef } from "react"
 import { supabase } from "@/lib/supabase"
 
@@ -48,9 +50,7 @@ const getPillStyle = (filter: string, isActive: boolean) => {
   return { bg: "white", textColor: "#64748b", borderColor: "#e2e8f0" }
 }
 
-const fontSize = {
-  xs: 12, sm: 13, base: 14, md: 15, lg: 16, xl: 20, "2xl": 24, "3xl": 28,
-}
+
 
 const statusColor = (status: string) =>
   status === "In transit" ? "#0070f3" :
@@ -158,7 +158,7 @@ export default function TruckMonitorSection({ plates }: Props) {
       })
       .subscribe()
 
-    const interval = setInterval(fetchActiveTrucks, 30000)
+    const interval = setInterval(fetchActiveTrucks, POLLING_INTERVAL)
     return () => {
       clearInterval(interval)
       subscription.unsubscribe()
@@ -180,7 +180,7 @@ export default function TruckMonitorSection({ plates }: Props) {
               style={{
                 padding: "8px 12px", background: viewMode === "card" ? "#0070f3" : "transparent",
                 color: viewMode === "card" ? "white" : "#64748b", border: "none", borderRadius: 6,
-                cursor: "pointer", fontSize: fontSize.xs, fontWeight: 600,
+                cursor: "pointer", fontSize: FONT_SIZE.xs, fontWeight: 600,
                 minWidth: 44, height: 40, display: "flex", alignItems: "center", justifyContent: "center",
               }}
               title="Card view"
@@ -192,7 +192,7 @@ export default function TruckMonitorSection({ plates }: Props) {
               style={{
                 padding: "8px 12px", background: viewMode === "table" ? "#0070f3" : "transparent",
                 color: viewMode === "table" ? "white" : "#64748b", border: "none", borderRadius: 6,
-                cursor: "pointer", fontSize: fontSize.xs, fontWeight: 600,
+                cursor: "pointer", fontSize: FONT_SIZE.xs, fontWeight: 600,
                 minWidth: 44, height: 40, display: "flex", alignItems: "center", justifyContent: "center",
               }}
               title="Table view"
@@ -206,7 +206,7 @@ export default function TruckMonitorSection({ plates }: Props) {
           style={{
             padding: "8px 12px", background: "white", color: "#64748b",
             border: "1px solid #e2e8f0", borderRadius: 8, cursor: "pointer",
-            fontSize: fontSize.xs, fontWeight: 500, minHeight: 40, minWidth: 40,
+            fontSize: FONT_SIZE.xs, fontWeight: 500, minHeight: 40, minWidth: 40,
             display: "flex", alignItems: "center", justifyContent: "center", transition: "all 0.2s",
           }}
           onMouseEnter={e => { e.currentTarget.style.background = "#f8fafc"; e.currentTarget.style.borderColor = "#cbd5e1" }}
@@ -218,7 +218,7 @@ export default function TruckMonitorSection({ plates }: Props) {
       </div>
 
       {lastUpdated && (
-        <p style={{ margin: "0 0 16px 0", color: "#94a3b8", fontSize: fontSize.xs }}>
+        <p style={{ margin: "0 0 16px 0", color: "#94a3b8", fontSize: FONT_SIZE.xs }}>
           Last updated: {lastUpdated.toLocaleTimeString()}
         </p>
       )}
@@ -233,7 +233,7 @@ export default function TruckMonitorSection({ plates }: Props) {
               key={option}
               onClick={() => setFilterStatus(option)}
               style={{
-                padding: "8px 14px", borderRadius: 20, fontSize: fontSize.sm, cursor: "pointer",
+                padding: "8px 14px", borderRadius: 20, fontSize: FONT_SIZE.sm, cursor: "pointer",
                 border: `1.5px solid ${pill.borderColor}`, background: pill.bg,
                 color: pill.textColor, fontWeight: isActive ? 600 : 500, transition: "all 0.2s",
               }}
@@ -257,8 +257,8 @@ export default function TruckMonitorSection({ plates }: Props) {
           <div style={{ width: 64, height: 64, background: "#f1f5f9", borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 16px" }}>
             <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2"/></svg>
           </div>
-          <h3 style={{ margin: "0 0 8px", color: "#0f172a", fontSize: fontSize.xl, fontWeight: 600 }}>No trucks found</h3>
-          <p style={{ color: "#64748b", fontSize: fontSize.base, margin: 0 }}>
+          <h3 style={{ margin: "0 0 8px", color: "#0f172a", fontSize: FONT_SIZE.xl, fontWeight: 600 }}>No trucks found</h3>
+          <p style={{ color: "#64748b", fontSize: FONT_SIZE.base, margin: 0 }}>
             {filterStatus === "All" ? "No trucks are currently active." : `No trucks with status "${filterStatus}".`}
           </p>
         </div>
@@ -274,15 +274,15 @@ export default function TruckMonitorSection({ plates }: Props) {
                   <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12, marginBottom: 12 }}>
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
-                        <h3 style={{ margin: 0, color: "#0f172a", fontSize: fontSize.lg, fontWeight: 600 }}>{truck.plate_number}</h3>
+                        <h3 style={{ margin: 0, color: "#0f172a", fontSize: FONT_SIZE.lg, fontWeight: 600 }}>{truck.plate_number}</h3>
                         {truck.kbnl_truck_no && (
-                          <span style={{ color: "#94a3b8", fontSize: fontSize.xs }}>· #{truck.kbnl_truck_no}</span>
+                          <span style={{ color: "#94a3b8", fontSize: FONT_SIZE.xs }}>· #{truck.kbnl_truck_no}</span>
                         )}
                       </div>
-                      <p style={{ margin: 0, color: "#64748b", fontSize: fontSize.sm }}>{truck.driver_name}</p>
+                      <p style={{ margin: 0, color: "#64748b", fontSize: FONT_SIZE.sm }}>{truck.driver_name}</p>
                     </div>
                     <span style={{
-                      padding: "6px 12px", borderRadius: 16, fontSize: fontSize.xs, fontWeight: 600,
+                      padding: "6px 12px", borderRadius: 16, fontSize: FONT_SIZE.xs, fontWeight: 600,
                       background: truck.trip_status === "In transit" ? "#ebf8ff" : "#fffbeb",
                       color: statusColor(truck.trip_status),
                       border: `1.5px solid ${statusColor(truck.trip_status)}`, whiteSpace: "nowrap",
@@ -292,26 +292,26 @@ export default function TruckMonitorSection({ plates }: Props) {
                   </div>
                   <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 12, padding: "12px 0", borderTop: "1px solid #f1f5f9", borderBottom: "1px solid #f1f5f9" }}>
                     <div>
-                      <p style={{ margin: "0 0 4px 0", color: "#94a3b8", fontSize: fontSize.xs }}>Loaded</p>
-                      <p style={{ margin: 0, color: "#0f172a", fontSize: fontSize.lg, fontWeight: 600 }}>{truck.loaded_quantity} bags</p>
+                      <p style={{ margin: "0 0 4px 0", color: "#94a3b8", fontSize: FONT_SIZE.xs }}>Loaded</p>
+                      <p style={{ margin: 0, color: "#0f172a", fontSize: FONT_SIZE.lg, fontWeight: 600 }}>{truck.loaded_quantity} bags</p>
                     </div>
                     <div>
-                      <p style={{ margin: "0 0 4px 0", color: "#94a3b8", fontSize: fontSize.xs }}>Remaining</p>
-                      <p style={{ margin: 0, color: remainingColor(truck.remaining, truck.loaded_quantity), fontSize: fontSize.lg, fontWeight: 600 }}>{truck.remaining} bags</p>
+                      <p style={{ margin: "0 0 4px 0", color: "#94a3b8", fontSize: FONT_SIZE.xs }}>Remaining</p>
+                      <p style={{ margin: 0, color: remainingColor(truck.remaining, truck.loaded_quantity), fontSize: FONT_SIZE.lg, fontWeight: 600 }}>{truck.remaining} bags</p>
                     </div>
                   </div>
                   <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                     <div>
-                      <p style={{ margin: "0 0 4px 0", color: "#94a3b8", fontSize: fontSize.xs }}>Route</p>
+                      <p style={{ margin: "0 0 4px 0", color: "#94a3b8", fontSize: FONT_SIZE.xs }}>Route</p>
                       {truck.route_points.length > 0 ? (
-                        <p style={{ margin: 0, color: "#0f172a", fontSize: fontSize.sm, wordBreak: "break-word" }}>{truck.route_points.join(" → ")}</p>
+                        <p style={{ margin: 0, color: "#0f172a", fontSize: FONT_SIZE.sm, wordBreak: "break-word" }}>{truck.route_points.join(" → ")}</p>
                       ) : (
-                        <p style={{ margin: 0, color: "#cbd5e1", fontSize: fontSize.sm, fontStyle: "italic" }}>No route set</p>
+                        <p style={{ margin: 0, color: "#cbd5e1", fontSize: FONT_SIZE.sm, fontStyle: "italic" }}>No route set</p>
                       )}
                     </div>
                     <div>
-                      <p style={{ margin: "0 0 4px 0", color: "#94a3b8", fontSize: fontSize.xs }}>Driver Contact</p>
-                      <p style={{ margin: 0, color: "#0f172a", fontSize: fontSize.sm }}>{truck.driver_phone}</p>
+                      <p style={{ margin: "0 0 4px 0", color: "#94a3b8", fontSize: FONT_SIZE.xs }}>Driver Contact</p>
+                      <p style={{ margin: 0, color: "#0f172a", fontSize: FONT_SIZE.sm }}>{truck.driver_phone}</p>
                     </div>
                   </div>
                 </div>
@@ -325,13 +325,13 @@ export default function TruckMonitorSection({ plates }: Props) {
               <table style={{ width: "100%", borderCollapse: "collapse", textAlign: "left" }}>
                 <thead>
                   <tr style={{ background: "#f8fafc", borderBottom: "1px solid #e2e8f0" }}>
-                    <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: fontSize.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px" }}>Truck</th>
-                    <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: fontSize.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px" }}>Driver</th>
-                    <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: fontSize.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px" }}>Contact</th>
-                    <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: fontSize.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px" }}>Loaded</th>
-                    <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: fontSize.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px" }}>Remaining</th>
-                    <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: fontSize.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px" }}>Status</th>
-                    <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: fontSize.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px" }}>Route</th>
+                    <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: FONT_SIZE.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px" }}>Truck</th>
+                    <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: FONT_SIZE.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px" }}>Driver</th>
+                    <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: FONT_SIZE.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px" }}>Contact</th>
+                    <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: FONT_SIZE.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px" }}>Loaded</th>
+                    <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: FONT_SIZE.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px" }}>Remaining</th>
+                    <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: FONT_SIZE.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px" }}>Status</th>
+                    <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: FONT_SIZE.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px" }}>Route</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -340,23 +340,23 @@ export default function TruckMonitorSection({ plates }: Props) {
                       onMouseEnter={e => e.currentTarget.style.background = "#f8fafc"}
                       onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
                       <td style={{ padding: "12px 16px" }}>
-                        <strong style={{ color: "#0f172a", fontSize: fontSize.base }}>{truck.plate_number}</strong>
-                        {truck.kbnl_truck_no && <div style={{ fontSize: fontSize.xs, color: "#94a3b8", marginTop: 2 }}>#{truck.kbnl_truck_no}</div>}
+                        <strong style={{ color: "#0f172a", fontSize: FONT_SIZE.base }}>{truck.plate_number}</strong>
+                        {truck.kbnl_truck_no && <div style={{ fontSize: FONT_SIZE.xs, color: "#94a3b8", marginTop: 2 }}>#{truck.kbnl_truck_no}</div>}
                       </td>
-                      <td style={{ padding: "12px 16px", color: "#0f172a", fontSize: fontSize.base }}>{truck.driver_name}</td>
-                      <td style={{ padding: "12px 16px", color: "#64748b", fontSize: fontSize.sm }}>{truck.driver_phone}</td>
-                      <td style={{ padding: "12px 16px", color: "#0f172a", fontSize: fontSize.base, fontWeight: 500 }}>{truck.loaded_quantity}</td>
-                      <td style={{ padding: "12px 16px", color: remainingColor(truck.remaining, truck.loaded_quantity), fontSize: fontSize.base, fontWeight: 600 }}>{truck.remaining}</td>
+                      <td style={{ padding: "12px 16px", color: "#0f172a", fontSize: FONT_SIZE.base }}>{truck.driver_name}</td>
+                      <td style={{ padding: "12px 16px", color: "#64748b", fontSize: FONT_SIZE.sm }}>{truck.driver_phone}</td>
+                      <td style={{ padding: "12px 16px", color: "#0f172a", fontSize: FONT_SIZE.base, fontWeight: 500 }}>{truck.loaded_quantity}</td>
+                      <td style={{ padding: "12px 16px", color: remainingColor(truck.remaining, truck.loaded_quantity), fontSize: FONT_SIZE.base, fontWeight: 600 }}>{truck.remaining}</td>
                       <td style={{ padding: "12px 16px" }}>
                         <span style={{
-                          padding: "6px 10px", borderRadius: 14, fontSize: fontSize.xs, fontWeight: 600,
+                          padding: "6px 10px", borderRadius: 14, fontSize: FONT_SIZE.xs, fontWeight: 600,
                           background: truck.trip_status === "In transit" ? "#ebf8ff" : "#fffbeb",
                           color: statusColor(truck.trip_status), border: `1.5px solid ${statusColor(truck.trip_status)}`,
                         }}>
                           {truck.trip_status}
                         </span>
                       </td>
-                      <td style={{ padding: "12px 16px", color: truck.route_points.length > 0 ? "#0f172a" : "#cbd5e1", fontSize: fontSize.sm }}>
+                      <td style={{ padding: "12px 16px", color: truck.route_points.length > 0 ? "#0f172a" : "#cbd5e1", fontSize: FONT_SIZE.sm }}>
                         {truck.route_points.length > 0 ? truck.route_points.join(" → ") : "No route"}
                       </td>
                     </tr>

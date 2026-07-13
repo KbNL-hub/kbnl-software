@@ -1,29 +1,20 @@
 import { createClient } from "@supabase/supabase-js"
 import { NextRequest, NextResponse } from "next/server"
+import { requireAuth, handleApiError } from "@/lib/auth-middleware"
 
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!,
 )
 
-async function authorizeUser(token: string) {
-  const { data: { user }, error } = await supabaseAdmin.auth.getUser(token)
-  if (error || !user) return null
-  return user
-}
-
 function buildError(msg: string, status: number) {
   return NextResponse.json({ error: msg }, { status })
 }
 
 export async function POST(req: NextRequest) {
-  const authHeader = req.headers.get("Authorization")
-  if (!authHeader?.startsWith("Bearer ")) return buildError("Unauthorized", 401)
-
-  const user = await authorizeUser(authHeader.slice(7))
-  if (!user) return buildError("Unauthorized", 401)
-
   try {
+    await requireAuth(req)
+
     const body = await req.json()
     const { data } = body as {
       data?: Record<string, unknown>
@@ -38,7 +29,6 @@ export async function POST(req: NextRequest) {
     }
     return NextResponse.json({ data: result })
   } catch (err) {
-    console.error("Mutation error", err)
-    return buildError("Internal server error", 500)
+    return handleApiError(err)
   }
 }

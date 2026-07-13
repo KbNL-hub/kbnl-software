@@ -1,17 +1,31 @@
 import { createClient } from "@supabase/supabase-js"
 import { NextRequest, NextResponse } from "next/server"
+import { requireRole, handleApiError } from "@/lib/auth-middleware"
 
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!,
 )
 
-const ALLOWED_TABLES = ["Trucks", "tricycles", "reports", "driver_complaints", "truck_officers", "truck_admins", "cash_officers", "store_officers", "Brokers", "Profiles", "Drivers", "station_managers", "desk_officers", "atc_officers"] as const
+const ALLOWED_TABLES = ["Trucks", "tricycles", "reports", "driver_complaints", "truck_officers", "truck_admins", "cash_officers", "store_officers", "Brokers", "Profiles", "Drivers", "station_managers", "desk_officers", "atc_officers", "company_prices", "company_price_history"] as const
 
-async function authorizeUser(token: string) {
-  const { data: { user }, error } = await supabaseAdmin.auth.getUser(token)
-  if (error || !user) return null
-  return user
+const TABLE_ROLES: Record<string, string[]> = {
+  Trucks: ["TruckAdmin", "TruckOfficer", "Admin", "SuperAdmin", "ATCOfficer", "Broker", "DeskOfficer", "Supervisor"],
+  tricycles: ["TruckAdmin", "Admin", "SuperAdmin", "ATCOfficer", "Broker"],
+  reports: ["Admin", "SuperAdmin"],
+  driver_complaints: ["Admin", "SuperAdmin", "TruckAdmin"],
+  truck_officers: ["TruckAdmin", "Admin", "SuperAdmin", "ATCOfficer"],
+  truck_admins: ["Admin", "SuperAdmin"],
+  cash_officers: ["Admin", "SuperAdmin"],
+  store_officers: ["Admin", "SuperAdmin"],
+  Brokers: ["Broker", "Admin", "SuperAdmin", "DeskOfficer"],
+  Profiles: ["Admin", "SuperAdmin"],
+  Drivers: ["Admin", "SuperAdmin", "ATCOfficer", "Broker", "TruckAdmin"],
+  station_managers: ["Admin", "SuperAdmin"],
+  desk_officers: ["Admin", "SuperAdmin"],
+  atc_officers: ["Admin", "SuperAdmin"],
+  company_prices: ["Admin", "SuperAdmin"],
+  company_price_history: ["Admin", "SuperAdmin"],
 }
 
 function buildError(msg: string, status: number) {
@@ -19,12 +33,6 @@ function buildError(msg: string, status: number) {
 }
 
 export async function POST(req: NextRequest) {
-  const authHeader = req.headers.get("Authorization")
-  if (!authHeader?.startsWith("Bearer ")) return buildError("Unauthorized", 401)
-
-  const user = await authorizeUser(authHeader.slice(7))
-  if (!user) return buildError("Unauthorized", 401)
-
   try {
     const body = await req.json()
     const { action, table, data, filters, conflict } = body as {
@@ -42,6 +50,9 @@ export async function POST(req: NextRequest) {
     if (!["insert", "update", "delete", "upsert"].includes(action)) {
       return buildError(`Invalid action "${action}"`, 400)
     }
+
+    const rolesForTable = TABLE_ROLES[table] || ["Admin"]
+    await requireRole(req, rolesForTable)
 
     switch (action) {
       case "insert": {
@@ -99,7 +110,6 @@ export async function POST(req: NextRequest) {
       }
     }
   } catch (err) {
-    console.error("Mutation error", err)
-    return buildError("Internal server error", 500)
+    return handleApiError(err)
   }
 }

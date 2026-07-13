@@ -6,16 +6,13 @@ import { supabase } from "@/lib/supabase"
 import { Icon } from "@iconify/react"
 import AdminPanel from "@/components/admin/AdminPanel"
 import BrokerPanel from "@/components/broker/BrokerPanel"
+import { FONT_SIZE } from "@/lib/constants"
 
 type UserProfile = {
   user_id: string
   role: string
   full_name: string
   profile_picture_url?: string
-}
-
-const fontSize = {
-  xs: 12, sm: 13, base: 14, md: 15, lg: 16, xl: 20, "2xl": 24, "3xl": 28
 }
 
 export const dynamic = "force-dynamic"
@@ -103,13 +100,6 @@ export default function AdminDashboard() {
     }
   }, [urlRole])
 
-  useEffect(() => {
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
-      if (event === "SIGNED_OUT") router.push("/login")
-    })
-    return () => subscription.unsubscribe()
-  }, [router])
-
   async function handleLogout() {
     await supabase.auth.signOut()
     router.push("/login")
@@ -124,7 +114,7 @@ export default function AdminDashboard() {
       <div style={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: "100vh", background: "#f8fafc", fontFamily: "'Inter', sans-serif" }}>
         <div style={{ textAlign: "center" }}>
           <div style={{ width: 40, height: 40, borderRadius: "50%", border: "3px solid #e2e8f0", borderTopColor: "#0070f3", animation: "spin 1s linear infinite", margin: "0 auto 12px" }} />
-          <p style={{ color: "#64748b", fontSize: fontSize.sm }}>Loading…</p>
+          <p style={{ color: "#64748b", fontSize: FONT_SIZE.sm }}>Loading…</p>
         </div>
         <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
       </div>
@@ -136,11 +126,11 @@ export default function AdminDashboard() {
       <div style={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: "100vh", background: "#f8fafc", fontFamily: "'Inter', sans-serif", padding: 24 }}>
         <div style={{ textAlign: "center", maxWidth: 400 }}>
           <Icon icon="mdi:lock-alert" width={48} color="#ef4444" style={{ marginBottom: 16, display: "block" }} />
-          <h1 style={{ margin: "0 0 8px", fontSize: fontSize.xl, fontWeight: 700, color: "#0f172a" }}>Access Denied</h1>
-          <p style={{ margin: "0 0 24px", fontSize: fontSize.base, color: "#64748b" }}>
+          <h1 style={{ margin: "0 0 8px", fontSize: FONT_SIZE.xl, fontWeight: 700, color: "#0f172a" }}>Access Denied</h1>
+          <p style={{ margin: "0 0 24px", fontSize: FONT_SIZE.base, color: "#64748b" }}>
             {error || "You do not have permission to access this dashboard."}
           </p>
-          <button onClick={handleLogout} style={{ padding: "10px 20px", background: "#0070f3", color: "white", border: "none", borderRadius: 8, cursor: "pointer", fontWeight: 600, fontSize: fontSize.sm }}>
+          <button onClick={handleLogout} style={{ padding: "10px 20px", background: "#0070f3", color: "white", border: "none", borderRadius: 8, cursor: "pointer", fontWeight: 600, fontSize: FONT_SIZE.sm }}>
             Go to Login
           </button>
         </div>
@@ -161,7 +151,7 @@ export default function AdminDashboard() {
       case "Broker":
         return <BrokerPanel userProfile={userProfile} />
       default:
-        return <p style={{ color: "#888", fontSize: fontSize.base }}>Unknown user role: {role}</p>
+        return <p style={{ color: "#888", fontSize: FONT_SIZE.base }}>Unknown user role: {role}</p>
     }
   }
 

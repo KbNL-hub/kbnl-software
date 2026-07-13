@@ -20,11 +20,26 @@ export type MutationPayload = {
 } | {
   action: "transaction"
   sub_actions: SubAction[]
+} | {
+  action: "rpc"
+  function: string
+  params?: Record<string, unknown>
 }
 
 export type MutationResult<T = unknown> = {
   data: T | null
   error: string | null
+  status?: number
+}
+
+function extractMessage(err: unknown): string {
+  if (err instanceof Error) return err.message
+  if (typeof err === "string") return err
+  try {
+    return JSON.stringify(err)
+  } catch {
+    return "Unknown error"
+  }
 }
 
 export async function apiMutate<T = unknown>(
@@ -36,7 +51,7 @@ export async function apiMutate<T = unknown>(
       data: { session },
     } = await supabase.auth.getSession()
 
-    if (!session) return { data: null, error: "No session" }
+    if (!session) return { data: null, error: "No session", status: 401 }
 
     const res = await fetch(`/api/mutations/${endpoint}`, {
       method: "POST",
@@ -47,12 +62,22 @@ export async function apiMutate<T = unknown>(
       body: JSON.stringify(payload),
     })
 
-    const result = await res.json().catch(() => null)
+    const body = await res.json().catch(() => null)
     if (!res.ok) {
-      return { data: null, error: result?.error || res.statusText || "Request failed" }
+      return {
+        data: null,
+        error: body?.error || res.statusText || "Request failed",
+        status: res.status,
+      }
     }
-    return { data: (result?.data ?? null) as T | null, error: null }
+    return { data: (body?.data ?? null) as T | null, error: null, status: res.status }
   } catch (err) {
-    return { data: null, error: err instanceof Error ? err.message : "Unknown error" }
+    return { data: null, error: extractMessage(err) }
   }
+}
+
+export function isAuthError(err: string | null | undefined): boolean {
+  if (!err) return false
+  const lower = err.toLowerCase()
+  return lower.includes("unauthorized") || lower.includes("forbidden") || lower.includes("no session")
 }

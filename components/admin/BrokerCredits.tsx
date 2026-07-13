@@ -9,6 +9,8 @@ import { formatAmount, parseAmount } from "@/lib/formatAmount"
 import { useBreakpoint } from "@/app/hooks/useBreakpoint"
 import { usePermissions } from "@/lib/PermissionContext"
 import ModernInput from "@/components/ModernInput"
+import { FONT_SIZE, POLLING_INTERVAL } from "@/lib/constants"
+import { toISOString } from "@/lib/date-utils"
 
 type Broker = { broker_id: string; broker_name: string; credit_limit: number | null }
 type CreditEntry = {
@@ -26,9 +28,7 @@ type CreditEntry = {
 type BrokerTotal = Broker & { total_credit: number }
 type ViewMode = "card" | "table"
 
-const fontSize = {
-  xs: 12, sm: 13, base: 14, md: 15, lg: 16, xl: 20, "2xl": 24, "3xl": 28,
-}
+
 
 export default function BrokerCredits() {
   const { getAccess } = usePermissions()
@@ -100,7 +100,7 @@ export default function BrokerCredits() {
       } else {
         fetchBrokerTotals()
       }
-    }, 30000)
+    }, POLLING_INTERVAL)
     return () => clearInterval(interval)
   }, [view, selectedBroker?.broker_id, fetchBrokerCredits, fetchBrokerTotals])
 
@@ -200,7 +200,7 @@ export default function BrokerCredits() {
 
       const { error } = await apiMutate("finance", {
         action: "update", table: "broker_credits",
-        data: { amount: parsed, cleared_at: parsed === 0 ? new Date().toISOString() : null, age_of_credit: parsedAge },
+        data: { amount: parsed, cleared_at: parsed === 0 ? toISOString() : null, age_of_credit: parsedAge },
         filters: { credit_id: updatingCredit.credit_id },
       })
 
@@ -229,7 +229,7 @@ export default function BrokerCredits() {
   }
 
   const tblHeadStyle: React.CSSProperties = {
-    padding: "12px 16px", fontWeight: 600, fontSize: fontSize.xs,
+    padding: "12px 16px", fontWeight: 600, fontSize: FONT_SIZE.xs,
     color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px",
   }
 
@@ -237,7 +237,7 @@ export default function BrokerCredits() {
     <div style={{ padding: "24px 16px", maxWidth: 960, margin: "0 auto" }}>
       <style>{`@keyframes spin { to { transform: rotate(360deg) } }`}</style>
       <div style={{ background: "#171717", borderRadius: 16, padding: "24px 20px", marginBottom: 24, color: "white" }}>
-        <p style={{ fontSize: fontSize.base, opacity: 0.7, margin: 0, marginBottom: 4 }}>
+        <p style={{ fontSize: FONT_SIZE.base, opacity: 0.7, margin: 0, marginBottom: 4 }}>
           {view === "detail" && selectedBroker
             ? `${selectedBroker.broker_name} — Total Credit`
             : "Total Company Credit"}
@@ -255,21 +255,21 @@ export default function BrokerCredits() {
             return (
               <div style={{ padding: "12px 16px", background: "#fefce8", border: "1px solid #facc15", borderRadius: 8, marginBottom: 16, display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
                 <Icon icon="mdi:alert-circle" width={18} color="#ca8a04" />
-                <span style={{ fontSize: fontSize.sm, color: "#854d0e", fontWeight: 500 }}>
+                <span style={{ fontSize: FONT_SIZE.sm, color: "#854d0e", fontWeight: 500 }}>
                   Credit limit exceeded for: {exceeded.map(b => b.broker_name).join(", ")}
                 </span>
               </div>
             )
           })()}
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16, flexWrap: "wrap", gap: 8 }}>
-            <h2 style={{ fontSize: fontSize.lg, color: "#171717", margin: 0 }}>Brokers</h2>
+            <h2 style={{ fontSize: FONT_SIZE.lg, color: "#171717", margin: 0 }}>Brokers</h2>
             <div style={{ display: "flex", gap: 8 }}>
               <button
                 onClick={fetchBrokerTotals}
                 disabled={loading}
                 style={{
                   padding: "8px 12px", background: "white", color: "#64748b", border: "1px solid #e2e8f0",
-                  borderRadius: 8, cursor: loading ? "not-allowed" : "pointer", fontSize: fontSize.xs,
+                  borderRadius: 8, cursor: loading ? "not-allowed" : "pointer", fontSize: FONT_SIZE.xs,
                   fontWeight: 500, minHeight: 40, minWidth: 40, display: "flex", alignItems: "center",
                   justifyContent: "center", transition: "all 0.2s", opacity: loading ? 0.5 : 1,
                 }}
@@ -284,7 +284,7 @@ export default function BrokerCredits() {
                     style={{
                       padding: "8px 12px", background: viewMode === "card" ? "#0070f3" : "transparent",
                       color: viewMode === "card" ? "white" : "#64748b", border: "none", borderRadius: 6,
-                      cursor: "pointer", fontSize: fontSize.xs, fontWeight: 600, transition: "all 0.2s ease",
+                      cursor: "pointer", fontSize: FONT_SIZE.xs, fontWeight: 600, transition: "all 0.2s ease",
                       minWidth: 44, height: 40, display: "flex", alignItems: "center", justifyContent: "center",
                     }}
                     title="Card view"
@@ -296,7 +296,7 @@ export default function BrokerCredits() {
                     style={{
                       padding: "8px 12px", background: viewMode === "table" ? "#0070f3" : "transparent",
                       color: viewMode === "table" ? "white" : "#64748b", border: "none", borderRadius: 6,
-                      cursor: "pointer", fontSize: fontSize.xs, fontWeight: 600, transition: "all 0.2s ease",
+                      cursor: "pointer", fontSize: FONT_SIZE.xs, fontWeight: 600, transition: "all 0.2s ease",
                       minWidth: 44, height: 40, display: "flex", alignItems: "center", justifyContent: "center",
                     }}
                     title="Table view"
@@ -332,9 +332,9 @@ export default function BrokerCredits() {
                       <Icon icon="mdi:handshake" width={20} color="#0070f3" />
                     </div>
                     <div>
-                      <span style={{ fontSize: fontSize.base, fontWeight: 600, color: "#171717" }}>{b.broker_name}</span>
+                      <span style={{ fontSize: FONT_SIZE.base, fontWeight: 600, color: "#171717" }}>{b.broker_name}</span>
                       {b.credit_limit != null && (
-                        <div style={{ fontSize: fontSize.xs, color: "#9ca3af", marginTop: 1 }}>
+                        <div style={{ fontSize: FONT_SIZE.xs, color: "#9ca3af", marginTop: 1 }}>
                           Limit: ₦{formatAmount(String(b.credit_limit))}
                         </div>
                       )}
@@ -346,7 +346,7 @@ export default function BrokerCredits() {
                       <Icon icon="mdi:alert-circle" width={18} color="#dc2626" />
                     </div>
                     )}
-                    <span style={{ fontSize: fontSize.md, fontWeight: "bold", color: b.total_credit > 0 ? "#dc2626" : "#6b7280" }}>
+                    <span style={{ fontSize: FONT_SIZE.md, fontWeight: "bold", color: b.total_credit > 0 ? "#dc2626" : "#6b7280" }}>
                       ₦{formatAmount(String(b.total_credit)) || "0"}
                     </span>
                     <Icon icon="mdi:chevron-right" width={18} color="#9ca3af" />
@@ -378,10 +378,10 @@ export default function BrokerCredits() {
                           <div style={{ width: 36, height: 36, borderRadius: 8, background: "#eff6ff", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
                             <Icon icon="mdi:handshake" width={18} color="#0070f3" />
                           </div>
-                          <span style={{ color: "#0f172a", fontSize: fontSize.base, fontWeight: 500 }}>{b.broker_name}</span>
+                          <span style={{ color: "#0f172a", fontSize: FONT_SIZE.base, fontWeight: 500 }}>{b.broker_name}</span>
                         </div>
                       </td>
-                      <td style={{ padding: "12px 16px", textAlign: "right", color: "#64748b", fontSize: fontSize.sm }}>
+                      <td style={{ padding: "12px 16px", textAlign: "right", color: "#64748b", fontSize: FONT_SIZE.sm }}>
                         {b.credit_limit != null ? `₦${formatAmount(String(b.credit_limit))}` : "—"}
                       </td>
                       <td style={{ padding: "12px 16px", textAlign: "right" }}>
@@ -391,7 +391,7 @@ export default function BrokerCredits() {
                             <Icon icon="mdi:alert-circle" width={16} color="#dc2626" />
                           </div>
                           )}
-                          <span style={{ fontSize: fontSize.md, fontWeight: "bold", color: b.total_credit > 0 ? "#dc2626" : "#6b7280" }}>
+                          <span style={{ fontSize: FONT_SIZE.md, fontWeight: "bold", color: b.total_credit > 0 ? "#dc2626" : "#6b7280" }}>
                             ₦{formatAmount(String(b.total_credit)) || "0"}
                           </span>
                           <Icon icon="mdi:chevron-right" width={16} color="#9ca3af" />
@@ -413,7 +413,7 @@ export default function BrokerCredits() {
               <button onClick={backToOverview} style={{ background: "none", border: "none", cursor: "pointer", padding: 4, color: "#6b7280" }}>
                 <Icon icon="mdi:arrow-left" width={22} />
               </button>
-              <h2 style={{ fontSize: fontSize.lg, color: "#171717", margin: 0 }}>{selectedBroker.broker_name}</h2>
+              <h2 style={{ fontSize: FONT_SIZE.lg, color: "#171717", margin: 0 }}>{selectedBroker.broker_name}</h2>
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
               <button
@@ -421,7 +421,7 @@ export default function BrokerCredits() {
                 disabled={loading}
                 style={{
                   padding: "8px 12px", background: "white", color: "#64748b", border: "1px solid #e2e8f0",
-                  borderRadius: 8, cursor: loading ? "not-allowed" : "pointer", fontSize: fontSize.xs,
+                  borderRadius: 8, cursor: loading ? "not-allowed" : "pointer", fontSize: FONT_SIZE.xs,
                   fontWeight: 500, minHeight: 40, minWidth: 40, display: "flex", alignItems: "center",
                   justifyContent: "center", transition: "all 0.2s", opacity: loading ? 0.5 : 1,
                 }}
@@ -436,7 +436,7 @@ export default function BrokerCredits() {
                     style={{
                       padding: "8px 12px", background: viewMode === "card" ? "#0070f3" : "transparent",
                       color: viewMode === "card" ? "white" : "#64748b", border: "none", borderRadius: 6,
-                      cursor: "pointer", fontSize: fontSize.xs, fontWeight: 600, transition: "all 0.2s ease",
+                      cursor: "pointer", fontSize: FONT_SIZE.xs, fontWeight: 600, transition: "all 0.2s ease",
                       minWidth: 44, height: 40, display: "flex", alignItems: "center", justifyContent: "center",
                     }}
                     title="Card view"
@@ -448,7 +448,7 @@ export default function BrokerCredits() {
                     style={{
                       padding: "8px 12px", background: viewMode === "table" ? "#0070f3" : "transparent",
                       color: viewMode === "table" ? "white" : "#64748b", border: "none", borderRadius: 6,
-                      cursor: "pointer", fontSize: fontSize.xs, fontWeight: 600, transition: "all 0.2s ease",
+                      cursor: "pointer", fontSize: FONT_SIZE.xs, fontWeight: 600, transition: "all 0.2s ease",
                       minWidth: 44, height: 40, display: "flex", alignItems: "center", justifyContent: "center",
                     }}
                     title="Table view"
@@ -468,7 +468,7 @@ export default function BrokerCredits() {
           </div>
 
           {errorMsg && (
-            <div style={{ padding: "12px 16px", background: "#fef2f2", border: "1px solid #fecaca", color: "#dc2626", borderRadius: 8, marginBottom: 16, fontSize: fontSize.sm, fontWeight: 500 }}>
+            <div style={{ padding: "12px 16px", background: "#fef2f2", border: "1px solid #fecaca", color: "#dc2626", borderRadius: 8, marginBottom: 16, fontSize: FONT_SIZE.sm, fontWeight: 500 }}>
               {errorMsg}
             </div>
           )}
@@ -482,8 +482,8 @@ export default function BrokerCredits() {
               {credits.map(c => (
                 <div key={c.credit_id} style={{ background: "white", borderRadius: 12, padding: "16px 18px", border: "1px solid #e5e7eb", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
                   <div style={{ minWidth: 0, flex: 1 }}>
-                    <span style={{ fontSize: fontSize.base, fontWeight: 600, color: "#171717" }}>{c.customer_name}</span>
-                    <div style={{ display: "flex", gap: 16, marginTop: 4, fontSize: fontSize.sm, color: "#6b7280", flexWrap: "wrap" }}>
+                    <span style={{ fontSize: FONT_SIZE.base, fontWeight: 600, color: "#171717" }}>{c.customer_name}</span>
+                    <div style={{ display: "flex", gap: 16, marginTop: 4, fontSize: FONT_SIZE.sm, color: "#6b7280", flexWrap: "wrap" }}>
                       <span>₦{formatAmount(String(c.amount))}</span>
                       <span>{new Date(c.created_at).toLocaleDateString()}</span>
                       {c.age_of_credit != null && <span style={{ color: "#9ca3af" }}>{c.age_of_credit} days</span>}
@@ -514,15 +514,15 @@ export default function BrokerCredits() {
                 <tbody>
                   {credits.map((c, idx) => (
                     <tr key={c.credit_id} style={{ borderBottom: idx === credits.length - 1 ? "none" : "1px solid #e2e8f0" }}>
-                      <td style={{ padding: "12px 16px", color: "#0f172a", fontSize: fontSize.base, fontWeight: 500 }}>{c.customer_name}</td>
-                      <td style={{ padding: "12px 16px", textAlign: "right", color: "#475569", fontSize: fontSize.sm, fontWeight: 600 }}>₦{formatAmount(String(c.amount))}</td>
-                      <td style={{ padding: "12px 16px", textAlign: "right", color: "#64748b", fontSize: fontSize.sm }}>{c.age_of_credit != null ? `${c.age_of_credit} days` : "—"}</td>
-                      <td style={{ padding: "12px 16px", textAlign: "right", color: "#64748b", fontSize: fontSize.sm }}>{new Date(c.created_at).toLocaleDateString()}</td>
+                      <td style={{ padding: "12px 16px", color: "#0f172a", fontSize: FONT_SIZE.base, fontWeight: 500 }}>{c.customer_name}</td>
+                      <td style={{ padding: "12px 16px", textAlign: "right", color: "#475569", fontSize: FONT_SIZE.sm, fontWeight: 600 }}>₦{formatAmount(String(c.amount))}</td>
+                      <td style={{ padding: "12px 16px", textAlign: "right", color: "#64748b", fontSize: FONT_SIZE.sm }}>{c.age_of_credit != null ? `${c.age_of_credit} days` : "—"}</td>
+                      <td style={{ padding: "12px 16px", textAlign: "right", color: "#64748b", fontSize: FONT_SIZE.sm }}>{new Date(c.created_at).toLocaleDateString()}</td>
                       <td style={{ padding: "12px 16px", textAlign: "right" }}>
                         <button
                           onClick={() => openUpdateModal(c)}
                           disabled={submitting || !canEdit}
-                          style={{ padding: "6px 10px", borderRadius: 6, border: "none", background: submitting || !canEdit ? "#94a3b8" : "#0070f3", color: "white", fontWeight: "bold", fontSize: fontSize.xs, cursor: submitting || !canEdit ? "not-allowed" : "pointer", opacity: submitting ? 0.6 : 1, minHeight: 32 }}
+                          style={{ padding: "6px 10px", borderRadius: 6, border: "none", background: submitting || !canEdit ? "#94a3b8" : "#0070f3", color: "white", fontWeight: "bold", fontSize: FONT_SIZE.xs, cursor: submitting || !canEdit ? "not-allowed" : "pointer", opacity: submitting ? 0.6 : 1, minHeight: 32 }}
                         >
                           Update
                         </button>
@@ -539,14 +539,14 @@ export default function BrokerCredits() {
       {showAddModal && (
         <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.4)", backdropFilter: "blur(4px)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 100, padding: 16 }} onClick={() => setShowAddModal(false)}>
           <div style={{ background: "white", borderRadius: 16, padding: 24, width: "100%", maxWidth: 440, boxShadow: "0 20px 60px rgba(0,0,0,0.2)" }} onClick={e => e.stopPropagation()}>
-            <h3 style={{ fontSize: fontSize.lg, margin: 0, marginBottom: 20, color: "#171717" }}>
+            <h3 style={{ fontSize: FONT_SIZE.lg, margin: 0, marginBottom: 20, color: "#171717" }}>
               Add Credit — {selectedBroker?.broker_name}
             </h3>
 
-            <label style={{ display: "block", fontSize: fontSize.sm, fontWeight: 600, color: "#374151", marginBottom: 6 }}>Customer</label>
+            <label style={{ display: "block", fontSize: FONT_SIZE.sm, fontWeight: 600, color: "#374151", marginBottom: 6 }}>Customer</label>
             <CustomerSelector onSelect={(c) => setSelectedCustomer(c)} allowUnsavedNew={true} />
 
-            <label style={{ display: "block", fontSize: fontSize.sm, fontWeight: 600, color: "#374151", marginBottom: 6, marginTop: 16 }}>Amount (₦)</label>
+            <label style={{ display: "block", fontSize: FONT_SIZE.sm, fontWeight: 600, color: "#374151", marginBottom: 6, marginTop: 16 }}>Amount (₦)</label>
             <input
               type="text"
               placeholder="0"
@@ -556,7 +556,7 @@ export default function BrokerCredits() {
               style={{ width: "100%", padding: "12px 14px", boxSizing: "border-box", borderRadius: 8, border: "1.5px solid #ccc", fontSize: 14, background: "white", color: "#171717", outline: "none", minHeight: 48 }}
             />
 
-            <label style={{ display: "block", fontSize: fontSize.sm, fontWeight: 600, color: "#374151", marginBottom: 6, marginTop: 16 }}>Age of Credit (days)</label>
+            <label style={{ display: "block", fontSize: FONT_SIZE.sm, fontWeight: 600, color: "#374151", marginBottom: 6, marginTop: 16 }}>Age of Credit (days)</label>
             <ModernInput
               type="text"
               placeholder="e.g. 30"
@@ -566,7 +566,7 @@ export default function BrokerCredits() {
               style={{ width: "100%", boxSizing: "border-box", minHeight: 48 }}
             />
 
-            {errorMsg && <p style={{ color: "#dc2626", fontSize: fontSize.sm, margin: "12px 0 0 0" }}>{errorMsg}</p>}
+            {errorMsg && <p style={{ color: "#dc2626", fontSize: FONT_SIZE.sm, margin: "12px 0 0 0" }}>{errorMsg}</p>}
 
             <div style={{ display: "flex", gap: 10, marginTop: 20 }}>
               <button onClick={() => { setShowAddModal(false); setLimitConfirmRequired(false) }} style={{ flex: 1, padding: "12px 0", background: "white", border: "1.5px solid #d1d5db", borderRadius: 8, cursor: "pointer", fontSize: 14, minHeight: 48 }}>Cancel</button>
@@ -585,14 +585,14 @@ export default function BrokerCredits() {
       {showUpdateModal && updatingCredit && (
         <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.4)", backdropFilter: "blur(4px)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 100, padding: 16 }} onClick={() => setShowUpdateModal(false)}>
           <div style={{ background: "white", borderRadius: 16, padding: 24, width: "100%", maxWidth: 440, boxShadow: "0 20px 60px rgba(0,0,0,0.2)" }} onClick={e => e.stopPropagation()}>
-            <h3 style={{ fontSize: fontSize.lg, margin: 0, marginBottom: 4, color: "#171717" }}>
+            <h3 style={{ fontSize: FONT_SIZE.lg, margin: 0, marginBottom: 4, color: "#171717" }}>
               Update Credit
             </h3>
-            <p style={{ fontSize: fontSize.sm, color: "#6b7280", margin: "0 0 20px 0" }}>
+            <p style={{ fontSize: FONT_SIZE.sm, color: "#6b7280", margin: "0 0 20px 0" }}>
               {selectedBroker?.broker_name} — {updatingCredit.customer_name}
             </p>
 
-            <label style={{ display: "block", fontSize: fontSize.sm, fontWeight: 600, color: "#374151", marginBottom: 6 }}>New Amount (₦)</label>
+            <label style={{ display: "block", fontSize: FONT_SIZE.sm, fontWeight: 600, color: "#374151", marginBottom: 6 }}>New Amount (₦)</label>
             <input
               type="text"
               placeholder="0"
@@ -602,7 +602,7 @@ export default function BrokerCredits() {
               style={{ width: "100%", padding: "12px 14px", boxSizing: "border-box", borderRadius: 8, border: "1.5px solid #ccc", fontSize: 14, background: "white", color: "#171717", outline: "none", minHeight: 48 }}
             />
 
-            <label style={{ display: "block", fontSize: fontSize.sm, fontWeight: 600, color: "#374151", marginBottom: 6, marginTop: 16 }}>Age of Credit (days)</label>
+            <label style={{ display: "block", fontSize: FONT_SIZE.sm, fontWeight: 600, color: "#374151", marginBottom: 6, marginTop: 16 }}>Age of Credit (days)</label>
             <ModernInput
               type="text"
               placeholder="e.g. 30"
@@ -612,7 +612,7 @@ export default function BrokerCredits() {
               style={{ width: "100%", boxSizing: "border-box", minHeight: 48 }}
             />
 
-            {errorMsg && <p style={{ color: "#dc2626", fontSize: fontSize.sm, margin: "12px 0 0 0" }}>{errorMsg}</p>}
+            {errorMsg && <p style={{ color: "#dc2626", fontSize: FONT_SIZE.sm, margin: "12px 0 0 0" }}>{errorMsg}</p>}
 
             <div style={{ display: "flex", gap: 10, marginTop: 20 }}>
               <button onClick={() => setShowUpdateModal(false)} style={{ flex: 1, padding: "12px 0", background: "white", border: "1.5px solid #d1d5db", borderRadius: 8, cursor: "pointer", fontSize: 14, minHeight: 48 }}>Cancel</button>

@@ -1,5 +1,7 @@
 "use client"
 
+import { FONT_SIZE } from "@/lib/constants"
+
 import React from "react"
 
 interface EmptyStateProps {
@@ -8,16 +10,7 @@ interface EmptyStateProps {
   description: string
 }
 
-const fontSize = {
-  xs: 12,
-  sm: 13,
-  base: 14,
-  md: 15,
-  lg: 16,
-  xl: 20,
-  "2xl": 24,
-  "3xl": 28,
-}
+
 
 export function EmptyState({ icon, title, description }: EmptyStateProps) {
   return (
@@ -32,8 +25,8 @@ export function EmptyState({ icon, title, description }: EmptyStateProps) {
       }}
     >
       {icon && <div style={{ fontSize: 32, marginBottom: 12 }}>{icon}</div>}
-      <h3 style={{ margin: "0 0 8px", color: "#0f172a", fontSize: fontSize.xl, fontWeight: 600 }}>{title}</h3>
-      <p style={{ color: "#64748b", fontSize: fontSize.base, margin: 0 }}>{description}</p>
+      <h3 style={{ margin: "0 0 8px", color: "#0f172a", fontSize: FONT_SIZE.xl, fontWeight: 600 }}>{title}</h3>
+      <p style={{ color: "#64748b", fontSize: FONT_SIZE.base, margin: 0 }}>{description}</p>
     </div>
   )
 }

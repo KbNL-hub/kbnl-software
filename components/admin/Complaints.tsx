@@ -1,5 +1,7 @@
 "use client"
 
+import { FONT_SIZE, POLLING_INTERVAL } from "@/lib/constants"
+
 import { useState, useEffect } from "react"
 import { supabase } from "@/lib/supabase"
 import { apiMutate } from "@/lib/api-mutation"
@@ -35,7 +37,7 @@ function useBreakpoint() {
   return { isMobile, isDesktop }
 }
 
-const fontSize = { xs: 12, sm: 13, base: 14, md: 15, lg: 16, xl: 20, "2xl": 24, "3xl": 28 }
+
 
 const filters = ["All", "Unresolved", "Resolved"]
 
@@ -52,7 +54,7 @@ export default function Complaints() {
 
   useEffect(() => {
     fetchComplaints()
-    const interval = setInterval(fetchComplaints, 30000)
+    const interval = setInterval(fetchComplaints, POLLING_INTERVAL)
     return () => clearInterval(interval)
   }, [])
 
@@ -137,10 +139,10 @@ export default function Complaints() {
     <div style={{ minHeight: "100vh", background: "#f8fafc", padding: isMobile ? "16px" : "32px", fontFamily: "'Inter', sans-serif" }}>
       <div style={{ display: "flex", flexDirection: isMobile ? "column" : "row", justifyContent: "space-between", alignItems: isMobile ? "flex-start" : "center", gap: 16, marginBottom: 32 }}>
         <div>
-          <h1 style={{ margin: 0, color: "#0f172a", fontSize: isMobile ? fontSize["2xl"] : fontSize["3xl"], fontWeight: 700, letterSpacing: "-0.5px" }}>
+          <h1 style={{ margin: 0, color: "#0f172a", fontSize: isMobile ? FONT_SIZE["2xl"] : FONT_SIZE["3xl"], fontWeight: 700, letterSpacing: "-0.5px" }}>
             Driver Complaints
           </h1>
-          <p style={{ margin: "8px 0 0", color: "#64748b", fontSize: fontSize.base }}>
+          <p style={{ margin: "8px 0 0", color: "#64748b", fontSize: FONT_SIZE.base }}>
             {unresolvedCount} unresolved · {resolvedCount} resolved
           </p>
         </div>
@@ -148,17 +150,17 @@ export default function Complaints() {
         <div style={{ display: "flex", alignItems: "center", gap: 12, width: isMobile ? "100%" : "auto" }}>
           {complaints.length > 0 && (
             <div style={{ display: "flex", background: "white", border: "1px solid #e2e8f0", borderRadius: 8, padding: 4, gap: 0 }}>
-              <button onClick={() => setViewMode("card")} style={{ padding: "8px 12px", background: viewMode === "card" ? "#0070f3" : "transparent", color: viewMode === "card" ? "white" : "#64748b", border: "none", borderRadius: 6, cursor: "pointer", fontSize: fontSize.xs, fontWeight: 600, transition: "all 0.2s ease", minWidth: 44, height: 40, display: "flex", alignItems: "center", justifyContent: "center" }} title="Card view">
+              <button onClick={() => setViewMode("card")} style={{ padding: "8px 12px", background: viewMode === "card" ? "#0070f3" : "transparent", color: viewMode === "card" ? "white" : "#64748b", border: "none", borderRadius: 6, cursor: "pointer", fontSize: FONT_SIZE.xs, fontWeight: 600, transition: "all 0.2s ease", minWidth: 44, height: 40, display: "flex", alignItems: "center", justifyContent: "center" }} title="Card view">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M3 3h8v8H3V3zm10 0h8v8h-8V3zM3 13h8v8H3v-8zm10 0h8v8h-8v-8z" /></svg>
               </button>
-              <button onClick={() => setViewMode("table")} style={{ padding: "8px 12px", background: viewMode === "table" ? "#0070f3" : "transparent", color: viewMode === "table" ? "white" : "#64748b", border: "none", borderRadius: 6, cursor: "pointer", fontSize: fontSize.xs, fontWeight: 600, transition: "all 0.2s ease", minWidth: 44, height: 40, display: "flex", alignItems: "center", justifyContent: "center" }} title="Table view">
+              <button onClick={() => setViewMode("table")} style={{ padding: "8px 12px", background: viewMode === "table" ? "#0070f3" : "transparent", color: viewMode === "table" ? "white" : "#64748b", border: "none", borderRadius: 6, cursor: "pointer", fontSize: FONT_SIZE.xs, fontWeight: 600, transition: "all 0.2s ease", minWidth: 44, height: 40, display: "flex", alignItems: "center", justifyContent: "center" }} title="Table view">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M3 4h18v2H3V4zm0 7h18v2H3v-2zm0 7h18v2H3v-2z" /></svg>
               </button>
             </div>
           )}
 
 
-          <button onClick={fetchComplaints} style={{ padding: "10px 16px", background: "white", color: "#0070f3", border: "1px solid #e2e8f0", borderRadius: 8, cursor: "pointer", fontWeight: 500, fontSize: fontSize.sm, transition: "all 0.2s ease", display: "flex", alignItems: "center", gap: 6, minHeight: 40 }} onMouseEnter={e => { e.currentTarget.style.background = "#f8fafc"; e.currentTarget.style.borderColor = "#0070f3" }} onMouseLeave={e => { e.currentTarget.style.background = "white"; e.currentTarget.style.borderColor = "#e2e8f0" }}>
+          <button onClick={fetchComplaints} style={{ padding: "10px 16px", background: "white", color: "#0070f3", border: "1px solid #e2e8f0", borderRadius: 8, cursor: "pointer", fontWeight: 500, fontSize: FONT_SIZE.sm, transition: "all 0.2s ease", display: "flex", alignItems: "center", gap: 6, minHeight: 40 }} onMouseEnter={e => { e.currentTarget.style.background = "#f8fafc"; e.currentTarget.style.borderColor = "#0070f3" }} onMouseLeave={e => { e.currentTarget.style.background = "white"; e.currentTarget.style.borderColor = "#e2e8f0" }}>
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M23 4v6h-6" /><path d="M1 20v-6h6" /><path d="M3.51 9a9 9 0 0 1 14.85-3.36M20.49 15a9 9 0 0 1-14.85 3.36" /></svg>
             Refresh
           </button>
@@ -166,7 +168,7 @@ export default function Complaints() {
       </div>
 
       {lastUpdated && (
-        <p style={{ fontSize: fontSize.xs, color: "#94a3b8", marginBottom: 20 }}>
+        <p style={{ fontSize: FONT_SIZE.xs, color: "#94a3b8", marginBottom: 20 }}>
           Updated {lastUpdated.toLocaleTimeString()}
         </p>
       )}
@@ -181,7 +183,7 @@ export default function Complaints() {
               style={{
                 padding: "6px 12px",
                 borderRadius: 24,
-                fontSize: fontSize.xs,
+                fontSize: FONT_SIZE.xs,
                 cursor: "pointer",
                 border: "1px solid",
                 background: filter === f ? (f === "Resolved" ? "#f0fff4" : f === "Unresolved" ? "#fdf5d3" : "#f1f5f9") : "white",
@@ -207,8 +209,8 @@ export default function Complaints() {
           <div style={{ width: 64, height: 64, background: "#f1f5f9", borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 16px" }}>
             <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth="2"><path d="M12 8v8m0 0v-2m0 2v4M8 12h8" /></svg>
           </div>
-          <h3 style={{ margin: "0 0 8px", color: "#0f172a", fontSize: fontSize.xl, fontWeight: 600 }}>No {filter.toLowerCase()} complaints</h3>
-          <p style={{ color: "#64748b", fontSize: fontSize.base }}>Great work! Keep the operations smooth.</p>
+          <h3 style={{ margin: "0 0 8px", color: "#0f172a", fontSize: FONT_SIZE.xl, fontWeight: 600 }}>No {filter.toLowerCase()} complaints</h3>
+          <p style={{ color: "#64748b", fontSize: FONT_SIZE.base }}>Great work! Keep the operations smooth.</p>
         </div>
       ) : (
         <>
@@ -231,32 +233,32 @@ export default function Complaints() {
                 >
                   <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12, marginBottom: 12 }}>
                     <div style={{ flex: 1, minWidth: 0 }}>
-                      <h3 style={{ margin: "0 0 4px", color: "#0f172a", fontSize: fontSize.lg, fontWeight: 600 }}>
+                      <h3 style={{ margin: "0 0 4px", color: "#0f172a", fontSize: FONT_SIZE.lg, fontWeight: 600 }}>
                         {c.driver_name}
                       </h3>
-                      <p style={{ margin: "0 0 4px", color: "#64748b", fontSize: fontSize.sm }}>
+                      <p style={{ margin: "0 0 4px", color: "#64748b", fontSize: FONT_SIZE.sm }}>
                         {c.plate_number}{c.kbnl_truck_no ? ` · #${c.kbnl_truck_no}` : ""}
                       </p>
-                      <p style={{ margin: 0, color: "#94a3b8", fontSize: fontSize.xs }}>
+                      <p style={{ margin: 0, color: "#94a3b8", fontSize: FONT_SIZE.xs }}>
                         {new Date(c.reported_at).toLocaleString()}
                       </p>
                     </div>
                     <div style={{ display: "flex", flexDirection: "column", gap: 6, alignItems: "flex-end" }}>
-                      <span style={{ padding: "4px 10px", borderRadius: 6, fontSize: fontSize.xs, fontWeight: 500, background: c.resolved ? "#d1fae5" : "#fef3c7", color: c.resolved ? "#065f46" : "#78350f", border: `1px solid ${c.resolved ? "#a7f3d0" : "#fde68a"}` }}>
+                      <span style={{ padding: "4px 10px", borderRadius: 6, fontSize: FONT_SIZE.xs, fontWeight: 500, background: c.resolved ? "#d1fae5" : "#fef3c7", color: c.resolved ? "#065f46" : "#78350f", border: `1px solid ${c.resolved ? "#a7f3d0" : "#fde68a"}` }}>
                         {c.resolved ? "Resolved" : "Unresolved"}
                       </span>
-                      <span style={{ padding: "4px 10px", borderRadius: 6, fontSize: fontSize.xs, fontWeight: 500, background: "#f0f7ff", color: "#0c4a6e", border: "1px solid #bfdbfe" }}>
+                      <span style={{ padding: "4px 10px", borderRadius: 6, fontSize: FONT_SIZE.xs, fontWeight: 500, background: "#f0f7ff", color: "#0c4a6e", border: "1px solid #bfdbfe" }}>
                         {c.complaint_type}
                       </span>
                     </div>
                   </div>
 
-                  <p style={{ margin: "12px 0", fontSize: fontSize.base, color: "#475569", lineHeight: 1.5, padding: "12px 0", borderTop: "1px solid #f1f5f9", borderBottom: "1px solid #f1f5f9" }}>
+                  <p style={{ margin: "12px 0", fontSize: FONT_SIZE.base, color: "#475569", lineHeight: 1.5, padding: "12px 0", borderTop: "1px solid #f1f5f9", borderBottom: "1px solid #f1f5f9" }}>
                     {c.notes}
                   </p>
 
                   {c.trip_id && (
-                    <p style={{ margin: "0 0 12px", fontSize: fontSize.sm, color: "#64748b" }}>
+                    <p style={{ margin: "0 0 12px", fontSize: FONT_SIZE.sm, color: "#64748b" }}>
                       Trip: <span style={{ fontFamily: "monospace", fontWeight: 500 }}>{c.trip_id}</span>
                     </p>
                   )}
@@ -273,7 +275,7 @@ export default function Complaints() {
                         borderRadius: 6,
                         cursor: resolving === c.complaint_id || !canEdit ? "not-allowed" : "pointer",
                         fontWeight: 600,
-                        fontSize: fontSize.sm,
+                        fontSize: FONT_SIZE.sm,
                         opacity: resolving === c.complaint_id || !canEdit ? 0.7 : 1,
                         transition: "all 0.2s ease"
                       }}
@@ -293,33 +295,33 @@ export default function Complaints() {
               <table style={{ width: "100%", borderCollapse: "collapse", textAlign: "left" }}>
                 <thead>
                   <tr style={{ background: "#f8fafc", borderBottom: "1px solid #e2e8f0" }}>
-                    <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: fontSize.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px" }}>Driver</th>
-                    <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: fontSize.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px" }}>Truck</th>
-                    <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: fontSize.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px" }}>Type</th>
-                    <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: fontSize.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px" }}>Notes</th>
-                    <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: fontSize.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px" }}>Status</th>
-                    <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: fontSize.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px", textAlign: "right" }}>Action</th>
+                    <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: FONT_SIZE.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px" }}>Driver</th>
+                    <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: FONT_SIZE.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px" }}>Truck</th>
+                    <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: FONT_SIZE.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px" }}>Type</th>
+                    <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: FONT_SIZE.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px" }}>Notes</th>
+                    <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: FONT_SIZE.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px" }}>Status</th>
+                    <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: FONT_SIZE.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px", textAlign: "right" }}>Action</th>
                   </tr>
                 </thead>
                 <tbody>
                   {filtered.map((c, idx) => (
                     <tr key={c.complaint_id} style={{ borderBottom: idx === filtered.length - 1 ? "none" : "1px solid #e2e8f0", opacity: c.resolved ? 0.75 : 1, transition: "background 0.2s ease" }} onMouseEnter={e => e.currentTarget.style.background = "#f8fafc"} onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
-                      <td style={{ padding: "12px 16px", color: "#0f172a", fontSize: fontSize.base, fontWeight: 500 }}>
+                      <td style={{ padding: "12px 16px", color: "#0f172a", fontSize: FONT_SIZE.base, fontWeight: 500 }}>
                         {c.driver_name}
                       </td>
-                      <td style={{ padding: "12px 16px", color: "#475569", fontSize: fontSize.sm, fontFamily: "monospace" }}>
+                      <td style={{ padding: "12px 16px", color: "#475569", fontSize: FONT_SIZE.sm, fontFamily: "monospace" }}>
                         {c.plate_number}
                       </td>
                       <td style={{ padding: "12px 16px" }}>
-                        <span style={{ padding: "4px 10px", borderRadius: 6, fontSize: fontSize.xs, fontWeight: 500, background: "#f0f7ff", color: "#0c4a6e", border: "1px solid #bfdbfe" }}>
+                        <span style={{ padding: "4px 10px", borderRadius: 6, fontSize: FONT_SIZE.xs, fontWeight: 500, background: "#f0f7ff", color: "#0c4a6e", border: "1px solid #bfdbfe" }}>
                           {c.complaint_type}
                         </span>
                       </td>
-                      <td style={{ padding: "12px 16px", color: "#475569", fontSize: fontSize.sm, maxWidth: 200, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      <td style={{ padding: "12px 16px", color: "#475569", fontSize: FONT_SIZE.sm, maxWidth: 200, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                         {c.notes}
                       </td>
                       <td style={{ padding: "12px 16px" }}>
-                        <span style={{ padding: "4px 10px", borderRadius: 6, fontSize: fontSize.xs, fontWeight: 500, background: c.resolved ? "#d1fae5" : "#fef3c7", color: c.resolved ? "#065f46" : "#78350f", border: `1px solid ${c.resolved ? "#a7f3d0" : "#fde68a"}` }}>
+                        <span style={{ padding: "4px 10px", borderRadius: 6, fontSize: FONT_SIZE.xs, fontWeight: 500, background: c.resolved ? "#d1fae5" : "#fef3c7", color: c.resolved ? "#065f46" : "#78350f", border: `1px solid ${c.resolved ? "#a7f3d0" : "#fde68a"}` }}>
                           {c.resolved ? "Resolved" : "Unresolved"}
                         </span>
                       </td>
@@ -336,7 +338,7 @@ export default function Complaints() {
                               borderRadius: 5,
                               cursor: resolving === c.complaint_id || !canEdit ? "not-allowed" : "pointer",
                               fontWeight: 500,
-                              fontSize: fontSize.xs,
+                              fontSize: FONT_SIZE.xs,
                               opacity: resolving === c.complaint_id || !canEdit ? 0.7 : 1,
                               transition: "all 0.2s ease",
                               minHeight: 32,

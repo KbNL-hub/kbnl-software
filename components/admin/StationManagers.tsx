@@ -1,5 +1,7 @@
 "use client"
 
+import { FONT_SIZE } from "@/lib/constants"
+
 import { useState, useEffect, useRef } from "react"
 import { supabase } from "@/lib/supabase"
 import { apiMutate } from "@/lib/api-mutation"
@@ -44,16 +46,7 @@ function useBreakpoint() {
 }
 
 // Fixed typography scale
-const fontSize = {
-  xs: 12,
-  sm: 13,
-  base: 14,
-  md: 15,
-  lg: 16,
-  xl: 20,
-  "2xl": 24,
-  "3xl": 28,
-}
+
 
 export default function ManageStationManagers() {
   const { getAccess } = usePermissions()
@@ -307,7 +300,7 @@ export default function ManageStationManagers() {
     boxSizing: "border-box",
     borderRadius: 8,
     border: "1px solid #e0e0e0",
-    fontSize: fontSize.base,
+    fontSize: FONT_SIZE.base,
     background: "white",
     color: "#171717",
     minHeight: 48,
@@ -339,7 +332,7 @@ export default function ManageStationManagers() {
             style={{
               margin: 0,
               color: "#0f172a",
-              fontSize: isMobile ? fontSize["2xl"] : fontSize["3xl"],
+              fontSize: isMobile ? FONT_SIZE["2xl"] : FONT_SIZE["3xl"],
               fontWeight: 700,
               letterSpacing: "-0.5px",
             }}
@@ -350,7 +343,7 @@ export default function ManageStationManagers() {
             style={{
               margin: "8px 0 0",
               color: "#64748b",
-              fontSize: fontSize.base,
+              fontSize: FONT_SIZE.base,
             }}
           >
             Manage station managers and their assigned fuel companies.
@@ -386,7 +379,7 @@ export default function ManageStationManagers() {
                   border: "none",
                   borderRadius: 6,
                   cursor: "pointer",
-                  fontSize: fontSize.xs,
+                  fontSize: FONT_SIZE.xs,
                   fontWeight: 600,
                   transition: "all 0.2s ease",
                   minWidth: 44,
@@ -415,7 +408,7 @@ export default function ManageStationManagers() {
                   border: "none",
                   borderRadius: 6,
                   cursor: "pointer",
-                  fontSize: fontSize.xs,
+                  fontSize: FONT_SIZE.xs,
                   fontWeight: 600,
                   transition: "all 0.2s ease",
                   minWidth: 44,
@@ -453,7 +446,7 @@ export default function ManageStationManagers() {
               borderRadius: 8,
               cursor: !canEdit ? "not-allowed" : "pointer",
               fontWeight: 600,
-              fontSize: fontSize.md,
+              fontSize: FONT_SIZE.md,
               flex: isMobile ? 1 : "0 0 auto",
               boxShadow: "0 4px 12px rgba(0, 112, 243, 0.2)",
               transition: "all 0.2s ease",
@@ -536,7 +529,7 @@ export default function ManageStationManagers() {
             style={{
               margin: "0 0 8px",
               color: "#0f172a",
-              fontSize: fontSize.xl,
+              fontSize: FONT_SIZE.xl,
               fontWeight: 600,
             }}
           >
@@ -545,7 +538,7 @@ export default function ManageStationManagers() {
           <p
             style={{
               color: "#64748b",
-              fontSize: fontSize.base,
+              fontSize: FONT_SIZE.base,
               margin: "0 0 24px",
               maxWidth: 400,
               marginLeft: "auto",
@@ -568,7 +561,7 @@ export default function ManageStationManagers() {
               borderRadius: 8,
               cursor: !canEdit ? "not-allowed" : "pointer",
               fontWeight: 500,
-              fontSize: fontSize.base,
+              fontSize: FONT_SIZE.base,
               transition: "all 0.2s ease",
             }}
             onMouseEnter={(e) => { if (canEdit) e.currentTarget.style.background = "#f8fafc" }}
@@ -640,7 +633,7 @@ export default function ManageStationManagers() {
                             alignItems: "center",
                             justifyContent: "center",
                             fontWeight: 600,
-                            fontSize: fontSize.md,
+                            fontSize: FONT_SIZE.md,
                             flexShrink: 0,
                             overflow: "hidden",
                           }}
@@ -656,7 +649,7 @@ export default function ManageStationManagers() {
                             style={{
                               margin: "0 0 4px 0",
                               color: "#0f172a",
-                              fontSize: fontSize.lg,
+                              fontSize: FONT_SIZE.lg,
                               fontWeight: 600,
                               overflow: "hidden",
                               textOverflow: "ellipsis",
@@ -669,7 +662,7 @@ export default function ManageStationManagers() {
                             style={{
                               margin: 0,
                               color: "#64748b",
-                              fontSize: fontSize.sm,
+                              fontSize: FONT_SIZE.sm,
                               overflow: "hidden",
                               textOverflow: "ellipsis",
                               whiteSpace: "nowrap",
@@ -683,7 +676,7 @@ export default function ManageStationManagers() {
                         style={{
                           padding: "4px 10px",
                           borderRadius: 6,
-                          fontSize: fontSize.xs,
+                          fontSize: FONT_SIZE.xs,
                           background: bg,
                           color: color,
                           border: `1px solid ${border}`,
@@ -699,7 +692,7 @@ export default function ManageStationManagers() {
                       style={{
                         margin: "12px 0 0",
                         color: "#475569",
-                        fontSize: fontSize.sm,
+                        fontSize: FONT_SIZE.sm,
                       }}
                     >
                       {manager.phone_number || (
@@ -727,7 +720,7 @@ export default function ManageStationManagers() {
                           border: "1px solid #e2e8f0",
                           color: "#0070f3",
                           background: !canEdit ? "#94a3b8" : "#f0f7ff",
-                          fontSize: fontSize.sm,
+                          fontSize: FONT_SIZE.sm,
                           fontWeight: 500,
                           transition: "all 0.2s",
                         }}
@@ -754,7 +747,7 @@ export default function ManageStationManagers() {
                           border: "1px solid #fee2e2",
                           color: "#ef4444",
                           background: !canEdit ? "#94a3b8" : "#fef2f2",
-                          fontSize: fontSize.sm,
+                          fontSize: FONT_SIZE.sm,
                           fontWeight: 500,
                           transition: "all 0.2s",
                         }}
@@ -798,7 +791,7 @@ export default function ManageStationManagers() {
                       style={{
                         padding: "12px 16px",
                         fontWeight: 600,
-                        fontSize: fontSize.xs,
+                        fontSize: FONT_SIZE.xs,
                         color: "#64748b",
                         textTransform: "uppercase",
                         letterSpacing: "0.5px",
@@ -810,7 +803,7 @@ export default function ManageStationManagers() {
                       style={{
                         padding: "12px 16px",
                         fontWeight: 600,
-                        fontSize: fontSize.xs,
+                        fontSize: FONT_SIZE.xs,
                         color: "#64748b",
                         textTransform: "uppercase",
                         letterSpacing: "0.5px",
@@ -822,7 +815,7 @@ export default function ManageStationManagers() {
                       style={{
                         padding: "12px 16px",
                         fontWeight: 600,
-                        fontSize: fontSize.xs,
+                        fontSize: FONT_SIZE.xs,
                         color: "#64748b",
                         textTransform: "uppercase",
                         letterSpacing: "0.5px",
@@ -834,7 +827,7 @@ export default function ManageStationManagers() {
                       style={{
                         padding: "12px 16px",
                         fontWeight: 600,
-                        fontSize: fontSize.xs,
+                        fontSize: FONT_SIZE.xs,
                         color: "#64748b",
                         textTransform: "uppercase",
                         letterSpacing: "0.5px",
@@ -846,7 +839,7 @@ export default function ManageStationManagers() {
                       style={{
                         padding: "12px 16px",
                         fontWeight: 600,
-                        fontSize: fontSize.xs,
+                        fontSize: FONT_SIZE.xs,
                         color: "#64748b",
                         textTransform: "uppercase",
                         letterSpacing: "0.5px",
@@ -896,7 +889,7 @@ export default function ManageStationManagers() {
                                 alignItems: "center",
                                 justifyContent: "center",
                                 fontWeight: 600,
-                                fontSize: fontSize.base,
+                                fontSize: FONT_SIZE.base,
                                 flexShrink: 0,
                                 overflow: "hidden",
                               }}
@@ -910,7 +903,7 @@ export default function ManageStationManagers() {
                             <span
                               style={{
                                 color: "#0f172a",
-                                fontSize: fontSize.base,
+                                fontSize: FONT_SIZE.base,
                                 fontWeight: 500,
                               }}
                             >
@@ -922,7 +915,7 @@ export default function ManageStationManagers() {
                           style={{
                             padding: "12px 16px",
                             color: "#475569",
-                            fontSize: fontSize.sm,
+                            fontSize: FONT_SIZE.sm,
                           }}
                         >
                           {manager.phone_number || (
@@ -940,7 +933,7 @@ export default function ManageStationManagers() {
                           style={{
                             padding: "12px 16px",
                             color: "#475569",
-                            fontSize: fontSize.sm,
+                            fontSize: FONT_SIZE.sm,
                           }}
                         >
                           {manager.company_name}
@@ -950,7 +943,7 @@ export default function ManageStationManagers() {
                             style={{
                               padding: "4px 10px",
                               borderRadius: 6,
-                              fontSize: fontSize.xs,
+                              fontSize: FONT_SIZE.xs,
                               background: bg,
                               color: color,
                               border: `1px solid ${border}`,
@@ -989,7 +982,7 @@ export default function ManageStationManagers() {
                                 border: "1px solid #e2e8f0",
                                 color: "#0070f3",
                                 background: !canEdit ? "#94a3b8" : "#f0f7ff",
-                                fontSize: fontSize.sm,
+                                fontSize: FONT_SIZE.sm,
                                 fontWeight: 500,
                                 transition: "all 0.2s",
                                 minHeight: 32,
@@ -1020,7 +1013,7 @@ export default function ManageStationManagers() {
                                 border: "1px solid #fee2e2",
                                 color: "#ef4444",
                                 background: !canEdit ? "#94a3b8" : "#fef2f2",
-                                fontSize: fontSize.sm,
+                                fontSize: FONT_SIZE.sm,
                                 fontWeight: 500,
                                 transition: "all 0.2s",
                                 minHeight: 32,
@@ -1103,7 +1096,7 @@ export default function ManageStationManagers() {
                         style={{
                           margin: 0,
                           color: "#0f172a",
-                          fontSize: fontSize.xl,
+                          fontSize: FONT_SIZE.xl,
                           fontWeight: 700,
                         }}
                       >
@@ -1161,7 +1154,7 @@ export default function ManageStationManagers() {
                             display: "block",
                             marginBottom: 6,
                             color: "#475569",
-                            fontSize: fontSize.sm,
+                            fontSize: FONT_SIZE.sm,
                             fontWeight: 500,
                           }}
                         >
@@ -1189,7 +1182,7 @@ export default function ManageStationManagers() {
                             display: "block",
                             marginBottom: 6,
                             color: "#475569",
-                            fontSize: fontSize.sm,
+                            fontSize: FONT_SIZE.sm,
                             fontWeight: 500,
                           }}
                         >
@@ -1217,7 +1210,7 @@ export default function ManageStationManagers() {
                             display: "block",
                             marginBottom: 6,
                             color: "#475569",
-                            fontSize: fontSize.sm,
+                            fontSize: FONT_SIZE.sm,
                             fontWeight: 500,
                           }}
                         >
@@ -1245,7 +1238,7 @@ export default function ManageStationManagers() {
                             display: "block",
                             marginBottom: 6,
                             color: "#475569",
-                            fontSize: fontSize.sm,
+                            fontSize: FONT_SIZE.sm,
                             fontWeight: 500,
                           }}
                         >
@@ -1282,7 +1275,7 @@ export default function ManageStationManagers() {
                                   borderRadius: 10,
                                   cursor: creatingCompany || !canEdit ? "not-allowed" : "pointer",
                                   fontWeight: 700,
-                                  fontSize: fontSize.sm,
+                                  fontSize: FONT_SIZE.sm,
                                   minHeight: 42,
                                   display: "flex",
                                   alignItems: "center",
@@ -1321,7 +1314,7 @@ export default function ManageStationManagers() {
                                   borderRadius: 10,
                                   cursor: "pointer",
                                   fontWeight: 600,
-                                  fontSize: fontSize.sm,
+                                  fontSize: FONT_SIZE.sm,
                                   minHeight: 42,
                                   transition: "all 0.2s ease",
                                 }}
@@ -1375,7 +1368,7 @@ export default function ManageStationManagers() {
                                 borderRadius: 10,
                                 cursor: !canEdit ? "not-allowed" : "pointer",
                                 fontWeight: 500,
-                                fontSize: fontSize.sm,
+                                fontSize: FONT_SIZE.sm,
                                 display: "flex",
                                 alignItems: "center",
                                 justifyContent: "center",
@@ -1418,7 +1411,7 @@ export default function ManageStationManagers() {
                           borderRadius: 4,
                           marginBottom: 20,
                           color: "#b91c1c",
-                          fontSize: fontSize.sm,
+                          fontSize: FONT_SIZE.sm,
                         }}
                       >
                         {message}
@@ -1437,7 +1430,7 @@ export default function ManageStationManagers() {
                         borderRadius: 8,
                         cursor: submitting || !canEdit ? "not-allowed" : "pointer",
                         fontWeight: 600,
-                        fontSize: fontSize.md,
+                        fontSize: FONT_SIZE.md,
                         transition: "opacity 0.2s",
                         opacity: submitting || !canEdit ? 0.7 : 1,
                         minHeight: 44,
@@ -1465,7 +1458,7 @@ export default function ManageStationManagers() {
                     style={{
                       margin: 0,
                       color: "#0f172a",
-                      fontSize: fontSize.xl,
+                      fontSize: FONT_SIZE.xl,
                       fontWeight: 700,
                     }}
                   >
@@ -1523,7 +1516,7 @@ export default function ManageStationManagers() {
                         display: "block",
                         marginBottom: 6,
                         color: "#475569",
-                        fontSize: fontSize.sm,
+                        fontSize: FONT_SIZE.sm,
                         fontWeight: 500,
                       }}
                     >
@@ -1550,7 +1543,7 @@ export default function ManageStationManagers() {
                         display: "block",
                         marginBottom: 6,
                         color: "#475569",
-                        fontSize: fontSize.sm,
+                        fontSize: FONT_SIZE.sm,
                         fontWeight: 500,
                       }}
                     >
@@ -1579,7 +1572,7 @@ export default function ManageStationManagers() {
                     background: "#f1f5f9",
                     borderRadius: 6,
                     marginBottom: 20,
-                    fontSize: fontSize.sm,
+                    fontSize: FONT_SIZE.sm,
                     color: "#475569",
                   }}
                 >
@@ -1595,7 +1588,7 @@ export default function ManageStationManagers() {
                       borderRadius: 4,
                       marginBottom: 20,
                       color: "#b91c1c",
-                      fontSize: fontSize.sm,
+                      fontSize: FONT_SIZE.sm,
                     }}
                   >
                     {message}
@@ -1614,7 +1607,7 @@ export default function ManageStationManagers() {
                     borderRadius: 8,
                     cursor: submitting || !canEdit ? "not-allowed" : "pointer",
                     fontWeight: 600,
-                    fontSize: fontSize.md,
+                    fontSize: FONT_SIZE.md,
                     transition: "opacity 0.2s",
                     opacity: submitting || !canEdit ? 0.7 : 1,
                     minHeight: 44,
@@ -1662,7 +1655,7 @@ export default function ManageStationManagers() {
                     style={{
                       margin: "0 0 12px",
                       color: "#0f172a",
-                      fontSize: fontSize.xl,
+                      fontSize: FONT_SIZE.xl,
                       fontWeight: 700,
                     }}
                   >
@@ -1672,7 +1665,7 @@ export default function ManageStationManagers() {
                     style={{
                       margin: "0 0 20px",
                       color: "#64748b",
-                      fontSize: fontSize.base,
+                      fontSize: FONT_SIZE.base,
                       lineHeight: 1.5,
                     }}
                   >
@@ -1688,7 +1681,7 @@ export default function ManageStationManagers() {
                         borderRadius: 4,
                         marginBottom: 20,
                         color: "#b91c1c",
-                        fontSize: fontSize.sm,
+                        fontSize: FONT_SIZE.sm,
                         width: "100%",
                         textAlign: "left",
                       }}
@@ -1715,7 +1708,7 @@ export default function ManageStationManagers() {
                         borderRadius: 8,
                         cursor: "pointer",
                         fontWeight: 600,
-                        fontSize: fontSize.md,
+                        fontSize: FONT_SIZE.md,
                         minHeight: 44,
                         transition: "all 0.2s",
                       }}
@@ -1743,7 +1736,7 @@ export default function ManageStationManagers() {
                         borderRadius: 8,
                         cursor: submitting || !canEdit ? "not-allowed" : "pointer",
                         fontWeight: 600,
-                        fontSize: fontSize.md,
+                        fontSize: FONT_SIZE.md,
                         opacity: submitting || !canEdit ? 0.7 : 1,
                         minHeight: 44,
                         transition: "all 0.2s",

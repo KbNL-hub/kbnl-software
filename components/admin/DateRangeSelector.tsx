@@ -1,5 +1,7 @@
 "use client"
 
+import { FONT_SIZE } from "@/lib/constants"
+
 import React, { useState } from "react"
 
 interface DateRangeSelectorProps {
@@ -11,16 +13,7 @@ interface DateRangeSelectorProps {
   isMobile?: boolean
 }
 
-const fontSize = {
-  xs: 12,
-  sm: 13,
-  base: 14,
-  md: 15,
-  lg: 16,
-  xl: 20,
-  "2xl": 24,
-  "3xl": 28,
-}
+
 
 export function DateRangeSelector({ fromDate, toDate, onFromChange, onToChange, error, isMobile }: DateRangeSelectorProps) {
   const [isOpen, setIsOpen] = useState(false)
@@ -55,7 +48,7 @@ export function DateRangeSelector({ fromDate, toDate, onFromChange, onToChange, 
           <path d="M3 9h18M3 9V7c0-1 1-2 2-2h14c1 0 2 1 2 2v2m0 0v10c0 1-1 2-2 2H5c-1 0-2-1-2-2v-10" strokeWidth="2" strokeLinecap="round" />
           <path d="M9 2v5M15 2v5" strokeWidth="2" strokeLinecap="round" />
         </svg>
-        <span style={{ fontSize: fontSize.sm, color: fromDate ? "#333" : "#aaa", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+        <span style={{ fontSize: FONT_SIZE.sm, color: fromDate ? "#333" : "#aaa", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
           {dateLabel}
         </span>
         {fromDate && (
@@ -88,7 +81,7 @@ export function DateRangeSelector({ fromDate, toDate, onFromChange, onToChange, 
           }}
         >
           <div style={{ marginBottom: 12 }}>
-            <label style={{ display: "block", fontSize: fontSize.xs, color: "#475569", fontWeight: 500, marginBottom: 6 }}>
+            <label style={{ display: "block", fontSize: FONT_SIZE.xs, color: "#475569", fontWeight: 500, marginBottom: 6 }}>
               From Date
             </label>
             <input
@@ -102,14 +95,14 @@ export function DateRangeSelector({ fromDate, toDate, onFromChange, onToChange, 
                 padding: "8px 10px",
                 border: "1px solid #e2e8f0",
                 borderRadius: 6,
-                fontSize: fontSize.sm,
+                fontSize: FONT_SIZE.sm,
                 boxSizing: "border-box",
               }}
             />
           </div>
 
           <div style={{ marginBottom: 12 }}>
-            <label style={{ display: "block", fontSize: fontSize.xs, color: "#475569", fontWeight: 500, marginBottom: 6 }}>
+            <label style={{ display: "block", fontSize: FONT_SIZE.xs, color: "#475569", fontWeight: 500, marginBottom: 6 }}>
               To Date
             </label>
             <input
@@ -123,14 +116,14 @@ export function DateRangeSelector({ fromDate, toDate, onFromChange, onToChange, 
                 padding: "8px 10px",
                 border: "1px solid #e2e8f0",
                 borderRadius: 6,
-                fontSize: fontSize.sm,
+                fontSize: FONT_SIZE.sm,
                 boxSizing: "border-box",
               }}
             />
           </div>
 
           {error && (
-            <div style={{ padding: "8px 10px", background: "#fef2f2", borderLeft: "3px solid #ef4444", borderRadius: 4, fontSize: fontSize.xs, color: "#b91c1c" }}>
+            <div style={{ padding: "8px 10px", background: "#fef2f2", borderLeft: "3px solid #ef4444", borderRadius: 4, fontSize: FONT_SIZE.xs, color: "#b91c1c" }}>
               {error}
             </div>
           )}
@@ -145,7 +138,7 @@ export function DateRangeSelector({ fromDate, toDate, onFromChange, onToChange, 
               border: "none",
               borderRadius: 6,
               cursor: "pointer",
-              fontSize: fontSize.sm,
+              fontSize: FONT_SIZE.sm,
               fontWeight: 500,
               width: "100%",
             }}

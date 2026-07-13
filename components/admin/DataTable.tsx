@@ -1,5 +1,7 @@
 "use client"
 
+import { FONT_SIZE } from "@/lib/constants"
+
 import React from "react"
 
 interface Column<T> {
@@ -14,16 +16,7 @@ interface DataTableProps<T> {
   rowKey: (row: T) => string
 }
 
-const fontSize = {
-  xs: 12,
-  sm: 13,
-  base: 14,
-  md: 15,
-  lg: 16,
-  xl: 20,
-  "2xl": 24,
-  "3xl": 28,
-}
+
 
 export function DataTable<T>({ columns, rows, rowKey }: DataTableProps<T>) {
   return (
@@ -37,7 +30,7 @@ export function DataTable<T>({ columns, rows, rowKey }: DataTableProps<T>) {
                 style={{
                   padding: "12px 16px",
                   textAlign: "left",
-                  fontSize: fontSize.xs,
+                  fontSize: FONT_SIZE.xs,
                   fontWeight: 600,
                   color: "#64748b",
                   textTransform: "uppercase",
@@ -65,7 +58,7 @@ export function DataTable<T>({ columns, rows, rowKey }: DataTableProps<T>) {
                   key={`${rowKey(row)}-${col.key}`}
                   style={{
                     padding: "12px 16px",
-                    fontSize: fontSize.base,
+                    fontSize: FONT_SIZE.base,
                     color: "#0f172a",
                   }}
                 >

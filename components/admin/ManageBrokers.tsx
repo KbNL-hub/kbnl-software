@@ -1,5 +1,7 @@
 "use client"
 
+import { FONT_SIZE } from "@/lib/constants"
+
 import { useState, useEffect, useRef } from "react"
 import { supabase } from "@/lib/supabase"
 import { apiMutate } from "@/lib/api-mutation"
@@ -37,17 +39,6 @@ function useBreakpoint() {
   return { isMobile, isDesktop }
 }
 
-// Fixed typography scale
-const fontSize = {
-  xs: 12,   // meta, captions
-  sm: 13,   // labels
-  base: 14, // body text
-  md: 15,   // actions
-  lg: 16,   // list items
-  xl: 20,   // modal titles
-  "2xl": 24, // page title (mobile)
-  "3xl": 28  // page title (desktop)
-}
 
 export default function ManageBrokers() {
   const { isMobile, isDesktop } = useBreakpoint()
@@ -191,7 +182,7 @@ export default function ManageBrokers() {
     boxSizing: "border-box",
     borderRadius: 8,
     border: "1px solid #e0e0e0",
-    fontSize: fontSize.base,
+    fontSize: FONT_SIZE.base,
     background: "white",
     color: "#171717",
     minHeight: 48,
@@ -203,10 +194,10 @@ export default function ManageBrokers() {
       {/* Header & Controls */}
       <div style={{ display: "flex", flexDirection: isMobile ? "column" : "row", justifyContent: "space-between", alignItems: isMobile ? "flex-start" : "center", gap: 16, marginBottom: 32 }}>
         <div>
-          <h1 style={{ margin: 0, color: "#0f172a", fontSize: isMobile ? fontSize["2xl"] : fontSize["3xl"], fontWeight: 700, letterSpacing: "-0.5px" }}>
+          <h1 style={{ margin: 0, color: "#0f172a", fontSize: isMobile ? FONT_SIZE["2xl"] : FONT_SIZE["3xl"], fontWeight: 700, letterSpacing: "-0.5px" }}>
             Brokers
           </h1>
-          <p style={{ margin: "8px 0 0", color: "#64748b", fontSize: fontSize.base }}>
+          <p style={{ margin: "8px 0 0", color: "#64748b", fontSize: FONT_SIZE.base }}>
             Manage the list of brokers and their contact info.
           </p>
         </div>
@@ -224,7 +215,7 @@ export default function ManageBrokers() {
                   border: "none",
                   borderRadius: 6,
                   cursor: "pointer",
-                  fontSize: fontSize.xs,
+                  fontSize: FONT_SIZE.xs,
                   fontWeight: 600,
                   transition: "all 0.2s ease",
                   minWidth: 44,
@@ -246,7 +237,7 @@ export default function ManageBrokers() {
                   border: "none",
                   borderRadius: 6,
                   cursor: "pointer",
-                  fontSize: fontSize.xs,
+                  fontSize: FONT_SIZE.xs,
                   fontWeight: 600,
                   transition: "all 0.2s ease",
                   minWidth: 44,
@@ -274,7 +265,7 @@ export default function ManageBrokers() {
               borderRadius: 8,
               cursor: !canEdit ? "not-allowed" : "pointer",
               fontWeight: 600,
-              fontSize: fontSize.md,
+              fontSize: FONT_SIZE.md,
               flex: isMobile ? 1 : "0 0 auto",
               boxShadow: "0 4px 12px rgba(0, 112, 243, 0.2)",
               transition: "all 0.2s ease",
@@ -309,12 +300,12 @@ export default function ManageBrokers() {
           <div style={{ width: 64, height: 64, background: "#f1f5f9", borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 16px" }}>
             <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
           </div>
-          <h3 style={{ margin: "0 0 8px", color: "#0f172a", fontSize: fontSize.xl, fontWeight: 600 }}>No brokers yet</h3>
-          <p style={{ color: "#64748b", fontSize: fontSize.base, margin: "0 0 24px", maxWidth: 400, marginLeft: "auto", marginRight: "auto" }}>Get started by adding a new broker to the system. You'll be able to manage their contact information here.</p>
+          <h3 style={{ margin: "0 0 8px", color: "#0f172a", fontSize: FONT_SIZE.xl, fontWeight: 600 }}>No brokers yet</h3>
+          <p style={{ color: "#64748b", fontSize: FONT_SIZE.base, margin: "0 0 24px", maxWidth: 400, marginLeft: "auto", marginRight: "auto" }}>Get started by adding a new broker to the system. You'll be able to manage their contact information here.</p>
           <button
             onClick={() => setShowInviteModal(true)}
             disabled={!canEdit}
-            style={{ padding: "10px 20px", background: !canEdit ? "#94a3b8" : "white", color: !canEdit ? "white" : "#0f172a", border: "1px solid #cbd5e1", borderRadius: 8, cursor: !canEdit ? "not-allowed" : "pointer", fontWeight: 500, fontSize: fontSize.base, transition: "all 0.2s ease" }}
+            style={{ padding: "10px 20px", background: !canEdit ? "#94a3b8" : "white", color: !canEdit ? "white" : "#0f172a", border: "1px solid #cbd5e1", borderRadius: 8, cursor: !canEdit ? "not-allowed" : "pointer", fontWeight: 500, fontSize: FONT_SIZE.base, transition: "all 0.2s ease" }}
             onMouseEnter={e => { if (canEdit) e.currentTarget.style.background = "#f8fafc" }}
             onMouseLeave={e => { if (canEdit) e.currentTarget.style.background = "white" }}
           >
@@ -330,7 +321,7 @@ export default function ManageBrokers() {
                 <div key={broker.broker_id} style={{ background: "white", borderRadius: 12, padding: 16, border: "1px solid #e2e8f0", boxShadow: "0 1px 3px rgba(0, 0, 0, 0.05)", transition: "all 0.2s ease" }} onMouseEnter={e => { e.currentTarget.style.boxShadow = "0 4px 12px rgba(0, 0, 0, 0.08)"; e.currentTarget.style.borderColor = "#cbd5e1" }} onMouseLeave={e => { e.currentTarget.style.boxShadow = "0 1px 3px rgba(0, 0, 0, 0.05)"; e.currentTarget.style.borderColor = "#e2e8f0" }}>
                   <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12 }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 12, flex: 1, minWidth: 0 }}>
-                      <div style={{ width: 40, height: 40, borderRadius: "50%", background: broker.profile_picture_url ? "transparent" : "linear-gradient(135deg, #0070f3 0%, #0056d4 100%)", color: "white", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 600, fontSize: fontSize.md, flexShrink: 0, overflow: "hidden" }}>
+                      <div style={{ width: 40, height: 40, borderRadius: "50%", background: broker.profile_picture_url ? "transparent" : "linear-gradient(135deg, #0070f3 0%, #0056d4 100%)", color: "white", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 600, fontSize: FONT_SIZE.md, flexShrink: 0, overflow: "hidden" }}>
                         {broker.profile_picture_url ? (
                           <img src={broker.profile_picture_url} alt={broker.broker_name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
                         ) : (
@@ -338,8 +329,8 @@ export default function ManageBrokers() {
                         )}
                       </div>
                       <div style={{ minWidth: 0 }}>
-                        <h3 style={{ margin: "0 0 4px 0", color: "#0f172a", fontSize: fontSize.lg, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{broker.broker_name}</h3>
-                        <p style={{ margin: 0, color: "#64748b", fontSize: fontSize.sm, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{broker.phone_number || "No phone number"}</p>
+                        <h3 style={{ margin: "0 0 4px 0", color: "#0f172a", fontSize: FONT_SIZE.lg, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{broker.broker_name}</h3>
+                        <p style={{ margin: 0, color: "#64748b", fontSize: FONT_SIZE.sm, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{broker.phone_number || "No phone number"}</p>
                         {broker.credit_limit != null && (
                           <p style={{ margin: "2px 0 0", color: "#9ca3af", fontSize: 11 }}>Limit: ₦{formatAmount(String(broker.credit_limit))}</p>
                         )}
@@ -358,7 +349,7 @@ export default function ManageBrokers() {
                         setMessage("")
                       }}
                       disabled={!canEdit}
-                      style={{ flex: 1, padding: "8px 12px", cursor: !canEdit ? "not-allowed" : "pointer", borderRadius: 6, border: "1px solid #e2e8f0", color: "#0070f3", background: !canEdit ? "#94a3b8" : "#f0f7ff", fontSize: fontSize.sm, fontWeight: 500, transition: "all 0.2s" }}
+                      style={{ flex: 1, padding: "8px 12px", cursor: !canEdit ? "not-allowed" : "pointer", borderRadius: 6, border: "1px solid #e2e8f0", color: "#0070f3", background: !canEdit ? "#94a3b8" : "#f0f7ff", fontSize: FONT_SIZE.sm, fontWeight: 500, transition: "all 0.2s" }}
                       onMouseEnter={e => { if (canEdit) { e.currentTarget.style.background = "#e0efff"; e.currentTarget.style.borderColor = "#0070f3" } }}
                       onMouseLeave={e => { if (canEdit) { e.currentTarget.style.background = "#f0f7ff"; e.currentTarget.style.borderColor = "#e2e8f0" } }}
                     >
@@ -367,7 +358,7 @@ export default function ManageBrokers() {
                     <button
                       onClick={() => { setDeletingId(broker.broker_id); setMessage("") }}
                       disabled={!canEdit}
-                      style={{ flex: 1, padding: "8px 12px", cursor: !canEdit ? "not-allowed" : "pointer", borderRadius: 6, border: "1px solid #fee2e2", color: "#ef4444", background: !canEdit ? "#94a3b8" : "#fef2f2", fontSize: fontSize.sm, fontWeight: 500, transition: "all 0.2s" }}
+                      style={{ flex: 1, padding: "8px 12px", cursor: !canEdit ? "not-allowed" : "pointer", borderRadius: 6, border: "1px solid #fee2e2", color: "#ef4444", background: !canEdit ? "#94a3b8" : "#fef2f2", fontSize: FONT_SIZE.sm, fontWeight: 500, transition: "all 0.2s" }}
                       onMouseEnter={e => { if (canEdit) e.currentTarget.style.background = "#fee2e2" }}
                       onMouseLeave={e => { if (canEdit) e.currentTarget.style.background = "#fef2f2" }}
                     >
@@ -385,10 +376,10 @@ export default function ManageBrokers() {
               <table style={{ width: "100%", borderCollapse: "collapse", textAlign: "left" }}>
                 <thead>
                   <tr style={{ background: "#f8fafc", borderBottom: "1px solid #e2e8f0" }}>
-                    <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: fontSize.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px" }}>Name</th>
-                    <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: fontSize.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px" }}>Phone Number</th>
-                    <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: fontSize.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px" }}>Credit Limit</th>
-                    <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: fontSize.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px", textAlign: "right" }}>Actions</th>
+                    <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: FONT_SIZE.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px" }}>Name</th>
+                    <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: FONT_SIZE.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px" }}>Phone Number</th>
+                    <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: FONT_SIZE.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px" }}>Credit Limit</th>
+                    <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: FONT_SIZE.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px", textAlign: "right" }}>Actions</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -396,20 +387,20 @@ export default function ManageBrokers() {
                     <tr key={broker.broker_id} style={{ borderBottom: idx === brokers.length - 1 ? "none" : "1px solid #e2e8f0", transition: "background 0.2s ease" }} onMouseEnter={e => e.currentTarget.style.background = "#f8fafc"} onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
                       <td style={{ padding: "12px 16px" }}>
                         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                          <div style={{ width: 36, height: 36, borderRadius: "50%", background: broker.profile_picture_url ? "transparent" : "linear-gradient(135deg, #0070f3 0%, #0056d4 100%)", color: "white", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 600, fontSize: fontSize.base, flexShrink: 0, overflow: "hidden" }}>
+                          <div style={{ width: 36, height: 36, borderRadius: "50%", background: broker.profile_picture_url ? "transparent" : "linear-gradient(135deg, #0070f3 0%, #0056d4 100%)", color: "white", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 600, fontSize: FONT_SIZE.base, flexShrink: 0, overflow: "hidden" }}>
                             {broker.profile_picture_url ? (
                               <img src={broker.profile_picture_url} alt={broker.broker_name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
                             ) : (
                               broker.broker_name.charAt(0).toUpperCase()
                             )}
                           </div>
-                          <span style={{ color: "#0f172a", fontSize: fontSize.base, fontWeight: 500 }}>{broker.broker_name}</span>
+                          <span style={{ color: "#0f172a", fontSize: FONT_SIZE.base, fontWeight: 500 }}>{broker.broker_name}</span>
                         </div>
                       </td>
-                      <td style={{ padding: "12px 16px", color: "#475569", fontSize: fontSize.sm }}>
+                      <td style={{ padding: "12px 16px", color: "#475569", fontSize: FONT_SIZE.sm }}>
                         {broker.phone_number || <span style={{ color: "#94a3b8", fontStyle: "italic" }}>Not provided</span>}
                       </td>
-                      <td style={{ padding: "12px 16px", color: "#475569", fontSize: fontSize.sm }}>
+                      <td style={{ padding: "12px 16px", color: "#475569", fontSize: FONT_SIZE.sm }}>
                         {broker.credit_limit != null ? `₦${formatAmount(String(broker.credit_limit))}` : <span style={{ color: "#94a3b8", fontStyle: "italic" }}>No limit</span>}
                       </td>
                       <td style={{ padding: "12px 16px", textAlign: "right" }}>
@@ -422,7 +413,7 @@ export default function ManageBrokers() {
                               setMessage("")
                             }}
                             disabled={!canEdit}
-                            style={{ padding: "6px 10px", cursor: !canEdit ? "not-allowed" : "pointer", borderRadius: 5, border: "1px solid #e2e8f0", color: "#0070f3", background: !canEdit ? "#94a3b8" : "#f0f7ff", fontSize: fontSize.sm, fontWeight: 500, transition: "all 0.2s", minHeight: 32, minWidth: 32, display: "flex", alignItems: "center", justifyContent: "center" }}
+                            style={{ padding: "6px 10px", cursor: !canEdit ? "not-allowed" : "pointer", borderRadius: 5, border: "1px solid #e2e8f0", color: "#0070f3", background: !canEdit ? "#94a3b8" : "#f0f7ff", fontSize: FONT_SIZE.sm, fontWeight: 500, transition: "all 0.2s", minHeight: 32, minWidth: 32, display: "flex", alignItems: "center", justifyContent: "center" }}
                             onMouseEnter={e => { if (canEdit) { e.currentTarget.style.background = "#e0efff"; e.currentTarget.style.borderColor = "#0070f3" } }}
                             onMouseLeave={e => { if (canEdit) { e.currentTarget.style.background = "#f0f7ff"; e.currentTarget.style.borderColor = "#e2e8f0" } }}
                           >
@@ -431,7 +422,7 @@ export default function ManageBrokers() {
                           <button
                             onClick={() => { setDeletingId(broker.broker_id); setMessage("") }}
                             disabled={!canEdit}
-                            style={{ padding: "6px 10px", cursor: !canEdit ? "not-allowed" : "pointer", borderRadius: 5, border: "1px solid #fee2e2", color: "#ef4444", background: !canEdit ? "#94a3b8" : "#fef2f2", fontSize: fontSize.sm, fontWeight: 500, transition: "all 0.2s", minHeight: 32, minWidth: 32, display: "flex", alignItems: "center", justifyContent: "center" }}
+                            style={{ padding: "6px 10px", cursor: !canEdit ? "not-allowed" : "pointer", borderRadius: 5, border: "1px solid #fee2e2", color: "#ef4444", background: !canEdit ? "#94a3b8" : "#fef2f2", fontSize: FONT_SIZE.sm, fontWeight: 500, transition: "all 0.2s", minHeight: 32, minWidth: 32, display: "flex", alignItems: "center", justifyContent: "center" }}
                             onMouseEnter={e => { if (canEdit) e.currentTarget.style.background = "#fee2e2" }}
                             onMouseLeave={e => { if (canEdit) e.currentTarget.style.background = "#fef2f2" }}
                           >
@@ -466,13 +457,13 @@ export default function ManageBrokers() {
                 ) : (
                   <>
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24 }}>
-                      <h3 style={{ margin: 0, color: "#0f172a", fontSize: fontSize.xl, fontWeight: 700 }}>Add New Broker</h3>
+                      <h3 style={{ margin: 0, color: "#0f172a", fontSize: FONT_SIZE.xl, fontWeight: 700 }}>Add New Broker</h3>
                       <button onClick={closeModals} style={{ background: "none", border: "none", color: "#94a3b8", cursor: "pointer", padding: 0, width: 32, height: 32, display: "flex", alignItems: "center", justifyContent: "center", transition: "color 0.2s" }} onMouseEnter={e => e.currentTarget.style.color = "#64748b"} onMouseLeave={e => e.currentTarget.style.color = "#94a3b8"}><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
                     </div>
 
                     <div style={{ display: "flex", flexDirection: "column", gap: 14, marginBottom: 20 }}>
                       <div>
-                        <label style={{ display: "block", marginBottom: 6, color: "#475569", fontSize: fontSize.sm, fontWeight: 500 }}>Full Name *</label>
+                        <label style={{ display: "block", marginBottom: 6, color: "#475569", fontSize: FONT_SIZE.sm, fontWeight: 500 }}>Full Name *</label>
                         <ModernInput
                           type="text"
                           placeholder="e.g. John Doe"
@@ -484,7 +475,7 @@ export default function ManageBrokers() {
                         />
                       </div>
                       <div>
-                        <label style={{ display: "block", marginBottom: 6, color: "#475569", fontSize: fontSize.sm, fontWeight: 500 }}>Phone Number</label>
+                        <label style={{ display: "block", marginBottom: 6, color: "#475569", fontSize: FONT_SIZE.sm, fontWeight: 500 }}>Phone Number</label>
                         <ModernInput
                           ref={phoneRef}
                           type="text"
@@ -497,7 +488,7 @@ export default function ManageBrokers() {
                         />
                       </div>
                       <div>
-                        <label style={{ display: "block", marginBottom: 6, color: "#475569", fontSize: fontSize.sm, fontWeight: 500 }}>Email Address *</label>
+                        <label style={{ display: "block", marginBottom: 6, color: "#475569", fontSize: FONT_SIZE.sm, fontWeight: 500 }}>Email Address *</label>
                         <ModernInput
                           ref={emailRef}
                           type="email"
@@ -511,12 +502,12 @@ export default function ManageBrokers() {
                       </div>
                     </div>
 
-                    {message && <div style={{ padding: 12, background: "#fef2f2", borderLeft: "4px solid #ef4444", borderRadius: 4, marginBottom: 20, color: "#b91c1c", fontSize: fontSize.sm }}>{message}</div>}
+                    {message && <div style={{ padding: 12, background: "#fef2f2", borderLeft: "4px solid #ef4444", borderRadius: 4, marginBottom: 20, color: "#b91c1c", fontSize: FONT_SIZE.sm }}>{message}</div>}
 
                     <button
                       onClick={handleInvite}
                       disabled={submitting || !canEdit}
-                      style={{ width: "100%", padding: "12px 16px", background: submitting || !canEdit ? "#94a3b8" : "#0070f3", color: "white", border: "none", borderRadius: 8, cursor: submitting || !canEdit ? "not-allowed" : "pointer", fontWeight: 600, fontSize: fontSize.md, transition: "opacity 0.2s", opacity: submitting || !canEdit ? 0.7 : 1, minHeight: 44 }}
+                      style={{ width: "100%", padding: "12px 16px", background: submitting || !canEdit ? "#94a3b8" : "#0070f3", color: "white", border: "none", borderRadius: 8, cursor: submitting || !canEdit ? "not-allowed" : "pointer", fontWeight: 600, fontSize: FONT_SIZE.md, transition: "opacity 0.2s", opacity: submitting || !canEdit ? 0.7 : 1, minHeight: 44 }}
                     >
                       {submitting ? "Adding User..." : "Add User"}
                     </button>
@@ -529,13 +520,13 @@ export default function ManageBrokers() {
             {editingBroker && (
               <>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24 }}>
-                  <h3 style={{ margin: 0, color: "#0f172a", fontSize: fontSize.xl, fontWeight: 700 }}>Edit Broker</h3>
+                  <h3 style={{ margin: 0, color: "#0f172a", fontSize: FONT_SIZE.xl, fontWeight: 700 }}>Edit Broker</h3>
                   <button onClick={closeModals} style={{ background: "none", border: "none", color: "#94a3b8", cursor: "pointer", padding: 0, width: 32, height: 32, display: "flex", alignItems: "center", justifyContent: "center", transition: "color 0.2s" }} onMouseEnter={e => e.currentTarget.style.color = "#64748b"} onMouseLeave={e => e.currentTarget.style.color = "#94a3b8"}><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
                 </div>
 
                 <div style={{ display: "flex", flexDirection: "column", gap: 14, marginBottom: 20 }}>
                   <div>
-                    <label style={{ display: "block", marginBottom: 6, color: "#475569", fontSize: fontSize.sm, fontWeight: 500 }}>Name *</label>
+                    <label style={{ display: "block", marginBottom: 6, color: "#475569", fontSize: FONT_SIZE.sm, fontWeight: 500 }}>Name *</label>
                     <ModernInput
                       type="text"
                       value={editName}
@@ -546,7 +537,7 @@ export default function ManageBrokers() {
                     />
                   </div>
                   <div>
-                    <label style={{ display: "block", marginBottom: 6, color: "#475569", fontSize: fontSize.sm, fontWeight: 500 }}>Phone Number</label>
+                    <label style={{ display: "block", marginBottom: 6, color: "#475569", fontSize: FONT_SIZE.sm, fontWeight: 500 }}>Phone Number</label>
                     <ModernInput
                       ref={editPhoneRef}
                       type="text"
@@ -558,7 +549,7 @@ export default function ManageBrokers() {
                     />
                   </div>
                   <div>
-                    <label style={{ display: "block", marginBottom: 6, color: "#475569", fontSize: fontSize.sm, fontWeight: 500 }}>Credit Limit (₦)</label>
+                    <label style={{ display: "block", marginBottom: 6, color: "#475569", fontSize: FONT_SIZE.sm, fontWeight: 500 }}>Credit Limit (₦)</label>
                     <ModernInput
                       type="text"
                       placeholder="0"
@@ -570,12 +561,12 @@ export default function ManageBrokers() {
                   </div>
                 </div>
 
-                {message && <div style={{ padding: 12, background: "#fef2f2", borderLeft: "4px solid #ef4444", borderRadius: 4, marginBottom: 20, color: "#b91c1c", fontSize: fontSize.sm }}>{message}</div>}
+                {message && <div style={{ padding: 12, background: "#fef2f2", borderLeft: "4px solid #ef4444", borderRadius: 4, marginBottom: 20, color: "#b91c1c", fontSize: FONT_SIZE.sm }}>{message}</div>}
 
                 <button
                   onClick={handleUpdate}
                   disabled={submitting || !canEdit}
-                  style={{ width: "100%", padding: "12px 16px", background: submitting || !canEdit ? "#94a3b8" : "#0070f3", color: "white", border: "none", borderRadius: 8, cursor: submitting || !canEdit ? "not-allowed" : "pointer", fontWeight: 600, fontSize: fontSize.md, transition: "opacity 0.2s", opacity: submitting || !canEdit ? 0.7 : 1, minHeight: 44 }}
+                  style={{ width: "100%", padding: "12px 16px", background: submitting || !canEdit ? "#94a3b8" : "#0070f3", color: "white", border: "none", borderRadius: 8, cursor: submitting || !canEdit ? "not-allowed" : "pointer", fontWeight: 600, fontSize: FONT_SIZE.md, transition: "opacity 0.2s", opacity: submitting || !canEdit ? 0.7 : 1, minHeight: 44 }}
                 >
                   {submitting ? "Saving..." : "Save Changes"}
                 </button>
@@ -589,15 +580,15 @@ export default function ManageBrokers() {
                   <div style={{ width: 64, height: 64, background: "#fef2f2", color: "#ef4444", borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 20 }}>
                     <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>
                   </div>
-                  <h3 style={{ margin: "0 0 12px", color: "#0f172a", fontSize: fontSize.xl, fontWeight: 700 }}>Delete Broker</h3>
-                  <p style={{ margin: "0 0 20px", color: "#64748b", fontSize: fontSize.base, lineHeight: 1.5 }}>Are you sure you want to delete this broker? This action cannot be undone and will permanently remove their data.</p>
+                  <h3 style={{ margin: "0 0 12px", color: "#0f172a", fontSize: FONT_SIZE.xl, fontWeight: 700 }}>Delete Broker</h3>
+                  <p style={{ margin: "0 0 20px", color: "#64748b", fontSize: FONT_SIZE.base, lineHeight: 1.5 }}>Are you sure you want to delete this broker? This action cannot be undone and will permanently remove their data.</p>
                   
-                  {message && <div style={{ padding: 12, background: "#fef2f2", borderLeft: "4px solid #ef4444", borderRadius: 4, marginBottom: 20, color: "#b91c1c", fontSize: fontSize.sm, width: "100%", textAlign: "left" }}>{message}</div>}
+                  {message && <div style={{ padding: 12, background: "#fef2f2", borderLeft: "4px solid #ef4444", borderRadius: 4, marginBottom: 20, color: "#b91c1c", fontSize: FONT_SIZE.sm, width: "100%", textAlign: "left" }}>{message}</div>}
 
                   <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, width: "100%" }}>
                     <button
                       onClick={closeModals}
-                      style={{ padding: "12px 16px", background: "white", color: "#475569", border: "1px solid #cbd5e1", borderRadius: 8, cursor: "pointer", fontWeight: 600, fontSize: fontSize.md, minHeight: 44, transition: "all 0.2s" }}
+                      style={{ padding: "12px 16px", background: "white", color: "#475569", border: "1px solid #cbd5e1", borderRadius: 8, cursor: "pointer", fontWeight: 600, fontSize: FONT_SIZE.md, minHeight: 44, transition: "all 0.2s" }}
                       onMouseEnter={e => { e.currentTarget.style.background = "#f8fafc"; e.currentTarget.style.borderColor = "#0070f3"; e.currentTarget.style.color = "#0070f3" }}
                       onMouseLeave={e => { e.currentTarget.style.background = "white"; e.currentTarget.style.borderColor = "#cbd5e1"; e.currentTarget.style.color = "#475569" }}
                     >
@@ -606,7 +597,7 @@ export default function ManageBrokers() {
                     <button
                       onClick={() => handleDelete(deletingId)}
                       disabled={submitting || !canEdit}
-                      style={{ padding: "12px 16px", background: submitting || !canEdit ? "#94a3b8" : "#ef4444", color: "white", border: "none", borderRadius: 8, cursor: submitting || !canEdit ? "not-allowed" : "pointer", fontWeight: 600, fontSize: fontSize.md, opacity: submitting || !canEdit ? 0.7 : 1, minHeight: 44, transition: "all 0.2s" }}
+                      style={{ padding: "12px 16px", background: submitting || !canEdit ? "#94a3b8" : "#ef4444", color: "white", border: "none", borderRadius: 8, cursor: submitting || !canEdit ? "not-allowed" : "pointer", fontWeight: 600, fontSize: FONT_SIZE.md, opacity: submitting || !canEdit ? 0.7 : 1, minHeight: 44, transition: "all 0.2s" }}
                       onMouseEnter={e => { if (!submitting && canEdit) e.currentTarget.style.background = "#dc2626" }}
                       onMouseLeave={e => { e.currentTarget.style.background = "#ef4444" }}
                     >

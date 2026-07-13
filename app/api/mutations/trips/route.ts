@@ -1,5 +1,6 @@
 import { createClient } from "@supabase/supabase-js"
 import { NextRequest, NextResponse } from "next/server"
+import { requireRole, handleApiError } from "@/lib/auth-middleware"
 
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -8,10 +9,14 @@ const supabaseAdmin = createClient(
 
 const ALLOWED_TABLES = ["Trips", "Trucks", "dd_trips", "trip_load_more", "Stops", "Stop_Confirmations", "trip_discrepancies"] as const
 
-async function authorizeUser(token: string) {
-  const { data: { user }, error } = await supabaseAdmin.auth.getUser(token)
-  if (error || !user) return null
-  return user
+const TABLE_ROLES: Record<string, string[]> = {
+  Trips: ["Driver", "TruckOfficer", "Broker", "Admin", "SuperAdmin", "DeskOfficer", "ATCOfficer", "Supervisor"],
+  Trucks: ["Driver", "TruckOfficer", "TruckAdmin", "Admin", "SuperAdmin", "ATCOfficer", "Supervisor"],
+  Stops: ["Driver", "Broker", "Admin", "SuperAdmin", "TruckAdmin", "ATCOfficer", "Supervisor"],
+  Stop_Confirmations: ["Broker", "Admin", "SuperAdmin"],
+  trip_load_more: ["Driver", "Admin", "SuperAdmin"],
+  trip_discrepancies: ["Driver", "Admin", "SuperAdmin"],
+  dd_trips: ["Driver", "Admin", "SuperAdmin"],
 }
 
 function buildError(msg: string, status: number) {
@@ -19,12 +24,6 @@ function buildError(msg: string, status: number) {
 }
 
 export async function POST(req: NextRequest) {
-  const authHeader = req.headers.get("Authorization")
-  if (!authHeader?.startsWith("Bearer ")) return buildError("Unauthorized", 401)
-
-  const user = await authorizeUser(authHeader.slice(7))
-  if (!user) return buildError("Unauthorized", 401)
-
   try {
     const body = await req.json()
     const { action, table, data, filters, conflict, sub_actions } = body as {
@@ -49,6 +48,10 @@ export async function POST(req: NextRequest) {
       if (!["insert", "update", "delete", "upsert"].includes(action)) {
         return buildError(`Invalid action "${action}"`, 400)
       }
+      const rolesForTable = TABLE_ROLES[table] || ["Admin"]
+      await requireRole(req, rolesForTable)
+    } else {
+      await requireRole(req, ["Driver", "Broker", "TruckOfficer", "Admin", "SuperAdmin", "ATCOfficer"])
     }
 
     switch (action) {
@@ -252,7 +255,6 @@ export async function POST(req: NextRequest) {
         return buildError(`Invalid action "${action}"`, 400)
     }
   } catch (err) {
-    console.error("Mutation error", err)
-    return buildError("Internal server error", 500)
+    return handleApiError(err)
   }
 }

@@ -1,5 +1,6 @@
 import { createClient } from "@supabase/supabase-js"
 import { NextRequest, NextResponse } from "next/server"
+import { requireRole, handleApiError } from "@/lib/auth-middleware"
 
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -7,11 +8,21 @@ const supabaseAdmin = createClient(
 )
 
 const ALLOWED_TABLES = ["fuel_requests", "fuel_companies", "fuel_deposits", "truck_fuel_expenses"] as const
+const ALLOWED_RPCS = ["confirm_fuel_receipt", "confirm_fuel_deposit", "invalidate_atf", "decline_fuel_deposit", "dispense_fuel"] as const
 
-async function authorizeUser(token: string) {
-  const { data: { user }, error } = await supabaseAdmin.auth.getUser(token)
-  if (error || !user) return null
-  return user
+const TABLE_ROLES: Record<string, string[]> = {
+  fuel_requests: ["TruckOfficer", "TruckAdmin", "StationManager", "Admin", "SuperAdmin"],
+  fuel_companies: ["StationManager", "TruckAdmin", "Admin", "SuperAdmin"],
+  fuel_deposits: ["StationManager", "Admin", "SuperAdmin"],
+  truck_fuel_expenses: ["TruckOfficer", "Admin", "SuperAdmin"],
+}
+
+const RPC_ROLES: Record<string, string[]> = {
+  confirm_fuel_receipt: ["Driver", "Admin", "SuperAdmin"],
+  confirm_fuel_deposit: ["StationManager", "Admin", "SuperAdmin"],
+  decline_fuel_deposit: ["StationManager", "Admin", "SuperAdmin"],
+  invalidate_atf: ["TruckAdmin", "StationManager", "Admin", "SuperAdmin"],
+  dispense_fuel: ["StationManager", "Admin", "SuperAdmin"],
 }
 
 function buildError(msg: string, status: number) {
@@ -19,29 +30,45 @@ function buildError(msg: string, status: number) {
 }
 
 export async function POST(req: NextRequest) {
-  const authHeader = req.headers.get("Authorization")
-  if (!authHeader?.startsWith("Bearer ")) return buildError("Unauthorized", 401)
-
-  const user = await authorizeUser(authHeader.slice(7))
-  if (!user) return buildError("Unauthorized", 401)
-
   try {
     const body = await req.json()
-    const { action, table, data, filters, conflict } = body as {
+    const { action, table, data, filters, conflict, function: fnName, params } = body as {
       action: string
-      table: string
+      table?: string
       data?: Record<string, unknown>
       filters?: Record<string, unknown>
       conflict?: string
+      function?: string
+      params?: Record<string, unknown>
     }
 
-    if (!ALLOWED_TABLES.includes(table as any)) {
+    if (action === "rpc") {
+      if (!fnName || !ALLOWED_RPCS.includes(fnName as any)) {
+        return buildError(`RPC function "${fnName}" is not supported by this endpoint`, 400)
+      }
+      const rolesForRpc = RPC_ROLES[fnName] || ["Admin"]
+      const auth = await requireRole(req, rolesForRpc)
+      const result = await supabaseAdmin.rpc(fnName as any, {
+        ...params,
+        p_user_id: auth.userId,
+        p_role: auth.primaryRole,
+      })
+      if (result.error) {
+        return buildError(result.error.message || "RPC failed", 500)
+      }
+      return NextResponse.json({ data: result.data })
+    }
+
+    if (!table || !ALLOWED_TABLES.includes(table as any)) {
       return buildError(`Table "${table}" is not supported by this endpoint`, 400)
     }
 
     if (!["insert", "update", "delete", "upsert"].includes(action)) {
       return buildError(`Invalid action "${action}"`, 400)
     }
+
+    const rolesForTable = TABLE_ROLES[table] || ["Admin"]
+    await requireRole(req, rolesForTable)
 
     switch (action) {
       case "insert": {
@@ -99,7 +126,6 @@ export async function POST(req: NextRequest) {
       }
     }
   } catch (err) {
-    console.error("Mutation error", err)
-    return buildError("Internal server error", 500)
+    return handleApiError(err)
   }
 }

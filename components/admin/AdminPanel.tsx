@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from "react"
 import { useRouter } from "next/navigation"
 import { Icon } from "@iconify/react"
+import { POLLING_INTERVAL } from "@/lib/constants"
 import dynamic from "next/dynamic"
 import { supabase } from "@/lib/supabase"
 import { apiMutate } from "@/lib/api-mutation"
@@ -35,6 +36,7 @@ const SECTION_IMPORTS = {
   "credit": () => import("@/components/admin/BrokerCredits"),
   "reports": () => import("@/components/admin/Reports"),
   "store-sales": () => import("@/components/admin/StoreSales"),
+  "company-prices": () => import("@/components/admin/CompanyPrices"),
 } as const
 
 type SectionKey = keyof typeof SECTION_IMPORTS
@@ -72,6 +74,7 @@ const NAV_ITEMS: NavItemConfig[] = [
   { label: "Customer Payments", key: "customer-payments",   icon: "mdi:cash-register" },
   { label: "Credit",            key: "credit",              icon: "mdi:credit-card-outline" },
   { label: "Cash Expenses",     key: "cash-expenses",       icon: "mdi:cash-multiple" },
+  { label: "Company Prices",    key: "company-prices",      icon: "mdi:currency-ngn" },
   { label: "Complaints",        key: "complaints",          icon: "mdi:alert-circle" },
   { label: "Reports",           key: "reports",             icon: "mdi:chart-bar" },
 ]
@@ -175,7 +178,7 @@ function AdminPanelContent({ userProfile }: Props) {
       }
     }
     checkAlerts()
-    const interval = setInterval(checkAlerts, 30000)
+    const interval = setInterval(checkAlerts, POLLING_INTERVAL)
     return () => clearInterval(interval)
   }, [permLoading])
 

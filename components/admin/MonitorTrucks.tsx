@@ -1,5 +1,7 @@
 "use client"
 
+import { FONT_SIZE, POLLING_INTERVAL } from "@/lib/constants"
+
 import { useState, useEffect, useRef } from "react"
 import { supabase } from "@/lib/supabase"
 import { apiMutate } from "@/lib/api-mutation"
@@ -64,16 +66,7 @@ const PRODUCT_BY_LOADING_POINT: Record<string, string[]> = {
   BUA:     ["BUA cement"],
 }
 
-const fontSize = {
-  xs: 12,
-  sm: 13,
-  base: 14,
-  md: 15,
-  lg: 16,
-  xl: 20,
-  "2xl": 24,
-  "3xl": 28
-}
+
 
 const getPillStyle = (filter: string, isActive: boolean) => {
   if (!isActive) {
@@ -214,7 +207,7 @@ export default function MonitorTrucks() {
       })
       .subscribe()
 
-    const interval = setInterval(fetchActiveTrucks, 30000)
+    const interval = setInterval(fetchActiveTrucks, POLLING_INTERVAL)
     return () => {
       clearInterval(interval)
       subscription.unsubscribe()
@@ -232,7 +225,7 @@ export default function MonitorTrucks() {
         }
       })
       .subscribe()
-    const interval = setInterval(fetchDdTrips, 30000)
+    const interval = setInterval(fetchDdTrips, POLLING_INTERVAL)
     return () => { clearInterval(interval); subscription.unsubscribe() }
   }, [])
 
@@ -493,7 +486,7 @@ export default function MonitorTrucks() {
     boxSizing: "border-box",
     borderRadius: 8,
     border: "1px solid #e2e8f0",
-    fontSize: fontSize.base,
+    fontSize: FONT_SIZE.base,
     background: "white",
     color: "#0f172a",
     minHeight: 48,
@@ -503,7 +496,7 @@ export default function MonitorTrucks() {
     fontWeight: 600,
     display: "block",
     marginBottom: 6,
-    fontSize: fontSize.sm,
+    fontSize: FONT_SIZE.sm,
     color: "#475569",
   }
 
@@ -512,10 +505,10 @@ export default function MonitorTrucks() {
       <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
 
       <div style={{ marginBottom: 20 }}>
-        <h1 style={{ margin: 0, color: "#0f172a", fontSize: isMobile ? fontSize["2xl"] : fontSize["3xl"], fontWeight: 700, letterSpacing: "-0.5px" }}>
+        <h1 style={{ margin: 0, color: "#0f172a", fontSize: isMobile ? FONT_SIZE["2xl"] : FONT_SIZE["3xl"], fontWeight: 700, letterSpacing: "-0.5px" }}>
           Monitor Trucks
         </h1>
-        <p style={{ margin: "8px 0 0", color: "#64748b", fontSize: fontSize.base }}>
+        <p style={{ margin: "8px 0 0", color: "#64748b", fontSize: FONT_SIZE.base }}>
           {mode === "mdd" ? "Track active trucks and manage routes in real-time." : "Record a trip for third-party / direct delivery trucks."}
         </p>
       </div>
@@ -536,7 +529,7 @@ export default function MonitorTrucks() {
                 borderRadius: 8,
                 cursor: "pointer",
                 fontWeight: active ? 700 : 500,
-                fontSize: fontSize.sm,
+                fontSize: FONT_SIZE.sm,
                 boxShadow: active ? "0 1px 3px rgba(0,0,0,0.1)" : "none",
                 transition: "all 0.2s ease",
                 display: "flex",
@@ -563,7 +556,7 @@ export default function MonitorTrucks() {
                   style={{
                     padding: "8px 12px", background: viewMode === "card" ? "#0070f3" : "transparent",
                     color: viewMode === "card" ? "white" : "#64748b", border: "none", borderRadius: 6,
-                    cursor: "pointer", fontSize: fontSize.xs, fontWeight: 600,
+                    cursor: "pointer", fontSize: FONT_SIZE.xs, fontWeight: 600,
                     minWidth: 44, height: 40, display: "flex", alignItems: "center", justifyContent: "center"
                   }}
                   title="Card view"
@@ -575,7 +568,7 @@ export default function MonitorTrucks() {
                   style={{
                     padding: "8px 12px", background: viewMode === "table" ? "#0070f3" : "transparent",
                     color: viewMode === "table" ? "white" : "#64748b", border: "none", borderRadius: 6,
-                    cursor: "pointer", fontSize: fontSize.xs, fontWeight: 600,
+                    cursor: "pointer", fontSize: FONT_SIZE.xs, fontWeight: 600,
                     minWidth: 44, height: 40, display: "flex", alignItems: "center", justifyContent: "center"
                   }}
                   title="Table view"
@@ -589,7 +582,7 @@ export default function MonitorTrucks() {
               style={{
                 padding: "8px 12px", background: "white", color: "#64748b",
                 border: "1px solid #e2e8f0", borderRadius: 8, cursor: "pointer",
-                fontSize: fontSize.xs, fontWeight: 500, minHeight: 40, minWidth: 40,
+                fontSize: FONT_SIZE.xs, fontWeight: 500, minHeight: 40, minWidth: 40,
                 display: "flex", alignItems: "center", justifyContent: "center", transition: "all 0.2s"
               }}
               onMouseEnter={e => { e.currentTarget.style.background = "#f8fafc"; e.currentTarget.style.borderColor = "#cbd5e1" }}
@@ -601,7 +594,7 @@ export default function MonitorTrucks() {
           </div>
 
           {lastUpdated && (
-            <p style={{ margin: "0 0 16px 0", color: "#94a3b8", fontSize: fontSize.xs }}>
+            <p style={{ margin: "0 0 16px 0", color: "#94a3b8", fontSize: FONT_SIZE.xs }}>
               Last updated: {lastUpdated.toLocaleTimeString()}
             </p>
           )}
@@ -615,7 +608,7 @@ export default function MonitorTrucks() {
                   key={option}
                   onClick={() => setFilterStatus(option)}
                   style={{
-                    padding: "8px 14px", borderRadius: 20, fontSize: fontSize.sm, cursor: "pointer",
+                    padding: "8px 14px", borderRadius: 20, fontSize: FONT_SIZE.sm, cursor: "pointer",
                     border: `1.5px solid ${pill.borderColor}`, background: pill.bg,
                     color: pill.textColor, fontWeight: isActive ? 600 : 500, transition: "all 0.2s"
                   }}
@@ -637,8 +630,8 @@ export default function MonitorTrucks() {
               <div style={{ width: 64, height: 64, background: "#f1f5f9", borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 16px" }}>
                 <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2"/></svg>
               </div>
-              <h3 style={{ margin: "0 0 8px", color: "#0f172a", fontSize: fontSize.xl, fontWeight: 600 }}>No trucks found</h3>
-              <p style={{ color: "#64748b", fontSize: fontSize.base, margin: 0 }}>
+              <h3 style={{ margin: "0 0 8px", color: "#0f172a", fontSize: FONT_SIZE.xl, fontWeight: 600 }}>No trucks found</h3>
+              <p style={{ color: "#64748b", fontSize: FONT_SIZE.base, margin: 0 }}>
                 {filterStatus === "All" ? "No trucks are currently active." : `No trucks with status "${filterStatus}".`}
               </p>
             </div>
@@ -651,15 +644,15 @@ export default function MonitorTrucks() {
                       <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12, marginBottom: 12 }}>
                         <div style={{ flex: 1, minWidth: 0 }}>
                           <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
-                            <h3 style={{ margin: 0, color: "#0f172a", fontSize: fontSize.lg, fontWeight: 600 }}>{truck.plate_number}</h3>
+                            <h3 style={{ margin: 0, color: "#0f172a", fontSize: FONT_SIZE.lg, fontWeight: 600 }}>{truck.plate_number}</h3>
                             {truck.kbnl_truck_no && (
-                              <span style={{ color: "#94a3b8", fontSize: fontSize.xs }}>· #{truck.kbnl_truck_no}</span>
+                              <span style={{ color: "#94a3b8", fontSize: FONT_SIZE.xs }}>· #{truck.kbnl_truck_no}</span>
                             )}
                           </div>
-                          <p style={{ margin: 0, color: "#64748b", fontSize: fontSize.sm }}>{truck.driver_name}</p>
+                          <p style={{ margin: 0, color: "#64748b", fontSize: FONT_SIZE.sm }}>{truck.driver_name}</p>
                         </div>
                         <span style={{
-                          padding: "6px 12px", borderRadius: 16, fontSize: fontSize.xs, fontWeight: 600,
+                          padding: "6px 12px", borderRadius: 16, fontSize: FONT_SIZE.xs, fontWeight: 600,
                           background: truck.trip_status === "In transit" ? "#ebf8ff" : "#fffbeb",
                           color: statusColor(truck.trip_status),
                           border: `1.5px solid ${statusColor(truck.trip_status)}`, whiteSpace: "nowrap"
@@ -669,26 +662,26 @@ export default function MonitorTrucks() {
                       </div>
                       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 12, padding: "12px 0", borderTop: "1px solid #f1f5f9", borderBottom: "1px solid #f1f5f9" }}>
                         <div>
-                          <p style={{ margin: "0 0 4px 0", color: "#94a3b8", fontSize: fontSize.xs }}>Loaded</p>
-                          <p style={{ margin: 0, color: "#0f172a", fontSize: fontSize.lg, fontWeight: 600 }}>{truck.loaded_quantity} bags</p>
+                          <p style={{ margin: "0 0 4px 0", color: "#94a3b8", fontSize: FONT_SIZE.xs }}>Loaded</p>
+                          <p style={{ margin: 0, color: "#0f172a", fontSize: FONT_SIZE.lg, fontWeight: 600 }}>{truck.loaded_quantity} bags</p>
                         </div>
                         <div>
-                          <p style={{ margin: "0 0 4px 0", color: "#94a3b8", fontSize: fontSize.xs }}>Remaining</p>
-                          <p style={{ margin: 0, color: remainingColor(truck.remaining, truck.loaded_quantity), fontSize: fontSize.lg, fontWeight: 600 }}>{truck.remaining} bags</p>
+                          <p style={{ margin: "0 0 4px 0", color: "#94a3b8", fontSize: FONT_SIZE.xs }}>Remaining</p>
+                          <p style={{ margin: 0, color: remainingColor(truck.remaining, truck.loaded_quantity), fontSize: FONT_SIZE.lg, fontWeight: 600 }}>{truck.remaining} bags</p>
                         </div>
                       </div>
                       <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 12 }}>
                         <div>
-                          <p style={{ margin: "0 0 4px 0", color: "#94a3b8", fontSize: fontSize.xs }}>Route</p>
+                          <p style={{ margin: "0 0 4px 0", color: "#94a3b8", fontSize: FONT_SIZE.xs }}>Route</p>
                           {truck.route_points.length > 0 ? (
-                            <p style={{ margin: 0, color: "#0f172a", fontSize: fontSize.sm, wordBreak: "break-word" }}>{truck.route_points.join(" → ")}</p>
+                            <p style={{ margin: 0, color: "#0f172a", fontSize: FONT_SIZE.sm, wordBreak: "break-word" }}>{truck.route_points.join(" → ")}</p>
                           ) : (
-                            <p style={{ margin: 0, color: "#cbd5e1", fontSize: fontSize.sm, fontStyle: "italic" }}>No route set</p>
+                            <p style={{ margin: 0, color: "#cbd5e1", fontSize: FONT_SIZE.sm, fontStyle: "italic" }}>No route set</p>
                           )}
                         </div>
                         <div>
-                          <p style={{ margin: "0 0 4px 0", color: "#94a3b8", fontSize: fontSize.xs }}>Driver Contact</p>
-                          <p style={{ margin: 0, color: "#0f172a", fontSize: fontSize.sm }}>{truck.driver_phone}</p>
+                          <p style={{ margin: "0 0 4px 0", color: "#94a3b8", fontSize: FONT_SIZE.xs }}>Driver Contact</p>
+                          <p style={{ margin: 0, color: "#0f172a", fontSize: FONT_SIZE.sm }}>{truck.driver_phone}</p>
                         </div>
                       </div>
                       <button
@@ -696,7 +689,7 @@ export default function MonitorTrucks() {
                         disabled={!canEdit}
                         style={{
                           width: "100%", padding: "10px 14px", background: !canEdit ? "#94a3b8" : "#0070f3", color: "white",
-                          border: "none", borderRadius: 8, cursor: !canEdit ? "not-allowed" : "pointer", fontSize: fontSize.md,
+                          border: "none", borderRadius: 8, cursor: !canEdit ? "not-allowed" : "pointer", fontSize: FONT_SIZE.md,
                           fontWeight: 600, transition: "all 0.2s", minHeight: 40
                         }}
                         onMouseEnter={e => { if (canEdit) e.currentTarget.style.opacity = "0.9" }}
@@ -714,37 +707,37 @@ export default function MonitorTrucks() {
                   <table style={{ width: "100%", borderCollapse: "collapse", textAlign: "left" }}>
                     <thead>
                       <tr style={{ background: "#f8fafc", borderBottom: "1px solid #e2e8f0" }}>
-                        <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: fontSize.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px" }}>Truck</th>
-                        <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: fontSize.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px" }}>Driver</th>
-                        <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: fontSize.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px" }}>Contact</th>
-                        <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: fontSize.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px" }}>Loaded</th>
-                        <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: fontSize.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px" }}>Remaining</th>
-                        <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: fontSize.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px" }}>Status</th>
-                        <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: fontSize.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px" }}>Route</th>
-                        <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: fontSize.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px", textAlign: "right" }}>Action</th>
+                        <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: FONT_SIZE.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px" }}>Truck</th>
+                        <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: FONT_SIZE.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px" }}>Driver</th>
+                        <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: FONT_SIZE.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px" }}>Contact</th>
+                        <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: FONT_SIZE.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px" }}>Loaded</th>
+                        <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: FONT_SIZE.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px" }}>Remaining</th>
+                        <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: FONT_SIZE.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px" }}>Status</th>
+                        <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: FONT_SIZE.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px" }}>Route</th>
+                        <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: FONT_SIZE.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px", textAlign: "right" }}>Action</th>
                       </tr>
                     </thead>
                     <tbody>
                       {filteredTrucks.map((truck, idx) => (
                         <tr key={truck.trip_id} style={{ borderBottom: idx === filteredTrucks.length - 1 ? "none" : "1px solid #e2e8f0", transition: "background 0.2s ease" }} onMouseEnter={e => e.currentTarget.style.background = "#f8fafc"} onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
                           <td style={{ padding: "12px 16px" }}>
-                            <strong style={{ color: "#0f172a", fontSize: fontSize.base }}>{truck.plate_number}</strong>
-                            {truck.kbnl_truck_no && <div style={{ fontSize: fontSize.xs, color: "#94a3b8", marginTop: 2 }}>#{truck.kbnl_truck_no}</div>}
+                            <strong style={{ color: "#0f172a", fontSize: FONT_SIZE.base }}>{truck.plate_number}</strong>
+                            {truck.kbnl_truck_no && <div style={{ fontSize: FONT_SIZE.xs, color: "#94a3b8", marginTop: 2 }}>#{truck.kbnl_truck_no}</div>}
                           </td>
-                          <td style={{ padding: "12px 16px", color: "#0f172a", fontSize: fontSize.base }}>{truck.driver_name}</td>
-                          <td style={{ padding: "12px 16px", color: "#64748b", fontSize: fontSize.sm }}>{truck.driver_phone}</td>
-                          <td style={{ padding: "12px 16px", color: "#0f172a", fontSize: fontSize.base, fontWeight: 500 }}>{truck.loaded_quantity}</td>
-                          <td style={{ padding: "12px 16px", color: remainingColor(truck.remaining, truck.loaded_quantity), fontSize: fontSize.base, fontWeight: 600 }}>{truck.remaining}</td>
+                          <td style={{ padding: "12px 16px", color: "#0f172a", fontSize: FONT_SIZE.base }}>{truck.driver_name}</td>
+                          <td style={{ padding: "12px 16px", color: "#64748b", fontSize: FONT_SIZE.sm }}>{truck.driver_phone}</td>
+                          <td style={{ padding: "12px 16px", color: "#0f172a", fontSize: FONT_SIZE.base, fontWeight: 500 }}>{truck.loaded_quantity}</td>
+                          <td style={{ padding: "12px 16px", color: remainingColor(truck.remaining, truck.loaded_quantity), fontSize: FONT_SIZE.base, fontWeight: 600 }}>{truck.remaining}</td>
                           <td style={{ padding: "12px 16px" }}>
                             <span style={{
-                              padding: "6px 10px", borderRadius: 14, fontSize: fontSize.xs, fontWeight: 600,
+                              padding: "6px 10px", borderRadius: 14, fontSize: FONT_SIZE.xs, fontWeight: 600,
                               background: truck.trip_status === "In transit" ? "#ebf8ff" : "#fffbeb",
                               color: statusColor(truck.trip_status), border: `1.5px solid ${statusColor(truck.trip_status)}`
                             }}>
                               {truck.trip_status}
                             </span>
                           </td>
-                          <td style={{ padding: "12px 16px", color: truck.route_points.length > 0 ? "#0f172a" : "#cbd5e1", fontSize: fontSize.sm }}>
+                          <td style={{ padding: "12px 16px", color: truck.route_points.length > 0 ? "#0f172a" : "#cbd5e1", fontSize: FONT_SIZE.sm }}>
                             {truck.route_points.length > 0 ? truck.route_points.join(" → ") : "No route"}
                           </td>
                           <td style={{ padding: "12px 16px", textAlign: "right" }}>
@@ -753,7 +746,7 @@ export default function MonitorTrucks() {
                               disabled={!canEdit}
                               style={{
                                 padding: "6px 10px", cursor: !canEdit ? "not-allowed" : "pointer", borderRadius: 6, border: "1.5px solid #0070f3",
-                                color: !canEdit ? "#94a3b8" : "#0070f3", background: !canEdit ? "#e2e8f0" : "#f0f7ff", fontSize: fontSize.sm, fontWeight: 500,
+                                color: !canEdit ? "#94a3b8" : "#0070f3", background: !canEdit ? "#e2e8f0" : "#f0f7ff", fontSize: FONT_SIZE.sm, fontWeight: 500,
                                 transition: "all 0.2s", minHeight: 32, minWidth: 32,
                                 display: "inline-flex", alignItems: "center", justifyContent: "center"
                               }}
@@ -778,10 +771,10 @@ export default function MonitorTrucks() {
               <div onClick={e => e.stopPropagation()} style={{ background: "white", borderRadius: isMobile ? "20px 20px 0 0" : 12, padding: isMobile ? "28px 20px" : 32, width: "100%", maxWidth: 440, maxHeight: "90vh", overflowY: "auto", boxShadow: "0 25px 50px -12px rgba(0, 0, 0, 0.25)", animation: "slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1)" }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 24 }}>
                   <div>
-                    <h3 style={{ margin: "0 0 4px 0", color: "#0f172a", fontSize: fontSize.xl, fontWeight: 700 }}>
+                    <h3 style={{ margin: "0 0 4px 0", color: "#0f172a", fontSize: FONT_SIZE.xl, fontWeight: 700 }}>
                       {editingRoute.route_points.length > 0 ? "Edit Route" : "Set Route"}
                     </h3>
-                    <p style={{ margin: 0, color: "#94a3b8", fontSize: fontSize.sm }}>
+                    <p style={{ margin: 0, color: "#94a3b8", fontSize: FONT_SIZE.sm }}>
                       {editingRoute.plate_number}{editingRoute.kbnl_truck_no ? ` · #${editingRoute.kbnl_truck_no}` : ""}
                     </p>
                   </div>
@@ -793,12 +786,12 @@ export default function MonitorTrucks() {
                 </div>
                 {routePoints.length > 0 && (
                   <div style={{ marginBottom: 20 }}>
-                    <label style={{ fontWeight: 600, display: "block", marginBottom: 10, color: "#475569", fontSize: fontSize.sm }}>Route Points</label>
+                    <label style={{ fontWeight: 600, display: "block", marginBottom: 10, color: "#475569", fontSize: FONT_SIZE.sm }}>Route Points</label>
                     <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                       {routePoints.map((point, i) => (
                         <div key={i} style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 12px", background: "#f8fafc", borderRadius: 8, border: "1px solid #e2e8f0", transition: "all 0.2s" }} onMouseEnter={e => { e.currentTarget.style.background = "#f1f5f9"; e.currentTarget.style.borderColor = "#cbd5e1" }} onMouseLeave={e => { e.currentTarget.style.background = "#f8fafc"; e.currentTarget.style.borderColor = "#e2e8f0" }}>
-                          <span style={{ fontSize: fontSize.xs, color: "#94a3b8", fontWeight: 600, minWidth: 20 }}>{i + 1}.</span>
-                          <span style={{ flex: 1, fontSize: fontSize.base, color: "#0f172a" }}>{point}</span>
+                          <span style={{ fontSize: FONT_SIZE.xs, color: "#94a3b8", fontWeight: 600, minWidth: 20 }}>{i + 1}.</span>
+                          <span style={{ flex: 1, fontSize: FONT_SIZE.base, color: "#0f172a" }}>{point}</span>
                           <button onClick={() => removePoint(i)} style={{ background: "none", border: "none", cursor: "pointer", color: "#ef4444", fontSize: 18, lineHeight: 1, padding: 0, display: "flex", alignItems: "center", justifyContent: "center", width: 24, height: 24, transition: "color 0.2s" }}
                             onMouseEnter={e => e.currentTarget.style.color = "#dc2626"}
                             onMouseLeave={e => e.currentTarget.style.color = "#ef4444"}>✕</button>
@@ -806,25 +799,25 @@ export default function MonitorTrucks() {
                       ))}
                     </div>
                     {routePoints.length > 1 && (
-                      <p style={{ fontSize: fontSize.xs, color: "#94a3b8", marginTop: 8, margin: "8px 0 0 0" }}>{routePoints.join(" → ")}</p>
+                      <p style={{ fontSize: FONT_SIZE.xs, color: "#94a3b8", marginTop: 8, margin: "8px 0 0 0" }}>{routePoints.join(" → ")}</p>
                     )}
                   </div>
                 )}
                 <div style={{ marginBottom: 24, paddingBottom: 20, borderBottom: "1px solid #e2e8f0" }}>
-                  <label style={{ fontWeight: 600, display: "block", marginBottom: 8, color: "#475569", fontSize: fontSize.sm }}>Add a Point</label>
+                  <label style={{ fontWeight: 600, display: "block", marginBottom: 8, color: "#475569", fontSize: FONT_SIZE.sm }}>Add a Point</label>
                   <div style={{ display: "flex", gap: 8 }}>
                     <input type="text" placeholder="e.g. Ikom, Calabar, Ogoja" value={newPoint} onChange={e => setNewPoint(e.target.value)} onKeyDown={e => { if (e.key === "Enter") addPoint() }} readOnly={!canEdit}
-                      style={{ flex: 1, padding: "12px 14px", borderRadius: 8, border: "1px solid #e0e0e0", fontSize: fontSize.base, background: "white", color: "#171717", minHeight: 40, transition: "border-color 0.2s ease", boxSizing: "border-box" }} autoFocus />
-                    <button onClick={addPoint} disabled={!canEdit} style={{ padding: "10px 16px", background: !canEdit ? "#94a3b8" : "#0070f3", color: "white", border: "none", borderRadius: 8, cursor: !canEdit ? "not-allowed" : "pointer", fontWeight: 600, fontSize: fontSize.md, minHeight: 40, transition: "opacity 0.2s" }}
+                      style={{ flex: 1, padding: "12px 14px", borderRadius: 8, border: "1px solid #e0e0e0", fontSize: FONT_SIZE.base, background: "white", color: "#171717", minHeight: 40, transition: "border-color 0.2s ease", boxSizing: "border-box" }} autoFocus />
+                    <button onClick={addPoint} disabled={!canEdit} style={{ padding: "10px 16px", background: !canEdit ? "#94a3b8" : "#0070f3", color: "white", border: "none", borderRadius: 8, cursor: !canEdit ? "not-allowed" : "pointer", fontWeight: 600, fontSize: FONT_SIZE.md, minHeight: 40, transition: "opacity 0.2s" }}
                       onMouseEnter={e => { if (canEdit) e.currentTarget.style.opacity = "0.9" }}
                       onMouseLeave={e => { if (canEdit) e.currentTarget.style.opacity = "1" }}>Add</button>
                   </div>
                 </div>
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-                  <button onClick={closeRouteEditor} style={{ padding: "12px 16px", background: "white", color: "#475569", border: "1px solid #cbd5e1", borderRadius: 8, cursor: "pointer", fontWeight: 600, fontSize: fontSize.md, minHeight: 44, transition: "all 0.2s" }}
+                  <button onClick={closeRouteEditor} style={{ padding: "12px 16px", background: "white", color: "#475569", border: "1px solid #cbd5e1", borderRadius: 8, cursor: "pointer", fontWeight: 600, fontSize: FONT_SIZE.md, minHeight: 44, transition: "all 0.2s" }}
                     onMouseEnter={e => { e.currentTarget.style.background = "#f8fafc"; e.currentTarget.style.borderColor = "#0070f3"; e.currentTarget.style.color = "#0070f3" }}
                     onMouseLeave={e => { e.currentTarget.style.background = "white"; e.currentTarget.style.borderColor = "#cbd5e1"; e.currentTarget.style.color = "#475569" }}>Cancel</button>
-                  <button onClick={saveRoute} disabled={routeSaving || !canEdit} style={{ padding: "12px 16px", background: routeSaving || !canEdit ? "#94a3b8" : "#0070f3", color: "white", border: "none", borderRadius: 8, cursor: routeSaving || !canEdit ? "not-allowed" : "pointer", fontWeight: 600, fontSize: fontSize.md, opacity: routeSaving || !canEdit ? 0.7 : 1, minHeight: 44, transition: "opacity 0.2s" }}
+                  <button onClick={saveRoute} disabled={routeSaving || !canEdit} style={{ padding: "12px 16px", background: routeSaving || !canEdit ? "#94a3b8" : "#0070f3", color: "white", border: "none", borderRadius: 8, cursor: routeSaving || !canEdit ? "not-allowed" : "pointer", fontWeight: 600, fontSize: FONT_SIZE.md, opacity: routeSaving || !canEdit ? 0.7 : 1, minHeight: 44, transition: "opacity 0.2s" }}
                     onMouseEnter={e => { if (!routeSaving && canEdit) e.currentTarget.style.opacity = "0.9" }}
                     onMouseLeave={e => { if (!routeSaving && canEdit) e.currentTarget.style.opacity = "1" }}>
                     {routeSaving ? "Saving..." : "Save Route"}
@@ -842,7 +835,7 @@ export default function MonitorTrucks() {
               disabled={!canEdit}
               style={{
                 padding: "10px 18px", background: !canEdit ? "#94a3b8" : "#0070f3", color: "white", border: "none",
-                borderRadius: 8, cursor: !canEdit ? "not-allowed" : "pointer", fontSize: fontSize.sm, fontWeight: 600,
+                borderRadius: 8, cursor: !canEdit ? "not-allowed" : "pointer", fontSize: FONT_SIZE.sm, fontWeight: 600,
                 display: "flex", alignItems: "center", gap: 6, minHeight: 40,
               }}
             >
@@ -858,7 +851,7 @@ export default function MonitorTrucks() {
                     style={{
                       padding: "8px 12px", background: ddViewMode === "card" ? "#0070f3" : "transparent",
                       color: ddViewMode === "card" ? "white" : "#64748b", border: "none", borderRadius: 6,
-                      cursor: "pointer", fontSize: fontSize.xs, fontWeight: 600,
+                      cursor: "pointer", fontSize: FONT_SIZE.xs, fontWeight: 600,
                       minWidth: 44, height: 40, display: "flex", alignItems: "center", justifyContent: "center"
                     }}
                     title="Card view"
@@ -870,7 +863,7 @@ export default function MonitorTrucks() {
                     style={{
                       padding: "8px 12px", background: ddViewMode === "table" ? "#0070f3" : "transparent",
                       color: ddViewMode === "table" ? "white" : "#64748b", border: "none", borderRadius: 6,
-                      cursor: "pointer", fontSize: fontSize.xs, fontWeight: 600,
+                      cursor: "pointer", fontSize: FONT_SIZE.xs, fontWeight: 600,
                       minWidth: 44, height: 40, display: "flex", alignItems: "center", justifyContent: "center"
                     }}
                     title="Table view"
@@ -884,7 +877,7 @@ export default function MonitorTrucks() {
                 style={{
                   padding: "8px 12px", background: "white", color: "#64748b",
                   border: "1px solid #e2e8f0", borderRadius: 8, cursor: "pointer",
-                  fontSize: fontSize.xs, fontWeight: 500, minHeight: 40, minWidth: 40,
+                  fontSize: FONT_SIZE.xs, fontWeight: 500, minHeight: 40, minWidth: 40,
                   display: "flex", alignItems: "center", justifyContent: "center", transition: "all 0.2s"
                 }}
                 onMouseEnter={e => { e.currentTarget.style.background = "#f8fafc"; e.currentTarget.style.borderColor = "#cbd5e1" }}
@@ -897,7 +890,7 @@ export default function MonitorTrucks() {
           </div>
 
           {ddLastUpdated && (
-            <p style={{ margin: "0 0 16px 0", color: "#94a3b8", fontSize: fontSize.xs }}>
+            <p style={{ margin: "0 0 16px 0", color: "#94a3b8", fontSize: FONT_SIZE.xs }}>
               Last updated: {ddLastUpdated.toLocaleTimeString()}
             </p>
           )}
@@ -911,7 +904,7 @@ export default function MonitorTrucks() {
                   key={option}
                   onClick={() => setDdFilterStatus(option)}
                   style={{
-                    padding: "8px 14px", borderRadius: 20, fontSize: fontSize.sm, cursor: "pointer",
+                    padding: "8px 14px", borderRadius: 20, fontSize: FONT_SIZE.sm, cursor: "pointer",
                     border: `1.5px solid ${pill.borderColor}`, background: pill.bg,
                     color: pill.textColor, fontWeight: isActive ? 600 : 500, transition: "all 0.2s"
                   }}
@@ -926,7 +919,7 @@ export default function MonitorTrucks() {
 
           {ddMessage && (
             <div style={{
-              padding: 12, borderRadius: 8, marginBottom: 20, fontSize: fontSize.sm, fontWeight: 600,
+              padding: 12, borderRadius: 8, marginBottom: 20, fontSize: FONT_SIZE.sm, fontWeight: 600,
               display: "flex", alignItems: "center", gap: 8,
               background: ddMessageType === "success" ? "#f0fff4" : "#fef2f2",
               border: ddMessageType === "success" ? "1px solid #86efac" : "1px solid #fecaca",
@@ -950,8 +943,8 @@ export default function MonitorTrucks() {
                 <div style={{ width: 64, height: 64, background: "#f1f5f9", borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 16px" }}>
                   <Icon icon="mdi:truck-delivery" width={32} color="#94a3b8" />
                 </div>
-                <h3 style={{ margin: "0 0 8px", color: "#0f172a", fontSize: fontSize.xl, fontWeight: 600 }}>No DD trips found</h3>
-                <p style={{ color: "#64748b", fontSize: fontSize.base, margin: 0 }}>
+                <h3 style={{ margin: "0 0 8px", color: "#0f172a", fontSize: FONT_SIZE.xl, fontWeight: 600 }}>No DD trips found</h3>
+                <p style={{ color: "#64748b", fontSize: FONT_SIZE.base, margin: 0 }}>
                   {ddFilterStatus === "All" ? "No direct delivery trips yet." : `No trips with status "${ddFilterStatus}".`}
                 </p>
               </div>
@@ -961,11 +954,11 @@ export default function MonitorTrucks() {
                   <div key={trip.dd_trip_id} style={{ background: "white", borderRadius: 12, padding: 16, border: "1px solid #e2e8f0", boxShadow: "0 1px 3px rgba(0, 0, 0, 0.05)", transition: "all 0.2s ease" }} onMouseEnter={e => { e.currentTarget.style.boxShadow = "0 4px 12px rgba(0, 0, 0, 0.08)"; e.currentTarget.style.borderColor = "#cbd5e1" }} onMouseLeave={e => { e.currentTarget.style.boxShadow = "0 1px 3px rgba(0, 0, 0, 0.05)"; e.currentTarget.style.borderColor = "#e2e8f0" }}>
                     <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12, marginBottom: 12 }}>
                       <div style={{ flex: 1, minWidth: 0 }}>
-                        <h3 style={{ margin: 0, color: "#0f172a", fontSize: fontSize.lg, fontWeight: 600 }}>{trip.plate_number}</h3>
-                        <p style={{ margin: "4px 0 0", color: "#64748b", fontSize: fontSize.sm }}>{trip.driver_name}</p>
+                        <h3 style={{ margin: 0, color: "#0f172a", fontSize: FONT_SIZE.lg, fontWeight: 600 }}>{trip.plate_number}</h3>
+                        <p style={{ margin: "4px 0 0", color: "#64748b", fontSize: FONT_SIZE.sm }}>{trip.driver_name}</p>
                       </div>
                       <span style={{
-                        padding: "6px 12px", borderRadius: 16, fontSize: fontSize.xs, fontWeight: 600,
+                        padding: "6px 12px", borderRadius: 16, fontSize: FONT_SIZE.xs, fontWeight: 600,
                         background: trip.trip_status === "In transit" ? "#ebf8ff" : trip.trip_status === "Completed" ? "#f0fdf4" : "#fffbeb",
                         color: statusColor(trip.trip_status),
                         border: `1.5px solid ${statusColor(trip.trip_status)}`, whiteSpace: "nowrap"
@@ -975,31 +968,31 @@ export default function MonitorTrucks() {
                     </div>
                     <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 12, padding: "12px 0", borderTop: "1px solid #f1f5f9", borderBottom: "1px solid #f1f5f9" }}>
                       <div>
-                        <p style={{ margin: "0 0 4px 0", color: "#94a3b8", fontSize: fontSize.xs }}>Product</p>
-                        <p style={{ margin: 0, color: "#0f172a", fontSize: fontSize.base, fontWeight: 600 }}>{trip.product}</p>
+                        <p style={{ margin: "0 0 4px 0", color: "#94a3b8", fontSize: FONT_SIZE.xs }}>Product</p>
+                        <p style={{ margin: 0, color: "#0f172a", fontSize: FONT_SIZE.base, fontWeight: 600 }}>{trip.product}</p>
                       </div>
                       <div>
-                        <p style={{ margin: "0 0 4px 0", color: "#94a3b8", fontSize: fontSize.xs }}>Bags</p>
-                        <p style={{ margin: 0, color: "#0f172a", fontSize: fontSize.base, fontWeight: 600 }}>{trip.loaded_quantity}</p>
+                        <p style={{ margin: "0 0 4px 0", color: "#94a3b8", fontSize: FONT_SIZE.xs }}>Bags</p>
+                        <p style={{ margin: 0, color: "#0f172a", fontSize: FONT_SIZE.base, fontWeight: 600 }}>{trip.loaded_quantity}</p>
                       </div>
                       <div>
-                        <p style={{ margin: "0 0 4px 0", color: "#94a3b8", fontSize: fontSize.xs }}>Haulage Company</p>
-                        <p style={{ margin: 0, color: "#0f172a", fontSize: fontSize.sm }}>{trip.loading_point}</p>
+                        <p style={{ margin: "0 0 4px 0", color: "#94a3b8", fontSize: FONT_SIZE.xs }}>Haulage Company</p>
+                        <p style={{ margin: 0, color: "#0f172a", fontSize: FONT_SIZE.sm }}>{trip.loading_point}</p>
                       </div>
                       <div>
-                        <p style={{ margin: "0 0 4px 0", color: "#94a3b8", fontSize: fontSize.xs }}>ATC</p>
-                        <p style={{ margin: 0, color: "#0f172a", fontSize: fontSize.sm }}>{trip.atc || "—"}</p>
+                        <p style={{ margin: "0 0 4px 0", color: "#94a3b8", fontSize: FONT_SIZE.xs }}>ATC</p>
+                        <p style={{ margin: 0, color: "#0f172a", fontSize: FONT_SIZE.sm }}>{trip.atc || "—"}</p>
                       </div>
                     </div>
                     <div style={{ marginBottom: 12 }}>
-                      <p style={{ margin: "0 0 4px 0", color: "#94a3b8", fontSize: fontSize.xs }}>Route</p>
+                      <p style={{ margin: "0 0 4px 0", color: "#94a3b8", fontSize: FONT_SIZE.xs }}>Route</p>
                       {trip.route_points && trip.route_points.length > 0 ? (
-                        <p style={{ margin: 0, color: "#0f172a", fontSize: fontSize.sm, wordBreak: "break-word" }}>{trip.route_points.join(" → ")}</p>
+                        <p style={{ margin: 0, color: "#0f172a", fontSize: FONT_SIZE.sm, wordBreak: "break-word" }}>{trip.route_points.join(" → ")}</p>
                       ) : (
-                        <p style={{ margin: 0, color: "#cbd5e1", fontSize: fontSize.sm, fontStyle: "italic" }}>No route set</p>
+                        <p style={{ margin: 0, color: "#cbd5e1", fontSize: FONT_SIZE.sm, fontStyle: "italic" }}>No route set</p>
                       )}
                     </div>
-                    <p style={{ margin: "0 0 12px 0", color: "#94a3b8", fontSize: fontSize.xs }}>
+                    <p style={{ margin: "0 0 12px 0", color: "#94a3b8", fontSize: FONT_SIZE.xs }}>
                       Created: {new Date(trip.created_at).toLocaleDateString()}
                     </p>
                     {trip.trip_status !== "Completed" && (
@@ -1009,7 +1002,7 @@ export default function MonitorTrucks() {
                           disabled={!canEdit}
                           style={{
                             flex: 1, padding: "10px 14px", background: !canEdit ? "#94a3b8" : "#8b5cf6", color: "white",
-                            border: "none", borderRadius: 8, cursor: !canEdit ? "not-allowed" : "pointer", fontSize: fontSize.xs,
+                            border: "none", borderRadius: 8, cursor: !canEdit ? "not-allowed" : "pointer", fontSize: FONT_SIZE.xs,
                             fontWeight: 600, minHeight: 36, transition: "opacity 0.2s"
                           }}
                           onMouseEnter={e => { if (canEdit) e.currentTarget.style.opacity = "0.9" }}
@@ -1022,7 +1015,7 @@ export default function MonitorTrucks() {
                           disabled={!canEdit}
                           style={{
                             flex: 1, padding: "10px 14px", background: !canEdit ? "#94a3b8" : "#0070f3", color: "white",
-                            border: "none", borderRadius: 8, cursor: !canEdit ? "not-allowed" : "pointer", fontSize: fontSize.xs,
+                            border: "none", borderRadius: 8, cursor: !canEdit ? "not-allowed" : "pointer", fontSize: FONT_SIZE.xs,
                             fontWeight: 600, minHeight: 36, transition: "opacity 0.2s"
                           }}
                           onMouseEnter={e => { if (canEdit) e.currentTarget.style.opacity = "0.9" }}
@@ -1035,7 +1028,7 @@ export default function MonitorTrucks() {
                           disabled={!canEdit}
                           style={{
                             flex: 1, padding: "10px 14px", background: !canEdit ? "#94a3b8" : "#10b981", color: "white",
-                            border: "none", borderRadius: 8, cursor: !canEdit ? "not-allowed" : "pointer", fontSize: fontSize.xs,
+                            border: "none", borderRadius: 8, cursor: !canEdit ? "not-allowed" : "pointer", fontSize: FONT_SIZE.xs,
                             fontWeight: 600, minHeight: 36, transition: "opacity 0.2s"
                           }}
                           onMouseEnter={e => { if (canEdit) e.currentTarget.style.opacity = "0.9" }}
@@ -1053,49 +1046,49 @@ export default function MonitorTrucks() {
                 <table style={{ width: "100%", borderCollapse: "collapse", textAlign: "left" }}>
                   <thead>
                     <tr style={{ background: "#f8fafc", borderBottom: "1px solid #e2e8f0" }}>
-                      <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: fontSize.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px" }}>Truck</th>
-                      <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: fontSize.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px" }}>Driver</th>
-                      <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: fontSize.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px" }}>Product</th>
-                      <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: fontSize.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px" }}>Bags</th>
-                      <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: fontSize.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px" }}>Haulage Company</th>
-                      <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: fontSize.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px" }}>Status</th>
-                      <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: fontSize.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px" }}>Route</th>
-                      <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: fontSize.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px", textAlign: "right" }}>Actions</th>
+                      <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: FONT_SIZE.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px" }}>Truck</th>
+                      <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: FONT_SIZE.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px" }}>Driver</th>
+                      <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: FONT_SIZE.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px" }}>Product</th>
+                      <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: FONT_SIZE.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px" }}>Bags</th>
+                      <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: FONT_SIZE.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px" }}>Haulage Company</th>
+                      <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: FONT_SIZE.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px" }}>Status</th>
+                      <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: FONT_SIZE.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px" }}>Route</th>
+                      <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: FONT_SIZE.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px", textAlign: "right" }}>Actions</th>
                     </tr>
                   </thead>
                   <tbody>
                     {ddFiltered.map((trip, idx) => (
                       <tr key={trip.dd_trip_id} style={{ borderBottom: idx === ddFiltered.length - 1 ? "none" : "1px solid #e2e8f0", transition: "background 0.2s ease" }} onMouseEnter={e => e.currentTarget.style.background = "#f8fafc"} onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
                         <td style={{ padding: "12px 16px" }}>
-                          <strong style={{ color: "#0f172a", fontSize: fontSize.base }}>{trip.plate_number}</strong>
-                          <div style={{ fontSize: fontSize.xs, color: "#94a3b8", marginTop: 2 }}>{trip.driver_phone || "—"}</div>
+                          <strong style={{ color: "#0f172a", fontSize: FONT_SIZE.base }}>{trip.plate_number}</strong>
+                          <div style={{ fontSize: FONT_SIZE.xs, color: "#94a3b8", marginTop: 2 }}>{trip.driver_phone || "—"}</div>
                         </td>
-                        <td style={{ padding: "12px 16px", color: "#0f172a", fontSize: fontSize.base }}>{trip.driver_name}</td>
-                        <td style={{ padding: "12px 16px", color: "#475569", fontSize: fontSize.sm }}>{trip.product}</td>
-                        <td style={{ padding: "12px 16px", color: "#0f172a", fontSize: fontSize.base, fontWeight: 500 }}>{trip.loaded_quantity}</td>
-                        <td style={{ padding: "12px 16px", color: "#475569", fontSize: fontSize.sm }}>{trip.loading_point}{trip.atc ? ` (${trip.atc})` : ""}</td>
+                        <td style={{ padding: "12px 16px", color: "#0f172a", fontSize: FONT_SIZE.base }}>{trip.driver_name}</td>
+                        <td style={{ padding: "12px 16px", color: "#475569", fontSize: FONT_SIZE.sm }}>{trip.product}</td>
+                        <td style={{ padding: "12px 16px", color: "#0f172a", fontSize: FONT_SIZE.base, fontWeight: 500 }}>{trip.loaded_quantity}</td>
+                        <td style={{ padding: "12px 16px", color: "#475569", fontSize: FONT_SIZE.sm }}>{trip.loading_point}{trip.atc ? ` (${trip.atc})` : ""}</td>
                         <td style={{ padding: "12px 16px" }}>
                           <span style={{
-                            padding: "6px 10px", borderRadius: 14, fontSize: fontSize.xs, fontWeight: 600,
+                            padding: "6px 10px", borderRadius: 14, fontSize: FONT_SIZE.xs, fontWeight: 600,
                             background: trip.trip_status === "In transit" ? "#ebf8ff" : trip.trip_status === "Completed" ? "#f0fdf4" : "#fffbeb",
                             color: statusColor(trip.trip_status), border: `1.5px solid ${statusColor(trip.trip_status)}`
                           }}>
                             {trip.trip_status}
                           </span>
                         </td>
-                        <td style={{ padding: "12px 16px", color: trip.route_points && trip.route_points.length > 0 ? "#0f172a" : "#cbd5e1", fontSize: fontSize.sm }}>
+                        <td style={{ padding: "12px 16px", color: trip.route_points && trip.route_points.length > 0 ? "#0f172a" : "#cbd5e1", fontSize: FONT_SIZE.sm }}>
                           {trip.route_points && trip.route_points.length > 0 ? trip.route_points.join(" → ") : "No route"}
                         </td>
                         <td style={{ padding: "12px 16px", textAlign: "right" }}>
                           {trip.trip_status !== "Completed" && (
                           <div style={{ display: "flex", gap: 6, justifyContent: "flex-end" }}>
-                            <button onClick={() => openDdStopForm(trip)} disabled={!canEdit} style={{ padding: "6px 10px", cursor: !canEdit ? "not-allowed" : "pointer", borderRadius: 6, border: "1.5px solid #8b5cf6", color: !canEdit ? "#94a3b8" : "#8b5cf6", background: !canEdit ? "#e2e8f0" : "#f5f3ff", fontSize: fontSize.xs, fontWeight: 500, transition: "all 0.2s", minHeight: 32, whiteSpace: "nowrap" }}
+                            <button onClick={() => openDdStopForm(trip)} disabled={!canEdit} style={{ padding: "6px 10px", cursor: !canEdit ? "not-allowed" : "pointer", borderRadius: 6, border: "1.5px solid #8b5cf6", color: !canEdit ? "#94a3b8" : "#8b5cf6", background: !canEdit ? "#e2e8f0" : "#f5f3ff", fontSize: FONT_SIZE.xs, fontWeight: 500, transition: "all 0.2s", minHeight: 32, whiteSpace: "nowrap" }}
                               onMouseEnter={e => { if (canEdit) e.currentTarget.style.background = "#ede9fe" }}
                               onMouseLeave={e => { if (canEdit) e.currentTarget.style.background = "#f5f3ff" }}>Stop</button>
-                            <button onClick={() => openDdRouteEditor(trip)} disabled={!canEdit} style={{ padding: "6px 10px", cursor: !canEdit ? "not-allowed" : "pointer", borderRadius: 6, border: "1.5px solid #0070f3", color: !canEdit ? "#94a3b8" : "#0070f3", background: !canEdit ? "#e2e8f0" : "#f0f7ff", fontSize: fontSize.xs, fontWeight: 500, transition: "all 0.2s", minHeight: 32, whiteSpace: "nowrap" }}
+                            <button onClick={() => openDdRouteEditor(trip)} disabled={!canEdit} style={{ padding: "6px 10px", cursor: !canEdit ? "not-allowed" : "pointer", borderRadius: 6, border: "1.5px solid #0070f3", color: !canEdit ? "#94a3b8" : "#0070f3", background: !canEdit ? "#e2e8f0" : "#f0f7ff", fontSize: FONT_SIZE.xs, fontWeight: 500, transition: "all 0.2s", minHeight: 32, whiteSpace: "nowrap" }}
                               onMouseEnter={e => { if (canEdit) e.currentTarget.style.background = "#e0efff" }}
                               onMouseLeave={e => { if (canEdit) e.currentTarget.style.background = "#f0f7ff" }}>Route</button>
-                            <button onClick={() => updateDdTripStatus(trip.dd_trip_id, "Completed")} disabled={!canEdit} style={{ padding: "6px 10px", cursor: !canEdit ? "not-allowed" : "pointer", borderRadius: 6, border: "1.5px solid #10b981", color: !canEdit ? "#94a3b8" : "#10b981", background: !canEdit ? "#e2e8f0" : "#f0fdf4", fontSize: fontSize.xs, fontWeight: 500, transition: "all 0.2s", minHeight: 32, whiteSpace: "nowrap" }}
+                            <button onClick={() => updateDdTripStatus(trip.dd_trip_id, "Completed")} disabled={!canEdit} style={{ padding: "6px 10px", cursor: !canEdit ? "not-allowed" : "pointer", borderRadius: 6, border: "1.5px solid #10b981", color: !canEdit ? "#94a3b8" : "#10b981", background: !canEdit ? "#e2e8f0" : "#f0fdf4", fontSize: FONT_SIZE.xs, fontWeight: 500, transition: "all 0.2s", minHeight: 32, whiteSpace: "nowrap" }}
                               onMouseEnter={e => { if (canEdit) e.currentTarget.style.background = "#dcfce7" }}
                               onMouseLeave={e => { if (canEdit) e.currentTarget.style.background = "#f0fdf4" }}>Complete</button>
                           </div>
@@ -1115,7 +1108,7 @@ export default function MonitorTrucks() {
               <style>{`@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } } @keyframes slideUp { from { transform: translateY(20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }`}</style>
               <div onClick={e => e.stopPropagation()} style={{ background: "white", borderRadius: isMobile ? "20px 20px 0 0" : 12, padding: isMobile ? "28px 20px" : 32, width: "100%", maxWidth: 480, maxHeight: "90vh", overflowY: "auto", boxShadow: "0 25px 50px -12px rgba(0, 0, 0, 0.25)", animation: "slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1)" }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24 }}>
-                  <h2 style={{ margin: 0, color: "#0070f3", fontSize: fontSize.xl, fontWeight: 700, display: "flex", alignItems: "center", gap: 8 }}>
+                  <h2 style={{ margin: 0, color: "#0070f3", fontSize: FONT_SIZE.xl, fontWeight: 700, display: "flex", alignItems: "center", gap: 8 }}>
                     <Icon icon="mdi:truck-plus" width={22} />
                     New DD Trip
                   </h2>
@@ -1172,7 +1165,7 @@ export default function MonitorTrucks() {
 
                 {ddMessage && (
                   <div style={{
-                    padding: 12, borderRadius: 8, marginBottom: 16, fontSize: fontSize.sm, fontWeight: 600,
+                    padding: 12, borderRadius: 8, marginBottom: 16, fontSize: FONT_SIZE.sm, fontWeight: 600,
                     background: ddMessageType === "success" ? "#f0fff4" : "#fef2f2",
                     border: ddMessageType === "success" ? "1px solid #86efac" : "1px solid #fecaca",
                     color: ddMessageType === "success" ? "#166534" : "#b91c1c",
@@ -1184,7 +1177,7 @@ export default function MonitorTrucks() {
                 <div style={{ display: "flex", gap: 10 }}>
                   <button onClick={() => { if (!ddSubmitting) { setShowDdForm(false); setDdMessage("") } }} disabled={ddSubmitting} style={{
                     flex: 1, padding: "12px 0", background: "white", border: "1.5px solid #d1d5db",
-                    borderRadius: 8, cursor: ddSubmitting ? "not-allowed" : "pointer", fontSize: fontSize.sm, fontWeight: 600, minHeight: 48
+                    borderRadius: 8, cursor: ddSubmitting ? "not-allowed" : "pointer", fontSize: FONT_SIZE.sm, fontWeight: 600, minHeight: 48
                   }}>Cancel</button>
                   <button
                     onClick={ddHandleSubmit}
@@ -1192,7 +1185,7 @@ export default function MonitorTrucks() {
                     style={{
                       flex: 1, padding: "12px 0", background: ddSubmitting || !canEdit ? "#94a3b8" : "#0070f3", color: "white",
                       border: "none", borderRadius: 8, cursor: ddSubmitting || !canEdit ? "not-allowed" : "pointer",
-                      fontWeight: 700, fontSize: fontSize.sm, minHeight: 48,
+                      fontWeight: 700, fontSize: FONT_SIZE.sm, minHeight: 48,
                       display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
                       opacity: ddSubmitting || !canEdit ? 0.7 : 1, transition: "opacity 0.2s",
                     }}
@@ -1213,10 +1206,10 @@ export default function MonitorTrucks() {
               <div onClick={e => e.stopPropagation()} style={{ background: "white", borderRadius: isMobile ? "20px 20px 0 0" : 12, padding: isMobile ? "28px 20px" : 32, width: "100%", maxWidth: 440, maxHeight: "90vh", overflowY: "auto", boxShadow: "0 25px 50px -12px rgba(0, 0, 0, 0.25)", animation: "slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1)" }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 24 }}>
                   <div>
-                    <h3 style={{ margin: "0 0 4px 0", color: "#0f172a", fontSize: fontSize.xl, fontWeight: 700 }}>
+                    <h3 style={{ margin: "0 0 4px 0", color: "#0f172a", fontSize: FONT_SIZE.xl, fontWeight: 700 }}>
                       {editingDdTrip.route_points && editingDdTrip.route_points.length > 0 ? "Edit Route" : "Set Route"}
                     </h3>
-                    <p style={{ margin: 0, color: "#94a3b8", fontSize: fontSize.sm }}>
+                    <p style={{ margin: 0, color: "#94a3b8", fontSize: FONT_SIZE.sm }}>
                       {editingDdTrip.plate_number}
                     </p>
                   </div>
@@ -1228,12 +1221,12 @@ export default function MonitorTrucks() {
                 </div>
                 {ddRoutePoints.length > 0 && (
                   <div style={{ marginBottom: 20 }}>
-                    <label style={{ fontWeight: 600, display: "block", marginBottom: 10, color: "#475569", fontSize: fontSize.sm }}>Route Points</label>
+                    <label style={{ fontWeight: 600, display: "block", marginBottom: 10, color: "#475569", fontSize: FONT_SIZE.sm }}>Route Points</label>
                     <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                       {ddRoutePoints.map((point, i) => (
                         <div key={i} style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 12px", background: "#f8fafc", borderRadius: 8, border: "1px solid #e2e8f0", transition: "all 0.2s" }} onMouseEnter={e => { e.currentTarget.style.background = "#f1f5f9"; e.currentTarget.style.borderColor = "#cbd5e1" }} onMouseLeave={e => { e.currentTarget.style.background = "#f8fafc"; e.currentTarget.style.borderColor = "#e2e8f0" }}>
-                          <span style={{ fontSize: fontSize.xs, color: "#94a3b8", fontWeight: 600, minWidth: 20 }}>{i + 1}.</span>
-                          <span style={{ flex: 1, fontSize: fontSize.base, color: "#0f172a" }}>{point}</span>
+                          <span style={{ fontSize: FONT_SIZE.xs, color: "#94a3b8", fontWeight: 600, minWidth: 20 }}>{i + 1}.</span>
+                          <span style={{ flex: 1, fontSize: FONT_SIZE.base, color: "#0f172a" }}>{point}</span>
                           <button onClick={() => setDdRoutePoints(ddRoutePoints.filter((_, j) => j !== i))} style={{ background: "none", border: "none", cursor: "pointer", color: "#ef4444", fontSize: 18, lineHeight: 1, padding: 0, display: "flex", alignItems: "center", justifyContent: "center", width: 24, height: 24, transition: "color 0.2s" }}
                             onMouseEnter={e => e.currentTarget.style.color = "#dc2626"}
                             onMouseLeave={e => e.currentTarget.style.color = "#ef4444"}>✕</button>
@@ -1241,25 +1234,25 @@ export default function MonitorTrucks() {
                       ))}
                     </div>
                     {ddRoutePoints.length > 1 && (
-                      <p style={{ fontSize: fontSize.xs, color: "#94a3b8", marginTop: 8, margin: "8px 0 0 0" }}>{ddRoutePoints.join(" → ")}</p>
+                      <p style={{ fontSize: FONT_SIZE.xs, color: "#94a3b8", marginTop: 8, margin: "8px 0 0 0" }}>{ddRoutePoints.join(" → ")}</p>
                     )}
                   </div>
                 )}
                 <div style={{ marginBottom: 24, paddingBottom: 20, borderBottom: "1px solid #e2e8f0" }}>
-                  <label style={{ fontWeight: 600, display: "block", marginBottom: 8, color: "#475569", fontSize: fontSize.sm }}>Add a Point</label>
+                  <label style={{ fontWeight: 600, display: "block", marginBottom: 8, color: "#475569", fontSize: FONT_SIZE.sm }}>Add a Point</label>
                   <div style={{ display: "flex", gap: 8 }}>
                     <input type="text" placeholder="e.g. Ikom, Calabar, Ogoja" value={ddNewPoint} onChange={e => setDdNewPoint(e.target.value)} onKeyDown={e => { if (e.key === "Enter") { const trimmed = ddNewPoint.trim(); if (trimmed) { setDdRoutePoints([...ddRoutePoints, trimmed]); setDdNewPoint("") } } }} readOnly={!canEdit}
-                      style={{ flex: 1, padding: "12px 14px", borderRadius: 8, border: "1px solid #e0e0e0", fontSize: fontSize.base, background: "white", color: "#171717", minHeight: 40, transition: "border-color 0.2s ease", boxSizing: "border-box" }} autoFocus />
-                    <button onClick={() => { const trimmed = ddNewPoint.trim(); if (trimmed) { setDdRoutePoints([...ddRoutePoints, trimmed]); setDdNewPoint("") } }} disabled={!canEdit} style={{ padding: "10px 16px", background: !canEdit ? "#94a3b8" : "#0070f3", color: "white", border: "none", borderRadius: 8, cursor: !canEdit ? "not-allowed" : "pointer", fontWeight: 600, fontSize: fontSize.md, minHeight: 40, transition: "opacity 0.2s" }}
+                      style={{ flex: 1, padding: "12px 14px", borderRadius: 8, border: "1px solid #e0e0e0", fontSize: FONT_SIZE.base, background: "white", color: "#171717", minHeight: 40, transition: "border-color 0.2s ease", boxSizing: "border-box" }} autoFocus />
+                    <button onClick={() => { const trimmed = ddNewPoint.trim(); if (trimmed) { setDdRoutePoints([...ddRoutePoints, trimmed]); setDdNewPoint("") } }} disabled={!canEdit} style={{ padding: "10px 16px", background: !canEdit ? "#94a3b8" : "#0070f3", color: "white", border: "none", borderRadius: 8, cursor: !canEdit ? "not-allowed" : "pointer", fontWeight: 600, fontSize: FONT_SIZE.md, minHeight: 40, transition: "opacity 0.2s" }}
                       onMouseEnter={e => { if (canEdit) e.currentTarget.style.opacity = "0.9" }}
                       onMouseLeave={e => { if (canEdit) e.currentTarget.style.opacity = "1" }}>Add</button>
                   </div>
                 </div>
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-                  <button onClick={closeDdRouteEditor} style={{ padding: "12px 16px", background: "white", color: "#475569", border: "1px solid #cbd5e1", borderRadius: 8, cursor: "pointer", fontWeight: 600, fontSize: fontSize.md, minHeight: 44, transition: "all 0.2s" }}
+                  <button onClick={closeDdRouteEditor} style={{ padding: "12px 16px", background: "white", color: "#475569", border: "1px solid #cbd5e1", borderRadius: 8, cursor: "pointer", fontWeight: 600, fontSize: FONT_SIZE.md, minHeight: 44, transition: "all 0.2s" }}
                     onMouseEnter={e => { e.currentTarget.style.background = "#f8fafc"; e.currentTarget.style.borderColor = "#0070f3"; e.currentTarget.style.color = "#0070f3" }}
                     onMouseLeave={e => { e.currentTarget.style.background = "white"; e.currentTarget.style.borderColor = "#cbd5e1"; e.currentTarget.style.color = "#475569" }}>Cancel</button>
-                  <button onClick={saveDdRoute} disabled={ddRouteSaving || !canEdit} style={{ padding: "12px 16px", background: ddRouteSaving || !canEdit ? "#94a3b8" : "#0070f3", color: "white", border: "none", borderRadius: 8, cursor: ddRouteSaving || !canEdit ? "not-allowed" : "pointer", fontWeight: 600, fontSize: fontSize.md, opacity: ddRouteSaving || !canEdit ? 0.7 : 1, minHeight: 44, transition: "opacity 0.2s" }}
+                  <button onClick={saveDdRoute} disabled={ddRouteSaving || !canEdit} style={{ padding: "12px 16px", background: ddRouteSaving || !canEdit ? "#94a3b8" : "#0070f3", color: "white", border: "none", borderRadius: 8, cursor: ddRouteSaving || !canEdit ? "not-allowed" : "pointer", fontWeight: 600, fontSize: FONT_SIZE.md, opacity: ddRouteSaving || !canEdit ? 0.7 : 1, minHeight: 44, transition: "opacity 0.2s" }}
                     onMouseEnter={e => { if (!ddRouteSaving && canEdit) e.currentTarget.style.opacity = "0.9" }}
                     onMouseLeave={e => { if (!ddRouteSaving && canEdit) e.currentTarget.style.opacity = "1" }}>
                     {ddRouteSaving ? "Saving..." : "Save Route"}
@@ -1283,8 +1276,8 @@ export default function MonitorTrucks() {
             onClick={e => e.stopPropagation()}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
               <div>
-                <h3 style={{ margin: 0, color: "#171717", fontWeight: 700, fontSize: fontSize.lg }}>Log Stop</h3>
-                <p style={{ margin: "4px 0 0", color: "#64748b", fontSize: fontSize.sm }}>
+                <h3 style={{ margin: 0, color: "#171717", fontWeight: 700, fontSize: FONT_SIZE.lg }}>Log Stop</h3>
+                <p style={{ margin: "4px 0 0", color: "#64748b", fontSize: FONT_SIZE.sm }}>
                   {selectedDdStopTrip.plate_number} — {selectedDdStopTrip.product}
                 </p>
               </div>

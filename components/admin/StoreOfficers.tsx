@@ -1,5 +1,7 @@
 "use client"
 
+import { FONT_SIZE } from "@/lib/constants"
+
 import { useState, useEffect, useRef } from "react"
 import { supabase } from "@/lib/supabase"
 import { apiMutate } from "@/lib/api-mutation"
@@ -39,16 +41,7 @@ function useBreakpoint() {
 }
 
 // Fixed typography scale
-const fontSize = {
-  xs: 12,
-  sm: 13,
-  base: 14,
-  md: 15,
-  lg: 16,
-  xl: 20,
-  "2xl": 24,
-  "3xl": 28,
-}
+
 
 export default function StoreOfficers() {
   const { getAccess } = usePermissions()
@@ -197,7 +190,7 @@ export default function StoreOfficers() {
     boxSizing: "border-box",
     borderRadius: 8,
     border: "1px solid #e2e8f0",
-    fontSize: fontSize.base,
+    fontSize: FONT_SIZE.base,
     background: "white",
     color: "#0f172a",
     minHeight: 48,
@@ -229,7 +222,7 @@ export default function StoreOfficers() {
             style={{
               margin: 0,
               color: "#0f172a",
-              fontSize: isMobile ? fontSize["2xl"] : fontSize["3xl"],
+              fontSize: isMobile ? FONT_SIZE["2xl"] : FONT_SIZE["3xl"],
               fontWeight: 700,
               letterSpacing: "-0.5px",
             }}
@@ -240,7 +233,7 @@ export default function StoreOfficers() {
             style={{
               margin: "8px 0 0",
               color: "#64748b",
-              fontSize: fontSize.base,
+              fontSize: FONT_SIZE.base,
             }}
           >
             Manage store officers and their assigned locations.
@@ -276,7 +269,7 @@ export default function StoreOfficers() {
                   border: "none",
                   borderRadius: 6,
                   cursor: "pointer",
-                  fontSize: fontSize.xs,
+                  fontSize: FONT_SIZE.xs,
                   fontWeight: 600,
                   transition: "all 0.2s ease",
                   minWidth: 44,
@@ -300,7 +293,7 @@ export default function StoreOfficers() {
                   border: "none",
                   borderRadius: 6,
                   cursor: "pointer",
-                  fontSize: fontSize.xs,
+                  fontSize: FONT_SIZE.xs,
                   fontWeight: 600,
                   transition: "all 0.2s ease",
                   minWidth: 44,
@@ -334,7 +327,7 @@ export default function StoreOfficers() {
               borderRadius: 8,
               cursor: canEdit ? "pointer" : "not-allowed",
               fontWeight: 600,
-              fontSize: fontSize.md,
+              fontSize: FONT_SIZE.md,
               flex: isMobile ? 1 : "0 0 auto",
               boxShadow: "0 4px 12px rgba(0, 112, 243, 0.2)",
               transition: "all 0.2s ease",
@@ -410,7 +403,7 @@ export default function StoreOfficers() {
             style={{
               margin: "0 0 8px",
               color: "#0f172a",
-              fontSize: fontSize.xl,
+              fontSize: FONT_SIZE.xl,
               fontWeight: 600,
             }}
           >
@@ -419,7 +412,7 @@ export default function StoreOfficers() {
           <p
             style={{
               color: "#64748b",
-              fontSize: fontSize.base,
+              fontSize: FONT_SIZE.base,
               margin: "0 0 24px",
               maxWidth: 400,
               marginLeft: "auto",
@@ -443,7 +436,7 @@ export default function StoreOfficers() {
               borderRadius: 8,
               cursor: canEdit ? "pointer" : "not-allowed",
               fontWeight: 500,
-              fontSize: fontSize.base,
+              fontSize: FONT_SIZE.base,
               transition: "all 0.2s ease",
             }}
             onMouseEnter={(e) => {
@@ -517,7 +510,7 @@ export default function StoreOfficers() {
                             alignItems: "center",
                             justifyContent: "center",
                             fontWeight: 600,
-                            fontSize: fontSize.md,
+                            fontSize: FONT_SIZE.md,
                             flexShrink: 0,
                             overflow: "hidden",
                           }}
@@ -533,7 +526,7 @@ export default function StoreOfficers() {
                             style={{
                               margin: "0 0 4px 0",
                               color: "#0f172a",
-                              fontSize: fontSize.lg,
+                              fontSize: FONT_SIZE.lg,
                               fontWeight: 600,
                               overflow: "hidden",
                               textOverflow: "ellipsis",
@@ -546,7 +539,7 @@ export default function StoreOfficers() {
                             style={{
                               margin: 0,
                               color: "#64748b",
-                              fontSize: fontSize.sm,
+                              fontSize: FONT_SIZE.sm,
                               overflow: "hidden",
                               textOverflow: "ellipsis",
                               whiteSpace: "nowrap",
@@ -560,7 +553,7 @@ export default function StoreOfficers() {
                         style={{
                           padding: "4px 10px",
                           borderRadius: 6,
-                          fontSize: fontSize.xs,
+                          fontSize: FONT_SIZE.xs,
                           background: bg,
                           color: color,
                           border: `1px solid ${border}`,
@@ -576,7 +569,7 @@ export default function StoreOfficers() {
                       style={{
                         margin: "12px 0 0",
                         color: "#475569",
-                        fontSize: fontSize.sm,
+                        fontSize: FONT_SIZE.sm,
                       }}
                     >
                       {officer.phone_number || (
@@ -605,7 +598,7 @@ export default function StoreOfficers() {
                           border: "1px solid #e2e8f0",
                           color: canEdit ? "#0070f3" : "#94a3b8",
                           background: canEdit ? "#f0f7ff" : "#e2e8f0",
-                          fontSize: fontSize.sm,
+                          fontSize: FONT_SIZE.sm,
                           fontWeight: 500,
                           transition: "all 0.2s",
                         }}
@@ -637,7 +630,7 @@ export default function StoreOfficers() {
                           border: "1px solid #fee2e2",
                           color: canEdit ? "#ef4444" : "#94a3b8",
                           background: canEdit ? "#fef2f2" : "#e2e8f0",
-                          fontSize: fontSize.sm,
+                          fontSize: FONT_SIZE.sm,
                           fontWeight: 500,
                           transition: "all 0.2s",
                         }}
@@ -679,11 +672,11 @@ export default function StoreOfficers() {
               >
                 <thead>
                   <tr style={{ background: "#f8fafc", borderBottom: "1px solid #e2e8f0" }}>
-                    <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: fontSize.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px" }}>Name</th>
-                    <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: fontSize.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px" }}>Phone</th>
-                    <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: fontSize.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px" }}>Store</th>
-                    <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: fontSize.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px" }}>Status</th>
-                    <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: fontSize.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px", textAlign: "right" }}>Actions</th>
+                    <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: FONT_SIZE.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px" }}>Name</th>
+                    <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: FONT_SIZE.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px" }}>Phone</th>
+                    <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: FONT_SIZE.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px" }}>Store</th>
+                    <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: FONT_SIZE.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px" }}>Status</th>
+                    <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: FONT_SIZE.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px", textAlign: "right" }}>Actions</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -712,7 +705,7 @@ export default function StoreOfficers() {
                                 alignItems: "center",
                                 justifyContent: "center",
                                 fontWeight: 600,
-                                fontSize: fontSize.base,
+                                fontSize: FONT_SIZE.base,
                                 flexShrink: 0,
                                 overflow: "hidden",
                               }}
@@ -723,17 +716,17 @@ export default function StoreOfficers() {
                                 officer.full_name.charAt(0).toUpperCase()
                               )}
                             </div>
-                            <span style={{ color: "#0f172a", fontSize: fontSize.base, fontWeight: 500 }}>
+                            <span style={{ color: "#0f172a", fontSize: FONT_SIZE.base, fontWeight: 500 }}>
                               {officer.full_name}
                             </span>
                           </div>
                         </td>
-                        <td style={{ padding: "12px 16px", color: "#475569", fontSize: fontSize.sm }}>
+                        <td style={{ padding: "12px 16px", color: "#475569", fontSize: FONT_SIZE.sm }}>
                           {officer.phone_number || (
                             <span style={{ color: "#94a3b8", fontStyle: "italic" }}>Not provided</span>
                           )}
                         </td>
-                        <td style={{ padding: "12px 16px", color: "#475569", fontSize: fontSize.sm }}>
+                        <td style={{ padding: "12px 16px", color: "#475569", fontSize: FONT_SIZE.sm }}>
                           {officer.store_name}
                         </td>
                         <td style={{ padding: "12px 16px" }}>
@@ -741,7 +734,7 @@ export default function StoreOfficers() {
                             style={{
                               padding: "4px 10px",
                               borderRadius: 6,
-                              fontSize: fontSize.xs,
+                              fontSize: FONT_SIZE.xs,
                               background: bg,
                               color: color,
                               border: `1px solid ${border}`,
@@ -770,7 +763,7 @@ export default function StoreOfficers() {
                                 border: "1px solid #e2e8f0",
                                 color: canEdit ? "#0070f3" : "#94a3b8",
                                 background: canEdit ? "#f0f7ff" : "#e2e8f0",
-                                fontSize: fontSize.sm,
+                                fontSize: FONT_SIZE.sm,
                                 fontWeight: 500,
                                 transition: "all 0.2s",
                                 minHeight: 32,
@@ -806,7 +799,7 @@ export default function StoreOfficers() {
                                 border: "1px solid #fee2e2",
                                 color: canEdit ? "#ef4444" : "#94a3b8",
                                 background: canEdit ? "#fef2f2" : "#e2e8f0",
-                                fontSize: fontSize.sm,
+                                fontSize: FONT_SIZE.sm,
                                 fontWeight: 500,
                                 transition: "all 0.2s",
                                 minHeight: 32,
@@ -891,7 +884,7 @@ export default function StoreOfficers() {
                         style={{
                           margin: 0,
                           color: "#0f172a",
-                          fontSize: fontSize.xl,
+                          fontSize: FONT_SIZE.xl,
                           fontWeight: 700,
                         }}
                       >
@@ -931,7 +924,7 @@ export default function StoreOfficers() {
                       }}
                     >
                       <div>
-                        <label style={{ display: "block", marginBottom: 6, color: "#475569", fontSize: fontSize.sm, fontWeight: 500 }}>
+                        <label style={{ display: "block", marginBottom: 6, color: "#475569", fontSize: FONT_SIZE.sm, fontWeight: 500 }}>
                           Full Name *
                         </label>
                         <ModernInput
@@ -946,7 +939,7 @@ export default function StoreOfficers() {
                         />
                       </div>
                       <div>
-                        <label style={{ display: "block", marginBottom: 6, color: "#475569", fontSize: fontSize.sm, fontWeight: 500 }}>
+                        <label style={{ display: "block", marginBottom: 6, color: "#475569", fontSize: FONT_SIZE.sm, fontWeight: 500 }}>
                           Phone Number
                         </label>
                         <ModernInput
@@ -961,7 +954,7 @@ export default function StoreOfficers() {
                         />
                       </div>
                       <div>
-                        <label style={{ display: "block", marginBottom: 6, color: "#475569", fontSize: fontSize.sm, fontWeight: 500 }}>
+                        <label style={{ display: "block", marginBottom: 6, color: "#475569", fontSize: FONT_SIZE.sm, fontWeight: 500 }}>
                           Email Address *
                         </label>
                         <ModernInput
@@ -975,7 +968,7 @@ export default function StoreOfficers() {
                         />
                       </div>
                       <div>
-                        <label style={{ display: "block", marginBottom: 6, color: "#475569", fontSize: fontSize.sm, fontWeight: 500 }}>
+                        <label style={{ display: "block", marginBottom: 6, color: "#475569", fontSize: FONT_SIZE.sm, fontWeight: 500 }}>
                           Assigned Store *
                         </label>
                         <select
@@ -999,7 +992,7 @@ export default function StoreOfficers() {
                           borderRadius: 4,
                           marginBottom: 20,
                           color: "#b91c1c",
-                          fontSize: fontSize.sm,
+                          fontSize: FONT_SIZE.sm,
                         }}
                       >
                         {message}
@@ -1018,7 +1011,7 @@ export default function StoreOfficers() {
                         borderRadius: 8,
                         cursor: submitting || !canEdit ? "not-allowed" : "pointer",
                         fontWeight: 600,
-                        fontSize: fontSize.md,
+                        fontSize: FONT_SIZE.md,
                         transition: "opacity 0.2s",
                         opacity: submitting ? 0.7 : 1,
                         minHeight: 44,
@@ -1046,7 +1039,7 @@ export default function StoreOfficers() {
                     style={{
                       margin: 0,
                       color: "#0f172a",
-                      fontSize: fontSize.xl,
+                      fontSize: FONT_SIZE.xl,
                       fontWeight: 700,
                     }}
                   >
@@ -1086,7 +1079,7 @@ export default function StoreOfficers() {
                   }}
                 >
                   <div>
-                    <label style={{ display: "block", marginBottom: 6, color: "#475569", fontSize: fontSize.sm, fontWeight: 500 }}>
+                    <label style={{ display: "block", marginBottom: 6, color: "#475569", fontSize: FONT_SIZE.sm, fontWeight: 500 }}>
                       Full Name *
                     </label>
                     <ModernInput
@@ -1100,7 +1093,7 @@ export default function StoreOfficers() {
                     />
                   </div>
                   <div>
-                    <label style={{ display: "block", marginBottom: 6, color: "#475569", fontSize: fontSize.sm, fontWeight: 500 }}>
+                    <label style={{ display: "block", marginBottom: 6, color: "#475569", fontSize: FONT_SIZE.sm, fontWeight: 500 }}>
                       Phone Number
                     </label>
                     <ModernInput
@@ -1121,7 +1114,7 @@ export default function StoreOfficers() {
                     background: "#f1f5f9",
                     borderRadius: 6,
                     marginBottom: 20,
-                    fontSize: fontSize.sm,
+                    fontSize: FONT_SIZE.sm,
                     color: "#475569",
                   }}
                 >
@@ -1137,7 +1130,7 @@ export default function StoreOfficers() {
                       borderRadius: 4,
                       marginBottom: 20,
                       color: "#b91c1c",
-                      fontSize: fontSize.sm,
+                      fontSize: FONT_SIZE.sm,
                     }}
                   >
                     {message}
@@ -1156,7 +1149,7 @@ export default function StoreOfficers() {
                     borderRadius: 8,
                     cursor: submitting || !canEdit ? "not-allowed" : "pointer",
                     fontWeight: 600,
-                    fontSize: fontSize.md,
+                    fontSize: FONT_SIZE.md,
                     transition: "opacity 0.2s",
                     opacity: submitting ? 0.7 : 1,
                     minHeight: 44,
@@ -1195,7 +1188,7 @@ export default function StoreOfficers() {
                     style={{
                       margin: "0 0 12px",
                       color: "#0f172a",
-                      fontSize: fontSize.xl,
+                      fontSize: FONT_SIZE.xl,
                       fontWeight: 700,
                     }}
                   >
@@ -1205,7 +1198,7 @@ export default function StoreOfficers() {
                     style={{
                       margin: "0 0 20px",
                       color: "#64748b",
-                      fontSize: fontSize.base,
+                      fontSize: FONT_SIZE.base,
                       lineHeight: 1.5,
                     }}
                   >
@@ -1221,7 +1214,7 @@ export default function StoreOfficers() {
                         borderRadius: 4,
                         marginBottom: 20,
                         color: "#b91c1c",
-                        fontSize: fontSize.sm,
+                        fontSize: FONT_SIZE.sm,
                         width: "100%",
                         textAlign: "left",
                       }}
@@ -1248,7 +1241,7 @@ export default function StoreOfficers() {
                         borderRadius: 8,
                         cursor: "pointer",
                         fontWeight: 600,
-                        fontSize: fontSize.md,
+                        fontSize: FONT_SIZE.md,
                         minHeight: 44,
                         transition: "all 0.2s",
                       }}
@@ -1276,7 +1269,7 @@ export default function StoreOfficers() {
                         borderRadius: 8,
                         cursor: submitting || !canEdit ? "not-allowed" : "pointer",
                         fontWeight: 600,
-                        fontSize: fontSize.md,
+                        fontSize: FONT_SIZE.md,
                         opacity: submitting ? 0.7 : 1,
                         minHeight: 44,
                         transition: "all 0.2s",

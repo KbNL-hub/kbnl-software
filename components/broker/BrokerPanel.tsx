@@ -17,6 +17,7 @@ const SECTION_IMPORTS = {
   payments: () => import("@/components/broker/CustomerPayments"),
   credits: () => import("@/components/broker/BrokerCreditsView"),
   "store-sales": () => import("@/components/broker/BrokerSaleConfirmations"),
+  prices: () => import("@/components/broker/BrokerPrices"),
   expenses: () => import("@/components/CashOfficerPanel"),
 } as const
 
@@ -33,6 +34,7 @@ const BASE_NAV_ITEMS = [
   { label: "Customer Payments",   key: "payments", icon: "mdi:cash-register" },
   { label: "My Credits",          key: "credits",  icon: "mdi:credit-card" },
   { label: "Store Sales",         key: "store-sales", icon: "mdi:store" },
+  { label: "Company Prices",      key: "prices",      icon: "mdi:currency-ngn" },
 ]
 
 type Props = {
