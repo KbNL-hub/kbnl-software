@@ -86,6 +86,7 @@ export default function StationManagerDashboard() {
 
   const [confirmingDeposit, setConfirmingDeposit] = useState<string | null>(null)
   const [confirmLoading, setConfirmLoading] = useState(false)
+  const [depositError, setDepositError] = useState("")
 
   const [invalidatingATF, setInvalidatingATF] = useState<ATF | null>(null)
   const [invalidateReason, setInvalidateReason] = useState("")
@@ -184,6 +185,7 @@ export default function StationManagerDashboard() {
 
   async function confirmDeposit(deposit: FuelDeposit) {
     setConfirmLoading(true)
+    setDepositError("")
 
     const { error } = await apiMutate("fuel", {
       action: "rpc",
@@ -192,15 +194,15 @@ export default function StationManagerDashboard() {
     })
 
     setConfirmLoading(false)
-    if (!error) {
-      setCurrentBalance((prev) => (prev ?? 0) + deposit.amount)
-      setConfirmingDeposit(null)
-      fetchDeposits(manager?.company_id ?? "")
-    }
+    if (error) { setDepositError(error); return }
+    setCurrentBalance((prev) => (prev ?? 0) + deposit.amount)
+    setConfirmingDeposit(null)
+    fetchDeposits(manager?.company_id ?? "")
   }
 
   async function declineDeposit(deposit: FuelDeposit) {
     setConfirmLoading(true)
+    setDepositError("")
 
     const { error } = await apiMutate("fuel", {
       action: "rpc",
@@ -209,10 +211,9 @@ export default function StationManagerDashboard() {
     })
 
     setConfirmLoading(false)
-    if (!error) {
-      setConfirmingDeposit(null)
-      fetchDeposits(manager?.company_id ?? "")
-    }
+    if (error) { setDepositError(error); return }
+    setConfirmingDeposit(null)
+    fetchDeposits(manager?.company_id ?? "")
   }
 
   async function handleDispense() {
@@ -657,6 +658,11 @@ export default function StationManagerDashboard() {
                 </>
               )
             })()}
+            {depositError && (
+              <div style={{ marginTop: 16, padding: 12, background: "rgba(239, 68, 68, 0.08)", border: "1.5px solid rgba(239, 68, 68, 0.3)", borderRadius: 10, fontSize: 14, color: "#dc2626", fontWeight: 500, textAlign: "center", lineHeight: 1.4 }}>
+                {depositError}
+              </div>
+            )}
           </div>
         </div>
       )}

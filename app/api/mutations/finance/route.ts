@@ -8,6 +8,7 @@ const supabaseAdmin = createClient(
 )
 
 const ALLOWED_TABLES = ["customer_payments", "broker_credits", "store_sales", "store_supply_confirmations", "store_supply_lines", "cash_expenses", "cash_expense_items", "cash_offices", "cash_deposits", "admin_office_assignments", "Customers", "Brokers", "store_stock", "store_officers"] as const
+const ALLOWED_RPCS = ["decrement_store_stock"] as const
 
 const TABLE_ROLES: Record<string, string[]> = {
   customer_payments: ["Broker", "Admin", "SuperAdmin", "DeskOfficer", "Supervisor"],
@@ -18,12 +19,21 @@ const TABLE_ROLES: Record<string, string[]> = {
   cash_expenses: ["CashOfficer", "Admin", "SuperAdmin", "Broker", "CashAuthorizer"],
   cash_expense_items: ["CashOfficer", "Admin", "SuperAdmin", "Broker"],
   cash_offices: ["CashOfficer", "Admin", "SuperAdmin"],
+
   cash_deposits: ["CashOfficer", "Admin", "SuperAdmin"],
   admin_office_assignments: ["Admin", "SuperAdmin"],
-  Customers: ["Broker", "StoreOfficer", "Admin", "SuperAdmin", "DeskOfficer", "CashOfficer"],
-  Brokers: ["Broker", "Admin", "SuperAdmin", "DeskOfficer"],
-  store_stock: ["StoreOfficer", "Admin", "SuperAdmin"],
-  store_officers: ["StoreOfficer", "Admin", "SuperAdmin"],
+  Customers: ["Broker", "Admin", "SuperAdmin", "CashOfficer", "DeskOfficer", "Supervisor"],
+  Brokers: ["Broker", "Admin", "SuperAdmin", "DeskOfficer", "Supervisor"],
+  store_stock: ["StoreOfficer", "Admin", "SuperAdmin", "Supervisor"],
+  store_officers: ["Admin", "SuperAdmin"],
+}
+
+const RPC_ROLES: Record<string, string[]> = {
+  decrement_store_stock: ["StoreOfficer", "Admin", "SuperAdmin"],
+}
+
+const RPC_PARAM_SCHEMAS: Record<string, string[]> = {
+  decrement_store_stock: ["p_store", "p_product", "p_qty"],
 }
 
 function buildError(msg: string, status: number) {
@@ -44,12 +54,35 @@ function applyFilters(query: any, filters: Record<string, unknown>) {
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json()
-    const { action, table, data, filters, conflict } = body as {
+    const { action, table, data, filters, conflict, function: fnName, params } = body as {
       action: string
       table?: string
       data?: Record<string, unknown>
       filters?: Record<string, unknown>
       conflict?: string
+      function?: string
+      params?: Record<string, unknown>
+    }
+
+    if (action === "rpc") {
+      if (!fnName || !ALLOWED_RPCS.includes(fnName as any)) {
+        return buildError(`RPC function "${fnName}" is not supported by this endpoint`, 400)
+      }
+      const rolesForRpc = RPC_ROLES[fnName] || ["Admin"]
+      const auth = await requireRole(req, rolesForRpc)
+      const allowedKeys = RPC_PARAM_SCHEMAS[fnName] || []
+      const safeParams = Object.fromEntries(
+        Object.entries(params || {}).filter(([k]) => allowedKeys.includes(k))
+      )
+      const result = await supabaseAdmin.rpc(fnName as any, {
+        ...safeParams,
+        p_user_id: auth.userId,
+        p_role: auth.primaryRole,
+      })
+      if (result.error) {
+        return buildError(result.error.message || "RPC failed", 500)
+      }
+      return NextResponse.json({ data: result.data })
     }
 
     if (!table || !ALLOWED_TABLES.includes(table as any)) {

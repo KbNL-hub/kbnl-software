@@ -183,22 +183,24 @@ export default function LoginPage() {
     setForgotLoading(true)
     setForgotMessage("")
 
-    const res = await fetch("/api/reset-password", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email: forgotEmail, newPassword }),
-    })
-
-    setForgotLoading(false)
-
-    if (!res.ok) {
-      const data = await res.json()
-      setForgotMessage(data.error || "Failed to reset password")
-      return
+    try {
+      const res = await fetch("/api/reset-password", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: forgotEmail, newPassword }),
+      })
+      const data = await res.json().catch(() => null)
+      if (!res.ok) {
+        setForgotMessage(data?.error || "Failed to reset password")
+        return
+      }
+      setForgotMessage("Password reset successfully! You can now log in with your new password.")
+      setTimeout(() => switchToLogin(), 2500)
+    } catch {
+      setForgotMessage("Network error. Please try again.")
+    } finally {
+      setForgotLoading(false)
     }
-
-    setForgotMessage("Password reset successfully! You can now log in with your new password.")
-    setTimeout(() => switchToLogin(), 2500)
   }
 
   const handleKeyDown = (e: React.KeyboardEvent) => {

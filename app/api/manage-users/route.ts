@@ -117,31 +117,13 @@ export async function POST(req: NextRequest) {
           return NextResponse.json({ error: "At least one role is required" }, { status: 400 })
         }
 
-        const { error: deleteError } = await supabaseAdmin
-          .from("UserRoles")
-          .delete()
-          .eq("user_id", userId)
+        const { error: rpcError } = await supabaseAdmin.rpc("reassign_user_roles", {
+          p_user_id: userId,
+          p_roles: roles,
+        })
 
-        if (deleteError) {
-          return NextResponse.json({ error: "Failed to clear existing roles" }, { status: 500 })
-        }
-
-        const roleRows = roles.map(r => ({ user_id: userId, role: r }))
-        const { error: insertError } = await supabaseAdmin
-          .from("UserRoles")
-          .insert(roleRows)
-
-        if (insertError) {
-          return NextResponse.json({ error: "Failed to assign new roles" }, { status: 500 })
-        }
-
-        const { error: profileError } = await supabaseAdmin
-          .from("Profiles")
-          .update({ role: roles[0] })
-          .eq("user_id", userId)
-
-        if (profileError) {
-          return NextResponse.json({ error: "Failed to update primary role" }, { status: 500 })
+        if (rpcError) {
+          return NextResponse.json({ error: "Failed to reassign roles" }, { status: 500 })
         }
 
         return NextResponse.json({ success: true })

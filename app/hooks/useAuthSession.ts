@@ -18,6 +18,11 @@ export function useAuthSession() {
         setUser(session?.user ?? null)
         setLoading(false)
       }
+    }).catch((error) => {
+      if (!cancelled) {
+        console.error("Failed to load auth session", error)
+        setLoading(false)
+      }
     })
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {

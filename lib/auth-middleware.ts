@@ -53,6 +53,7 @@ async function getUserRoles(userId: string): Promise<string[]> {
     .from('UserRoles')
     .select('role')
     .eq('user_id', userId)
+    .order('role', { ascending: true })
 
   if (data && data.length > 0) {
     return data.map(r => r.role)

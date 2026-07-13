@@ -74,14 +74,10 @@ export default function ProfilePictureUpload({
       const { data: { session } } = await supabase.auth.getSession()
       if (!session) { setError("Session expired"); setUploading(false); return }
 
-      const fileExt = selectedFile.name.split(".").pop()
+      const rawExt = selectedFile.name.split(".").pop()?.toLowerCase() ?? ""
+      const fileExt = /^[a-z0-9]+$/.test(rawExt) ? rawExt : "jpg"
       const fileName = `${userId}-${Date.now()}.${fileExt}`
       const filePath = `${userId}/${fileName}`
-
-      if (currentUrl) {
-        const oldPath = new URL(currentUrl).pathname.split("/").slice(-2).join("/")
-        await supabase.storage.from(STORAGE_BUCKET).remove([oldPath])
-      }
 
       const { error: uploadError } = await supabase.storage
         .from(STORAGE_BUCKET)
@@ -103,6 +99,11 @@ export default function ProfilePictureUpload({
         setError("Failed to save profile")
         setUploading(false)
         return
+      }
+
+      if (currentUrl) {
+        const oldPath = new URL(currentUrl).pathname.split("/").slice(-2).join("/")
+        await supabase.storage.from(STORAGE_BUCKET).remove([oldPath])
       }
 
       onSuccess(publicUrl)

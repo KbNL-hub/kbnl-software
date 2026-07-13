@@ -22,6 +22,7 @@ export default function CashOfficerDashboard() {
   const [loading, setLoading] = useState(true)
   const [showPictureModal, setShowPictureModal] = useState(false)
   const [showReportModal, setShowReportModal] = useState(false)
+  const [avatarHover, setAvatarHover] = useState(false)
 
   useEffect(() => { init() }, [])
 
@@ -65,6 +66,8 @@ export default function CashOfficerDashboard() {
           <div style={{ display: "flex", alignItems: "center", gap: isMobile ? 12 : 16, flex: 1 }}>
             <div
               onClick={() => setShowPictureModal(true)}
+              onMouseEnter={() => setAvatarHover(true)}
+              onMouseLeave={() => setAvatarHover(false)}
               style={{
                 width: isMobile ? 48 : 56,
                 height: isMobile ? 48 : 56,
@@ -89,14 +92,14 @@ export default function CashOfficerDashboard() {
                 />
               ) : (
                 <span style={{ fontSize: isMobile ? 20 : 24, fontWeight: 700, color: "#0070f3" }}>
-                  {clerk?.full_name.charAt(0).toUpperCase()}
+                  {clerk?.full_name?.charAt(0).toUpperCase()}
                 </span>
               )}
               <div
                 style={{
                   position: "absolute", inset: 0, background: "rgba(0, 0, 0, 0.4)",
                   display: "flex", alignItems: "center", justifyContent: "center",
-                  opacity: 0, transition: "opacity 0.2s",
+                  opacity: avatarHover ? 1 : 0, transition: "opacity 0.2s",
                 }}
               >
                 <Icon icon="mdi:camera" width={20} height={20} color="white" />
@@ -104,7 +107,7 @@ export default function CashOfficerDashboard() {
             </div>
             <div>
               <h1 style={{ margin: 0, fontSize: isMobile ? FONT_SIZE.lg : FONT_SIZE.xl, fontWeight: 700, color: "#0070f3" }}>
-                {clerk?.full_name}
+                {clerk?.full_name || ""}
               </h1>
               <RoleSwitcher currentRole="CashOfficer" style={{ margin: "2px 0 0", fontSize: FONT_SIZE.sm, color: "#64748b" }} />
             </div>

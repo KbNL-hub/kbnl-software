@@ -449,17 +449,14 @@ export default function StoreOfficerDashboard() {
       }
 
       for (const line of saleLines) {
-        const stockItem = stock.find(s => s.product === line.product)
-        if (!stockItem) continue
-
         const qty = parseInt(line.quantity)
         const { error: stockError } = await apiMutate("finance", {
-          action: "update", table: "store_stock",
-          data: { balance: stockItem.balance - qty, updated_at: new Date().toISOString() },
-          filters: { store_name: officer.store_name, product: line.product },
+          action: "rpc",
+          function: "decrement_store_stock",
+          params: { p_store: officer.store_name, p_product: line.product, p_qty: qty },
         })
         if (stockError) {
-          setSaleError("Sale logged but stock deduction failed. Contact support.")
+          setSaleError(stockError === "insufficient_stock" ? `Insufficient ${line.product} stock` : "Sale logged but stock deduction failed. Contact support.")
           setSaleLoading(false)
           return
         }

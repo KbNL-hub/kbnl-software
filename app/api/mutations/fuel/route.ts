@@ -25,6 +25,14 @@ const RPC_ROLES: Record<string, string[]> = {
   dispense_fuel: ["StationManager", "Admin", "SuperAdmin"],
 }
 
+const RPC_PARAM_SCHEMAS: Record<string, string[]> = {
+  confirm_fuel_receipt: ["p_request_id", "p_driver_id"],
+  confirm_fuel_deposit: ["p_deposit_id"],
+  decline_fuel_deposit: ["p_deposit_id"],
+  invalidate_atf: ["p_request_id", "p_reason", "p_status_filter"],
+  dispense_fuel: ["p_request_id", "p_litres"],
+}
+
 function buildError(msg: string, status: number) {
   return NextResponse.json({ error: msg }, { status })
 }
@@ -48,8 +56,12 @@ export async function POST(req: NextRequest) {
       }
       const rolesForRpc = RPC_ROLES[fnName] || ["Admin"]
       const auth = await requireRole(req, rolesForRpc)
+      const allowedKeys = RPC_PARAM_SCHEMAS[fnName] || []
+      const safeParams = Object.fromEntries(
+        Object.entries(params || {}).filter(([k]) => allowedKeys.includes(k))
+      )
       const result = await supabaseAdmin.rpc(fnName as any, {
-        ...params,
+        ...safeParams,
         p_user_id: auth.userId,
         p_role: auth.primaryRole,
       })

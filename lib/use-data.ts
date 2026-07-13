@@ -16,10 +16,10 @@ export function useData<T>(
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const mountedRef = useRef(true)
-  const queryKey = useRef(0)
+  const [queryKey, setQueryKey] = useState(0)
 
   const refetch = useCallback(() => {
-    queryKey.current++
+    setQueryKey(k => k + 1)
   }, [])
 
   useEffect(() => {
@@ -51,7 +51,7 @@ export function useData<T>(
       mountedRef.current = false
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [queryKey.current, ...deps])
+  }, [queryKey, ...deps])
 
   return { data, loading, error, refetch }
 }
