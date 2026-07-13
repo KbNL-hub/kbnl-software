@@ -74,10 +74,10 @@ export default function LoginPage() {
     }
 
     // Fetch role from Profiles
-    const profileResult = await queryWithTimeout<{ role: string; must_change_password: boolean }>(
+    const profileResult = await queryWithTimeout<{ role: string; must_change_password: boolean; is_deactivated: boolean }>(
       supabase
         .from("Profiles")
-        .select("role, must_change_password")
+        .select("role, must_change_password, is_deactivated")
         .eq("user_id", data.user.id)
         .single()
     )
@@ -93,6 +93,13 @@ export default function LoginPage() {
       }
       await supabase.auth.signOut()
       setMessage("Profile not found. Contact admin.")
+      setLoading(false)
+      return
+    }
+
+    if (profile.is_deactivated) {
+      await supabase.auth.signOut()
+      setMessage("Your account has been deactivated. Contact admin.")
       setLoading(false)
       return
     }

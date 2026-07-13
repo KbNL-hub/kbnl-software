@@ -7,6 +7,7 @@ export interface RoleConfig {
 }
 
 export const ALL_SECTIONS = [
+  'manage-users',
   'invite-users',
   'add-truck',
   'manage-brokers',

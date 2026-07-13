@@ -15,6 +15,7 @@ import { ROLES } from "@/lib/permissions"
 import { toTitleCase } from "@/lib/title-case"
 
 const SECTION_IMPORTS = {
+  "manage-users": () => import("@/components/admin/ManageUsers"),
   "invite-users": () => import("@/components/admin/InviteUsers"),
   "add-truck": () => import("@/components/admin/AddTruck"),
 
@@ -55,6 +56,7 @@ for (const key of Object.keys(SECTION_IMPORTS) as SectionKey[]) {
 const ReportModal = dynamic(() => import("@/components/ReportModal"))
 
 const NAV_ITEMS: NavItemConfig[] = [
+  { label: "Users",            key: "manage-users",        icon: "mdi:account-group" },
   { label: "Invite Users",     key: "invite-users",        icon: "mdi:account-plus-outline" },
   { label: "Add New Truck",     key: "add-truck",          icon: "mdi:truck-plus" },
 
