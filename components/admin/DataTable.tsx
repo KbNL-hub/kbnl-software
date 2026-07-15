@@ -5,7 +5,7 @@ import { FONT_SIZE } from "@/lib/constants"
 import React from "react"
 
 interface Column<T> {
-  key: keyof T & string
+  key: string
   label: string
   render?: (value: T[keyof T & string], row: T) => React.ReactNode
 }
