@@ -257,7 +257,7 @@ export default function ManageUsers() {
         border: "1px solid transparent",
       }}>
         {role === "SuperAdmin" && <Icon icon="mdi:crown" width={12} />}
-        {ROLES[role]?.label || role}
+        {ROLES[role as Role]?.label || role}
       </span>
     )
   }
@@ -341,7 +341,7 @@ export default function ManageUsers() {
           >
             <option value="">All Roles</option>
             {ALL_ROLE_KEYS.map(key => (
-              <option key={key} value={key}>{ROLES[key]?.label || key}</option>
+              <option key={key} value={key}>{ROLES[key as Role]?.label || key}</option>
             ))}
           </select>
         </div>
@@ -562,7 +562,7 @@ export default function ManageUsers() {
                         </svg>
                       )}
                     </div>
-                    {ROLES[key]?.label || key}
+                    {ROLES[key as Role]?.label || key}
                   </div>
                 ))}
               </div>
