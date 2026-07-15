@@ -1,5 +1,4 @@
 import { useEffect, useState, useCallback, useRef } from "react"
-import { supabase } from "./supabase"
 
 type UseDataResult<T> = {
   data: T[]
@@ -9,7 +8,7 @@ type UseDataResult<T> = {
 }
 
 export function useData<T>(
-  buildQuery: () => ReturnType<typeof supabase.from>,
+  buildQuery: () => PromiseLike<{ data: T[] | null; error: any }>,
   deps: unknown[] = [],
 ): UseDataResult<T> {
   const [data, setData] = useState<T[]>([])
