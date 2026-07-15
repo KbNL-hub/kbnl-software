@@ -36,7 +36,7 @@ export const ALL_SECTIONS = [
 
 export type SectionKey = (typeof ALL_SECTIONS)[number]
 
-export const ROLES: Partial<Record<Role, RoleConfig>> = {
+export const ROLES: { [key: string]: RoleConfig | undefined } & Partial<Record<Role, RoleConfig>> = {
   [Role.Admin]: {
     sections: [...ALL_SECTIONS],
     access: 'write',
