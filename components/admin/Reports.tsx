@@ -1375,7 +1375,7 @@ borderRadius: 6,
                         {
                           key: "reported_at",
                           label: "Date",
-                          render: (value) => new Date(value).toLocaleDateString(),
+                          render: (value) => new Date(value as string).toLocaleDateString(),
                         },
                         { key: "maintenance_type", label: "Type" },
                         { key: "maintenance_location", label: "Location" },
@@ -1403,7 +1403,7 @@ borderRadius: 6,
                         {
                           key: "Confirmed_at",
                           label: "Date",
-                          render: (value) => new Date(value).toLocaleDateString(),
+                          render: (value) => new Date(value as string).toLocaleDateString(),
                         },
                         { key: "driver_name", label: "Driver" },
                         {
