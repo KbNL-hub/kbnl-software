@@ -64,7 +64,7 @@ export function DataTable<T>({ columns, rows, rowKey }: DataTableProps<T>) {
                     color: "#0f172a",
                   }}
                 >
-                  {col.render ? col.render(row[col.key], row) : row[col.key] as React.ReactNode}
+                  {col.render ? col.render((row as Record<string, unknown>)[col.key] as T[keyof T & string], row) : (row as Record<string, unknown>)[col.key] as React.ReactNode}
                 </td>
               ))}
             </tr>
