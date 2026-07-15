@@ -13,7 +13,10 @@ import ReportModal from "@/components/ReportModal"
 import ProfilePictureUpload from "@/components/ProfilePictureUpload"
 import TruckMonitorSection from "@/components/admin/TruckMonitorSection"
 import { FONT_SIZE, POLLING_INTERVAL } from "@/lib/constants"
-import { toISOString } from "@/lib/date-utils"
+import { toISOString, formatDateTime, formatDate, formatTime } from "@/lib/date-utils"
+import { requireDashboardRole } from "@/lib/auth-helpers"
+import { Role } from "@/lib/roles"
+import { useATFs } from "@/lib/hooks/useATFs"
 
 type AssignedTruck = {
   plate_number: string
@@ -131,6 +134,9 @@ export default function TruckOfficerDashboard() {
   const [deposits, setDeposits] = useState<MaintenanceDeposit[]>([])
   const [fuelExpenses, setFuelExpenses] = useState<FuelExpense[]>([])
   const [atfs, setAtfs] = useState<ATF[]>([])
+  const [atfFilter, setAtfFilter] = useState<{ initiated_by: string } | null>(null)
+  const { data: atfsFromHook, refetch: refetchATFs } = useATFs(atfFilter ?? undefined)
+  useEffect(() => { setAtfs(atfsFromHook as ATF[]) }, [atfsFromHook])
   const [loading, setLoading] = useState(true)
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null)
   const [tab, setTab] = useState<"reports" | "fuel" | "atf" | "monitor">("reports")
@@ -180,6 +186,9 @@ export default function TruckOfficerDashboard() {
       if (!session) { router.push("/login"); return }
       const user = session.user
 
+      const hasRole = await requireDashboardRole(user.id, Role.TruckOfficer)
+      if (!hasRole) { router.push("/login"); return }
+
       const { data: profile } = await supabase
         .from("Profiles").select("full_name").eq("user_id", user.id).single()
 
@@ -196,6 +205,7 @@ export default function TruckOfficerDashboard() {
 
       const managerId = manager.manager_id
       setOfficer({ ...manager, full_name: profile?.full_name ?? manager.full_name })
+      setAtfFilter({ initiated_by: managerId })
 
       const { data: drivers } = await supabase
         .from("Drivers").select("driver_id, full_name").eq("status", "Active").order("full_name")
@@ -211,7 +221,6 @@ export default function TruckOfficerDashboard() {
         fetchProcurements(),
         fetchDeposits(),
         fetchFuelExpenses(managerId),
-        fetchATFs(managerId),
       ])
       setLoading(false)
     }
@@ -225,7 +234,7 @@ export default function TruckOfficerDashboard() {
       fetchProcurements()
       fetchDeposits()
       fetchFuelExpenses(officer.manager_id)
-      fetchATFs(officer.manager_id)
+      refetchATFs()
     }, POLLING_INTERVAL)
     return () => clearInterval(interval)
   }, [officer])
@@ -270,25 +279,6 @@ export default function TruckOfficerDashboard() {
       .eq("manager_id", mId)
       .order("logged_at", { ascending: false })
     setFuelExpenses(data || [])
-  }
-
-  async function fetchATFs(mId: string) {
-    const { data: raw } = await supabase
-      .from("fuel_requests")
-      .select("request_id, atf_code, plate_number, driver_id, litres, atf_status, requested_at, rate_per_litre, total_amount")
-      .eq("initiated_by", mId)
-      .order("requested_at", { ascending: false })
-
-    if (!raw) { setAtfs([]); return }
-
-    const driverIds = [...new Set(raw.map(r => r.driver_id).filter(Boolean))]
-    const { data: drivers } = driverIds.length
-      ? await supabase.from("Drivers").select("driver_id, full_name").in("driver_id", driverIds)
-      : { data: [] }
-    const driverMap = Object.fromEntries((drivers || []).map(d => [d.driver_id, d.full_name]))
-
-    const enriched = raw.map(r => ({ ...r, driver_name: driverMap[r.driver_id] ?? "Unknown" }))
-    setAtfs(enriched)
   }
 
   async function handleFuelPlateChange(plate: string) {
@@ -428,7 +418,7 @@ export default function TruckOfficerDashboard() {
 
     setShowATFModal(false)
     setAtfPlate(""); setAtfDriverId(""); setAtfLitres(""); setAtfCompanyId(""); setAtfError("")
-    if (officer) fetchATFs(officer.manager_id)
+    refetchATFs()
   }
 
   const myReports = reports.filter(r => r.manager_id === officer?.manager_id)
@@ -535,7 +525,7 @@ export default function TruckOfficerDashboard() {
               <h1 style={{ margin: 0, fontSize: isMobile ? FONT_SIZE.lg : FONT_SIZE.xl, fontWeight: 700, color: "#0070f3" }}>
                 {officer?.full_name}
               </h1>
-              <RoleSwitcher currentRole="TruckOfficer" style={{ margin: "2px 0 0", fontSize: FONT_SIZE.sm, color: "#64748b" }} />
+              <RoleSwitcher currentRole={Role.TruckOfficer} style={{ margin: "2px 0 0", fontSize: FONT_SIZE.sm, color: "#64748b" }} />
             </div>
           </div>
           <div style={{ display: "flex", gap: 8 }}>
@@ -594,7 +584,7 @@ export default function TruckOfficerDashboard() {
           ].map(t => (
             <button
               key={t.key}
-              onClick={() => setTab(t.key as any)}
+              onClick={() => setTab(t.key as typeof tab)}
               className={tab !== t.key ? "tab-btn" : "tab-active"}
               style={{
                 padding: "8px 16px", borderRadius: 6, fontSize: FONT_SIZE.sm, cursor: "pointer",
@@ -641,7 +631,7 @@ export default function TruckOfficerDashboard() {
                 })}
               </div>
               <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                {lastUpdated && <span style={{ fontSize: FONT_SIZE.xs, color: "#94a3b8", whiteSpace: "nowrap" }}>Updated {lastUpdated.toLocaleTimeString()}</span>}
+                {lastUpdated && <span style={{ fontSize: FONT_SIZE.xs, color: "#94a3b8", whiteSpace: "nowrap" }}>Updated {formatTime(lastUpdated)}</span>}
                 <button onClick={() => officer && fetchReports(officer.manager_id)} className="refresh-btn" style={{ padding: "6px 12px", fontSize: FONT_SIZE.xs, cursor: "pointer", borderRadius: 6, border: "1px solid #e2e8f0", background: "white", color: "#64748b", transition: "all 0.2s", fontWeight: 600 }}>
                   Refresh
                 </button>
@@ -680,7 +670,7 @@ export default function TruckOfficerDashboard() {
                         <p style={{ margin: 0, fontSize: FONT_SIZE.sm, color: "#b91c1c", fontWeight: 600 }}>{r.rejection_reason}</p>
                       </div>
                     )}
-                    <p style={{ margin: "8px 0 0", fontSize: FONT_SIZE.xs, color: "#94a3b8" }}>{new Date(r.reported_at).toLocaleString()}</p>
+                    <p style={{ margin: "8px 0 0", fontSize: FONT_SIZE.xs, color: "#94a3b8" }}>{formatDateTime(r.reported_at)}</p>
                   </div>
                 )
               })}
@@ -722,7 +712,7 @@ export default function TruckOfficerDashboard() {
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 8 }}>
                     <div>
                       <p style={{ margin: 0, fontWeight: 700, fontSize: FONT_SIZE.base, color: "#0f172a" }}>{e.plate_number}</p>
-                      <p style={{ margin: "2px 0 0", fontSize: FONT_SIZE.xs, color: "#94a3b8" }}>{new Date(e.logged_at).toLocaleString()}</p>
+                      <p style={{ margin: "2px 0 0", fontSize: FONT_SIZE.xs, color: "#94a3b8" }}>{formatDateTime(e.logged_at)}</p>
                     </div>
                     <span style={{ padding: "4px 10px", borderRadius: 20, fontSize: FONT_SIZE.sm, background: "#f0f7ff", color: "#0070f3", fontWeight: 700, border: "1px solid #bfdbfe" }}>{e.litres}L</span>
                   </div>
@@ -772,7 +762,7 @@ export default function TruckOfficerDashboard() {
                         </div>
                       )}
                     </div>
-                    <p style={{ margin: "8px 0 0", fontSize: FONT_SIZE.xs, color: "#94a3b8" }}>{new Date(atf.requested_at).toLocaleString()}</p>
+                    <p style={{ margin: "8px 0 0", fontSize: FONT_SIZE.xs, color: "#94a3b8" }}>{formatDateTime(atf.requested_at)}</p>
                   </div>
                 )
               })}
@@ -883,7 +873,7 @@ export default function TruckOfficerDashboard() {
                       <option value="">Select trip</option>
                       {fuelTrips.map(t => (
                         <option key={t.trip_id} value={t.trip_id}>
-                          {new Date(t.created_at).toLocaleDateString()} — {t.material_centre} · {t.product}
+                          {formatDate(t.created_at)} — {t.material_centre} · {t.product}
                         </option>
                       ))}
                     </ModernInput>
@@ -969,7 +959,7 @@ export default function TruckOfficerDashboard() {
         isOpen={showReportModal}
         onClose={() => setShowReportModal(false)}
         userId={officer?.manager_id || ""}
-        userRole="TruckOfficer"
+        userRole={Role.TruckOfficer}
       />
     </div>
   )

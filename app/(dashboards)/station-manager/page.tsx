@@ -11,7 +11,10 @@ import { useBreakpoint } from "@/app/hooks/useBreakpoint"
 import ReportModal from "@/components/ReportModal"
 import ProfilePictureUpload from "@/components/ProfilePictureUpload"
 import { FONT_SIZE, POLLING_INTERVAL } from "@/lib/constants"
-import { toISOString } from "@/lib/date-utils"
+import { toISOString, formatDateTime, formatTime } from "@/lib/date-utils"
+import { requireDashboardRole } from "@/lib/auth-helpers"
+import { Role } from "@/lib/roles"
+import { useATFs } from "@/lib/hooks/useATFs"
 
 type ATF = {
   request_id: string
@@ -71,6 +74,9 @@ export default function StationManagerDashboard() {
   const [currentBalance, setCurrentBalance] = useState<number | null>(null)
   const [lowThreshold, setLowThreshold] = useState<number>(0)
   const [atfs, setAtfs] = useState<ATF[]>([])
+  const [atfFilter, setAtfFilter] = useState<{ company_id: string } | null>(null)
+  const { data: atfsFromHook, refetch: refetchATFs } = useATFs(atfFilter ?? undefined)
+  useEffect(() => { setAtfs(atfsFromHook as ATF[]); setLastUpdated(new Date()) }, [atfsFromHook])
   const [deposits, setDeposits] = useState<FuelDeposit[]>([])
   const [filter, setFilter] = useState("All")
   const [loading, setLoading] = useState(true)
@@ -101,6 +107,9 @@ export default function StationManagerDashboard() {
       if (!session) { router.push("/login"); return }
       const user = session.user
 
+      const hasRole = await requireDashboardRole(user.id, Role.StationManager)
+      if (!hasRole) { router.push("/login"); return }
+
       await supabase.from("Profiles").select("full_name").eq("user_id", user.id).single()
 
       const { data: mgr } = await supabase
@@ -116,9 +125,9 @@ export default function StationManagerDashboard() {
 
       setManager(mgr)
       const companyId = mgr.company_id
+      setAtfFilter({ company_id: companyId })
       await fetchCompanyData(companyId)
       await Promise.all([
-        fetchATFs(companyId),
         fetchDeposits(companyId),
       ])
       setLoading(false)
@@ -130,7 +139,7 @@ export default function StationManagerDashboard() {
     if (!manager) return
     const interval = setInterval(() => {
       fetchCompanyData(manager.company_id)
-      fetchATFs(manager.company_id)
+      refetchATFs()
       fetchDeposits(manager.company_id)
     }, POLLING_INTERVAL)
     return () => clearInterval(interval)
@@ -139,37 +148,6 @@ export default function StationManagerDashboard() {
   async function fetchCompanyData(cId: string) {
     const { data } = await supabase.from("fuel_companies").select("company_name, current_balance, low_balance_threshold").eq("company_id", cId).single()
     if (data) { setCompanyName(data.company_name); setCurrentBalance(data.current_balance); setLowThreshold(data.low_balance_threshold) }
-  }
-
-  async function fetchATFs(cId: string) {
-    const { data: raw } = await supabase
-      .from("fuel_requests")
-      .select("request_id, atf_code, plate_number, driver_id, litres, atf_status, requested_at, rate_per_litre, total_amount")
-      .eq("company_id", cId)
-      .order("requested_at", { ascending: false })
-
-    if (!raw) { setAtfs([]); return }
-
-    const driverIds = [...new Set(raw.map(r => r.driver_id).filter(Boolean))]
-    const plates = [...new Set(raw.map(r => r.plate_number).filter(Boolean))]
-
-    const [{ data: drivers }, { data: trucks }] = await Promise.all([
-      driverIds.length ? supabase.from("Drivers").select("driver_id, full_name").in("driver_id", driverIds) : Promise.resolve({ data: [] }),
-      plates.length ? supabase.from("Trucks").select("plate_number, kbnl_truck_no").in("plate_number", plates) : Promise.resolve({ data: [] }),
-    ])
-
-    const driverMap = Object.fromEntries((drivers || []).map(d => [d.driver_id, d.full_name]))
-    const truckMap = Object.fromEntries((trucks || []).map(t => [t.plate_number, t.kbnl_truck_no]))
-
-    const enriched = raw.map(r => ({
-      ...r,
-      driver_name: driverMap[r.driver_id] ?? "Unknown",
-      driver_id: r.driver_id,
-      kbnl_truck_no: truckMap[r.plate_number] ?? null,
-    }))
-
-    setAtfs(enriched)
-    setLastUpdated(new Date())
   }
 
   async function fetchDeposits(cId: string) {
@@ -246,7 +224,7 @@ export default function StationManagerDashboard() {
     setDispensingATF(null)
     setRatePerLitre("")
     setDispenseError("")
-    fetchATFs(manager?.company_id ?? "")
+    refetchATFs()
   }
 
   async function handleInvalidate() {
@@ -274,7 +252,7 @@ export default function StationManagerDashboard() {
     setInvalidatingATF(null)
     setInvalidateReason("")
     setInvalidateError("")
-    fetchATFs(manager?.company_id ?? "")
+    refetchATFs()
   }
 
   const balanceMap = useMemo(() => {
@@ -394,7 +372,7 @@ export default function StationManagerDashboard() {
               <h1 style={{ margin: 0, fontSize: isMobile ? FONT_SIZE.lg : FONT_SIZE.xl, fontWeight: 700, color: "#0070f3" }}>
                 {companyName}
               </h1>
-              <RoleSwitcher currentRole="StationManager" style={{ margin: "2px 0 0", fontSize: FONT_SIZE.sm, color: "#64748b" }} />
+              <RoleSwitcher currentRole={Role.StationManager} style={{ margin: "2px 0 0", fontSize: FONT_SIZE.sm, color: "#64748b" }} />
             </div>
           </div>
           <div style={{ display: "flex", gap: 8 }}>
@@ -434,7 +412,7 @@ export default function StationManagerDashboard() {
                   <div>
                     <p style={{ margin: 0, fontWeight: 700, fontSize: FONT_SIZE.lg, color: "#0f172a" }}>₦{d.amount.toLocaleString()}</p>
                     {d.note && <p style={{ margin: "4px 0 0", fontSize: FONT_SIZE.sm, color: "#64748b" }}>{d.note}</p>}
-                    <p style={{ margin: "4px 0 0", fontSize: FONT_SIZE.xs, color: "#94a3b8" }}>{new Date(d.deposited_at).toLocaleString()}</p>
+                    <p style={{ margin: "4px 0 0", fontSize: FONT_SIZE.xs, color: "#94a3b8" }}>{formatDateTime(d.deposited_at)}</p>
                   </div>
                   <button onClick={() => setConfirmingDeposit(d.deposit_id)} className="btn-hover-opacity" style={{ padding: "10px 18px", background: "#0070f3", color: "white", border: "none", borderRadius: 8, cursor: "pointer", fontWeight: 700, fontSize: FONT_SIZE.sm, whiteSpace: "nowrap", transition: "opacity 0.2s" }}>
                     Confirm Receipt
@@ -456,8 +434,8 @@ export default function StationManagerDashboard() {
             )
           })}
           <div style={{ flex: 1 }} />
-          {lastUpdated && <span style={{ fontSize: FONT_SIZE.xs, color: "#94a3b8", whiteSpace: "nowrap" }}>Updated {lastUpdated.toLocaleTimeString()}</span>}
-          <button onClick={() => { fetchCompanyData(manager?.company_id ?? ""); fetchATFs(manager?.company_id ?? ""); fetchDeposits(manager?.company_id ?? "") }} className="refresh-btn" style={{ padding: "6px 12px", fontSize: FONT_SIZE.xs, cursor: "pointer", borderRadius: 8, border: "1px solid #e2e8f0", background: "white", color: "#64748b", transition: "all 0.2s", fontWeight: 600 }}>
+          {lastUpdated && <span style={{ fontSize: FONT_SIZE.xs, color: "#94a3b8", whiteSpace: "nowrap" }}>Updated {formatTime(lastUpdated)}</span>}
+          <button onClick={() => { fetchCompanyData(manager?.company_id ?? ""); refetchATFs(); fetchDeposits(manager?.company_id ?? "") }} className="refresh-btn" style={{ padding: "6px 12px", fontSize: FONT_SIZE.xs, cursor: "pointer", borderRadius: 8, border: "1px solid #e2e8f0", background: "white", color: "#64748b", transition: "all 0.2s", fontWeight: 600 }}>
             Refresh
           </button>
         </div>
@@ -507,7 +485,7 @@ export default function StationManagerDashboard() {
                   )}
                 </div>
 
-                <p style={{ margin: "0 0 12px", fontSize: FONT_SIZE.xs, color: "#94a3b8" }}>{new Date(atf.requested_at).toLocaleString()}</p>
+                <p style={{ margin: "0 0 12px", fontSize: FONT_SIZE.xs, color: "#94a3b8" }}>{formatDateTime(atf.requested_at)}</p>
 
                 {atf.atf_status === "Authorised" && (
                   <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
@@ -671,7 +649,7 @@ export default function StationManagerDashboard() {
         isOpen={showReportModal}
         onClose={() => setShowReportModal(false)}
         userId={manager?.manager_id || ""}
-        userRole="StationManager"
+        userRole={Role.StationManager}
       />
     </div>
   )

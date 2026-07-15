@@ -13,6 +13,10 @@ import ProfilePictureUpload from "@/components/ProfilePictureUpload"
 import TruckMonitorSection from "@/components/admin/TruckMonitorSection"
 import { FONT_SIZE, POLLING_INTERVAL } from "@/lib/constants"
 import { toISOString } from "@/lib/date-utils"
+import { requireDashboardRole } from "@/lib/auth-helpers"
+import { Role } from "@/lib/roles"
+import { formatDateTime, formatTime } from "@/lib/date-utils"
+import { useATFs } from "@/lib/hooks/useATFs"
 
 type MaintenanceReport = {
   report_id: string
@@ -125,11 +129,16 @@ export default function TruckAdminDashboard() {
   const [balanceMap, setBalanceMap] = useState<Record<string, number>>({})
   const [maintenanceBalance, setMaintenanceBalance] = useState<number | null>(null)
   const [atfs, setAtfs] = useState<ATF[]>([])
+  const { data: atfsFromHook, refetch: refetchATFs } = useATFs({ all: true })
+  useEffect(() => { setAtfs(atfsFromHook as ATF[]) }, [atfsFromHook])
   const [loading, setLoading] = useState(true)
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null)
-  const [tab, setTab] = useState<"reports" | "procurement" | "balance" | "atf" | "monitor">("reports")
+  const [tab, setTab] = useState<"reports" | "procurement" | "balance" | "atf" | "monitor" | "side-trips">("reports")
   const [filter, setFilter] = useState("All")
   const [atfFilter, setAtfFilter] = useState("All")
+  const [feedPage, setFeedPage] = useState(1)
+  const [atfPage, setAtfPage] = useState(1)
+  const PAGE_SIZE = 50
 
   const [showPictureModal, setShowPictureModal] = useState(false)
   const [showReportModal, setShowReportModal] = useState(false)
@@ -148,6 +157,40 @@ export default function TruckAdminDashboard() {
   const [invalidateReason, setInvalidateReason] = useState("")
   const [invalidateError, setInvalidateError] = useState("")
   const [invalidateLoading, setInvalidateLoading] = useState(false)
+
+  // Side trips
+  const [sideTrips, setSideTrips] = useState<{ id: string; driver_id: string; plate_number: string; item_description: string; created_at: string; driver_name: string; kbnl_truck_no: string | null }[]>([])
+  const [sideTripsLoading, setSideTripsLoading] = useState(false)
+
+  async function fetchSideTrips() {
+    setSideTripsLoading(true)
+    const { data } = await supabase
+      .from("side_trips")
+      .select("*")
+      .order("created_at", { ascending: false })
+
+    if (data) {
+      const enriched = await Promise.all(
+        data.map(async (t) => {
+          const [driverRes, truckRes] = await Promise.all([
+            supabase.from("Drivers").select("full_name").eq("driver_id", t.driver_id).single(),
+            supabase.from("Trucks").select("kbnl_truck_no").eq("plate_number", t.plate_number).single(),
+          ])
+          return {
+            ...t,
+            driver_name: driverRes.data?.full_name ?? "Unknown",
+            kbnl_truck_no: truckRes.data?.kbnl_truck_no ?? null,
+          }
+        })
+      )
+      setSideTrips(enriched)
+    }
+    setSideTripsLoading(false)
+  }
+
+  useEffect(() => {
+    if (tab === "side-trips" && sideTrips.length === 0) fetchSideTrips()
+  }, [tab])
 
   const [procItem, setProcItem] = useState("")
   const [procTotal, setProcTotal] = useState("")
@@ -169,6 +212,9 @@ export default function TruckAdminDashboard() {
       if (!session) { router.push("/login"); return }
       const user = session.user
 
+      const hasRole = await requireDashboardRole(user.id, Role.TruckAdmin)
+      if (!hasRole) { router.push("/login"); return }
+
       const { data: profile } = await supabase.from("Profiles").select("full_name").eq("user_id", user.id).single()
 
       const { data: adm } = await supabase
@@ -184,7 +230,7 @@ export default function TruckAdminDashboard() {
 
       setAdmin({ ...adm, full_name: profile?.full_name ?? adm.full_name })
 
-      await Promise.all([fetchReports(), fetchProcurements(), fetchMaintenanceBalance(), fetchATFs(), fetchDeposits()])
+      await Promise.all([fetchReports(), fetchProcurements(), fetchMaintenanceBalance(), fetchDeposits()])
       setLoading(false)
     }
     init()
@@ -193,7 +239,8 @@ export default function TruckAdminDashboard() {
   useEffect(() => {
     if (!admin) return
     const interval = setInterval(() => {
-      fetchReports(); fetchProcurements(); fetchMaintenanceBalance(); fetchATFs(); fetchDeposits()
+      fetchReports(); fetchProcurements(); fetchMaintenanceBalance(); refetchATFs(); fetchDeposits()
+      if (tab === "side-trips") fetchSideTrips()
     }, POLLING_INTERVAL)
     return () => clearInterval(interval)
   }, [admin])
@@ -246,36 +293,6 @@ export default function TruckAdminDashboard() {
     if (data) setDeposits(data)
   }
 
-  async function fetchATFs() {
-    const { data: raw } = await supabase
-      .from("fuel_requests")
-      .select("request_id, atf_code, plate_number, driver_id, company_id, litres, atf_status, requested_at, rate_per_litre, total_amount, initiated_by")
-      .order("requested_at", { ascending: false })
-    if (!raw) { setAtfs([]); return }
-
-    const driverIds = [...new Set(raw.map(r => r.driver_id).filter(Boolean))]
-    const officerIds = [...new Set(raw.map(r => r.initiated_by).filter(Boolean))]
-    const companyIds = [...new Set(raw.map(r => r.company_id).filter(Boolean))]
-
-    const [{ data: drivers }, { data: officers }, { data: companies }] = await Promise.all([
-      driverIds.length ? supabase.from("Drivers").select("driver_id, full_name").in("driver_id", driverIds) : Promise.resolve({ data: [] }),
-      officerIds.length ? supabase.from("truck_officers").select("manager_id, full_name").in("manager_id", officerIds) : Promise.resolve({ data: [] }),
-      companyIds.length ? supabase.from("fuel_companies").select("company_id, company_name").in("company_id", companyIds) : Promise.resolve({ data: [] }),
-    ])
-
-    const driverMap = Object.fromEntries((drivers || []).map(d => [d.driver_id, d.full_name]))
-    const officerMap = Object.fromEntries((officers || []).map(o => [o.manager_id, o.full_name]))
-    const companyMap = Object.fromEntries((companies || []).map(c => [c.company_id, c.company_name]))
-
-    const enriched = raw.map(r => ({
-      ...r,
-      driver_name: driverMap[r.driver_id] ?? "Unknown",
-      officer_name: officerMap[r.initiated_by] ?? "Unknown",
-      company_name: companyMap[r.company_id] ?? "Unknown",
-    }))
-    setAtfs(enriched)
-  }
-
   async function handleValidate() {
     if (!validating) return
     setValidateLoading(true)
@@ -326,7 +343,7 @@ export default function TruckAdminDashboard() {
     setAuthoriseLoading(false)
     if (error) return
     setAuthorisingATF(null)
-    fetchATFs()
+    refetchATFs()
   }
 
   async function handleInvalidate() {
@@ -353,7 +370,7 @@ export default function TruckAdminDashboard() {
     setInvalidatingATF(null)
     setInvalidateReason("")
     setInvalidateError("")
-    fetchATFs()
+    refetchATFs()
   }
 
   async function handleDeposit() {
@@ -434,11 +451,17 @@ export default function TruckAdminDashboard() {
     ...procurements.map(p => ({ kind: "procurement" as const, data: p, date: p.logged_at })),
   ].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
 
-  const filteredFeed = filter === "All" ? feedItems
+  const filteredFeedAll = filter === "All" ? feedItems
     : filter === "Bulk Procurement" ? feedItems.filter(f => f.kind === "procurement")
     : feedItems.filter(f => f.kind === "report" && (f.data as MaintenanceReport).status === filter)
+  const feedTotalPages = Math.ceil(filteredFeedAll.length / PAGE_SIZE) || 1
+  const safeFeedPage = Math.min(feedPage, feedTotalPages)
+  const filteredFeed = filteredFeedAll.slice(0, safeFeedPage * PAGE_SIZE)
 
-  const filteredATFs = atfFilter === "All" ? atfs : atfs.filter(a => a.atf_status === atfFilter)
+  const filteredATFsAll = atfFilter === "All" ? atfs : atfs.filter(a => a.atf_status === atfFilter)
+  const atfTotalPages = Math.ceil(filteredATFsAll.length / PAGE_SIZE) || 1
+  const safeAtfPage = Math.min(atfPage, atfTotalPages)
+  const filteredATFs = filteredATFsAll.slice(0, safeAtfPage * PAGE_SIZE)
 
   const chevron = (
     <Icon icon="mdi:chevron-down" width={18} color="#aaa"
@@ -541,7 +564,7 @@ export default function TruckAdminDashboard() {
               <h1 style={{ margin: 0, fontSize: isMobile ? FONT_SIZE.lg : FONT_SIZE.xl, fontWeight: 700, color: "#0070f3" }}>
                 {admin?.full_name}
               </h1>
-              <RoleSwitcher currentRole="TruckAdmin" style={{ margin: "2px 0 0", fontSize: FONT_SIZE.sm, color: "#64748b" }} />
+              <RoleSwitcher currentRole={Role.TruckAdmin} style={{ margin: "2px 0 0", fontSize: FONT_SIZE.sm, color: "#64748b" }} />
             </div>
           </div>
           <div style={{ display: "flex", gap: 8 }}>
@@ -578,8 +601,9 @@ export default function TruckAdminDashboard() {
             { key: "atf", label: "ATF", icon: "mdi:gas-station" },
             { key: "procurement", label: "Procurement", icon: "mdi:package" },
             { key: "balance", label: "Top Up", icon: "mdi:plus-circle" },
+            { key: "side-trips", label: "Side Trips", icon: "mdi:road-variant" },
           ].map(t => (
-            <button key={t.key} onClick={() => setTab(t.key as any)} className={tab !== t.key ? "tab-btn" : "tab-active"} style={{ padding: "8px 16px", borderRadius: 8, fontSize: FONT_SIZE.sm, cursor: "pointer", border: `1.5px solid ${tab === t.key ? "" : "#e2e8f0"}`, background: tab === t.key ? "#171717" : "white", color: tab === t.key ? "white" : "#64748b", fontWeight: tab === t.key ? 600 : 500, transition: "all 0.2s", display: "flex", alignItems: "center", gap: 6, minHeight: 40 }}>
+            <button key={t.key} onClick={() => setTab(t.key as typeof tab)} className={tab !== t.key ? "tab-btn" : "tab-active"} style={{ padding: "8px 16px", borderRadius: 8, fontSize: FONT_SIZE.sm, cursor: "pointer", border: `1.5px solid ${tab === t.key ? "" : "#e2e8f0"}`, background: tab === t.key ? "#171717" : "white", color: tab === t.key ? "white" : "#64748b", fontWeight: tab === t.key ? 600 : 500, transition: "all 0.2s", display: "flex", alignItems: "center", gap: 6, minHeight: 40 }}>
               <Icon icon={t.icon} width={16} />
               {t.label}
             </button>
@@ -599,13 +623,24 @@ export default function TruckAdminDashboard() {
                 )
               })}
               <div style={{ flex: 1 }} />
-              {lastUpdated && <span style={{ fontSize: FONT_SIZE.xs, color: "#94a3b8" }}>Updated {lastUpdated.toLocaleTimeString()}</span>}
+              {lastUpdated && <span style={{ fontSize: FONT_SIZE.xs, color: "#94a3b8" }}>Updated {formatTime(lastUpdated)}</span>}
               <button onClick={() => { fetchReports(); fetchProcurements() }} className="refresh-btn" style={{ padding: "6px 12px", fontSize: FONT_SIZE.xs, cursor: "pointer", borderRadius: 8, border: "1px solid #e2e8f0", background: "white", color: "#64748b", transition: "all 0.2s", fontWeight: 600 }}>
                 ↻
               </button>
             </div>
 
             {filteredFeed.length === 0 && <p style={{ color: "#64748b", fontSize: FONT_SIZE.base }}>No entries.</p>}
+            {filteredFeedAll.length > PAGE_SIZE && (
+              <div style={{ display: "flex", justifyContent: "center", gap: 8, marginBottom: 16 }}>
+                <button disabled={safeFeedPage <= 1} onClick={() => setFeedPage(p => Math.max(1, p - 1))} style={{ padding: "6px 14px", background: safeFeedPage <= 1 ? "#f0f0f0" : "white", border: "1px solid #e2e8f0", borderRadius: 8, cursor: safeFeedPage <= 1 ? "not-allowed" : "pointer", fontSize: FONT_SIZE.xs, color: safeFeedPage <= 1 ? "#ccc" : "#64748b" }}>
+                  ← Previous
+                </button>
+                <span style={{ display: "flex", alignItems: "center", fontSize: FONT_SIZE.xs, color: "#94a3b8" }}>Page {safeFeedPage} of {feedTotalPages}</span>
+                <button disabled={safeFeedPage >= feedTotalPages} onClick={() => setFeedPage(p => p + 1)} style={{ padding: "6px 14px", background: safeFeedPage >= feedTotalPages ? "#f0f0f0" : "white", border: "1px solid #e2e8f0", borderRadius: 8, cursor: safeFeedPage >= feedTotalPages ? "not-allowed" : "pointer", fontSize: FONT_SIZE.xs, color: safeFeedPage >= feedTotalPages ? "#ccc" : "#64748b" }}>
+                  Next →
+                </button>
+              </div>
+            )}
             <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
               {filteredFeed.map(item => {
                 if (item.kind === "procurement") {
@@ -615,7 +650,7 @@ export default function TruckAdminDashboard() {
                       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 12 }}>
                         <div>
                           <p style={{ margin: 0, fontWeight: 700, fontSize: FONT_SIZE.lg, color: "#0f172a" }}>{p.item_name}</p>
-                          <p style={{ margin: "4px 0 0", fontSize: FONT_SIZE.xs, color: "#94a3b8" }}>{new Date(p.logged_at).toLocaleString()}</p>
+                          <p style={{ margin: "4px 0 0", fontSize: FONT_SIZE.xs, color: "#94a3b8" }}>{formatDateTime(p.logged_at)}</p>
                         </div>
                         <span style={{ padding: "4px 10px", borderRadius: 20, fontSize: FONT_SIZE.xs, background: "rgba(124, 58, 237, 0.1)", color: "#7c3aed", fontWeight: 700, border: "1px solid #7c3aed33" }}>Bulk Procurement</span>
                       </div>
@@ -670,7 +705,7 @@ export default function TruckAdminDashboard() {
                         </button>
                       </div>
                     )}
-                    <p style={{ margin: "8px 0 0", fontSize: FONT_SIZE.xs, color: "#94a3b8" }}>{new Date(r.reported_at).toLocaleString()}</p>
+                    <p style={{ margin: "8px 0 0", fontSize: FONT_SIZE.xs, color: "#94a3b8" }}>{formatDateTime(r.reported_at)}</p>
                   </div>
                 )
               })}
@@ -704,12 +739,23 @@ export default function TruckAdminDashboard() {
                 )
               })}
               <div style={{ flex: 1 }} />
-              <button onClick={fetchATFs} className="refresh-btn" style={{ padding: "6px 12px", fontSize: FONT_SIZE.xs, cursor: "pointer", borderRadius: 8, border: "1px solid #e2e8f0", background: "white", color: "#64748b", transition: "all 0.2s", fontWeight: 600 }}>
+                             <button onClick={refetchATFs} className="refresh-btn" style={{ padding: "6px 12px", fontSize: FONT_SIZE.xs, cursor: "pointer", borderRadius: 8, border: "1px solid #e2e8f0", background: "white", color: "#64748b", transition: "all 0.2s", fontWeight: 600 }}>
                 ↻
               </button>
             </div>
 
             {filteredATFs.length === 0 && <p style={{ color: "#64748b", fontSize: FONT_SIZE.base }}>No ATFs found.</p>}
+            {filteredATFsAll.length > PAGE_SIZE && (
+              <div style={{ display: "flex", justifyContent: "center", gap: 8, marginBottom: 16 }}>
+                <button disabled={safeAtfPage <= 1} onClick={() => setAtfPage(p => Math.max(1, p - 1))} style={{ padding: "6px 14px", background: safeAtfPage <= 1 ? "#f0f0f0" : "white", border: "1px solid #e2e8f0", borderRadius: 8, cursor: safeAtfPage <= 1 ? "not-allowed" : "pointer", fontSize: FONT_SIZE.xs, color: safeAtfPage <= 1 ? "#ccc" : "#64748b" }}>
+                  ← Previous
+                </button>
+                <span style={{ display: "flex", alignItems: "center", fontSize: FONT_SIZE.xs, color: "#94a3b8" }}>Page {safeAtfPage} of {atfTotalPages}</span>
+                <button disabled={safeAtfPage >= atfTotalPages} onClick={() => setAtfPage(p => p + 1)} style={{ padding: "6px 14px", background: safeAtfPage >= atfTotalPages ? "#f0f0f0" : "white", border: "1px solid #e2e8f0", borderRadius: 8, cursor: safeAtfPage >= atfTotalPages ? "not-allowed" : "pointer", fontSize: FONT_SIZE.xs, color: safeAtfPage >= atfTotalPages ? "#ccc" : "#64748b" }}>
+                  Next →
+                </button>
+              </div>
+            )}
             <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
               {filteredATFs.map(atf => {
                 const { bg, color, border } = atfStatusColor(atf.atf_status)
@@ -757,11 +803,54 @@ export default function TruckAdminDashboard() {
                         Invalidate
                       </button>
                     )}
-                    <p style={{ margin: "8px 0 0", fontSize: FONT_SIZE.xs, color: "#94a3b8" }}>{new Date(atf.requested_at).toLocaleString()}</p>
+                    <p style={{ margin: "8px 0 0", fontSize: FONT_SIZE.xs, color: "#94a3b8" }}>{formatDateTime(atf.requested_at)}</p>
                   </div>
                 )
               })}
             </div>
+          </div>
+        )}
+
+        {/* Side Trips Tab */}
+        {tab === "side-trips" && (
+          <div>
+            <div style={{ marginBottom: 24 }}>
+              <h2 style={{ margin: 0, color: "#0f172a", fontSize: isMobile ? "22px" : "24px", fontWeight: 700 }}>
+                Side Trips
+              </h2>
+              <p style={{ margin: "4px 0 0", fontSize: FONT_SIZE.sm, color: "#64748b" }}>
+                Unofficial trips where drivers carried goods other than cement
+              </p>
+            </div>
+
+            {sideTripsLoading ? (
+              <div style={{ display: "flex", justifyContent: "center", padding: "48px 0" }}>
+                <div style={{ width: 28, height: 28, borderRadius: "50%", border: "3px solid #e2e8f0", borderTopColor: "#0070f3", animation: "spin 1s linear infinite" }} />
+              </div>
+            ) : sideTrips.length === 0 ? (
+              <div style={{ textAlign: "center", padding: "48px 24px" }}>
+                <Icon icon="mdi:road-variant" width={48} color="#cbd5e1" style={{ marginBottom: 12 }} />
+                <p style={{ margin: 0, color: "#64748b", fontSize: FONT_SIZE.base }}>No side trips reported yet</p>
+              </div>
+            ) : (
+              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                {sideTrips.map(t => (
+                  <div key={t.id} style={{ background: "white", border: "1px solid #e2e8f0", borderRadius: 12, padding: 16, boxShadow: "0 1px 3px rgba(0,0,0,0.05)" }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 8 }}>
+                      <p style={{ margin: 0, fontWeight: 700, fontSize: FONT_SIZE.base, color: "#0f172a" }}>{t.driver_name}</p>
+                      <span style={{ padding: "2px 8px", borderRadius: 4, background: "#f0f7ff", color: "#0c4a6e", fontSize: FONT_SIZE.xs, fontWeight: 500 }}>{t.item_description}</span>
+                    </div>
+                    <p style={{ margin: 0, fontSize: FONT_SIZE.sm, color: "#64748b" }}>
+                      {t.plate_number}
+                      {t.kbnl_truck_no ? <span> · #{t.kbnl_truck_no}</span> : null}
+                    </p>
+                    <p style={{ margin: "4px 0 0", fontSize: FONT_SIZE.xs, color: "#94a3b8" }}>
+                      {new Date(t.created_at).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit" })}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         )}
 
@@ -924,7 +1013,7 @@ export default function TruckAdminDashboard() {
         isOpen={showReportModal}
         onClose={() => setShowReportModal(false)}
         userId={admin?.admin_id || ""}
-        userRole="TruckAdmin"
+        userRole={Role.TruckAdmin}
       />
     </div>
   )

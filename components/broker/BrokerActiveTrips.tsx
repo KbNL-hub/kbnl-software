@@ -96,7 +96,7 @@ export default function BrokerActiveTrips() {
       const tripIds = tripsData.map(t => t.trip_id)
 
       const { data: stopCounts } = await supabase
-        .rpc("get_trip_stop_counts", { p_trip_ids: tripIds as any })
+        .rpc("get_trip_stop_counts", { p_trip_ids: tripIds })
 
       const countMap: Record<string, number> = {}
       if (stopCounts) {

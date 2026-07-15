@@ -136,7 +136,10 @@ export async function POST(req: Request) {
   let userId = ""
 
   if (existingUser) {
-    userId = existingUser.id
+    return NextResponse.json(
+      { error: "A user with this email already exists. Use Manage Users to reassign roles." },
+      { status: 409 }
+    )
   } else {
     tempPassword = generateTempPassword()
     const { data, error: createError } = await supabaseAdmin.auth.admin.createUser({

@@ -2,7 +2,9 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import type { Session } from '@supabase/supabase-js'
 import PWAInstallPrompt from '@/components/PWAInstallPrompt';
+import ErrorBoundary from '@/components/ErrorBoundary';
 import { supabase } from '@/lib/supabase';
 
 export default function AuthenticatedLayout({
@@ -11,30 +13,34 @@ export default function AuthenticatedLayout({
   children: React.ReactNode;
 }) {
   const router = useRouter();
-  const [session, setSession] = useState<any>(null);
+  const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    let resolved = false
+    let cancelled = false
 
     supabase.auth.getSession().then(({ data }) => {
+      if (cancelled) return
       if (data.session) {
         setSession(data.session)
       }
+      setLoading(false)
     })
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       (event, session) => {
         setSession(session)
-        if (!resolved) {
-          resolved = true
-          setLoading(false)
+        if (event === 'SIGNED_OUT') {
+          router.push('/login')
         }
       }
     )
 
-    return () => subscription?.unsubscribe()
-  }, []);
+    return () => {
+      cancelled = true
+      subscription?.unsubscribe()
+    }
+  }, [router]);
 
   useEffect(() => {
     if (!loading && !session) {
@@ -55,7 +61,9 @@ export default function AuthenticatedLayout({
   return (
     <>
       <PWAInstallPrompt />
-      {children}
+      <ErrorBoundary label="Dashboard">
+        {children}
+      </ErrorBoundary>
     </>
   );
 }

@@ -696,7 +696,7 @@ cursor: "pointer",
             ]}
             selectedId={quickFilter}
             onSelect={(id) => {
-              setQuickFilter(id as any)
+              setQuickFilter(id as "month" | "year" | "custom")
               if (id !== "custom") applyQuickFilter(id as "month" | "year")
             }}
           />

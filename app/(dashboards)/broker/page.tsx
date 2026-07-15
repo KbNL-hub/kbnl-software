@@ -13,6 +13,10 @@ import CustomerPayments from "@/components/CustomerPayments"
 import ProfilePictureUpload from "@/components/ProfilePictureUpload"
 import { useBreakpoint } from "@/app/hooks/useBreakpoint"
 import { FONT_SIZE } from "@/lib/constants"
+import { requireDashboardRole } from "@/lib/auth-helpers"
+import { Role } from "@/lib/roles"
+import { formatDate, formatDateTime } from "@/lib/date-utils"
+import { useStops } from "@/lib/hooks/useStops"
 
 type Broker = {
   broker_id: string
@@ -64,6 +68,11 @@ export default function BrokerDashboard() {
   const [salePrice, setSalePrice] = useState("")
   const [activeFilter, setActiveFilter] = useState<"pending" | "confirmed" | "disputed">("pending")
   const [allStops, setAllStops] = useState<Stop[]>([])
+  const [page, setPage] = useState(1)
+  const PAGE_SIZE = 50
+  const [stopsFilter, setStopsFilter] = useState<{ broker_id: string } | null>(null)
+  const { data: stopsFromHook, refetch: refetchStops } = useStops(stopsFilter ?? undefined)
+  useEffect(() => { setAllStops(stopsFromHook as Stop[]) }, [stopsFromHook])
 
   const [showPictureModal, setShowPictureModal] = useState(false)
   const [showReportModal, setShowReportModal] = useState(false)
@@ -76,7 +85,11 @@ export default function BrokerDashboard() {
     if (!session) { window.location.href = "/login"; return }
     const user = session.user
 
+    const hasRole = await requireDashboardRole(user.id, Role.Broker)
+    if (!hasRole) { window.location.href = "/login"; return }
+
     setBrokerId(user.id)
+    setStopsFilter({ broker_id: user.id })
 
     const { data: brokerData } = await supabase
       .from("Profiles").select("full_name").eq("user_id", user.id).single()
@@ -99,43 +112,7 @@ export default function BrokerDashboard() {
     const priceMap: Record<string, number> = {}
     for (const p of (priceData || [])) priceMap[p.product] = p.price
     setCompanyPriceMap(priceMap)
-    await fetchStops(user.id)
     setLoading(false)
-  }
-
-  async function fetchStops(bId: string) {
-    const { data: stops } = await supabase
-      .from("Stops")
-      .select("stop_id, trip_id, customer_id, quantity_offloaded, stop_location, stop_time, confirmed, disputed")
-      .eq("broker_id", bId)
-      .order("stop_time", { ascending: false })
-
-    if (!stops) { setAllStops([]); return }
-
-    const tripIds = [...new Set(stops.map(s => s.trip_id).filter(Boolean))]
-    const customerIds = [...new Set(stops.map(s => s.customer_id).filter(Boolean))]
-
-    const [{ data: trips }, { data: customers }] = await Promise.all([
-      tripIds.length ? supabase.from("Trips").select("trip_id, plate_number, material_centre, ATC, product").in("trip_id", tripIds) : Promise.resolve({ data: [] }),
-      customerIds.length ? supabase.from("Customers").select("customer_id, full_name").in("customer_id", customerIds) : Promise.resolve({ data: [] }),
-    ])
-
-    const tripMap = Object.fromEntries((trips || []).map(t => [t.trip_id, t]))
-    const customerMap = Object.fromEntries((customers || []).map(c => [c.customer_id, c.full_name]))
-
-    const enriched = stops.map(stop => {
-      const trip = tripMap[stop.trip_id]
-      return {
-        ...stop,
-        plate_number: trip?.plate_number ?? "Unknown",
-        material_centre: trip?.material_centre ?? "",
-        atc: trip?.ATC ?? null,
-        product: trip?.product ?? "",
-        customer_name: stop.customer_id ? (customerMap[stop.customer_id] ?? "Not provided") : "Not provided",
-      }
-    })
-
-    setAllStops(enriched)
   }
 
   function openConfirmModal(stop: Stop) {
@@ -207,7 +184,7 @@ export default function BrokerDashboard() {
 
     if (error) { setMessage("Failed to dispute stop"); return }
     setDisputingStop(null); setDisputeReason(""); setMessage("")
-    if (brokerId) fetchStops(brokerId)
+    refetchStops()
   }
 
   async function handleConfirm() {
@@ -235,7 +212,7 @@ export default function BrokerDashboard() {
     setSubmitting(false)
     if (confirmError) { setMessage("Stop updated but confirmation record failed"); return }
     closeModal()
-    if (brokerId) fetchStops(brokerId)
+    refetchStops()
   }
 
   if (loading) return (
@@ -252,9 +229,12 @@ export default function BrokerDashboard() {
   const confirmedStops = allStops.filter(s => s.confirmed)
   const disputedStops = allStops.filter(s => s.disputed)
 
-  const visibleStops =
+  const visibleStopsUnpaginated =
     activeFilter === "pending" ? pendingStops :
     activeFilter === "confirmed" ? confirmedStops : disputedStops
+  const totalPages = Math.ceil(visibleStopsUnpaginated.length / PAGE_SIZE) || 1
+  const safePage = Math.min(page, totalPages)
+  const visibleStops = visibleStopsUnpaginated.slice(0, safePage * PAGE_SIZE)
 
   const filterOptions: { key: "pending" | "confirmed" | "disputed"; label: string; count: number; color: string }[] = [
     { key: "pending", label: "Pending", count: pendingStops.length, color: "#0070f3" },
@@ -357,7 +337,7 @@ export default function BrokerDashboard() {
               <h1 style={{ margin: 0, fontSize: isMobile ? FONT_SIZE.lg : FONT_SIZE.xl, fontWeight: 700, color: "#0070f3" }}>
                 {broker?.full_name}
               </h1>
-              <RoleSwitcher currentRole="Broker" style={{ margin: "2px 0 0", fontSize: FONT_SIZE.sm, color: "#64748b" }} />
+              <RoleSwitcher currentRole={Role.Broker} style={{ margin: "2px 0 0", fontSize: FONT_SIZE.sm, color: "#64748b" }} />
             </div>
           </div>
           <div style={{ display: "flex", gap: 8 }}>
@@ -478,6 +458,17 @@ export default function BrokerDashboard() {
 
               {/* Stop Cards */}
               <div style={{ padding: isMobile ? "0 16px" : 0 }}>
+                {visibleStopsUnpaginated.length > PAGE_SIZE && (
+                  <div style={{ display: "flex", justifyContent: "center", gap: 8, marginBottom: 16 }}>
+                    <button disabled={safePage <= 1} onClick={() => setPage(p => Math.max(1, p - 1))} style={{ padding: "8px 16px", background: safePage <= 1 ? "#f0f0f0" : "white", border: "1px solid #e5e5e5", borderRadius: 8, cursor: safePage <= 1 ? "not-allowed" : "pointer", fontSize: 13, color: safePage <= 1 ? "#ccc" : "#555" }}>
+                      ← Previous
+                    </button>
+                    <span style={{ display: "flex", alignItems: "center", fontSize: 13, color: "#888", padding: "0 8px" }}>Page {safePage} of {totalPages}</span>
+                    <button disabled={safePage >= totalPages} onClick={() => setPage(p => p + 1)} style={{ padding: "8px 16px", background: safePage >= totalPages ? "#f0f0f0" : "white", border: "1px solid #e5e5e5", borderRadius: 8, cursor: safePage >= totalPages ? "not-allowed" : "pointer", fontSize: 13, color: safePage >= totalPages ? "#ccc" : "#555" }}>
+                      Next →
+                    </button>
+                  </div>
+                )}
                 {visibleStops.length === 0 ? (
                   <div style={{ textAlign: "center", padding: "60px 0", color: "#bbb" }}>
                     <Icon icon="mdi:map-marker-off" width={40} style={{ marginBottom: 10, display: "block", margin: "0 auto 10px" }} />
@@ -509,7 +500,7 @@ export default function BrokerDashboard() {
                           </div>
                         </div>
                         <p style={{ margin: 0, fontSize: 11, color: "#aaa", flexShrink: 0, paddingLeft: 8 }}>
-                          {new Date(stop.stop_time).toLocaleDateString("en-NG", { day: "numeric", month: "short" })}
+                          {formatDate(stop.stop_time)}
                         </p>
                       </div>
 
@@ -762,7 +753,7 @@ export default function BrokerDashboard() {
         isOpen={showReportModal}
         onClose={() => setShowReportModal(false)}
         userId={broker?.broker_id || ""}
-        userRole="Broker"
+        userRole={Role.Broker}
       />
     </div>
   )

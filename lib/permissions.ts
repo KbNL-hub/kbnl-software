@@ -1,3 +1,5 @@
+import { Role } from "./roles"
+
 export type AccessLevel = 'view' | 'write' | 'authorize'
 
 export interface RoleConfig {
@@ -29,32 +31,33 @@ export const ALL_SECTIONS = [
   'reports',
   'company-prices',
   'store-sales',
+  'side-trips',
 ] as const
 
 export type SectionKey = (typeof ALL_SECTIONS)[number]
 
-export const ROLES: Record<string, RoleConfig> = {
-  Admin: {
+export const ROLES: Partial<Record<Role, RoleConfig>> = {
+  [Role.Admin]: {
     sections: [...ALL_SECTIONS],
     access: 'write',
     label: 'Admin',
   },
-  SuperAdmin: {
+  [Role.SuperAdmin]: {
     sections: [...ALL_SECTIONS],
     access: 'write',
     label: 'Super Admin',
   },
-  Supervisor: {
+  [Role.Supervisor]: {
     sections: [...ALL_SECTIONS],
     access: 'view',
     label: 'Supervisor',
   },
-  CashAuthorizer: {
+  [Role.CashAuthorizer]: {
     sections: ['cash-expenses'],
     access: 'authorize',
     label: 'Cash Authorizer',
   },
-  Broker: {
+  [Role.Broker]: {
     sections: [
       'add-truck', 'manage-brokers',
       'monitor-trucks', 'manage-trucks', 'manage-drivers',
@@ -65,16 +68,16 @@ export const ROLES: Record<string, RoleConfig> = {
     access: 'write',
     label: 'Broker',
   },
-  TruckAdmin: {
+  [Role.TruckAdmin]: {
     sections: [
       'monitor-trucks', 'manage-trucks', 'truck-officers',
       'truck-admins', 'tricycles', 'complaints',
-      'diesel-manager', 'reports',
+      'diesel-manager', 'reports', 'side-trips',
     ],
     access: 'write',
     label: 'Truck Admin',
   },
-  DeskOfficer: {
+  [Role.DeskOfficer]: {
     sections: [
       'manage-brokers', 'customer-payments', 'credit',
       'reports', 'complaints', 'invite-users',
@@ -82,60 +85,60 @@ export const ROLES: Record<string, RoleConfig> = {
     access: 'write',
     label: 'Desk Officer',
   },
-  ATCOfficer: {
+  [Role.ATCOfficer]: {
     sections: [
       'manage-drivers', 'monitor-trips', 'add-truck',
       'monitor-trucks', 'manage-trucks', 'truck-officers',
-      'tricycles', 'diesel-manager', 'reports',
+      'tricycles', 'diesel-manager', 'reports', 'side-trips',
     ],
     access: 'write',
     label: 'ATC Officer',
   },
-  Driver: {
+  [Role.Driver]: {
     sections: [],
     access: 'write',
     label: 'Driver',
   },
-  StationManager: {
+  [Role.StationManager]: {
     sections: [],
     access: 'write',
     label: 'Station Manager',
   },
-  TruckOfficer: {
+  [Role.TruckOfficer]: {
     sections: [],
     access: 'write',
     label: 'Truck Officer',
   },
-  StoreOfficer: {
+  [Role.StoreOfficer]: {
     sections: [],
     access: 'write',
     label: 'Store Officer',
   },
-  CashOfficer: {
+  [Role.CashOfficer]: {
     sections: [],
     access: 'write',
     label: 'Cash Officer',
   },
 }
 
-export const ROLE_DASHBOARDS: Record<string, string> = {
-  SuperAdmin: '/admin',
-  Supervisor: '/admin',
-  CashAuthorizer: '/admin',
-  Broker: '/admin',
-  TruckAdmin: '/truck-admin',
-  DeskOfficer: '/admin',
-  ATCOfficer: '/admin',
-  Admin: '/admin',
-  Driver: '/driver',
-  StationManager: '/station-manager',
-  TruckOfficer: '/truck-officer',
-  StoreOfficer: '/store-officer',
-  CashOfficer: '/cash-officer',
+export const ROLE_DASHBOARDS: Record<Role, string> = {
+  [Role.SuperAdmin]: '/admin',
+  [Role.Supervisor]: '/admin',
+  [Role.CashAuthorizer]: '/admin',
+  [Role.Broker]: '/admin',
+  [Role.TruckAdmin]: '/truck-admin',
+  [Role.DeskOfficer]: '/admin',
+  [Role.ATCOfficer]: '/admin',
+  [Role.Admin]: '/admin',
+  [Role.Driver]: '/driver',
+  [Role.StationManager]: '/station-manager',
+  [Role.TruckOfficer]: '/truck-officer',
+  [Role.StoreOfficer]: '/store-officer',
+  [Role.CashOfficer]: '/cash-officer',
 }
 
 export function getRoleDashboard(role: string): string {
-  return ROLE_DASHBOARDS[role] || '/login'
+  return ROLE_DASHBOARDS[role as Role] || '/login'
 }
 
 export interface EffectiveAccess {
@@ -152,8 +155,8 @@ export function getEffectiveAccess(
   let canEdit = false
   let canAuthorize = false
 
-  for (const role of userRoles) {
-    const config = ROLES[role]
+  for (const userRole of userRoles) {
+    const config = ROLES[userRole as Role]
     if (!config) continue
 
     if (!config.sections.includes(sectionKey)) continue
@@ -175,8 +178,8 @@ export function getEffectiveAccess(
 export function getAdminSections(userRoles: string[]): SectionKey[] {
   const sectionSet = new Set<SectionKey>()
 
-  for (const role of userRoles) {
-    const config = ROLES[role]
+  for (const userRole of userRoles) {
+    const config = ROLES[userRole as Role]
     if (!config) continue
 
     for (const section of config.sections) {

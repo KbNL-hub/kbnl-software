@@ -13,6 +13,7 @@ import NoClearance from "@/components/admin/NoClearance"
 import { PermissionProvider, usePermissions } from "@/lib/PermissionContext"
 import { ROLES } from "@/lib/permissions"
 import { toTitleCase } from "@/lib/title-case"
+import { Role } from "@/lib/roles"
 
 const SECTION_IMPORTS = {
   "manage-users": () => import("@/components/admin/ManageUsers"),
@@ -38,6 +39,7 @@ const SECTION_IMPORTS = {
   "reports": () => import("@/components/admin/Reports"),
   "store-sales": () => import("@/components/admin/StoreSales"),
   "company-prices": () => import("@/components/admin/CompanyPrices"),
+  "side-trips": () => import("@/components/admin/SideTrips"),
 } as const
 
 type SectionKey = keyof typeof SECTION_IMPORTS
@@ -71,6 +73,7 @@ const NAV_ITEMS: NavItemConfig[] = [
   { label: "Tricycles",         key: "tricycles",           icon: "mdi:rickshaw" },
   { label: "Monitor Trucks",    key: "monitor-trucks",      icon: "mdi:dump-truck" },
   { label: "Monitor Trips",     key: "monitor-trips",       icon: "streamline-ultimate:trip-road-bold" },
+  { label: "Side Trips",        key: "side-trips",           icon: "mdi:road-variant" },
   { label: "Diesel Manager",    key: "diesel-manager",      icon: "mdi:gas-station" },
   { label: "Store Sales",       key: "store-sales",         icon: "mdi:storefront-outline" },
   { label: "Customer Payments", key: "customer-payments",   icon: "mdi:cash-register" },
@@ -112,7 +115,7 @@ function AdminPanelContent({ userProfile }: Props) {
   const [bannerHeight, setBannerHeight] = useState(64)
   const { sections, getAccess, loading: permLoading, userRoles, activeRole, setActiveRole } = usePermissions()
   const effectiveRole = activeRole ?? userProfile.role
-  const isViewOnly = effectiveRole ? (ROLES[effectiveRole]?.access === "view") : false
+  const isViewOnly = effectiveRole ? (ROLES[effectiveRole as Role]?.access === "view") : false
 
   // Profile picture state
   const fileInputRef = useRef<HTMLInputElement>(null)

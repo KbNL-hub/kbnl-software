@@ -5,10 +5,12 @@ import { FONT_SIZE } from "@/lib/constants"
 import React from "react"
 
 interface Column<T> {
-  key: string
+  key: keyof T & string
   label: string
-  render?: (value: any, row: T) => React.ReactNode
+  render?: (value: T[keyof T & string], row: T) => React.ReactNode
 }
+
+
 
 interface DataTableProps<T> {
   columns: Column<T>[]
@@ -62,7 +64,7 @@ export function DataTable<T>({ columns, rows, rowKey }: DataTableProps<T>) {
                     color: "#0f172a",
                   }}
                 >
-                  {col.render ? col.render((row as any)[col.key], row) : (row as any)[col.key]}
+                  {col.render ? col.render(row[col.key], row) : row[col.key] as React.ReactNode}
                 </td>
               ))}
             </tr>

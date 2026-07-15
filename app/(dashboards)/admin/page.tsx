@@ -6,6 +6,8 @@ import { supabase } from "@/lib/supabase"
 import { Icon } from "@iconify/react"
 import AdminPanel from "@/components/admin/AdminPanel"
 import BrokerPanel from "@/components/broker/BrokerPanel"
+import ErrorBoundary from "@/components/ErrorBoundary"
+import { Role } from "@/lib/roles"
 import { FONT_SIZE } from "@/lib/constants"
 
 type UserProfile = {
@@ -58,10 +60,10 @@ export default function AdminDashboard() {
         if (roles.length === 0) {
           roles = [profile.role]
         }
-        const dashboardRoles = ["SuperAdmin", "Supervisor", "CashAuthorizer", "TruckAdmin", "DeskOfficer", "ATCOfficer", "Admin", "Broker"]
-        let dashboardRole = dashboardRoles.find(r => roles.includes(r))
+        const dashboardRoles = [Role.SuperAdmin, Role.Supervisor, Role.CashAuthorizer, Role.TruckAdmin, Role.DeskOfficer, Role.ATCOfficer, Role.Admin, Role.Broker]
+        let dashboardRole: Role | undefined = dashboardRoles.find(r => roles.includes(r))
         const params = new URLSearchParams(window.location.search)
-        const requestedRole = params.get("role")
+        const requestedRole = params.get("role") as Role | null
         if (requestedRole && roles.includes(requestedRole)) {
           dashboardRole = requestedRole
         }
@@ -74,7 +76,7 @@ export default function AdminDashboard() {
         }
 
         let profilePictureUrl: string | undefined = profile.profile_picture_url
-        if (dashboardRole === "Broker") {
+        if (dashboardRole === Role.Broker) {
           const { data: brokerData } = await supabase
             .from("brokers")
             .select("profile_picture_url")
@@ -141,15 +143,23 @@ export default function AdminDashboard() {
   const renderDashboard = () => {
     const role = urlRole || userProfile.role
     switch (role) {
-      case "Admin":
-      case "SuperAdmin":
-      case "Supervisor":
-      case "CashAuthorizer":
-      case "DeskOfficer":
-      case "ATCOfficer":
-        return <AdminPanel userProfile={userProfile} initialRole={role} />
-      case "Broker":
-        return <BrokerPanel userProfile={userProfile} />
+      case Role.Admin:
+      case Role.SuperAdmin:
+      case Role.Supervisor:
+      case Role.CashAuthorizer:
+      case Role.DeskOfficer:
+      case Role.ATCOfficer:
+        return (
+          <ErrorBoundary label="Admin Panel">
+            <AdminPanel userProfile={userProfile} initialRole={role} />
+          </ErrorBoundary>
+        )
+      case Role.Broker:
+        return (
+          <ErrorBoundary label="Broker Panel">
+            <BrokerPanel userProfile={userProfile} />
+          </ErrorBoundary>
+        )
       default:
         return <p style={{ color: "#888", fontSize: FONT_SIZE.base }}>Unknown user role: {role}</p>
     }

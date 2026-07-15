@@ -11,9 +11,14 @@ import CustomerSelector from "@/components/CustomerSelector"
 import ReportModal from "@/components/ReportModal"
 import ModernInput from "@/components/ModernInput"
 import ProfilePictureUpload from "@/components/ProfilePictureUpload"
-import { FONT_SIZE } from "@/lib/constants"
-import { saleDateWithTime } from "@/lib/date-utils"
+import { FONT_SIZE, POLLING_INTERVAL } from "@/lib/constants"
+  import { saleDateWithTime } from "@/lib/date-utils"
+  import dayjs from "dayjs"
 import { useBreakpoint } from "@/app/hooks/useBreakpoint"
+import { requireDashboardRole } from "@/lib/auth-helpers"
+import { Role } from "@/lib/roles"
+import { formatDateTime, formatDate, formatTime } from "@/lib/date-utils"
+import { useStops } from "@/lib/hooks/useStops"
 
 type Officer = { officer_id: string; full_name: string; store_name: string; profile_picture_url?: string }
 
@@ -77,12 +82,18 @@ export default function StoreOfficerDashboard() {
 
   const [officer, setOfficer] = useState<Officer | null>(null)
   const [pendingStops, setPendingStops] = useState<PendingStop[]>([])
+  const [stopsFilter, setStopsFilter] = useState<{ store_name: string; pending: boolean } | null>(null)
+  const { data: stopsFromHook, refetch: refetchStops } = useStops(stopsFilter ?? undefined)
+  useEffect(() => { setPendingStops(stopsFromHook as PendingStop[]); setLastUpdated(new Date()) }, [stopsFromHook])
   const [stock, setStock] = useState<StockBalance[]>([])
   const [sales, setSales] = useState<Sale[]>([])
   const [loading, setLoading] = useState(true)
   const [tab, setTab] = useState<"supply" | "sales" | "stock">("supply")
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null)
 
+  const [supplyPage, setSupplyPage] = useState(1)
+  const [salesPage, setSalesPage] = useState(1)
+  const PAGE_SIZE = 50
   const [confirmingStop, setConfirmingStop] = useState<PendingStop | null>(null)
   const [supplyLines, setSupplyLines] = useState<SupplyLine[]>([{ product: "", quantity: "" }])
   const [confirmError, setConfirmError] = useState("")
@@ -109,7 +120,7 @@ export default function StoreOfficerDashboard() {
   const [brokerSearch, setBrokerSearch] = useState("")
   const [brokerDropOpen, setBrokerDropOpen] = useState(false)
   const [isBrokerLinked, setIsBrokerLinked] = useState(false)
-  const [saleDate, setSaleDate] = useState(new Date().toISOString().split("T")[0])
+  const [saleDate, setSaleDate] = useState(dayjs().format("YYYY-MM-DD"))
 
   const [updatedStockProducts, setUpdatedStockProducts] = useState<string[]>([])
   const [salesFilter, setSalesFilter] = useState("All")
@@ -124,6 +135,9 @@ export default function StoreOfficerDashboard() {
   async function init() {
     const { data: { session } } = await supabase.auth.getSession()
     if (!session) { router.push("/login"); return }
+
+    const hasRole = await requireDashboardRole(session.user.id, Role.StoreOfficer)
+    if (!hasRole) { router.push("/login"); return }
 
     const { data: profile } = await supabase
       .from("Profiles").select("full_name").eq("user_id", session.user.id).single()
@@ -149,9 +163,9 @@ export default function StoreOfficerDashboard() {
 
     const { data: productsData } = await supabase.rpc("get_products")
     if (productsData) setAllProducts(productsData.map((r: { value: string }) => r.value))
+    if (storeName) setStopsFilter({ store_name: storeName, pending: true })
 
     await Promise.all([
-      fetchPendingStops(storeName),
       fetchStock(storeName),
       fetchSales(officerId),
       fetchTricycles(),
@@ -164,51 +178,12 @@ export default function StoreOfficerDashboard() {
   useEffect(() => {
     if (!officer) return
     const interval = setInterval(() => {
-      fetchPendingStops(officer.store_name)
+      refetchStops()
       fetchStock(officer.store_name)
       setLastUpdated(new Date())
-    }, 30000)
+    }, POLLING_INTERVAL)
     return () => clearInterval(interval)
   }, [officer])
-
-  async function fetchPendingStops(storeName: string) {
-    const { data: stops } = await supabase
-      .from("Stops")
-      .select("stop_id, trip_id, quantity_offloaded, stop_time, stop_location")
-      .eq("stop_location", storeName)
-      .eq("confirmed", false)
-      .eq("disputed", false)
-      .order("stop_time", { ascending: false })
-
-    if (!stops) { setPendingStops([]); return }
-
-    const tripIds = [...new Set(stops.map(s => s.trip_id).filter(Boolean))]
-    const { data: trips } = tripIds.length
-      ? await supabase.from("Trips").select("trip_id, plate_number, driver_id").in("trip_id", tripIds)
-      : { data: [] }
-    const tripMap = Object.fromEntries((trips || []).map(t => [t.trip_id, t]))
-
-    const driverIds = [...new Set((trips || []).map(t => t.driver_id).filter(Boolean))]
-    const { data: drivers } = driverIds.length
-      ? await supabase.from("Drivers").select("driver_id, full_name").in("driver_id", driverIds)
-      : { data: [] }
-    const driverMap = Object.fromEntries((drivers || []).map(d => [d.driver_id, d.full_name]))
-
-    const enriched = stops.map(s => {
-      const trip = tripMap[s.trip_id]
-      return {
-        stop_id: s.stop_id,
-        trip_id: s.trip_id,
-        plate_number: trip?.plate_number ?? "Unknown",
-        driver_name: trip?.driver_id ? (driverMap[trip.driver_id] ?? "Unknown") : "Unknown",
-        quantity_offloaded: s.quantity_offloaded,
-        stop_time: s.stop_time,
-      }
-    })
-
-    setPendingStops(enriched)
-    setLastUpdated(new Date())
-  }
 
   async function fetchStock(storeName: string) {
     const { data } = await supabase
@@ -362,7 +337,7 @@ export default function StoreOfficerDashboard() {
     setSupplyLines([{ product: "", quantity: "" }])
     setConfirmError("")
     await Promise.all([
-      fetchPendingStops(officer.store_name),
+      refetchStops(),
       fetchStock(officer.store_name),
     ])
     setUpdatedStockProducts(supplyLines.map(l => l.product))
@@ -609,7 +584,7 @@ export default function StoreOfficerDashboard() {
               <h1 style={{ margin: 0, fontSize: isMobile ? FONT_SIZE.lg : FONT_SIZE.xl, fontWeight: 700, color: "#0070f3" }}>
                 {officer?.full_name}
               </h1>
-              <RoleSwitcher currentRole="StoreOfficer" style={{ margin: "2px 0 0", fontSize: FONT_SIZE.sm, color: "#64748b" }} />
+              <RoleSwitcher currentRole={Role.StoreOfficer} style={{ margin: "2px 0 0", fontSize: FONT_SIZE.sm, color: "#64748b" }} />
             </div>
           </div>
           <div style={{ display: "flex", gap: 8 }}>
@@ -708,8 +683,8 @@ export default function StoreOfficerDashboard() {
             <div style={{ display: "flex", flexDirection: isMobile ? "column" : "row", justifyContent: "space-between", alignItems: isMobile ? "flex-start" : "center", gap: 12, marginBottom: 16 }}>
               <p style={{ margin: 0, fontWeight: 700, fontSize: FONT_SIZE.lg, color: "#0f172a" }}>Pending Supplies ({pendingStops.length})</p>
               <div style={{ display: "flex", alignItems: "center", gap: 12, fontSize: FONT_SIZE.xs, color: "#94a3b8" }}>
-                {lastUpdated && `Updated: ${lastUpdated.toLocaleTimeString()}`}
-                <button onClick={() => officer && fetchPendingStops(officer.store_name)} style={{ padding: "6px 12px", fontSize: FONT_SIZE.xs, cursor: "pointer", borderRadius: 6, border: "1px solid #e2e8f0", background: "white", color: "#64748b", transition: "all 0.2s" }}>
+                {lastUpdated && `Updated: ${formatTime(lastUpdated)}`}
+                <button onClick={refetchStops} style={{ padding: "6px 12px", fontSize: FONT_SIZE.xs, cursor: "pointer", borderRadius: 6, border: "1px solid #e2e8f0", background: "white", color: "#64748b", transition: "all 0.2s" }}>
                   Refresh
                 </button>
               </div>
@@ -717,14 +692,26 @@ export default function StoreOfficerDashboard() {
 
             {pendingStops.length === 0 && <p style={{ color: "#64748b", fontSize: FONT_SIZE.base }}>No pending supplies.</p>}
 
+            {pendingStops.length > PAGE_SIZE && (
+              <div style={{ display: "flex", justifyContent: "center", gap: 8, marginBottom: 16 }}>
+                <button disabled={supplyPage <= 1} onClick={() => setSupplyPage(p => Math.max(1, p - 1))} style={{ padding: "6px 14px", background: supplyPage <= 1 ? "#f0f0f0" : "white", border: "1px solid #e2e8f0", borderRadius: 8, cursor: supplyPage <= 1 ? "not-allowed" : "pointer", fontSize: FONT_SIZE.xs, color: supplyPage <= 1 ? "#ccc" : "#64748b" }}>
+                  ← Previous
+                </button>
+                <span style={{ display: "flex", alignItems: "center", fontSize: FONT_SIZE.xs, color: "#94a3b8" }}>Page {supplyPage} of {Math.ceil(pendingStops.length / PAGE_SIZE)}</span>
+                <button disabled={supplyPage >= Math.ceil(pendingStops.length / PAGE_SIZE)} onClick={() => setSupplyPage(p => p + 1)} style={{ padding: "6px 14px", background: supplyPage >= Math.ceil(pendingStops.length / PAGE_SIZE) ? "#f0f0f0" : "white", border: "1px solid #e2e8f0", borderRadius: 8, cursor: supplyPage >= Math.ceil(pendingStops.length / PAGE_SIZE) ? "not-allowed" : "pointer", fontSize: FONT_SIZE.xs, color: supplyPage >= Math.ceil(pendingStops.length / PAGE_SIZE) ? "#ccc" : "#64748b" }}>
+                  Next →
+                </button>
+              </div>
+            )}
+
             <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-              {pendingStops.map(stop => (
+              {pendingStops.slice(0, supplyPage * PAGE_SIZE).map(stop => (
                 <div key={stop.stop_id} style={{ background: "white", border: "1px solid #e2e8f0", borderRadius: 12, padding: 16, boxShadow: "0 1px 3px rgba(0,0,0,0.05)" }}>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 12 }}>
                     <div>
                       <p style={{ margin: 0, fontWeight: 700, fontSize: FONT_SIZE.lg, color: "#0f172a" }}>{stop.plate_number}</p>
                       <p style={{ margin: "4px 0 0", fontSize: FONT_SIZE.sm, color: "#64748b" }}>{stop.driver_name}</p>
-                      <p style={{ margin: "4px 0 0", fontSize: FONT_SIZE.xs, color: "#94a3b8" }}>{new Date(stop.stop_time).toLocaleString()}</p>
+                      <p style={{ margin: "4px 0 0", fontSize: FONT_SIZE.xs, color: "#94a3b8" }}>{formatDateTime(stop.stop_time)}</p>
                     </div>
                     <div style={{ textAlign: "right" }}>
                       <p style={{ margin: "0 0 4px 0", fontSize: FONT_SIZE.xs, color: "#94a3b8" }}>Bags delivered</p>
@@ -796,8 +783,20 @@ export default function StoreOfficerDashboard() {
 
             {filteredSales.length === 0 && <p style={{ color: "#64748b", fontSize: FONT_SIZE.base }}>No sales logged yet.</p>}
 
+            {filteredSales.length > PAGE_SIZE && (
+              <div style={{ display: "flex", justifyContent: "center", gap: 8, marginBottom: 16 }}>
+                <button disabled={salesPage <= 1} onClick={() => setSalesPage(p => Math.max(1, p - 1))} style={{ padding: "6px 14px", background: salesPage <= 1 ? "#f0f0f0" : "white", border: "1px solid #e2e8f0", borderRadius: 8, cursor: salesPage <= 1 ? "not-allowed" : "pointer", fontSize: FONT_SIZE.xs, color: salesPage <= 1 ? "#ccc" : "#64748b" }}>
+                  ← Previous
+                </button>
+                <span style={{ display: "flex", alignItems: "center", fontSize: FONT_SIZE.xs, color: "#94a3b8" }}>Page {salesPage} of {Math.ceil(filteredSales.length / PAGE_SIZE)}</span>
+                <button disabled={salesPage >= Math.ceil(filteredSales.length / PAGE_SIZE)} onClick={() => setSalesPage(p => p + 1)} style={{ padding: "6px 14px", background: salesPage >= Math.ceil(filteredSales.length / PAGE_SIZE) ? "#f0f0f0" : "white", border: "1px solid #e2e8f0", borderRadius: 8, cursor: salesPage >= Math.ceil(filteredSales.length / PAGE_SIZE) ? "not-allowed" : "pointer", fontSize: FONT_SIZE.xs, color: salesPage >= Math.ceil(filteredSales.length / PAGE_SIZE) ? "#ccc" : "#64748b" }}>
+                  Next →
+                </button>
+              </div>
+            )}
+
             <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-              {filteredSales.map(sale => {
+              {filteredSales.slice(0, salesPage * PAGE_SIZE).map(sale => {
                 const totalAmount = sale.lines.reduce((sum, line) => sum + (line.total_amount ?? 0), 0)
                 const hasBrokerPricing = sale.lines.some(line => line.price_per_bag === null)
 
@@ -810,7 +809,7 @@ export default function StoreOfficerDashboard() {
                       </p>
                       {sale.customer_name && <p style={{ margin: "4px 0 0", fontSize: FONT_SIZE.sm, color: "#64748b" }}>{sale.customer_name}</p>}
                       {sale.broker_name && <p style={{ margin: "4px 0 0", fontSize: FONT_SIZE.sm, color: "#0070f3", fontWeight: 500 }}>Broker: {sale.broker_name}</p>}
-                      <p style={{ margin: "4px 0 0", fontSize: FONT_SIZE.xs, color: "#94a3b8" }}>{new Date(sale.sold_at).toLocaleString()}</p>
+                      <p style={{ margin: "4px 0 0", fontSize: FONT_SIZE.xs, color: "#94a3b8" }}>{formatDateTime(sale.sold_at)}</p>
                     </div>
                     <div style={{ textAlign: "right" }}>
                       {!hasBrokerPricing ? (
@@ -1264,7 +1263,7 @@ export default function StoreOfficerDashboard() {
                 setIsBrokerLinked(false)
                 setSaleBroker(null)
                 setBrokerSearch("")
-                setSaleDate(new Date().toISOString().split("T")[0])
+                setSaleDate(dayjs().format("YYYY-MM-DD"))
               }} style={{ padding: "12px 16px", background: "white", border: "1px solid #cbd5e1", color: "#475569", borderRadius: 8, cursor: "pointer", fontWeight: 600, fontSize: FONT_SIZE.md, minHeight: 44 }}>Cancel</button>
               <button onClick={handleLogSale} disabled={saleLoading} style={{ padding: "12px 16px", background: "#0070f3", color: "white", border: "none", borderRadius: 8, cursor: saleLoading ? "not-allowed" : "pointer", fontWeight: 600, fontSize: FONT_SIZE.md, opacity: saleLoading ? 0.7 : 1, minHeight: 44 }}>
                 {saleLoading ? "Logging..." : `Log ${saleLines.filter(l => l.product).length} Sale(s)`}
@@ -1288,7 +1287,7 @@ export default function StoreOfficerDashboard() {
         isOpen={showReportModal}
         onClose={() => setShowReportModal(false)}
         userId={officer?.officer_id || ""}
-        userRole="StoreOfficer"
+        userRole={Role.StoreOfficer}
       />
     </div>
   )

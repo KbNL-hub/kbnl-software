@@ -30,7 +30,7 @@ export function useData<T>(
       setLoading(true)
       setError(null)
 
-      const query = buildQuery() as any
+      const query = buildQuery()
       const { data: result, error: err } = await query
 
       if (cancelled || !mountedRef.current) return

@@ -7,7 +7,7 @@ const supabaseAdmin = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!,
 )
 
-const ALLOWED_TABLES = ["Trucks", "tricycles", "reports", "driver_complaints", "truck_officers", "truck_admins", "cash_officers", "store_officers", "Brokers", "Profiles", "Drivers", "station_managers", "desk_officers", "atc_officers", "company_prices", "company_price_history"] as const
+const ALLOWED_TABLES = ["Trucks", "tricycles", "reports", "driver_complaints", "truck_officers", "truck_admins", "cash_officers", "store_officers", "Brokers", "Profiles", "Drivers", "station_managers", "desk_officers", "atc_officers", "company_prices", "company_price_history", "side_trips"] as const
 
 const TABLE_ROLES: Record<string, string[]> = {
   Trucks: ["TruckAdmin", "TruckOfficer", "Admin", "SuperAdmin", "ATCOfficer", "Broker", "DeskOfficer", "Supervisor"],
@@ -26,6 +26,7 @@ const TABLE_ROLES: Record<string, string[]> = {
   atc_officers: ["Admin", "SuperAdmin"],
   company_prices: ["Admin", "SuperAdmin"],
   company_price_history: ["Admin", "SuperAdmin"],
+  side_trips: ["Admin", "SuperAdmin", "Supervisor", "ATCOfficer", "TruckAdmin", "Driver"],
 }
 
 function buildError(msg: string, status: number) {

@@ -74,11 +74,7 @@ export async function POST(req: NextRequest) {
       const safeParams = Object.fromEntries(
         Object.entries(params || {}).filter(([k]) => allowedKeys.includes(k))
       )
-      const result = await supabaseAdmin.rpc(fnName as any, {
-        ...safeParams,
-        p_user_id: auth.userId,
-        p_role: auth.primaryRole,
-      })
+      const result = await supabaseAdmin.rpc(fnName as any, safeParams)
       if (result.error) {
         return buildError(result.error.message || "RPC failed", 500)
       }

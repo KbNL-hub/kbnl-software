@@ -10,6 +10,8 @@ import ReportModal from "@/components/ReportModal"
 import ProfilePictureUpload from "@/components/ProfilePictureUpload"
 import { FONT_SIZE } from "@/lib/constants"
 import { useBreakpoint } from "@/app/hooks/useBreakpoint"
+import { requireDashboardRole } from "@/lib/auth-helpers"
+import { Role } from "@/lib/roles"
 
 type Clerk = { clerk_id: string; full_name: string; office_name: string; profile_picture_url?: string }
 
@@ -29,6 +31,9 @@ export default function CashOfficerDashboard() {
   async function init() {
     const { data: { session } } = await supabase.auth.getSession()
     if (!session) { router.push("/login"); return }
+
+    const hasRole = await requireDashboardRole(session.user.id, Role.CashOfficer)
+    if (!hasRole) { router.push("/login"); return }
 
     const { data: profile } = await supabase
       .from("Profiles").select("full_name").eq("user_id", session.user.id).single()
@@ -109,7 +114,7 @@ export default function CashOfficerDashboard() {
               <h1 style={{ margin: 0, fontSize: isMobile ? FONT_SIZE.lg : FONT_SIZE.xl, fontWeight: 700, color: "#0070f3" }}>
                 {clerk?.full_name || ""}
               </h1>
-              <RoleSwitcher currentRole="CashOfficer" style={{ margin: "2px 0 0", fontSize: FONT_SIZE.sm, color: "#64748b" }} />
+              <RoleSwitcher currentRole={Role.CashOfficer} style={{ margin: "2px 0 0", fontSize: FONT_SIZE.sm, color: "#64748b" }} />
             </div>
           </div>
           <div style={{ display: "flex", gap: 8 }}>
@@ -155,7 +160,7 @@ export default function CashOfficerDashboard() {
         isOpen={showReportModal}
         onClose={() => setShowReportModal(false)}
         userId={clerk?.clerk_id || ""}
-        userRole="CashOfficer"
+        userRole={Role.CashOfficer}
       />
     </div>
   )

@@ -11,4 +11,4 @@ export const FONT_SIZE = {
 
 export const STORAGE_BUCKET = "profile-pictures"
 export const MAX_FILE_SIZE = 1 * 1024 * 1024
-export const POLLING_INTERVAL = 30000
+export const POLLING_INTERVAL = 120000

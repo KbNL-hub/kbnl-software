@@ -8,6 +8,7 @@ import { supabase } from "@/lib/supabase"
 import { apiMutate } from "@/lib/api-mutation"
 import RoleSwitcher from "@/components/RoleSwitcher"
 import { useBreakpoint } from "@/app/hooks/useBreakpoint"
+import { Role } from "@/lib/roles"
 import { toTitleCase } from "@/lib/title-case"
 import ReportModal from "@/components/ReportModal"
 
@@ -603,7 +604,7 @@ export default function BrokerPanel({ userProfile }: Props) {
         isOpen={showReportModal}
         onClose={() => setShowReportModal(false)}
         userId={userProfile.user_id}
-        userRole="Broker"
+        userRole={Role.Broker}
       />
 
       {/* Profile Picture Upload Modal */}

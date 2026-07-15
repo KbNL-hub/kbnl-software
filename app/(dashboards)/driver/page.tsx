@@ -15,7 +15,10 @@ import { useOfflineTripAction } from "@/app/hooks/useOfflineTripAction"
 import { initTripActionAutoSync } from "@/lib/offline/tripActionSync"
 import { clearOfflineTripData } from '@/lib/offline/tripsDb'
 import { FONT_SIZE } from "@/lib/constants"
-import { toISOString } from "@/lib/date-utils"
+import { toISOString, formatDate } from "@/lib/date-utils"
+import { requireDashboardRole } from "@/lib/auth-helpers"
+import { Role } from "@/lib/roles"
+import { useATFs } from "@/lib/hooks/useATFs"
 
 type Driver = { driver_id: string; full_name: string; profile_picture_url?: string }
 type Trip = {
@@ -36,6 +39,15 @@ type Stop = {
   stop_time: string
 }
 type Truck = { plate_number: string; kbnl_truck_no?: string; truck_size: string | null }
+type Complaint = {
+  complaint_id: string
+  complaint_type: string
+  notes: string
+  plate_number: string
+  reported_at: string
+  resolved: boolean
+}
+
 type LoadMoreEntry = {
   id: string
   quantity: number
@@ -58,7 +70,7 @@ type ATF = {
   invalidation_reason: string | null
 }
 
-type ViewType = "dashboard" | "start-trip" | "active-trip" | "log-stop" | "fuel"
+type ViewType = "dashboard" | "start-trip" | "active-trip" | "log-stop" | "fuel" | "side-trips"
 
 const LOADING_POINT_MAP: Record<string, string[]> = {
   Factory: ["Lafarge Mfamosing", "Lafarge Uyo Warehouse"],
@@ -70,6 +82,8 @@ const FACTORY_PRODUCTS: Record<string, string[]> = {
   "Lafarge Mfamosing": ["Classic", "Supaset", "Supafix"],
   "Lafarge Uyo Warehouse": ["Classic", "Supaset", "Supafix"],
 }
+
+const SIDE_TRIP_ITEMS = ["Yam", "Plantain", "Cassava", "Maize", "Rice", "Other foodstuff"]
 
 const COMPLAINT_TYPES = [
   "Breakdown", "Tyre Blowout", "Accident", "Police / Checkpoint Issue",
@@ -107,6 +121,13 @@ export default function DriverDashboard() {
   const [atfs, setAtfs] = useState<ATF[]>([])
   const [activeATF, setActiveATF] = useState<ATF | null>(null)
   const [confirmingATF, setConfirmingATF] = useState(false)
+  const [atfFilter, setAtfFilter] = useState<{ driver_id: string } | null>(null)
+  const { data: atfsFromHook, refetch: refetchATFs } = useATFs(atfFilter ?? undefined)
+  useEffect(() => {
+    setAtfs(atfsFromHook as ATF[])
+    const active = atfsFromHook.find(a => a.atf_status === "Authorised" || a.atf_status === "Dispensed")
+    setActiveATF((active as ATF) ?? null)
+  }, [atfsFromHook])
 
   // Modals
   const [showEndConfirm, setShowEndConfirm] = useState(false)
@@ -133,7 +154,7 @@ export default function DriverDashboard() {
   const [complaintPendingEndTrip, setComplaintPendingEndTrip] = useState(false)
   const [showMyComplaints, setShowMyComplaints] = useState(false)
   const [complaintsRefreshKey, setComplaintsRefreshKey] = useState(0)
-  const [myComplaints, setMyComplaints] = useState<{ complaint_id: string; complaint_type: string; notes: string; plate_number: string; reported_at: string; resolved: boolean }[]>([])
+  const [myComplaints, setMyComplaints] = useState<Complaint[]>([])
   const [fetchingComplaints, setFetchingComplaints] = useState(false)
   const [resolvingComplaintId, setResolvingComplaintId] = useState<string | null>(null)
 
@@ -145,6 +166,14 @@ export default function DriverDashboard() {
   const [loadMoreProductOptions, setLoadMoreProductOptions] = useState<string[]>([])
   const [loadMoreError, setLoadMoreError] = useState("")
   const [loadMoreSubmitting, setLoadMoreSubmitting] = useState(false)
+
+  // Side trips
+  const [sideTripTruck, setSideTripTruck] = useState("")
+  const [sideTripItem, setSideTripItem] = useState("")
+  const [sideTripCustomItem, setSideTripCustomItem] = useState("")
+  const [sideTripSubmitting, setSideTripSubmitting] = useState(false)
+  const [sideTripMessage, setSideTripMessage] = useState("")
+  const [mySideTrips, setMySideTrips] = useState<{ id: string; plate_number: string; item_description: string; created_at: string }[]>([])
 
   // Start trip
   const [truckSize, setTruckSize] = useState("")
@@ -164,17 +193,23 @@ export default function DriverDashboard() {
   const loadedQtyRef = useRef<HTMLInputElement | null>(null)
   const allStoreLocations = [...LOADING_POINT_MAP.Depot, ...LOADING_POINT_MAP.Outlet]
 
+  const mountedRef = useRef(true)
+
   useEffect(() => {
     initTripActionAutoSync()
   }, [])
 
-  useEffect(() => { initDriver() }, [])
+  useEffect(() => {
+    mountedRef.current = true
+    initDriver()
+    return () => { mountedRef.current = false }
+  }, [])
 
   // Sync initial view from URL
   useEffect(() => {
     const params = new URLSearchParams(window.location.search)
     const viewParam = params.get('view') as ViewType | null
-    if (viewParam && ["dashboard", "start-trip", "active-trip", "log-stop", "fuel"].includes(viewParam)) {
+    if (viewParam && ["dashboard", "start-trip", "active-trip", "log-stop", "fuel", "side-trips"].includes(viewParam)) {
       setView(viewParam)
     }
   }, [])
@@ -184,7 +219,7 @@ export default function DriverDashboard() {
     const handlePopState = () => {
       const params = new URLSearchParams(window.location.search)
       const viewParam = params.get('view') as ViewType | null
-      if (viewParam && ["dashboard", "start-trip", "active-trip", "log-stop", "fuel"].includes(viewParam)) {
+      if (viewParam && ["dashboard", "start-trip", "active-trip", "log-stop", "fuel", "side-trips"].includes(viewParam)) {
         setView(viewParam)
       }
     }
@@ -200,10 +235,16 @@ export default function DriverDashboard() {
   async function initDriver() {
     const { data: { session } } = await supabase.auth.getSession()
     if (!session) { window.location.href = "/login"; return }
+    if (!mountedRef.current) return
     const user = session.user
+
+    const hasRole = await requireDashboardRole(user.id, Role.Driver)
+    if (!hasRole) { window.location.href = "/login"; return }
+    if (!mountedRef.current) return
 
     const { data: profile } = await supabase
       .from("Profiles").select("full_name").eq("user_id", user.id).single()
+    if (!mountedRef.current) return
 
     const { data: driverData } = await supabase
       .from("Drivers").select("driver_id, full_name, profile_picture_url").eq("driver_id", user.id).single()
@@ -228,15 +269,18 @@ export default function DriverDashboard() {
 
     const { data: activePlates } = await supabase
       .from("Trips").select("plate_number").in("trip_status", ["In transit", "On hold"])
+    if (!mountedRef.current) return
     const usedPlates = activePlates?.map(t => t.plate_number) || []
 
     const { data: trucksData } = await supabase
       .from("Trucks").select("plate_number, kbnl_truck_no, truck_size").eq("status", "Empty")
+    if (!mountedRef.current) return
     const available = (trucksData || []).filter(t => !usedPlates.includes(t.plate_number))
     let merged: Truck[] = [...available]
 
     const { data: tricyclesData } = await supabase
       .from("tricycles").select("tricycle_number, assigned_to")
+    if (!mountedRef.current) return
     const availableTricycles: Truck[] = (tricyclesData || [])
       .filter(t => !usedPlates.includes(t.tricycle_number))
       .map(t => ({ plate_number: t.tricycle_number, kbnl_truck_no: t.assigned_to, truck_size: "Tricycle" }))
@@ -246,37 +290,17 @@ export default function DriverDashboard() {
     setAllTrucks([...(trucksData || []), ...availableTricycles])
 
     const { data: productsData } = await supabase.rpc("get_products")
+    if (!mountedRef.current) return
     if (productsData) {
       const list = productsData.map((r: { value: string }) => r.value)
       setAllProducts(list)
       setProductOptions(list)
     }
 
-    await fetchATFs(user.id)
+    setAtfFilter({ driver_id: user.id })
+    if (!mountedRef.current) return
+    fetchSideTrips(user.id)
     setLoading(false)
-  }
-
-  async function fetchATFs(driverId: string) {
-    const { data: raw } = await supabase
-      .from("fuel_requests")
-      .select("request_id, atf_code, plate_number, company_id, litres, rate_per_litre, total_amount, atf_status, requested_at, invalidation_reason")
-      .eq("driver_id", driverId)
-      .order("requested_at", { ascending: false })
-      .limit(20)
-
-    if (!raw) { setAtfs([]); return }
-
-    const companyIds = [...new Set(raw.map(r => r.company_id).filter(Boolean))]
-    const { data: companies } = companyIds.length
-      ? await supabase.from("fuel_companies").select("company_id, company_name").in("company_id", companyIds)
-      : { data: [] }
-    const companyMap = Object.fromEntries((companies || []).map(c => [c.company_id, c.company_name]))
-
-    const enriched = raw.map(r => ({ ...r, company_name: companyMap[r.company_id] ?? "Unknown" }))
-
-    setAtfs(enriched)
-    const active = enriched.find(a => a.atf_status === "Authorised" || a.atf_status === "Dispensed")
-    setActiveATF(active ?? null)
   }
 
   async function fetchStops(tripId: string, loadedQty: number) {
@@ -316,6 +340,41 @@ export default function DriverDashboard() {
     setLoadMoreEntries(data || [])
   }
 
+  async function fetchSideTrips(driverId?: string) {
+    const id = driverId || driver?.driver_id
+    if (!id) return
+    const { data } = await supabase
+      .from("side_trips")
+      .select("id, plate_number, item_description, created_at")
+      .eq("driver_id", id)
+      .order("created_at", { ascending: false })
+
+    setMySideTrips(data || [])
+  }
+
+  async function handleSubmitSideTrip() {
+    if (!sideTripTruck) return setSideTripMessage("Select a truck")
+    const item = sideTripItem === "Other foodstuff" ? sideTripCustomItem.trim() : sideTripItem
+    if (!item) return setSideTripMessage("Select or enter the item you're carrying")
+
+    setSideTripSubmitting(true)
+    const { error } = await apiMutate("admin", {
+      action: "insert",
+      table: "side_trips",
+      data: {
+        driver_id: driver?.driver_id,
+        plate_number: sideTripTruck,
+        item_description: item,
+      },
+    })
+    setSideTripSubmitting(false)
+
+    if (error) { setSideTripMessage("Failed to record side trip"); return }
+
+    setSideTripTruck(""); setSideTripItem(""); setSideTripCustomItem(""); setSideTripMessage("")
+    await fetchSideTrips()
+  }
+
   async function handleConfirmReceipt() {
     if (!activeATF || !driver) return
     setConfirmingATF(true)
@@ -328,7 +387,7 @@ export default function DriverDashboard() {
       },
     })
     setConfirmingATF(false)
-    await fetchATFs(driver.driver_id)
+    refetchATFs()
   }
 
 
@@ -552,7 +611,7 @@ export default function DriverDashboard() {
         .eq("driver_id", driver?.driver_id)
         .order("reported_at", { ascending: false })
       if (!cancelled) {
-        setMyComplaints((data || []) as any)
+        setMyComplaints(data || [])
         setFetchingComplaints(false)
       }
     })()
@@ -695,7 +754,7 @@ export default function DriverDashboard() {
               <h1 style={{ margin: 0, fontSize: isMobile ? FONT_SIZE.lg : FONT_SIZE.xl, fontWeight: 700, color: "#0070f3" }}>
                 {driver?.full_name}
               </h1>
-              <RoleSwitcher currentRole="Driver" style={{ margin: "2px 0 0", fontSize: FONT_SIZE.sm, color: "#64748b" }} />
+              <RoleSwitcher currentRole={Role.Driver} style={{ margin: "2px 0 0", fontSize: FONT_SIZE.sm, color: "#64748b" }} />
             </div>
           </div>
           <div style={{ display: "flex", gap: 8 }}>
@@ -746,6 +805,11 @@ export default function DriverDashboard() {
                   <span style={{ position: "absolute", top: 10, right: 14, width: 8, height: 8, borderRadius: "50%", background: "#f5a623", border: "2px solid white" }} />
                 )}
               </button>
+
+              <button onClick={() => navigateTo("side-trips")} className="btn-outline-amber" style={{ width: "100%", padding: "12px 16px", background: "white", color: "#f5a623", border: "1.5px solid #f5a623", borderRadius: 10, cursor: "pointer", fontWeight: 600, fontSize: FONT_SIZE.md, minHeight: 48, display: "flex", alignItems: "center", justifyContent: "center", gap: 8, position: "relative", transition: "all 0.2s" }}>
+                <Icon icon="mdi:road-variant" width={18} />
+                Record Side Trip
+              </button>
             </div>
           </div>
         )}
@@ -757,7 +821,7 @@ export default function DriverDashboard() {
               <button onClick={() => navigateTo("dashboard")} className="btn-hover-opacity-8" style={{ background: "none", border: "none", color: "#0070f3", cursor: "pointer", padding: 0, fontSize: FONT_SIZE.base, display: "flex", alignItems: "center", gap: 4, fontWeight: 600, transition: "all 0.2s" }}>
                 <Icon icon="mdi:arrow-left" width={18} /> Back
               </button>
-              <button onClick={() => driver && fetchATFs(driver.driver_id)} className="refresh-btn" style={{ padding: "8px 12px", background: "white", color: "#64748b", border: "1px solid #e2e8f0", borderRadius: 8, cursor: "pointer", fontSize: FONT_SIZE.xs, fontWeight: 500, minHeight: 40, minWidth: 40, display: "flex", alignItems: "center", justifyContent: "center", transition: "all 0.2s" }} title="Refresh">
+              <button onClick={refetchATFs} className="refresh-btn" style={{ padding: "8px 12px", background: "white", color: "#64748b", border: "1px solid #e2e8f0", borderRadius: 8, cursor: "pointer", fontSize: FONT_SIZE.xs, fontWeight: 500, minHeight: 40, minWidth: 40, display: "flex", alignItems: "center", justifyContent: "center", transition: "all 0.2s" }} title="Refresh">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36M20.49 15a9 9 0 0 1-14.85 3.36"/></svg>
               </button>
             </div>
@@ -842,7 +906,7 @@ export default function DriverDashboard() {
                             <div>
                               <p style={{ margin: 0, fontWeight: 700, fontSize: FONT_SIZE.base, fontFamily: "monospace", letterSpacing: 1, color: "#0f172a" }}>{atf.atf_code}</p>
                               <p style={{ margin: "4px 0 0", fontSize: FONT_SIZE.sm, color: "#64748b" }}>{atf.plate_number} · {atf.company_name}</p>
-                              <p style={{ margin: "2px 0 0", fontSize: FONT_SIZE.xs, color: "#94a3b8" }}>{new Date(atf.requested_at).toLocaleDateString()}</p>
+                              <p style={{ margin: "2px 0 0", fontSize: FONT_SIZE.xs, color: "#94a3b8" }}>{formatDate(atf.requested_at)}</p>
                             </div>
                             <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "4px 10px", borderRadius: 20, background: cfg.bg, border: `1px solid ${cfg.color}40` }}>
                               <Icon icon={cfg.icon} width={13} color={cfg.color} />
@@ -879,6 +943,88 @@ export default function DriverDashboard() {
                 <Icon icon="mdi:gas-station-off" width={48} color="#cbd5e1" style={{ marginBottom: 12 }} />
                 <p style={{ marginBottom: 0, fontSize: FONT_SIZE.base, fontWeight: 600, color: "#0f172a" }}>No fuel requests yet</p>
                 <p style={{ margin: "4px 0 0", fontSize: FONT_SIZE.sm, color: "#64748b" }}>Your Truck Officer will initiate when needed.</p>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ── Side Trips ── */}
+        {view === "side-trips" && (
+          <div>
+            <button onClick={() => { navigateTo("dashboard"); setSideTripMessage("") }} className="btn-hover-opacity-8" style={{ background: "none", border: "none", color: "#0070f3", cursor: "pointer", marginBottom: 20, padding: 0, fontSize: FONT_SIZE.base, display: "flex", alignItems: "center", gap: 4, fontWeight: 600, transition: "all 0.2s" }}>
+              <Icon icon="mdi:arrow-left" width={18} /> Back
+            </button>
+            <h2 style={{ marginBottom: 4, color: "#0f172a", fontSize: isMobile ? FONT_SIZE["2xl"] : FONT_SIZE.xl, fontWeight: 700 }}>Record Side Trip</h2>
+            <p style={{ margin: "0 0 24px", fontSize: FONT_SIZE.sm, color: "#64748b" }}>
+              Report unofficial trips where you carried goods other than cement
+            </p>
+
+            <div style={{ maxWidth: 480, marginBottom: 32 }}>
+              <div style={{ marginBottom: 16 }}>
+                <label style={labelStyle}>Truck *</label>
+                <div style={{ position: "relative" }}>
+                  <ModernInput as="select" value={sideTripTruck} onChange={e => { setSideTripTruck(e.target.value); setSideTripMessage("") }} style={inputStyle}>
+                    <option value="">Select truck</option>
+                    {allTrucks.map(t => <option key={t.plate_number} value={t.plate_number}>{t.plate_number}{t.kbnl_truck_no ? (t.truck_size === "Tricycle" ? ` · ${t.kbnl_truck_no}` : ` · #${t.kbnl_truck_no}`) : ""}</option>)}
+                  </ModernInput>
+                </div>
+              </div>
+
+              <div style={{ marginBottom: 16 }}>
+                <label style={labelStyle}>Item You're Carrying *</label>
+                <div style={{ position: "relative" }}>
+                  <ModernInput as="select" value={sideTripItem} onChange={e => { setSideTripItem(e.target.value); setSideTripCustomItem(""); setSideTripMessage("") }} style={inputStyle}>
+                    <option value="">Select item</option>
+                    {SIDE_TRIP_ITEMS.map(item => <option key={item} value={item}>{item}</option>)}
+                  </ModernInput>
+                </div>
+              </div>
+
+              {sideTripItem === "Other foodstuff" && (
+                <div style={{ marginBottom: 16 }}>
+                  <label style={labelStyle}>Describe Item *</label>
+                  <ModernInput type="text" placeholder="e.g. Beans, Groundnuts, Vegetables..." value={sideTripCustomItem} onChange={e => { setSideTripCustomItem(e.target.value); setSideTripMessage("") }} style={inputStyle} />
+                </div>
+              )}
+
+              {sideTripMessage && (
+                <div style={{ padding: 12, background: sideTripMessage.includes("✅") ? "#f0fff4" : "#fef2f2", border: `1px solid ${sideTripMessage.includes("✅") ? "#86efac" : "#fecaca"}`, borderRadius: 8, marginBottom: 16, color: sideTripMessage.includes("✅") ? "#166534" : "#b91c1c", fontSize: FONT_SIZE.sm, fontWeight: 600, display: "flex", alignItems: "center", gap: 8 }}>
+                  <Icon icon={sideTripMessage.includes("✅") ? "mdi:check-circle" : "mdi:alert-circle"} width={16} />{sideTripMessage}
+                </div>
+              )}
+
+              <button onClick={handleSubmitSideTrip} disabled={sideTripSubmitting} style={{ width: "100%", padding: "14px 16px", background: sideTripSubmitting ? "#bfdbfe" : "#f5a623", color: "white", border: "none", borderRadius: 10, cursor: sideTripSubmitting ? "not-allowed" : "pointer", fontWeight: 700, fontSize: FONT_SIZE.md, minHeight: 48, display: "flex", alignItems: "center", justifyContent: "center", gap: 8, opacity: sideTripSubmitting ? 0.7 : 1, transition: "opacity 0.2s" }}>
+                {sideTripSubmitting
+                  ? <><Icon icon="mdi:loading" width={18} style={{ animation: "spin 1s linear infinite" }} /> Submitting…</>
+                  : <><Icon icon="mdi:road-variant" width={18} /> Report Side Trip</>
+                }
+              </button>
+            </div>
+
+            {/* Past Side Trips */}
+            {mySideTrips.length > 0 && (
+              <div>
+                <p style={{ fontWeight: 700, marginBottom: 12, fontSize: FONT_SIZE.base, color: "#0f172a" }}>Your Side Trips ({mySideTrips.length})</p>
+                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                  {mySideTrips.map(t => (
+                    <div key={t.id} style={{ background: "white", border: "1px solid #e2e8f0", borderRadius: 10, padding: "12px 16px", boxShadow: "0 1px 3px rgba(0,0,0,0.05)" }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                          <div style={{ width: 32, height: 32, borderRadius: 8, background: "#fffbeb", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                            <Icon icon="mdi:package-variant" width={16} color="#f59e0b" />
+                          </div>
+                          <div>
+                            <p style={{ margin: 0, fontWeight: 700, fontSize: FONT_SIZE.sm, color: "#0f172a" }}>{t.item_description}</p>
+                            <p style={{ margin: "2px 0 0", color: "#64748b", fontSize: FONT_SIZE.sm }}>{t.plate_number}</p>
+                          </div>
+                        </div>
+                        <p style={{ margin: 0, fontSize: FONT_SIZE.xs, color: "#94a3b8" }}>
+                          {new Date(t.created_at).toLocaleDateString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}
+                        </p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
               </div>
             )}
           </div>

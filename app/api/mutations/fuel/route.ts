@@ -30,7 +30,7 @@ const RPC_PARAM_SCHEMAS: Record<string, string[]> = {
   confirm_fuel_deposit: ["p_deposit_id"],
   decline_fuel_deposit: ["p_deposit_id"],
   invalidate_atf: ["p_request_id", "p_reason", "p_status_filter"],
-  dispense_fuel: ["p_request_id", "p_litres"],
+  dispense_fuel: ["p_request_id", "p_rate", "p_total", "p_plate_number"],
 }
 
 function buildError(msg: string, status: number) {
@@ -60,11 +60,7 @@ export async function POST(req: NextRequest) {
       const safeParams = Object.fromEntries(
         Object.entries(params || {}).filter(([k]) => allowedKeys.includes(k))
       )
-      const result = await supabaseAdmin.rpc(fnName as any, {
-        ...safeParams,
-        p_user_id: auth.userId,
-        p_role: auth.primaryRole,
-      })
+      const result = await supabaseAdmin.rpc(fnName as any, safeParams)
       if (result.error) {
         return buildError(result.error.message || "RPC failed", 500)
       }

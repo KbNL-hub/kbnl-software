@@ -4,27 +4,12 @@ import { useState, useEffect, useRef } from "react"
 import { useRouter } from "next/navigation"
 import { supabase } from "@/lib/supabase"
 import { getRoleDashboard } from "@/lib/permissions"
+import { ROLE_LABELS, Role } from "@/lib/roles"
 
 type Props = {
   currentRole: string
   style?: React.CSSProperties
   onRoleSwitch?: (newRole: string) => void
-}
-
-const LABELS: Record<string, string> = {
-  Admin: "Admin",
-  SuperAdmin: "Super Admin",
-  Supervisor: "Supervisor",
-  CashAuthorizer: "Cash Authorizer",
-  Broker: "Broker",
-  TruckAdmin: "Truck Admin",
-  DeskOfficer: "Desk Officer",
-  ATCOfficer: "ATC Officer",
-  Driver: "Driver",
-  StationManager: "Station Manager",
-  TruckOfficer: "Truck Officer",
-  StoreOfficer: "Store Officer",
-  CashOfficer: "Cash Officer",
 }
 
 export default function RoleSwitcher({ currentRole, style, onRoleSwitch }: Props) {
@@ -92,7 +77,7 @@ export default function RoleSwitcher({ currentRole, style, onRoleSwitch }: Props
     : "rgba(100,116,139,0.18)"
 
   if (uniqueRoles.length <= 1) {
-    return <span style={style}>{LABELS[currentRole] || currentRole}</span>
+    return <span style={style}>{ROLE_LABELS[currentRole as Role] || currentRole}</span>
   }
 
   return (
@@ -115,7 +100,7 @@ export default function RoleSwitcher({ currentRole, style, onRoleSwitch }: Props
         onMouseEnter={e => { e.currentTarget.style.background = pillBgHover }}
         onMouseLeave={e => { e.currentTarget.style.background = pillBg }}
       >
-        {LABELS[currentRole] || currentRole}
+        {ROLE_LABELS[currentRole as Role] || currentRole}
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ transition: "transform 0.2s", transform: open ? "rotate(180deg)" : "none" }}>
           <path d="M6 9l6 6 6-6" />
         </svg>
@@ -172,7 +157,7 @@ export default function RoleSwitcher({ currentRole, style, onRoleSwitch }: Props
                 onMouseEnter={e => { if (r !== currentRole) e.currentTarget.style.background = "#f8fafc" }}
                 onMouseLeave={e => { if (r !== currentRole) e.currentTarget.style.background = "transparent" }}
               >
-                <span>{LABELS[r] || r}</span>
+                <span>{ROLE_LABELS[r as Role] || r}</span>
                 {r === currentRole && (
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#0070f3" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
                     <path d="M20 6L9 17l-5-5" />

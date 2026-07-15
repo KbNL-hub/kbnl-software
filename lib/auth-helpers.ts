@@ -21,6 +21,18 @@ export async function getPrimaryRole(userId: string): Promise<string | null> {
   return data?.role || null
 }
 
+export async function requireDashboardRole(
+  userId: string,
+  requiredRole: string
+): Promise<boolean> {
+  const roles = await getUserRoles(userId)
+  if (roles.length === 0) {
+    const primaryRole = await getPrimaryRole(userId)
+    return primaryRole === requiredRole
+  }
+  return roles.includes(requiredRole)
+}
+
 export function generateTempPassword(): string {
   const values = new Uint32Array(5)
   crypto.getRandomValues(values)
