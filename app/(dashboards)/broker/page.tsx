@@ -238,7 +238,7 @@ export default function BrokerDashboard() {
 
   const filterOptions: { key: "pending" | "confirmed" | "disputed"; label: string; count: number; color: string }[] = [
     { key: "pending", label: "Pending", count: pendingStops.length, color: "#0070f3" },
-    { key: "confirmed", label: "Confirmed", count: confirmedStops.length, color: "#00aa00" },
+    { key: "confirmed", label: "Confirmed", count: confirmedStops.length, color: "#10b981" },
     { key: "disputed", label: "Disputed", count: disputedStops.length, color: "#ff4444" },
   ]
 
@@ -563,10 +563,10 @@ export default function BrokerDashboard() {
                       {activeFilter === "confirmed" && (
                         <div style={{
                           display: "flex", alignItems: "center", gap: 6,
-                          padding: "8px 10px", background: "#f0fff4", borderRadius: 7,
+                          padding: "8px 10px", background: "#ecfdf5", borderRadius: 7,
                         }}>
-                          <Icon icon="mdi:check-circle" width={16} color="#00aa00" />
-                          <span style={{ fontSize: 13, color: "#00aa00", fontWeight: "600" }}>Confirmed</span>
+                          <Icon icon="mdi:check-circle" width={16} color="#10b981" />
+                          <span style={{ fontSize: 13, color: "#10b981", fontWeight: "600" }}>Confirmed</span>
                         </div>
                       )}
 

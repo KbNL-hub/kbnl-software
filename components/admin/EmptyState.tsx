@@ -24,7 +24,7 @@ export function EmptyState({ icon, title, description }: EmptyStateProps) {
         boxShadow: "0 1px 3px rgba(0, 0, 0, 0.05)",
       }}
     >
-      {icon && <div style={{ fontSize: 32, marginBottom: 12 }}>{icon}</div>}
+      {icon && <div style={{ display: "flex", justifyContent: "center", alignItems: "center", marginBottom: 12 }}>{icon}</div>}
       <h3 style={{ margin: "0 0 8px", color: "#0f172a", fontSize: FONT_SIZE.xl, fontWeight: 600 }}>{title}</h3>
       <p style={{ color: "#64748b", fontSize: FONT_SIZE.base, margin: 0 }}>{description}</p>
     </div>

@@ -17,27 +17,14 @@ type SideTrip = {
   kbnl_truck_no: string | null
 }
 
-function useBreakpoint() {
-  const [isDesktop, setIsDesktop] = useState(false)
-  const [isMobile, setIsMobile] = useState(true)
-  useEffect(() => {
-    const handleResize = () => {
-      setIsMobile(window.innerWidth < 640)
-      setIsDesktop(window.innerWidth >= 640)
-    }
-    handleResize()
-    window.addEventListener("resize", handleResize)
-    return () => window.removeEventListener("resize", handleResize)
-  }, [])
-  return { isMobile, isDesktop }
-}
+type ViewMode = "card" | "table"
 
 export default function SideTrips() {
-  const { isMobile, isDesktop } = useBreakpoint()
   const { getAccess } = usePermissions()
   const canView = getAccess("side-trips").canView
   const [trips, setTrips] = useState<SideTrip[]>([])
   const [loading, setLoading] = useState(true)
+  const [viewMode, setViewMode] = useState<ViewMode>("table")
 
   useEffect(() => {
     fetchTrips()
@@ -101,11 +88,61 @@ export default function SideTrips() {
 
   return (
     <div>
-      <div style={{ marginBottom: 24 }}>
-        <h2 style={{ margin: 0, color: "#0f172a", fontSize: isMobile ? "22px" : "24px", fontWeight: 700 }}>Side Trips</h2>
-        <p style={{ margin: "4px 0 0", fontSize: FONT_SIZE.sm, color: "#64748b" }}>
-          Unofficial trips where drivers carried goods other than cement
-        </p>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 24 }}>
+        <div>
+          <h2 style={{ margin: 0, color: "#0f172a", fontSize: "24px", fontWeight: 700 }}>Side Trips</h2>
+          <p style={{ margin: "4px 0 0", fontSize: FONT_SIZE.sm, color: "#64748b" }}>
+            Unofficial trips where drivers carried goods other than cement
+          </p>
+        </div>
+        {!loading && trips.length > 0 && (
+          <div style={{ display: "flex", background: "white", border: "1px solid #e2e8f0", borderRadius: 8, padding: 4, gap: 0 }}>
+            <button
+              onClick={() => setViewMode("card")}
+              style={{
+                padding: "8px 12px",
+                background: viewMode === "card" ? "#0070f3" : "transparent",
+                color: viewMode === "card" ? "white" : "#64748b",
+                border: "none",
+                borderRadius: 6,
+                cursor: "pointer",
+                fontSize: FONT_SIZE.xs,
+                fontWeight: 600,
+                minWidth: 44,
+                height: 40,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M3 3h8v8H3V3zm10 0h8v8h-8V3zM3 13h8v8H3v-8zm10 0h8v8h-8v-8z" />
+              </svg>
+            </button>
+            <button
+              onClick={() => setViewMode("table")}
+              style={{
+                padding: "8px 12px",
+                background: viewMode === "table" ? "#0070f3" : "transparent",
+                color: viewMode === "table" ? "white" : "#64748b",
+                border: "none",
+                borderRadius: 6,
+                cursor: "pointer",
+                fontSize: FONT_SIZE.xs,
+                fontWeight: 600,
+                minWidth: 44,
+                height: 40,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M3 4h18v2H3V4zm0 7h18v2H3v-2zm0 7h18v2H3v-2z" />
+              </svg>
+            </button>
+          </div>
+        )}
       </div>
 
       {loading ? (
@@ -113,11 +150,11 @@ export default function SideTrips() {
           <div style={{ width: 28, height: 28, borderRadius: "50%", border: "3px solid #e2e8f0", borderTopColor: "#0070f3", animation: "spin 1s linear infinite" }} />
         </div>
       ) : trips.length === 0 ? (
-        <div style={{ textAlign: "center", padding: "48px 24px" }}>
+        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", padding: "48px 24px" }}>
           <Icon icon="mdi:road-variant" width={48} color="#cbd5e1" style={{ marginBottom: 12 }} />
           <p style={{ margin: 0, color: "#64748b", fontSize: FONT_SIZE.base }}>No side trips reported yet</p>
         </div>
-      ) : isDesktop ? (
+      ) : viewMode === "table" ? (
         <div style={{ background: "white", border: "1px solid #e2e8f0", borderRadius: 12, overflow: "hidden" }}>
           <table style={tableStyle}>
             <thead>

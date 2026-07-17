@@ -229,27 +229,30 @@ export default function CustomerPaymentsAdmin() {
 
       {/* Status Filter */}
       <div style={{ display: "flex", gap: 8, marginBottom: 20 }}>
-        {(["Pending", "Posted"] as const).map(f => (
-          <button
-            key={f}
-            onClick={() => setFilter(f)}
-            style={{
-              padding: "8px 14px",
-              borderRadius: 20,
-              fontSize: FONT_SIZE.sm,
-              cursor: "pointer",
-              border: `1.5px solid ${filter === f ? (f === "Pending" ? "#0070f3" : "#16a34a") : "#e2e8f0"}`,
-              background: filter === f ? (f === "Pending" ? "#eff6ff" : "#f0fdf4") : "white",
-              color: filter === f ? (f === "Pending" ? "#0070f3" : "#16a34a") : "#64748b",
-              fontWeight: filter === f ? 600 : 500,
-              transition: "all 0.2s"
-            }}
-            onMouseEnter={e => { if (filter !== f) { e.currentTarget.style.background = "#f8fafc"; e.currentTarget.style.borderColor = "#cbd5e1" } }}
-            onMouseLeave={e => { if (filter !== f) { e.currentTarget.style.background = "white"; e.currentTarget.style.borderColor = "#e2e8f0" } }}
-          >
-            {f}
-          </button>
-        ))}
+        {(["Pending", "Posted"] as const).map(f => {
+          const count = payments.filter(p => p.status === f).length
+          return (
+            <button
+              key={f}
+              onClick={() => setFilter(f)}
+              style={{
+                padding: "8px 14px",
+                borderRadius: 20,
+                fontSize: FONT_SIZE.sm,
+                cursor: "pointer",
+                border: `1.5px solid ${filter === f ? (f === "Pending" ? "#0070f3" : "#10b981") : "#e2e8f0"}`,
+                background: filter === f ? (f === "Pending" ? "#eff6ff" : "#ecfdf5") : "white",
+                color: filter === f ? (f === "Pending" ? "#0070f3" : "#10b981") : "#64748b",
+                fontWeight: filter === f ? 600 : 500,
+                transition: "all 0.2s"
+              }}
+              onMouseEnter={e => { if (filter !== f) { e.currentTarget.style.background = "#f8fafc"; e.currentTarget.style.borderColor = "#cbd5e1" } }}
+              onMouseLeave={e => { if (filter !== f) { e.currentTarget.style.background = "white"; e.currentTarget.style.borderColor = "#e2e8f0" } }}
+            >
+              {f}{count > 0 ? ` (${count})` : ""}
+            </button>
+          )
+        })}
       </div>
 
       {/* Secondary Filters */}

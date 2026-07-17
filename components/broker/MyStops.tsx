@@ -217,7 +217,7 @@ export default function MyStops() {
 
   const filterOptions = [
     { key: "pending" as const, label: "Pending", count: pendingStops.length, color: "#0070f3" },
-    { key: "confirmed" as const, label: "Confirmed", count: confirmedStops.length, color: "#00aa00" },
+    { key: "confirmed" as const, label: "Confirmed", count: confirmedStops.length, color: "#10b981" },
     { key: "disputed" as const, label: "Disputed", count: disputedStops.length, color: "#ff4444" },
   ]
 
@@ -255,9 +255,9 @@ export default function MyStops() {
       <div style={{ display: "flex", gap: 8, marginBottom: 20, overflowX: "auto", scrollbarWidth: "none", paddingBottom: 8 }}>
         {filterOptions.map(({ key, label, count }) => {
           const isActive = activeFilter === key
-          const activeBg = key === "pending" ? "rgba(0,112,243,0.1)" : key === "confirmed" ? "rgba(22,163,74,0.1)" : "rgba(239,68,68,0.1)"
-          const activeColor = key === "pending" ? "#0070f3" : key === "confirmed" ? "#16a34a" : "#ef4444"
-          const activeBorder = key === "pending" ? "#0070f3" : key === "confirmed" ? "#16a34a" : "#ef4444"
+          const activeBg = key === "pending" ? "rgba(0,112,243,0.1)" : key === "confirmed" ? "rgba(16,185,129,0.1)" : "rgba(239,68,68,0.1)"
+          const activeColor = key === "pending" ? "#0070f3" : key === "confirmed" ? "#10b981" : "#ef4444"
+          const activeBorder = key === "pending" ? "#0070f3" : key === "confirmed" ? "#10b981" : "#ef4444"
           return (
             <button key={key} onClick={() => setActiveFilter(key)} style={{
               padding: isMobile ? "9px 16px" : "7px 14px", borderRadius: 20, fontSize: 13, cursor: "pointer",
@@ -325,7 +325,7 @@ export default function MyStops() {
                 </button>
               </div>
             )}
-            {activeFilter === "confirmed" && <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "8px 10px", background: "#f0fff4", borderRadius: 7 }}><Icon icon="mdi:check-circle" width={16} color="#00aa00" /><span style={{ fontSize: 13, color: "#00aa00", fontWeight: "600" }}>Confirmed</span></div>}
+            {activeFilter === "confirmed" && <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "8px 10px", background: "#ecfdf5", borderRadius: 7 }}><Icon icon="mdi:check-circle" width={16} color="#10b981" /><span style={{ fontSize: 13, color: "#10b981", fontWeight: "600" }}>Confirmed</span></div>}
             {activeFilter === "disputed" && <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "8px 10px", background: "#fff0f0", borderRadius: 7 }}><Icon icon="mdi:alert-circle" width={16} color="#ff4444" /><span style={{ fontSize: 13, color: "#ff4444", fontWeight: "600" }}>Disputed</span></div>}
           </div>
         ))
@@ -408,9 +408,9 @@ export default function MyStops() {
             </div>
 
             {companyPriceMap[selectedStop.product] !== undefined && (
-              <div style={{ marginBottom: 12, padding: "8px 12px", background: "#f0fff4", borderRadius: 8, border: "1px solid #00aa00", display: "flex", alignItems: "center", gap: 8 }}>
-                <Icon icon="mdi:information" width={16} color="#00aa00" />
-                <span style={{ fontSize: 13, color: "#00aa00" }}>Company price: <strong>₦{companyPriceMap[selectedStop.product].toLocaleString()}</strong>/bag</span>
+              <div style={{ marginBottom: 12, padding: "8px 12px", background: "#ecfdf5", borderRadius: 8, border: "1px solid #10b981", display: "flex", alignItems: "center", gap: 8 }}>
+                <Icon icon="mdi:information" width={16} color="#10b981" />
+                <span style={{ fontSize: 13, color: "#10b981" }}>Company price: <strong>₦{companyPriceMap[selectedStop.product].toLocaleString()}</strong>/bag</span>
               </div>
             )}
 

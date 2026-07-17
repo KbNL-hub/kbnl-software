@@ -255,7 +255,7 @@ export default function BrokerCredits() {
             return (
               <div style={{ padding: "12px 16px", background: "#fefce8", border: "1px solid #facc15", borderRadius: 8, marginBottom: 16, display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
                 <Icon icon="mdi:alert-circle" width={18} color="#ca8a04" />
-                <span style={{ fontSize: FONT_SIZE.sm, color: "#854d0e", fontWeight: 500 }}>
+                <span style={{ fontSize: FONT_SIZE.sm, color: "#ca8a04", fontWeight: 500 }}>
                   Credit limit exceeded for: {exceeded.map(b => b.broker_name).join(", ")}
                 </span>
               </div>
@@ -334,7 +334,7 @@ export default function BrokerCredits() {
                     <div>
                       <span style={{ fontSize: FONT_SIZE.base, fontWeight: 600, color: "#171717" }}>{b.broker_name}</span>
                       {b.credit_limit != null && (
-                        <div style={{ fontSize: FONT_SIZE.xs, color: "#9ca3af", marginTop: 1 }}>
+                        <div style={{ fontSize: FONT_SIZE.xs, color: "#ca8a04", marginTop: 1 }}>
                           Limit: ₦{formatAmount(String(b.credit_limit))}
                         </div>
                       )}

@@ -267,27 +267,20 @@ export default function DriverDashboard() {
       ])
     }
 
-    const { data: activePlates } = await supabase
-      .from("Trips").select("plate_number").in("trip_status", ["In transit", "On hold"])
-    if (!mountedRef.current) return
-    const usedPlates = activePlates?.map(t => t.plate_number) || []
-
     const { data: trucksData } = await supabase
-      .from("Trucks").select("plate_number, kbnl_truck_no, truck_size").eq("status", "Empty")
+      .from("Trucks").select("plate_number, kbnl_truck_no, truck_size").neq("status", "Decommissioned")
     if (!mountedRef.current) return
-    const available = (trucksData || []).filter(t => !usedPlates.includes(t.plate_number))
-    let merged: Truck[] = [...available]
+    let merged: Truck[] = [...(trucksData || [])]
 
     const { data: tricyclesData } = await supabase
       .from("tricycles").select("tricycle_number, assigned_to")
     if (!mountedRef.current) return
-    const availableTricycles: Truck[] = (tricyclesData || [])
-      .filter(t => !usedPlates.includes(t.tricycle_number))
+    const allTricycles: Truck[] = (tricyclesData || [])
       .map(t => ({ plate_number: t.tricycle_number, kbnl_truck_no: t.assigned_to, truck_size: "Tricycle" }))
-    merged = [...merged, ...availableTricycles]
+    merged = [...merged, ...allTricycles]
 
     setTrucks(merged)
-    setAllTrucks([...(trucksData || []), ...availableTricycles])
+    setAllTrucks(merged)
 
     const { data: productsData } = await supabase.rpc("get_products")
     if (!mountedRef.current) return
@@ -939,7 +932,7 @@ export default function DriverDashboard() {
             )}
 
             {!activeATF && atfs.length === 0 && (
-              <div style={{ textAlign: "center", paddingTop: 48, paddingBottom: 48 }}>
+              <div style={{ display: "flex", flexDirection: "column", alignItems: "center", padding: "48px 24px" }}>
                 <Icon icon="mdi:gas-station-off" width={48} color="#cbd5e1" style={{ marginBottom: 12 }} />
                 <p style={{ marginBottom: 0, fontSize: FONT_SIZE.base, fontWeight: 600, color: "#0f172a" }}>No fuel requests yet</p>
                 <p style={{ margin: "4px 0 0", fontSize: FONT_SIZE.sm, color: "#64748b" }}>Your Truck Officer will initiate when needed.</p>
@@ -996,7 +989,7 @@ export default function DriverDashboard() {
               <button onClick={handleSubmitSideTrip} disabled={sideTripSubmitting} style={{ width: "100%", padding: "14px 16px", background: sideTripSubmitting ? "#bfdbfe" : "#f5a623", color: "white", border: "none", borderRadius: 10, cursor: sideTripSubmitting ? "not-allowed" : "pointer", fontWeight: 700, fontSize: FONT_SIZE.md, minHeight: 48, display: "flex", alignItems: "center", justifyContent: "center", gap: 8, opacity: sideTripSubmitting ? 0.7 : 1, transition: "opacity 0.2s" }}>
                 {sideTripSubmitting
                   ? <><Icon icon="mdi:loading" width={18} style={{ animation: "spin 1s linear infinite" }} /> Submitting…</>
-                  : <><Icon icon="mdi:road-variant" width={18} /> Report Side Trip</>
+                  : <><Icon icon="mdi:road-variant" width={18} /> Record Side Trip</>
                 }
               </button>
             </div>

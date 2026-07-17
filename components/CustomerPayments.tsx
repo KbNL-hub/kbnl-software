@@ -293,12 +293,6 @@ export default function CustomerPayments({ brokerId }: { brokerId: string }) {
             <div style={{ marginBottom: 24 }}>
               <label style={{ display: "block", fontWeight: 600, marginBottom: 6, fontSize: fontSize.sm, color: "#475569" }}>Customer *</label>
               <CustomerSelector onSelect={(c: any) => { setSelectedCustomer(c); setMessage("") }} allowUnsavedNew={true} initialValue={selectedCustomer?.full_name || ""} />
-              {selectedCustomer && (
-                <div style={{ marginTop: 8, padding: "8px 12px", background: "#f0f7ff", borderRadius: 6, fontSize: fontSize.sm, color: "#0070f3", display: "flex", alignItems: "center", gap: 6 }}>
-                  <Icon icon="mdi:check-circle" width={16} />
-                  Selected: {selectedCustomer.full_name} {selectedCustomer.isNew ? "(New)" : ""}
-                </div>
-              )}
             </div>
 
             {message && (

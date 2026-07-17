@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect, useState } from "react"
+import { Icon } from "@iconify/react"
 import ModernInput from "@/components/ModernInput"
 import { supabase } from "@/lib/supabase"
 import { getCachedCustomers, cacheCustomers } from '@/lib/offline/tripsDb'
@@ -233,7 +234,8 @@ export default function CustomerSelector({ onSelect, allowUnsavedNew, initialVal
       )}
 
       {selected && !creating && (
-        <div style={{ marginTop: 8, padding: "8px 12px", background: "#eff6ff", borderRadius: 6, fontSize: 13, color: "#0070f3", fontWeight: 500 }}>
+        <div style={{ marginTop: 8, padding: "8px 12px", background: "#f0f7ff", borderRadius: 6, fontSize: 13, color: "#0070f3", fontWeight: 500, display: "flex", alignItems: "center", gap: 6 }}>
+          <Icon icon="mdi:check-circle" width={16} />
           Selected: {selected.full_name}
         </div>
       )}

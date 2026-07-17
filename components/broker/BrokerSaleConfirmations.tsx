@@ -58,6 +58,7 @@ export default function BrokerSaleConfirmations() {
   const [message, setMessage] = useState("")
   const [notification, setNotification] = useState("")
   const [submitting, setSubmitting] = useState(false)
+  const [companyPriceMap, setCompanyPriceMap] = useState<Record<string, number>>({})
 
   useEffect(() => { initBroker() }, [])
 
@@ -65,8 +66,23 @@ export default function BrokerSaleConfirmations() {
     const { data: { session } } = await supabase.auth.getSession()
     if (!session) { window.location.href = "/login"; return }
     setBrokerId(session.user.id)
-    await fetchSales(session.user.id)
+    await Promise.all([
+      fetchSales(session.user.id),
+      fetchCompanyPrices(session.user.id),
+    ])
     setLoading(false)
+  }
+
+  async function fetchCompanyPrices(bId: string) {
+    const { data, error } = await supabase
+      .from("company_prices")
+      .select("product_name, price_per_bag")
+      .eq("broker_id", bId)
+    if (!error && data) {
+      const map: Record<string, number> = {}
+      for (const row of data) map[row.product_name] = row.price_per_bag
+      setCompanyPriceMap(map)
+    }
   }
 
   async function fetchSales(bId: string) {
@@ -119,7 +135,14 @@ export default function BrokerSaleConfirmations() {
   function openConfirmModal(group: SaleGroup) {
     const prices: Record<string, string> = {}
     for (const line of group.lines) {
-      prices[line.sale_id] = line.price_per_bag ? formatAmount(String(line.price_per_bag)) : ""
+      const companyPrice = companyPriceMap[line.product]
+      if (companyPrice) {
+        prices[line.sale_id] = formatAmount(String(companyPrice))
+      } else if (line.price_per_bag) {
+        prices[line.sale_id] = formatAmount(String(line.price_per_bag))
+      } else {
+        prices[line.sale_id] = ""
+      }
     }
     setConfirmingGroup(group)
     setSelectedCustomer(null)
@@ -410,7 +433,7 @@ export default function BrokerSaleConfirmations() {
             {activeFilter === "pending" && (
               <div style={{ display: "flex", gap: 8 }}>
                 <button onClick={() => openConfirmModal(group)} style={{
-                  flex: 1, padding: "11px 0", background: "#10b981", color: "white",
+                  flex: 1, padding: "11px 0", background: "#0070f3", color: "white",
                   border: "none", borderRadius: 8, cursor: "pointer", fontWeight: "bold",
                   fontSize: isMobile ? 14 : 13, minHeight: 44,
                   display: "flex", alignItems: "center", justifyContent: "center", gap: 6
@@ -469,23 +492,40 @@ export default function BrokerSaleConfirmations() {
               />
             </div>
 
-            {confirmingGroup.lines.map((line) => (
-              <div key={line.sale_id} style={{ marginBottom: 16 }}>
-                <label style={labelStyle}>
-                  {line.product} × {line.quantity} — Price Per Bag (₦) *
-                </label>
-                <ModernInput
-                  type="text" inputMode="numeric"
-                  placeholder="e.g. 10,500"
-                  value={linePrices[line.sale_id] || ""}
-                  onChange={(e) => {
-                    setLinePrices(prev => ({ ...prev, [line.sale_id]: formatAmount(e.target.value) }))
-                    setMessage("")
-                  }}
-                  style={inputStyle}
-                />
-              </div>
-            ))}
+            {confirmingGroup.lines.map((line) => {
+              const companyPrice = companyPriceMap[line.product]
+              const enteredPrice = parseAmount(linePrices[line.sale_id])
+              const showDiscount = companyPrice && enteredPrice && enteredPrice !== companyPrice
+              return (
+                <div key={line.sale_id} style={{ marginBottom: 16 }}>
+                  <label style={labelStyle}>
+                    {line.product} × {line.quantity} — Price Per Bag (₦) *
+                  </label>
+                  {companyPrice && (
+                    <div style={{ padding: "8px 10px", background: "#f0f7ff", borderRadius: 7, marginBottom: 6, fontSize: 12, color: "#0070f3", fontWeight: 500, display: "flex", alignItems: "center", gap: 6 }}>
+                      <Icon icon="mdi:information-outline" width={14} />
+                      Company price: {formatAmount(String(companyPrice))}
+                    </div>
+                  )}
+                  <ModernInput
+                    type="text" inputMode="numeric"
+                    placeholder={companyPrice ? formatAmount(String(companyPrice)) : "e.g. 10,500"}
+                    value={linePrices[line.sale_id] || ""}
+                    onChange={(e) => {
+                      setLinePrices(prev => ({ ...prev, [line.sale_id]: formatAmount(e.target.value) }))
+                      setMessage("")
+                    }}
+                    style={inputStyle}
+                  />
+                  {showDiscount && (
+                    <div style={{ marginTop: 6, padding: "6px 10px", background: enteredPrice! < companyPrice ? "#fef9c3" : "#ecfdf5", borderRadius: 6, fontSize: 12, color: enteredPrice! < companyPrice ? "#854d0e" : "#166534", display: "flex", alignItems: "center", gap: 6 }}>
+                      <Icon icon={enteredPrice! < companyPrice ? "mdi:tag-outline" : "mdi:tag-arrow-up-outline"} width={14} />
+                      {enteredPrice! < companyPrice ? "Discount" : "Sale price"}: {formatAmount(String(enteredPrice))} vs {formatAmount(String(companyPrice))}
+                    </div>
+                  )}
+                </div>
+              )
+            })}
 
             {message && (
               <div style={{ display: "flex", alignItems: "center", gap: 6, color: "#ef4444", marginBottom: 14, fontSize: 13 }}>
@@ -501,7 +541,7 @@ export default function BrokerSaleConfirmations() {
                 Cancel
               </button>
               <button onClick={handleConfirm} disabled={submitting} style={{
-                flex: 1, padding: "13px 0", background: submitting ? "#ccc" : "#10b981",
+                flex: 1, padding: "13px 0", background: submitting ? "#ccc" : "#0070f3",
                 color: "white", border: "none", borderRadius: 10,
                 cursor: submitting ? "not-allowed" : "pointer", fontSize: 15, minHeight: 50,
                 fontWeight: "bold", display: "flex", alignItems: "center", justifyContent: "center", gap: 6

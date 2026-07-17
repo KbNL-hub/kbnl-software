@@ -548,7 +548,7 @@ export default function StationManagerDashboard() {
                 Cancel
               </button>
               <button onClick={handleDispense} disabled={dispenseLoading} style={{ padding: "12px 16px", background: "#0070f3", color: "white", border: "none", borderRadius: 8, cursor: dispenseLoading ? "not-allowed" : "pointer", fontWeight: 700, fontSize: FONT_SIZE.md, minHeight: 44, opacity: dispenseLoading ? 0.7 : 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
-                {dispenseLoading ? <><Icon icon="mdi:loading" width={16} style={{ animation: "spin 1s linear infinite" }} /> Confirming...</> : "Confirm Dispensed"}
+                {dispenseLoading ? <><Icon icon="mdi:loading" width={16} style={{ animation: "spin 1s linear infinite" }} /> Confirming...</> : "Confirm"}
               </button>
             </div>
           </div>
