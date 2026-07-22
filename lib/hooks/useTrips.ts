@@ -20,6 +20,8 @@ export interface EnrichedTrip {
   material_centre: string | null
   trip_status: string
   ATC: string | null
+  order_no: string | null
+  child_order_no: string | null
   amount_charged: number | null
   payment_mode: string | null
   created_at: string | null

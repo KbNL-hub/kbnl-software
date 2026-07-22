@@ -44,6 +44,8 @@ type Trip = {
   load_more_entries: LoadMoreEntry[]
   trip_status: string
   atc: string | null
+  order_no: string | null
+  child_order_no: string | null
   amount_charged: number | null
   payment_mode: string | null
   created_at: string
@@ -66,7 +68,7 @@ export default function BrokerActiveTrips() {
   const [selectedStops, setSelectedStops] = useState<Stop[] | null>(null)
   const [selectedLoadMore, setSelectedLoadMore] = useState<LoadMoreEntry[]>([])
   const [selectedPlate, setSelectedPlate] = useState("")
-  const [selectedTrip, setSelectedTrip] = useState<Pick<Trip, "atc" | "amount_charged" | "payment_mode"> | null>(null)
+  const [selectedTrip, setSelectedTrip] = useState<Pick<Trip, "atc" | "order_no" | "child_order_no" | "amount_charged" | "payment_mode"> | null>(null)
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null)
 
   useEffect(() => {
@@ -206,6 +208,8 @@ export default function BrokerActiveTrips() {
             load_more_entries,
             trip_status: trip.trip_status,
             atc: trip.ATC ?? null,
+            order_no: trip.order_no ?? null,
+            child_order_no: trip.child_order_no ?? null,
             amount_charged: trip.amount_charged ?? null,
             payment_mode: trip.payment_mode ?? null,
             created_at: trip.created_at,
@@ -329,6 +333,8 @@ export default function BrokerActiveTrips() {
             load_more_entries,
             trip_status: ddTrip.trip_status,
             atc: ddTrip.atc ?? null,
+            order_no: ddTrip.order_no ?? null,
+            child_order_no: ddTrip.child_order_no ?? null,
             amount_charged: null,
             payment_mode: null,
             created_at: ddTrip.created_at,
@@ -458,7 +464,14 @@ export default function BrokerActiveTrips() {
                 <div style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 16, paddingBottom: 16, borderBottom: "1px solid #f1f5f9" }}>
                   <p style={{ margin: 0, fontSize: fontSize.sm, color: "#475569" }}><span style={{ color: "#94a3b8", width: 70, display: "inline-block" }}>Product:</span> <span style={{ fontWeight: 500 }}>{trip.product}</span></p>
                   <p style={{ margin: 0, fontSize: fontSize.sm, color: "#475569" }}><span style={{ color: "#94a3b8", width: 70, display: "inline-block" }}>Centre:</span> {trip.material_centre}</p>
-                  <p style={{ margin: 0, fontSize: fontSize.sm, color: "#475569" }}><span style={{ color: "#94a3b8", width: 70, display: "inline-block" }}>ATC:</span> {trip.atc || "N/A"}</p>
+                  {trip.order_no ? (
+                    <>
+                      <p style={{ margin: 0, fontSize: fontSize.sm, color: "#475569" }}><span style={{ color: "#94a3b8", width: 70, display: "inline-block" }}>Order No:</span> {trip.order_no}</p>
+                      {trip.child_order_no && <p style={{ margin: 0, fontSize: fontSize.sm, color: "#475569" }}><span style={{ color: "#94a3b8", width: 70, display: "inline-block" }}>Child:</span> {trip.child_order_no}</p>}
+                    </>
+                  ) : (
+                    <p style={{ margin: 0, fontSize: fontSize.sm, color: "#475569" }}><span style={{ color: "#94a3b8", width: 70, display: "inline-block" }}>ATC:</span> {trip.atc || "N/A"}</p>
+                  )}
                   {trip.amount_charged && <p style={{ margin: 0, fontSize: fontSize.sm, color: "#475569" }}><span style={{ color: "#94a3b8", width: 70, display: "inline-block" }}>Charged:</span> ₦{trip.amount_charged.toLocaleString()}</p>}
                   {trip.payment_mode && <p style={{ margin: 0, fontSize: fontSize.sm, color: "#475569" }}><span style={{ color: "#94a3b8", width: 70, display: "inline-block" }}>Payment:</span> {trip.payment_mode}</p>}
                 </div>
@@ -493,7 +506,7 @@ export default function BrokerActiveTrips() {
                     {disputed > 0 && <span style={{ width: 8, height: 8, borderRadius: "50%", background: "#ef4444" }} title={`${disputed} disputed`} />}
                   </div>
                   <button
-                    onClick={() => { setSelectedStops(trip.stops); setSelectedLoadMore(trip.load_more_entries); setSelectedPlate(trip.plate_number); setSelectedTrip({ atc: trip.atc, amount_charged: trip.amount_charged, payment_mode: trip.payment_mode }) }}
+                    onClick={() => { setSelectedStops(trip.stops); setSelectedLoadMore(trip.load_more_entries); setSelectedPlate(trip.plate_number); setSelectedTrip({ atc: trip.atc, order_no: trip.order_no, child_order_no: trip.child_order_no, amount_charged: trip.amount_charged, payment_mode: trip.payment_mode }) }}
                     style={{ padding: "8px 16px", background: "#f0f7ff", color: "#0070f3", border: "1px solid #bfdbfe", borderRadius: 8, cursor: "pointer", fontWeight: 600, fontSize: fontSize.sm }}
                     onMouseEnter={e => e.currentTarget.style.background = "#e0efff"}
                     onMouseLeave={e => e.currentTarget.style.background = "#f0f7ff"}
@@ -513,7 +526,7 @@ export default function BrokerActiveTrips() {
                 <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: fontSize.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px" }}>Plate</th>
                 <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: fontSize.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px" }}>Driver</th>
                 <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: fontSize.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px" }}>Product</th>
-                <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: fontSize.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px" }}>ATC</th>
+                <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: fontSize.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px" }}>ATC / Order</th>
                 <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: fontSize.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px" }}>Loaded</th>
                 <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: fontSize.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px" }}>Remaining</th>
                 <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: fontSize.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px" }}>Stops</th>
@@ -536,12 +549,12 @@ export default function BrokerActiveTrips() {
                       {trip.driver_name}
                     </td>
                     <td style={{ padding: "12px 16px", color: "#0f172a", fontSize: fontSize.base }}>{trip.product}</td>
-                    <td style={{ padding: "12px 16px", color: "#64748b", fontSize: fontSize.sm }}>{trip.atc || "N/A"}</td>
+                    <td style={{ padding: "12px 16px", color: "#64748b", fontSize: fontSize.sm }}>{trip.order_no ? `${trip.order_no}${trip.child_order_no ? ` / ${trip.child_order_no}` : ""}` : trip.atc || "N/A"}</td>
                     <td style={{ padding: "12px 16px", color: "#0f172a", fontSize: fontSize.base, fontWeight: 500 }}>{trip.loaded_quantity}</td>
                     <td style={{ padding: "12px 16px", color: trip.remaining === 0 ? "#ef4444" : trip.remaining < trip.loaded_quantity * 0.2 ? "#f5a623" : "#16a34a", fontSize: fontSize.base, fontWeight: 600 }}>{trip.remaining}</td>
                     <td style={{ padding: "12px 16px" }}>
                       <span style={{ color: "#0070f3", fontSize: fontSize.sm, fontWeight: 500, textDecoration: "underline", cursor: "pointer" }}
-                        onClick={() => { setSelectedStops(trip.stops); setSelectedLoadMore(trip.load_more_entries); setSelectedPlate(trip.plate_number); setSelectedTrip({ atc: trip.atc, amount_charged: trip.amount_charged, payment_mode: trip.payment_mode }) }}>
+                        onClick={() => { setSelectedStops(trip.stops); setSelectedLoadMore(trip.load_more_entries); setSelectedPlate(trip.plate_number); setSelectedTrip({ atc: trip.atc, order_no: trip.order_no, child_order_no: trip.child_order_no, amount_charged: trip.amount_charged, payment_mode: trip.payment_mode }) }}>
                         {trip.stop_count} {trip.stop_count === 1 ? "stop" : "stops"}
                       </span>
                       {confirmed > 0 && <span style={{ marginLeft: 4, width: 8, height: 8, borderRadius: "50%", background: "#16a34a", display: "inline-block" }} title={`${confirmed} confirmed`} />}
@@ -604,11 +617,16 @@ export default function BrokerActiveTrips() {
               <button onClick={closeModals} style={{ background: "none", border: "none", color: "#94a3b8", cursor: "pointer", padding: 0, width: 32, height: 32, display: "flex", alignItems: "center", justifyContent: "center" }}><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
             </div>
 
-            {selectedTrip?.atc && (
+            {selectedTrip?.order_no ? (
+              <div style={{ background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 8, padding: "12px 14px", marginBottom: 8 }}>
+                <p style={{ margin: 0, fontSize: fontSize.sm, color: "#0f172a" }}><strong>Order No:</strong> {selectedTrip.order_no}</p>
+                {selectedTrip.child_order_no && <p style={{ margin: "4px 0 0", fontSize: fontSize.sm, color: "#0f172a" }}><strong>Child Order No:</strong> {selectedTrip.child_order_no}</p>}
+              </div>
+            ) : selectedTrip?.atc ? (
               <div style={{ background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 8, padding: "12px 14px", marginBottom: 8 }}>
                 <p style={{ margin: 0, fontSize: fontSize.sm, color: "#0f172a" }}><strong>ATC:</strong> {selectedTrip.atc}</p>
               </div>
-            )}
+            ) : null}
 
             {selectedTrip?.amount_charged && (
               <div style={{ background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: 8, padding: "12px 14px", marginBottom: 16, display: "flex", gap: 24 }}>

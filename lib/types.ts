@@ -51,6 +51,8 @@ export interface Trip {
   plate_number: string
   material_centre?: string
   ATC?: string
+  order_no?: string
+  child_order_no?: string
   driver_id?: string
   status?: string
 }

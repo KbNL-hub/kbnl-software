@@ -26,6 +26,8 @@ type Stop = {
   plate_number: string
   material_centre: string
   atc: string | null
+  order_no: string | null
+  child_order_no: string | null
   product: string
   confirmed: boolean
   disputed: boolean
@@ -72,7 +74,7 @@ export default function MyStops() {
       .from("Stops")
       .select(`
         stop_id, trip_id, customer_id, quantity_offloaded, stop_location, stop_time, confirmed, disputed,
-        Trips!inner(plate_number, material_centre, ATC, product),
+        Trips!inner(plate_number, material_centre, ATC, order_no, child_order_no, product),
         Customers(full_name)
       `)
       .eq("broker_id", bId)
@@ -92,6 +94,8 @@ export default function MyStops() {
       plate_number: stop.Trips?.plate_number ?? "Unknown",
       material_centre: stop.Trips?.material_centre ?? "",
       atc: stop.Trips?.ATC ?? null,
+      order_no: stop.Trips?.order_no ?? null,
+      child_order_no: stop.Trips?.child_order_no ?? null,
       product: stop.Trips?.product ?? "",
       customer_name: stop.Customers?.full_name ?? "Not provided",
     }))
@@ -310,7 +314,14 @@ export default function MyStops() {
               <div><p style={{ margin: 0, fontSize: 11, color: "#aaa" }}>Bags</p><p style={{ margin: "2px 0 0", fontWeight: "bold", fontSize: 14, color: "#171717" }}>{stop.quantity_offloaded}</p></div>
               <div><p style={{ margin: 0, fontSize: 11, color: "#aaa" }}>Customer</p><p style={{ margin: "2px 0 0", fontSize: 13, color: "#171717", fontWeight: "500" }}>{stop.customer_name}</p></div>
               <div><p style={{ margin: 0, fontSize: 11, color: "#aaa" }}>Loading Point</p><p style={{ margin: "2px 0 0", fontSize: 12, color: "#555" }}>{stop.material_centre}</p></div>
-              {stop.atc && <div><p style={{ margin: 0, fontSize: 11, color: "#aaa" }}>ATC</p><p style={{ margin: "2px 0 0", fontSize: 12, color: "#555" }}>{stop.atc}</p></div>}
+              {stop.order_no ? (
+                <>
+                  <div><p style={{ margin: 0, fontSize: 11, color: "#aaa" }}>Order No</p><p style={{ margin: "2px 0 0", fontSize: 12, color: "#555" }}>{stop.order_no}</p></div>
+                  {stop.child_order_no && <div><p style={{ margin: 0, fontSize: 11, color: "#aaa" }}>Child Order</p><p style={{ margin: "2px 0 0", fontSize: 12, color: "#555" }}>{stop.child_order_no}</p></div>}
+                </>
+              ) : stop.atc ? (
+                <div><p style={{ margin: 0, fontSize: 11, color: "#aaa" }}>ATC</p><p style={{ margin: "2px 0 0", fontSize: 12, color: "#555" }}>{stop.atc}</p></div>
+              ) : null}
             </div>
 
             {activeFilter === "pending" && (
@@ -397,7 +408,14 @@ export default function MyStops() {
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
                 <div><p style={{ margin: 0, fontSize: 11, color: "#aaa" }}>Bags</p><p style={{ margin: "2px 0 0", fontWeight: "bold", fontSize: 16, color: "#171717" }}>{selectedStop.quantity_offloaded}</p></div>
                 <div><p style={{ margin: 0, fontSize: 11, color: "#aaa" }}>Loading Point</p><p style={{ margin: "2px 0 0", fontSize: 13, color: "#171717" }}>{selectedStop.material_centre}</p></div>
-                {selectedStop.atc && <div><p style={{ margin: 0, fontSize: 11, color: "#aaa" }}>ATC</p><p style={{ margin: "2px 0 0", fontSize: 13, color: "#171717" }}>{selectedStop.atc}</p></div>}
+                {selectedStop.order_no ? (
+                  <>
+                    <div><p style={{ margin: 0, fontSize: 11, color: "#aaa" }}>Order No</p><p style={{ margin: "2px 0 0", fontSize: 13, color: "#171717" }}>{selectedStop.order_no}</p></div>
+                    {selectedStop.child_order_no && <div><p style={{ margin: 0, fontSize: 11, color: "#aaa" }}>Child Order</p><p style={{ margin: "2px 0 0", fontSize: 13, color: "#171717" }}>{selectedStop.child_order_no}</p></div>}
+                  </>
+                ) : selectedStop.atc ? (
+                  <div><p style={{ margin: 0, fontSize: 11, color: "#aaa" }}>ATC</p><p style={{ margin: "2px 0 0", fontSize: 13, color: "#171717" }}>{selectedStop.atc}</p></div>
+                ) : null}
                 <div><p style={{ margin: 0, fontSize: 11, color: "#aaa" }}>Driver's Customer</p><p style={{ margin: "2px 0 0", fontSize: 13, color: "#171717" }}>{selectedStop.customer_name}</p></div>
               </div>
             </div>

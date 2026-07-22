@@ -31,6 +31,8 @@ type DDTrip = {
   loading_point: string
   loaded_quantity: number
   atc: string | null
+  order_no: string | null
+  child_order_no: string | null
   trip_status: string
   route_points: string[]
   created_at: string
@@ -58,10 +60,10 @@ function useBreakpoint() {
 
 type Mode = "mdd" | "dd"
 
-const DD_LOADING_POINTS = ["BUA", "Dangote", "Lafarge"]
+const DD_LOADING_POINTS = ["BUA", "Dangote", "HBM"]
 
 const PRODUCT_BY_LOADING_POINT: Record<string, string[]> = {
-  Lafarge: ["Supaset", "Supafix", "Classic"],
+  HBM: ["Supaset", "Supafix", "Classic"],
   Dangote: ["3X", "Falcon"],
   BUA:     ["BUA cement"],
 }
@@ -105,6 +107,8 @@ export default function MonitorTrucks() {
   const [ddProduct, setDdProduct] = useState("")
   const [ddQty, setDdQty] = useState("")
   const [ddAtc, setDdAtc] = useState("")
+  const [ddOrderNo, setDdOrderNo] = useState("")
+  const [ddChildOrderNo, setDdChildOrderNo] = useState("")
   const [ddSubmitting, setDdSubmitting] = useState(false)
   const [ddMessage, setDdMessage] = useState("")
   const [ddMessageType, setDdMessageType] = useState<"success" | "error">("success")
@@ -382,14 +386,22 @@ export default function MonitorTrucks() {
     setDdLoadName(name)
     setDdProduct("")
     setDdAtc("")
+    setDdOrderNo("")
+    setDdChildOrderNo("")
     setDdMessage("")
   }
 
   async function ddHandleSubmit() {
+    const isHbm = ddLoadName === "HBM"
     if (!ddPlate.trim()) return ddSetMsg("Truck number is required", "error")
     if (!ddDriver.trim()) return ddSetMsg("Driver name is required", "error")
     if (!ddLoadName) return ddSetMsg("Select a loading point", "error")
-    if (!ddAtc.trim()) return ddSetMsg("ATC number is required", "error")
+    if (isHbm) {
+      if (!ddOrderNo.trim()) return ddSetMsg("Order number is required", "error")
+      if (!ddChildOrderNo.trim()) return ddSetMsg("Child order number is required", "error")
+    } else {
+      if (!ddAtc.trim()) return ddSetMsg("ATC number is required", "error")
+    }
     if (!ddProduct) return ddSetMsg("Select a product", "error")
     const qty = parseInt(ddQty, 10)
     if (!ddQty || isNaN(qty) || qty <= 0) return ddSetMsg("Enter a valid number of bags", "error")
@@ -410,7 +422,9 @@ export default function MonitorTrucks() {
         product: ddProduct,
         loading_point: ddLoadName,
         loaded_quantity: qty,
-        atc: ddAtc.trim(),
+        atc: ddLoadName === "HBM" ? null : ddAtc.trim(),
+        order_no: ddLoadName === "HBM" ? ddOrderNo.trim() : null,
+        child_order_no: ddLoadName === "HBM" ? ddChildOrderNo.trim() : null,
         created_by: user.id,
       },
     })
@@ -431,7 +445,9 @@ export default function MonitorTrucks() {
         product: ddProduct,
         material_centre: ddLoadName,
         loaded_quantity: qty,
-        ATC: ddAtc.trim(),
+        ATC: ddLoadName === "HBM" ? null : ddAtc.trim(),
+        order_no: ddLoadName === "HBM" ? ddOrderNo.trim() : null,
+        child_order_no: ddLoadName === "HBM" ? ddChildOrderNo.trim() : null,
         trip_status: "In transit",
       },
     })
@@ -450,7 +466,7 @@ export default function MonitorTrucks() {
     ddSetMsg("Trip recorded successfully!", "success")
     setDdPlate(""); setDdDriver(""); setDdPhone("")
     setDdLoadName(""); setDdProduct("")
-    setDdQty(""); setDdAtc("")
+    setDdQty(""); setDdAtc(""); setDdOrderNo(""); setDdChildOrderNo("")
     setShowDdForm(false)
     fetchDdTrips()
   }
@@ -461,6 +477,7 @@ export default function MonitorTrucks() {
   }
 
   const ddProductOptions = ddLoadName ? PRODUCT_BY_LOADING_POINT[ddLoadName] ?? [] : []
+  const ddShowHbmOrderFields = ddLoadName === "HBM"
 
   const filterOptions = ["All", "In transit", "On hold"]
   const ddFilterOptions = ["All", "In transit", "On hold", "Completed"]
@@ -980,9 +997,15 @@ export default function MonitorTrucks() {
                         <p style={{ margin: 0, color: "#0f172a", fontSize: FONT_SIZE.sm }}>{trip.loading_point}</p>
                       </div>
                       <div>
-                        <p style={{ margin: "0 0 4px 0", color: "#94a3b8", fontSize: FONT_SIZE.xs }}>ATC</p>
-                        <p style={{ margin: 0, color: "#0f172a", fontSize: FONT_SIZE.sm }}>{trip.atc || "—"}</p>
+                        <p style={{ margin: "0 0 4px 0", color: "#94a3b8", fontSize: FONT_SIZE.xs }}>{trip.order_no ? "Order No" : "ATC"}</p>
+                        <p style={{ margin: 0, color: "#0f172a", fontSize: FONT_SIZE.sm }}>{trip.order_no || trip.atc || "—"}</p>
                       </div>
+                      {trip.child_order_no && (
+                        <div>
+                          <p style={{ margin: "0 0 4px 0", color: "#94a3b8", fontSize: FONT_SIZE.xs }}>Child Order No</p>
+                          <p style={{ margin: 0, color: "#0f172a", fontSize: FONT_SIZE.sm }}>{trip.child_order_no}</p>
+                        </div>
+                      )}
                     </div>
                     <div style={{ marginBottom: 12 }}>
                       <p style={{ margin: "0 0 4px 0", color: "#94a3b8", fontSize: FONT_SIZE.xs }}>Route</p>
@@ -1066,7 +1089,7 @@ export default function MonitorTrucks() {
                         <td style={{ padding: "12px 16px", color: "#0f172a", fontSize: FONT_SIZE.base }}>{trip.driver_name}</td>
                         <td style={{ padding: "12px 16px", color: "#475569", fontSize: FONT_SIZE.sm }}>{trip.product}</td>
                         <td style={{ padding: "12px 16px", color: "#0f172a", fontSize: FONT_SIZE.base, fontWeight: 500 }}>{trip.loaded_quantity}</td>
-                        <td style={{ padding: "12px 16px", color: "#475569", fontSize: FONT_SIZE.sm }}>{trip.loading_point}{trip.atc ? ` (${trip.atc})` : ""}</td>
+                        <td style={{ padding: "12px 16px", color: "#475569", fontSize: FONT_SIZE.sm }}>{trip.loading_point}{trip.order_no ? ` (Order: ${trip.order_no}${trip.child_order_no ? ` / Child: ${trip.child_order_no}` : ""})` : trip.atc ? ` (${trip.atc})` : ""}</td>
                         <td style={{ padding: "12px 16px" }}>
                           <span style={{
                             padding: "6px 10px", borderRadius: 14, fontSize: FONT_SIZE.xs, fontWeight: 600,
@@ -1139,11 +1162,24 @@ export default function MonitorTrucks() {
                   </ModernInput>
                 </div>
 
-                {ddLoadName && (
+                {ddLoadName && !ddShowHbmOrderFields && (
                   <div style={{ marginBottom: 16 }}>
                     <label style={labelStyle}>ATC Number *</label>
                     <ModernInput placeholder="Enter ATC number" value={ddAtc} onChange={e => { setDdAtc(e.target.value); setDdMessage("") }} onKeyDown={e => { if (e.key === "Enter") ddQtyRef.current?.focus() }} />
                   </div>
+                )}
+
+                {ddShowHbmOrderFields && (
+                  <>
+                    <div style={{ marginBottom: 16 }}>
+                      <label style={labelStyle}>Order No. *</label>
+                      <ModernInput placeholder="Enter order number" value={ddOrderNo} onChange={e => { setDdOrderNo(e.target.value); setDdMessage("") }} />
+                    </div>
+                    <div style={{ marginBottom: 16 }}>
+                      <label style={labelStyle}>Child Order No. *</label>
+                      <ModernInput placeholder="Enter child order number" value={ddChildOrderNo} onChange={e => { setDdChildOrderNo(e.target.value); setDdMessage("") }} onKeyDown={e => { if (e.key === "Enter") ddQtyRef.current?.focus() }} />
+                    </div>
+                  </>
                 )}
 
                 {ddLoadName && (

@@ -41,6 +41,8 @@ type Stop = {
   plate_number: string
   material_centre: string
   atc: string | null
+  order_no: string | null
+  child_order_no: string | null
   product: string
   confirmed: boolean
   disputed: boolean
@@ -522,12 +524,25 @@ export default function BrokerDashboard() {
                           <p style={{ margin: 0, fontSize: 11, color: "#aaa" }}>Loading Point</p>
                           <p style={{ margin: "2px 0 0", fontSize: 12, color: "#555" }}>{stop.material_centre}</p>
                         </div>
-                        {stop.atc && (
+                        {stop.order_no ? (
+                          <>
+                            <div>
+                              <p style={{ margin: 0, fontSize: 11, color: "#aaa" }}>Order No</p>
+                              <p style={{ margin: "2px 0 0", fontSize: 12, color: "#555" }}>{stop.order_no}</p>
+                            </div>
+                            {stop.child_order_no && (
+                              <div>
+                                <p style={{ margin: 0, fontSize: 11, color: "#aaa" }}>Child Order</p>
+                                <p style={{ margin: "2px 0 0", fontSize: 12, color: "#555" }}>{stop.child_order_no}</p>
+                              </div>
+                            )}
+                          </>
+                        ) : stop.atc ? (
                           <div>
                             <p style={{ margin: 0, fontSize: 11, color: "#aaa" }}>ATC</p>
                             <p style={{ margin: "2px 0 0", fontSize: 12, color: "#555" }}>{stop.atc}</p>
                           </div>
-                        )}
+                        ) : null}
                       </div>
 
                       {/* Status / Actions */}
@@ -609,12 +624,25 @@ export default function BrokerDashboard() {
                   <p style={{ margin: 0, fontSize: 11, color: "#aaa" }}>Loading Point</p>
                   <p style={{ margin: "2px 0 0", fontSize: 13, color: "#171717" }}>{selectedStop.material_centre}</p>
                 </div>
-                {selectedStop.atc && (
+                {selectedStop.order_no ? (
+                  <>
+                    <div>
+                      <p style={{ margin: 0, fontSize: 11, color: "#aaa" }}>Order No</p>
+                      <p style={{ margin: "2px 0 0", fontSize: 13, color: "#171717" }}>{selectedStop.order_no}</p>
+                    </div>
+                    {selectedStop.child_order_no && (
+                      <div>
+                        <p style={{ margin: 0, fontSize: 11, color: "#aaa" }}>Child Order</p>
+                        <p style={{ margin: "2px 0 0", fontSize: 13, color: "#171717" }}>{selectedStop.child_order_no}</p>
+                      </div>
+                    )}
+                  </>
+                ) : selectedStop.atc ? (
                   <div>
                     <p style={{ margin: 0, fontSize: 11, color: "#aaa" }}>ATC</p>
                     <p style={{ margin: "2px 0 0", fontSize: 13, color: "#171717" }}>{selectedStop.atc}</p>
                   </div>
-                )}
+                ) : null}
                 <div>
                   <p style={{ margin: 0, fontSize: 11, color: "#aaa" }}>Driver's Customer</p>
                   <p style={{ margin: "2px 0 0", fontSize: 13, color: "#171717" }}>{selectedStop.customer_name}</p>

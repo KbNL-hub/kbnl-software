@@ -29,6 +29,8 @@ type Trip = {
   loaded_quantity: number
   trip_status: string
   atc: string | null
+  order_no: string | null
+  child_order_no: string | null
   amount_charged: number | null
   payment_mode: string | null
 }
@@ -73,14 +75,14 @@ type ATF = {
 type ViewType = "dashboard" | "start-trip" | "active-trip" | "log-stop" | "fuel" | "side-trips"
 
 const LOADING_POINT_MAP: Record<string, string[]> = {
-  Factory: ["Lafarge Mfamosing", "Lafarge Uyo Warehouse"],
+  Factory: ["HBM Mfamosing", "HBM Uyo Warehouse"],
   Depot: ["Calabar Mini Depot", "Ikom Mini Depot", "Ogoja Depot", "Uyo Depot"],
   Outlet: ["Brooks Outlet", "Urua Ekpa Outlet", "Urua Nyemeiko Outlet", "Reserve Store", "E1 Outlet", "Ogoja Outlet"],
 }
 
 const FACTORY_PRODUCTS: Record<string, string[]> = {
-  "Lafarge Mfamosing": ["Classic", "Supaset", "Supafix"],
-  "Lafarge Uyo Warehouse": ["Classic", "Supaset", "Supafix"],
+  "HBM Mfamosing": ["Classic", "Supaset", "Supafix"],
+  "HBM Uyo Warehouse": ["Classic", "Supaset", "Supafix"],
 }
 
 const SIDE_TRIP_ITEMS = ["Yam", "Plantain", "Cassava", "Maize", "Rice", "Other foodstuff"]
@@ -183,6 +185,8 @@ export default function DriverDashboard() {
   const [product, setProduct] = useState("")
   const [loadedQuantity, setLoadedQuantity] = useState("")
   const [atc, setAtc] = useState("")
+  const [orderNo, setOrderNo] = useState("")
+  const [childOrderNo, setChildOrderNo] = useState("")
   const [amountCharged, setAmountCharged] = useState("")
   const [paymentMode, setPaymentMode] = useState("")
   const [trucks, setTrucks] = useState<Truck[]>([])
@@ -385,11 +389,11 @@ export default function DriverDashboard() {
 
 
   function handleCategoryChange(cat: string) {
-    setLoadingPointCategory(cat); setLoadingPointName(""); setProduct(""); setAtc(""); setAmountCharged(""); setPaymentMode(""); setMessage("")
+    setLoadingPointCategory(cat); setLoadingPointName(""); setProduct(""); setAtc(""); setOrderNo(""); setChildOrderNo(""); setAmountCharged(""); setPaymentMode(""); setMessage("")
   }
 
   function handleLoadingPointNameChange(name: string) {
-    setLoadingPointName(name); setProduct(""); setAtc(""); setMessage("")
+    setLoadingPointName(name); setProduct(""); setAtc(""); setOrderNo(""); setChildOrderNo(""); setMessage("")
     setProductOptions(loadingPointCategory === "Factory" ? (FACTORY_PRODUCTS[name] || []) : allProducts)
   }
 
@@ -403,7 +407,8 @@ export default function DriverDashboard() {
   }
 
   const isDinaOrTricycle = truckSize === "Dina" || truckSize === "Tricycle"
-  const showATC = loadingPointCategory === "Factory" && !isDinaOrTricycle
+  const showHbmOrderFields = loadingPointCategory === "Factory" && loadingPointName === "HBM Mfamosing" && !isDinaOrTricycle
+  const showATC = loadingPointCategory === "Factory" && !showHbmOrderFields && !isDinaOrTricycle
   const availableLocations = LOADING_POINT_MAP[loadingPointCategory] || []
 
   async function handleStartTrip() {
@@ -412,6 +417,8 @@ export default function DriverDashboard() {
     if (!loadingPointCategory) return setMessage("Select a loading point type")
     if (!loadingPointName) return setMessage("Select a loading point")
     if (showATC && !atc.trim()) return setMessage("ATC number is required")
+    if (showHbmOrderFields && !orderNo.trim()) return setMessage("Order number is required")
+    if (showHbmOrderFields && !childOrderNo.trim()) return setMessage("Child order number is required")
     if (isDinaOrTricycle && !amountCharged) return setMessage("Enter amount charged")
     if (isDinaOrTricycle && !paymentMode) return setMessage("Select payment mode")
     if (!product) return setMessage("Select a product")
@@ -425,6 +432,8 @@ export default function DriverDashboard() {
         driver_id: driver?.driver_id, plate_number: plateNumber, product,
         material_centre: loadingPointName, loaded_quantity: parseInt(loadedQuantity),
         ATC: showATC ? atc.trim() : null,
+        order_no: showHbmOrderFields ? orderNo.trim() : null,
+        child_order_no: showHbmOrderFields ? childOrderNo.trim() : null,
         amount_charged: isDinaOrTricycle ? parseFloat(amountCharged) : null,
         payment_mode: isDinaOrTricycle ? paymentMode : null,
         trip_status: "In transit",
@@ -1083,6 +1092,19 @@ export default function DriverDashboard() {
                   <label style={labelStyle}>ATC Number *</label>
                   <ModernInput type="text" placeholder="Enter ATC number" value={atc} onChange={e => { setAtc(e.target.value); setMessage("") }} onKeyDown={e => { if (e.key === "Enter") loadedQtyRef.current?.focus() }} style={inputStyle} />
                 </div>
+              )}
+
+              {showHbmOrderFields && loadingPointName && (
+                <>
+                  <div style={{ marginBottom: 16 }}>
+                    <label style={labelStyle}>Order No. *</label>
+                    <ModernInput type="text" placeholder="Enter order number" value={orderNo} onChange={e => { setOrderNo(e.target.value); setMessage("") }} style={inputStyle} />
+                  </div>
+                  <div style={{ marginBottom: 16 }}>
+                    <label style={labelStyle}>Child Order No. *</label>
+                    <ModernInput type="text" placeholder="Enter child order number" value={childOrderNo} onChange={e => { setChildOrderNo(e.target.value); setMessage("") }} onKeyDown={e => { if (e.key === "Enter") loadedQtyRef.current?.focus() }} style={inputStyle} />
+                  </div>
+                </>
               )}
 
               {isDinaOrTricycle && loadingPointName && (
