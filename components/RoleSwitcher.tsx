@@ -116,8 +116,9 @@ export default function RoleSwitcher({ currentRole, style, onRoleSwitch }: Props
             borderRadius: 10,
             boxShadow: "0 8px 24px rgba(0,0,0,0.15)",
             minWidth: 150,
+            maxHeight: "50vh",
+            overflowY: "auto",
             padding: 6,
-            overflow: "hidden",
           }}
         >
           <div style={{ padding: "4px 10px 6px", fontSize: 11, fontWeight: 600, color: "#94a3b8", textTransform: "uppercase", letterSpacing: "0.05em" }}>

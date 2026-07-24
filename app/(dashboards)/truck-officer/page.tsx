@@ -12,6 +12,7 @@ import { useBreakpoint } from "@/app/hooks/useBreakpoint"
 import ReportModal from "@/components/ReportModal"
 import ProfilePictureUpload from "@/components/ProfilePictureUpload"
 import TruckMonitorSection from "@/components/admin/TruckMonitorSection"
+import TruckManageSection from "@/components/admin/TruckManageSection"
 import { FONT_SIZE, POLLING_INTERVAL } from "@/lib/constants"
 import { toISOString, formatDateTime, formatDate, formatTime } from "@/lib/date-utils"
 import { requireDashboardRole } from "@/lib/auth-helpers"
@@ -24,6 +25,7 @@ type AssignedTruck = {
   truck_model: string
   status: string
   fuel_balance: number
+  engine_type: string
 }
 
 type MaintenanceDeposit = {
@@ -84,6 +86,13 @@ type ATF = {
   total_amount: number | null
 }
 
+type FuelEstimate = {
+  id: string
+  location: string
+  diesel_litres: number | null
+  cng_bars: number | null
+}
+
 type Driver = {
   driver_id: string
   full_name: string
@@ -140,6 +149,7 @@ export default function TruckOfficerDashboard() {
   const [loading, setLoading] = useState(true)
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null)
   const [tab, setTab] = useState<"reports" | "fuel" | "atf" | "monitor">("reports")
+  const [myTrucksView, setMyTrucksView] = useState<"monitor" | "manage">("monitor")
   const [filter, setFilter] = useState("All")
 
   const [allDrivers, setAllDrivers] = useState<Driver[]>([])
@@ -167,6 +177,10 @@ export default function TruckOfficerDashboard() {
   const [fuelNotes, setFuelNotes] = useState("")
   const [fuelError, setFuelError] = useState("")
   const [fuelLoading, setFuelLoading] = useState(false)
+  const [fuelEstimates, setFuelEstimates] = useState<FuelEstimate[]>([])
+  const [fuelEstimateId, setFuelEstimateId] = useState("")
+  const [fuelUseCustom, setFuelUseCustom] = useState(false)
+  const [fuelCustomLitres, setFuelCustomLitres] = useState("")
 
   // ATF initiation modal
   const [showATFModal, setShowATFModal] = useState(false)
@@ -215,6 +229,10 @@ export default function TruckOfficerDashboard() {
         .from("fuel_companies").select("company_id, company_name").order("company_name")
       setFuelCompanies(companies || [])
 
+      const { data: estimates } = await supabase
+        .from("fuel_estimates").select("id, location, diesel_litres, cng_bars").order("location")
+      setFuelEstimates(estimates || [])
+
       await Promise.all([
         fetchTrucks(managerId),
         fetchReports(managerId),
@@ -247,7 +265,7 @@ export default function TruckOfficerDashboard() {
     const plates = assignments.map(a => a.plate_number)
     const { data: trucks } = await supabase
       .from("Trucks")
-      .select("plate_number, kbnl_truck_no, truck_model, status, fuel_balance")
+      .select("plate_number, kbnl_truck_no, truck_model, status, fuel_balance, engine_type")
       .in("plate_number", plates)
       .order("plate_number", { ascending: true })
     setAssignedTrucks(trucks || [])
@@ -317,12 +335,25 @@ export default function TruckOfficerDashboard() {
   }
 
   async function handleLogFuelExpense() {
-    const litres = parseFloat(fuelLitres)
     if (!fuelPlate) return setFuelError("Select a truck")
     if (!fuelTripId) return setFuelError("Select a trip")
-    if (!fuelLitres || isNaN(litres) || litres <= 0) return setFuelError("Enter valid litres")
     const truck = assignedTrucks.find(t => t.plate_number === fuelPlate)
     if (!truck) return setFuelError("Truck not found")
+
+    let litres: number
+    let notes: string | null = fuelNotes.trim() || null
+
+    if (fuelUseCustom) {
+      litres = parseFloat(fuelCustomLitres)
+      if (!fuelCustomLitres || isNaN(litres) || litres <= 0) return setFuelError("Enter valid litres/bars")
+      if (!fuelNotes.trim()) return setFuelError("Notes are required when using a custom estimate")
+    } else {
+      if (!fuelEstimateId) return setFuelError("Select a location estimate")
+      const estimate = fuelEstimates.find(e => e.id === fuelEstimateId)
+      if (!estimate) return setFuelError("Invalid estimate selected")
+      litres = truck.engine_type === "CNG" ? (estimate.cng_bars ?? 0) : (estimate.diesel_litres ?? 0)
+      if (litres <= 0) return setFuelError("No estimate available for this location")
+    }
 
     setFuelLoading(true)
 
@@ -334,7 +365,7 @@ export default function TruckOfficerDashboard() {
 
     const freshBalance = freshTruck?.fuel_balance ?? 0
     if (litres > freshBalance) {
-      setFuelError(`Only ${freshBalance}L available for this truck`)
+      setFuelError(`Only ${freshBalance}${truck.engine_type === "CNG" ? " bars" : "L"} available for this truck`)
       setFuelLoading(false)
       return
     }
@@ -344,7 +375,7 @@ export default function TruckOfficerDashboard() {
       table: "truck_fuel_expenses",
       data: {
         manager_id: officer?.manager_id, plate_number: fuelPlate, trip_id: fuelTripId,
-        litres, notes: fuelNotes.trim() || null,
+        litres, notes,
       },
     })
     if (expenseError) { setFuelError("Failed to log fuel expense"); setFuelLoading(false); return }
@@ -363,6 +394,7 @@ export default function TruckOfficerDashboard() {
     setFuelLoading(false)
     setShowFuelModal(false)
     setFuelPlate(""); setFuelTripId(""); setFuelTrips([]); setFuelLitres(""); setFuelNotes(""); setFuelError("")
+    setFuelEstimateId(""); setFuelUseCustom(false); setFuelCustomLitres("")
     if (officer) {
       await fetchTrucks(officer.manager_id)
       await fetchFuelExpenses(officer.manager_id)
@@ -567,7 +599,7 @@ export default function TruckOfficerDashboard() {
                   <p style={{ margin: "2px 0 0", fontSize: FONT_SIZE.xs, color: "#94a3b8" }}>{t.truck_model}{t.kbnl_truck_no ? ` · #${t.kbnl_truck_no}` : ""}</p>
                 </div>
                 <span style={{ fontSize: FONT_SIZE.sm, color: "#0070f3", fontWeight: 700, display: "flex", alignItems: "center", gap: 4 }}>
-                  <Icon icon="mdi:gas-station" width={16} />{t.fuel_balance}L
+                  <Icon icon="mdi:gas-station" width={16} />{t.fuel_balance}{t.engine_type === "CNG" ? " bars" : "L"}
                 </span>
               </div>
             ))}
@@ -578,7 +610,7 @@ export default function TruckOfficerDashboard() {
         <div style={{ display: "flex", gap: 8, marginBottom: 24, flexWrap: "wrap" }}>
           {[
             { key: "reports", label: "Maintenance", icon: "mdi:wrench" },
-            { key: "monitor", label: "Monitor Trucks", icon: "mdi:truck-check" },
+            { key: "monitor", label: "My Trucks", icon: "mdi:truck-check" },
             { key: "fuel", label: "Fuel Log", icon: "mdi:fuel" },
             { key: "atf", label: "ATF", icon: "mdi:gas-station" },
           ].map(t => (
@@ -678,16 +710,54 @@ export default function TruckOfficerDashboard() {
           </div>
         )}
 
-        {/* Monitor Trucks Tab */}
+        {/* My Trucks Tab */}
         {tab === "monitor" && (
           <div>
             <div style={{ marginBottom: 16 }}>
-              <h2 style={{ margin: 0, color: "#0f172a", fontSize: FONT_SIZE.xl, fontWeight: 700 }}>Monitor Trucks</h2>
+              <h2 style={{ margin: 0, color: "#0f172a", fontSize: FONT_SIZE.xl, fontWeight: 700 }}>My Trucks</h2>
               <p style={{ margin: "4px 0 0", color: "#64748b", fontSize: FONT_SIZE.base }}>
-                Track active trucks and view their routes.
+                Monitor active trucks and manage truck statuses.
               </p>
             </div>
-            <TruckMonitorSection plates={assignedTrucks.map(t => t.plate_number)} />
+
+            <div style={{ display: "flex", background: "#eef2f6", borderRadius: 10, padding: 3, marginBottom: 24, maxWidth: 360 }}>
+              {([["monitor", "Monitor Trucks", "mdi:truck-check"], ["manage", "Manage Trucks", "mdi:bus-wrench"]] as const).map(([key, label, icon]) => {
+                const active = myTrucksView === key
+                return (
+                  <button
+                    key={key}
+                    onClick={() => setMyTrucksView(key)}
+                    style={{
+                      flex: 1,
+                      padding: "10px 16px",
+                      background: active ? "#fff" : "transparent",
+                      color: active ? "#0f172a" : "#64748b",
+                      border: "none",
+                      borderRadius: 8,
+                      cursor: "pointer",
+                      fontWeight: active ? 700 : 500,
+                      fontSize: FONT_SIZE.sm,
+                      boxShadow: active ? "0 1px 3px rgba(0,0,0,0.1)" : "none",
+                      transition: "all 0.2s ease",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      gap: 6,
+                      minHeight: 40,
+                    }}
+                  >
+                    <Icon icon={icon} width={16} />
+                    {label}
+                  </button>
+                )
+              })}
+            </div>
+
+            {myTrucksView === "monitor" ? (
+              <TruckMonitorSection plates={assignedTrucks.map(t => t.plate_number)} />
+            ) : (
+              <TruckManageSection trucks={assignedTrucks} onRefresh={() => officer && fetchTrucks(officer.manager_id)} />
+            )}
           </div>
         )}
 
@@ -840,7 +910,7 @@ export default function TruckOfficerDashboard() {
 
       {/* Log Fuel Expense Modal */}
       {showFuelModal && (
-        <div onClick={() => { setShowFuelModal(false); setFuelPlate(""); setFuelTripId(""); setFuelTrips([]); setFuelLitres(""); setFuelNotes(""); setFuelError("") }} style={modalOverlay}>
+        <div onClick={() => { setShowFuelModal(false); setFuelPlate(""); setFuelTripId(""); setFuelTrips([]); setFuelLitres(""); setFuelNotes(""); setFuelError(""); setFuelEstimateId(""); setFuelUseCustom(false); setFuelCustomLitres("") }} style={modalOverlay}>
           <div onClick={e => e.stopPropagation()} style={modalBox}>
             <h3 style={{ marginBottom: 6, color: "#0f172a", fontSize: FONT_SIZE.xl, fontWeight: 700 }}>Log Fuel Expense</h3>
             <p style={{ margin: "0 0 20px", fontSize: FONT_SIZE.sm, color: "#64748b" }}>Record fuel consumption for a completed trip</p>
@@ -848,56 +918,118 @@ export default function TruckOfficerDashboard() {
             <div style={{ marginBottom: 16 }}>
               <label style={labelStyle}>Truck *</label>
               <div style={{ position: "relative" }}>
-                <ModernInput as="select" value={fuelPlate} onChange={e => handleFuelPlateChange(e.target.value)} style={inputStyle}>
+                <ModernInput as="select" value={fuelPlate} onChange={e => { handleFuelPlateChange(e.target.value); setFuelEstimateId(""); setFuelUseCustom(false); setFuelCustomLitres("") }} style={inputStyle}>
                   <option value="">Select truck</option>
                   {assignedTrucks.map(t => (
                     <option key={t.plate_number} value={t.plate_number}>
-                      {t.plate_number}{t.kbnl_truck_no ? ` · #${t.kbnl_truck_no}` : ""} — ⛽ {t.fuel_balance}L
+                      {t.plate_number}{t.kbnl_truck_no ? ` · #${t.kbnl_truck_no}` : ""} — {t.engine_type === "CNG" ? "⛽ CNG" : `⛽ ${t.fuel_balance}L`}
                     </option>
                   ))}
                 </ModernInput>
               </div>
             </div>
 
-            {fuelPlate && (
-              <div style={{ marginBottom: 16 }}>
-                <label style={labelStyle}>Trip *</label>
+            {fuelPlate && (() => {
+              const selectedTruck = assignedTrucks.find(t => t.plate_number === fuelPlate)
+              const isDiesel = selectedTruck?.engine_type !== "CNG"
+              const unitLabel = isDiesel ? "Litres" : "Bars"
+              const filteredEstimates = fuelEstimates.filter(e => isDiesel ? e.diesel_litres != null : e.cng_bars != null)
 
-                {fuelTrips.length === 0 ? (
-                  <p style={{ fontSize: FONT_SIZE.sm, color: "#94a3b8", marginTop: 4, margin: 0 }}>
-                    No completed trips found for this truck.
-                  </p>
-                ) : (
-                  <div style={{ position: "relative" }}>
-                    <ModernInput as="select" value={fuelTripId} onChange={e => { setFuelTripId(e.target.value); setFuelError("") }} style={inputStyle}>
-                      <option value="">Select trip</option>
-                      {fuelTrips.map(t => (
-                        <option key={t.trip_id} value={t.trip_id}>
-                          {formatDate(t.created_at)} — {t.material_centre} · {t.product}
-                        </option>
-                      ))}
-                    </ModernInput>
+              return (
+                <>
+                  <div style={{ marginBottom: 16 }}>
+                    <label style={labelStyle}>Trip *</label>
+                    {fuelTrips.length === 0 ? (
+                      <p style={{ fontSize: FONT_SIZE.sm, color: "#94a3b8", margin: 0 }}>
+                        No completed trips found for this truck.
+                      </p>
+                    ) : (
+                      <div style={{ position: "relative" }}>
+                        <ModernInput as="select" value={fuelTripId} onChange={e => { setFuelTripId(e.target.value); setFuelError("") }} style={inputStyle}>
+                          <option value="">Select trip</option>
+                          {fuelTrips.map(t => (
+                            <option key={t.trip_id} value={t.trip_id}>
+                              {formatDate(t.created_at)} — {t.material_centre} · {t.product}
+                            </option>
+                          ))}
+                        </ModernInput>
+                      </div>
+                    )}
                   </div>
-                )}
-              </div>
-            )}
 
-            {fuelTripId && (
-              <div style={{ marginBottom: 16 }}>
-                <label style={labelStyle}>Estimated Litres Consumed *</label>
-                <ModernInput type="number" step="0.1" placeholder="e.g. 120" value={fuelLitres} onChange={e => { setFuelLitres(e.target.value); setFuelError("") }} style={inputStyle} />
-              </div>
-            )}
+                  {fuelTripId && (
+                    <>
+                      <div style={{ marginBottom: 16 }}>
+                        <label style={labelStyle}>Location Estimate *</label>
+                        {filteredEstimates.length === 0 ? (
+                          <p style={{ fontSize: FONT_SIZE.sm, color: "#94a3b8", margin: 0 }}>
+                            No estimates available. Use the custom option below.
+                          </p>
+                        ) : (
+                          <ModernInput as="select" value={fuelEstimateId} onChange={e => { setFuelEstimateId(e.target.value); setFuelError("") }} style={inputStyle}>
+                            <option value="">Select location</option>
+                            {filteredEstimates.map(e => (
+                              <option key={e.id} value={e.id}>
+                                {e.location} — {isDiesel ? `${e.diesel_litres}L` : `${e.cng_bars} bars`}
+                              </option>
+                            ))}
+                          </ModernInput>
+                        )}
+                      </div>
 
-            <div style={{ marginBottom: 20 }}>
-              <label style={labelStyle}>Notes (optional)</label>
-              <ModernInput as="textarea" placeholder="e.g. Long haul — 400km" value={fuelNotes} onChange={e => setFuelNotes(e.target.value)} rows={3} style={{ ...inputStyle, resize: "none", minHeight: 100, paddingRight: 12 }} />
-            </div>
+                      {fuelEstimateId && (() => {
+                        const est = fuelEstimates.find(e => e.id === fuelEstimateId)
+                        const val = isDiesel ? est?.diesel_litres : est?.cng_bars
+                        return (
+                          <div style={{ marginBottom: 16, padding: "10px 14px", background: "#f0f7ff", borderRadius: 8, border: "1px solid #bfdbfe" }}>
+                            <p style={{ margin: 0, fontSize: FONT_SIZE.sm, color: "#0369a1" }}>
+                              Estimated: <strong>{val} {isDiesel ? "Litres" : "Bars"}</strong>
+                            </p>
+                          </div>
+                        )
+                      })()}
+
+                      <div style={{ marginBottom: 16 }}>
+                        <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", fontSize: FONT_SIZE.sm, color: "#475569" }}>
+                          <input
+                            type="checkbox"
+                            checked={fuelUseCustom}
+                            onChange={e => { setFuelUseCustom(e.target.checked); setFuelError(""); setFuelCustomLitres(""); setFuelEstimateId("") }}
+                            style={{ width: 18, height: 18, accentColor: "#0070f3" }}
+                          />
+                          None of these estimates suit (e.g. backhaul)
+                        </label>
+                      </div>
+
+                      {fuelUseCustom && (
+                        <>
+                          <div style={{ marginBottom: 16 }}>
+                            <label style={labelStyle}>Actual {unitLabel} Consumed *</label>
+                            <ModernInput type="number" step="0.1" placeholder={`e.g. ${isDiesel ? "120" : "15"}`} value={fuelCustomLitres} onChange={e => { setFuelCustomLitres(e.target.value); setFuelError("") }} style={inputStyle} />
+                          </div>
+                          <div style={{ marginBottom: 16 }}>
+                            <label style={labelStyle}>Notes * (required for custom estimate)</label>
+                            <ModernInput as="textarea" placeholder="e.g. Backhaul. Truck used more fuel" value={fuelNotes} onChange={e => { setFuelNotes(e.target.value); setFuelError("") }} rows={3} style={{ ...inputStyle, resize: "none", minHeight: 100, paddingRight: 12 }} />
+                          </div>
+                        </>
+                      )}
+
+                      {!fuelUseCustom && (
+                        <div style={{ marginBottom: 16 }}>
+                          <label style={labelStyle}>Notes (optional)</label>
+                          <ModernInput as="textarea" placeholder="e.g. Long haul — 400km" value={fuelNotes} onChange={e => setFuelNotes(e.target.value)} rows={3} style={{ ...inputStyle, resize: "none", minHeight: 100, paddingRight: 12 }} />
+                        </div>
+                      )}
+                    </>
+                  )}
+                </>
+              )
+            })()}
 
             {fuelError && <div style={{ padding: 12, background: "#fef2f2", borderLeft: "4px solid #ef4444", borderRadius: 4, marginBottom: 16, color: "#b91c1c", fontSize: FONT_SIZE.sm, fontWeight: 600 }}>{fuelError}</div>}
 
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-              <button onClick={() => { setShowFuelModal(false); setFuelPlate(""); setFuelTripId(""); setFuelTrips([]); setFuelLitres(""); setFuelNotes(""); setFuelError("") }} style={{ padding: "12px 16px", background: "white", border: "1px solid #cbd5e1", color: "#475569", borderRadius: 8, cursor: "pointer", fontWeight: 700, fontSize: FONT_SIZE.md, minHeight: 44 }}>Cancel</button>
+              <button onClick={() => { setShowFuelModal(false); setFuelPlate(""); setFuelTripId(""); setFuelTrips([]); setFuelLitres(""); setFuelNotes(""); setFuelError(""); setFuelEstimateId(""); setFuelUseCustom(false); setFuelCustomLitres("") }} style={{ padding: "12px 16px", background: "white", border: "1px solid #cbd5e1", color: "#475569", borderRadius: 8, cursor: "pointer", fontWeight: 700, fontSize: FONT_SIZE.md, minHeight: 44 }}>Cancel</button>
               <button onClick={handleLogFuelExpense} disabled={fuelLoading} style={{ padding: "12px 16px", background: "#0070f3", color: "white", border: "none", borderRadius: 8, cursor: fuelLoading ? "not-allowed" : "pointer", fontWeight: 700, fontSize: FONT_SIZE.md, minHeight: 44, opacity: fuelLoading ? 0.7 : 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>{fuelLoading ? <><Icon icon="mdi:loading" width={16} style={{ animation: "spin 1s linear infinite" }} /> Logging...</> : "Log Consumption"}</button>
             </div>
           </div>
@@ -916,7 +1048,7 @@ export default function TruckOfficerDashboard() {
               <div style={{ position: "relative" }}>
                 <ModernInput as="select" value={atfPlate} onChange={e => { setAtfPlate(e.target.value); setAtfError("") }} style={inputStyle}>
                   <option value="">Select truck</option>
-                  {assignedTrucks.map(t => <option key={t.plate_number} value={t.plate_number}>{t.plate_number}{t.kbnl_truck_no ? ` · #${t.kbnl_truck_no}` : ""} — ⛽ {t.fuel_balance}L</option>)}
+                  {assignedTrucks.map(t => <option key={t.plate_number} value={t.plate_number}>{t.plate_number}{t.kbnl_truck_no ? ` · #${t.kbnl_truck_no}` : ""} — ⛽ {t.fuel_balance}{t.engine_type === "CNG" ? " bars" : "L"}</option>)}
                 </ModernInput>
               </div>
             </div>

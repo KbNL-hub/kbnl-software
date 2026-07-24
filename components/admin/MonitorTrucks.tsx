@@ -474,6 +474,7 @@ export default function MonitorTrucks() {
   function ddSetMsg(msg: string, type: "success" | "error") {
     setDdMessage(msg)
     setDdMessageType(type)
+    if (type === "success") setTimeout(() => setDdMessage(""), 3000)
   }
 
   const ddProductOptions = ddLoadName ? PRODUCT_BY_LOADING_POINT[ddLoadName] ?? [] : []

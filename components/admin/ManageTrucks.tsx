@@ -6,6 +6,7 @@ import { useState, useEffect, useRef } from "react"
 import { supabase } from "@/lib/supabase"
 import { apiMutate } from "@/lib/api-mutation"
 import { usePermissions } from "@/lib/PermissionContext"
+import { Role } from "@/lib/roles"
 
 type Truck = {
   plate_number: string
@@ -14,12 +15,14 @@ type Truck = {
   capacity: number
   truck_size: string | null
   status: string
+  engine_type: string
 }
 
 type ViewMode = "card" | "table"
 
 const TRUCK_SIZES = ["20", "40/45", "Dina", "Tricycle"]
-const truckStatuses = ["Empty", "Loaded", "Undergoing Repairs", "Decommissioned"]
+const ENGINE_TYPES = ["Diesel Engine", "CNG"]
+const truckStatuses = ["Empty", "Loaded", "To Plant", "Undergoing Repairs", "Decommissioned"]
 
 function useBreakpoint() {
   const [isDesktop, setIsDesktop] = useState(false)
@@ -52,6 +55,8 @@ const getPillStyle = (filter: string, isActive: boolean) => {
     return { bg: "#f0fdf4", textColor: "#16a34a", borderColor: "#16a34a" }
   } else if (filter === "Loaded") {
     return { bg: "#eff6ff", textColor: "#0070f3", borderColor: "#0070f3" }
+  } else if (filter === "To Plant") {
+    return { bg: "#f8f0ff", textColor: "#874cf5", borderColor: "#874cf5" }
   } else if (filter === "Undergoing Repairs") {
     return { bg: "#fffbeb", textColor: "#f5a623", borderColor: "#f5a623" }
   } else if (filter === "Decommissioned") {
@@ -63,8 +68,9 @@ const getPillStyle = (filter: string, isActive: boolean) => {
 
 export default function ManageTrucks() {
   const { isMobile, isDesktop } = useBreakpoint()
-  const { getAccess } = usePermissions()
-  const canEdit = getAccess("manage-trucks").canEdit
+  const { getAccess, activeRole } = usePermissions()
+  const baseCanEdit = getAccess("manage-trucks").canEdit
+  const canEdit = baseCanEdit && activeRole !== Role.ATCOfficer
   const [trucks, setTrucks] = useState<Truck[]>([])
   const [loading, setLoading] = useState(true)
   const [viewMode, setViewMode] = useState<ViewMode>("card")
@@ -73,6 +79,7 @@ export default function ManageTrucks() {
   const [editModel, setEditModel] = useState("")
   const [editCapacity, setEditCapacity] = useState("")
   const [editTruckSize, setEditTruckSize] = useState("")
+  const [editEngineType, setEditEngineType] = useState("")
   const [editStatus, setEditStatus] = useState("")
   const [deletingPlate, setDeletingPlate] = useState<string | null>(null)
   const [message, setMessage] = useState("")
@@ -100,7 +107,7 @@ export default function ManageTrucks() {
     setViewMode(isMobile ? "card" : "table")
   }, [isMobile])
 
-  const filterOptions = ["All", "Empty", "Loaded", "Undergoing Repairs", "Decommissioned"]
+  const filterOptions = ["All", "Empty", "Loaded", "To Plant", "Undergoing Repairs", "Decommissioned"]
   const filteredTrucks = filterStatus === "All" ? trucks : trucks.filter((t) => t.status === filterStatus)
 
   function startEdit(truck: Truck) {
@@ -109,6 +116,7 @@ export default function ManageTrucks() {
     setEditModel(truck.truck_model)
     setEditCapacity(truck.capacity.toString())
     setEditTruckSize(truck.truck_size ?? "")
+    setEditEngineType(truck.engine_type)
     setEditStatus(truck.status)
     setMessage("")
   }
@@ -139,6 +147,7 @@ export default function ManageTrucks() {
           truck_model: editModel.trim(),
           capacity,
           truck_size: editTruckSize || null,
+          engine_type: editEngineType,
           status: editStatus,
         },
         filters: { plate_number: editingTruck.plate_number },
@@ -461,6 +470,15 @@ export default function ManageTrucks() {
                       <option value="">No size</option>
                       {TRUCK_SIZES.map((s) => (
                         <option key={s} value={s}>{s}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label style={{ display: "block", marginBottom: 6, color: "#475569", fontSize: FONT_SIZE.sm, fontWeight: 500 }}>Engine Type</label>
+                    <select value={editEngineType} disabled={!canEdit} onChange={(e) => setEditEngineType(e.target.value)} style={{ ...inputStyle, appearance: "none", paddingRight: 32, backgroundImage: "url('data:image/svg+xml;charset=UTF-8,%3csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 24 24%22 fill=%22none%22 stroke=%22%23171717%22 stroke-width=%222%22%3e%3cpolyline points=%226 9 12 15 18 9%22%3e%3c/polyline%3e%3c/svg%3e')", backgroundRepeat: "no-repeat", backgroundPosition: "right 12px center", backgroundSize: "16px" }}>
+                      {ENGINE_TYPES.map((t) => (
+                        <option key={t} value={t}>{t}</option>
                       ))}
                     </select>
                   </div>

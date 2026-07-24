@@ -46,6 +46,13 @@ type FuelCompany = {
   low_balance_threshold: number
 }
 
+type FuelEstimate = {
+  id: string
+  location: string
+  diesel_litres: number | null
+  cng_bars: number | null
+}
+
 type ViewMode = "card" | "table"
 
 function useBreakpoint() {
@@ -63,15 +70,13 @@ function useBreakpoint() {
   return { isMobile, isDesktop }
 }
 
-
-
 const atfStatusColor = (status: string) => {
   switch (status) {
-    case "Pending": return { bg: "#fef3c7", color: "#b45309", border: "#fde68a" } // amber/yellow
-    case "Authorised": return { bg: "#f0f7ff", color: "#0070f3", border: "#bfdbfe" } // blue
-    case "Dispensed": return { bg: "#f3e8ff", color: "#7e22ce", border: "#e9d5ff" } // purple
-    case "Confirmed": return { bg: "#d1fae5", color: "#047857", border: "#a7f3d0" } // green
-    case "Invalidated": return { bg: "#fef2f2", color: "#b91c1c", border: "#fecaca" } // red
+    case "Pending": return { bg: "#fef3c7", color: "#b45309", border: "#fde68a" }
+    case "Authorised": return { bg: "#f0f7ff", color: "#0070f3", border: "#bfdbfe" }
+    case "Dispensed": return { bg: "#f3e8ff", color: "#7e22ce", border: "#e9d5ff" }
+    case "Confirmed": return { bg: "#d1fae5", color: "#047857", border: "#a7f3d0" }
+    case "Invalidated": return { bg: "#fef2f2", color: "#b91c1c", border: "#fecaca" }
     default: return { bg: "#f1f5f9", color: "#475569", border: "#e2e8f0" }
   }
 }
@@ -81,22 +86,41 @@ const filters = ["All", "Pending", "Authorised", "Dispensed", "Confirmed", "Inva
 export default function DieselManager() {
   const { getAccess } = usePermissions()
   const canEdit = getAccess("diesel-manager").canEdit
-  const { isMobile, isDesktop } = useBreakpoint()
+  const { isMobile } = useBreakpoint()
   const [atfs, setAtfs] = useState<ATF[]>([])
   const [deposits, setDeposits] = useState<FuelDeposit[]>([])
   const [companies, setCompanies] = useState<FuelCompany[]>([])
+  const [fuelEstimates, setFuelEstimates] = useState<FuelEstimate[]>([])
   const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState("All")
   const [viewMode, setViewMode] = useState<ViewMode>("card")
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null)
-  
-  // Deposit modal
+
   const [depositCompanyId, setDepositCompanyId] = useState("")
   const [depositAmount, setDepositAmount] = useState("")
   const [depositNote, setDepositNote] = useState("")
   const [depositError, setDepositError] = useState("")
   const [depositLoading, setDepositLoading] = useState(false)
   const [showDepositModal, setShowDepositModal] = useState(false)
+
+  const [showAddStationModal, setShowAddStationModal] = useState(false)
+  const [newStationName, setNewStationName] = useState("")
+  const [stationError, setStationError] = useState("")
+  const [stationLoading, setStationLoading] = useState(false)
+
+  const [showEstimateModal, setShowEstimateModal] = useState(false)
+  const [editingEstimate, setEditingEstimate] = useState<FuelEstimate | null>(null)
+  const [estLocation, setEstLocation] = useState("")
+  const [estDiesel, setEstDiesel] = useState("")
+  const [estCng, setEstCng] = useState("")
+  const [estError, setEstError] = useState("")
+  const [estLoading, setEstLoading] = useState(false)
+
+  const [deletingEstimateId, setDeletingEstimateId] = useState<string | null>(null)
+  const [deleteEstLoading, setDeleteEstLoading] = useState(false)
+
+  const [stationsCollapsed, setStationsCollapsed] = useState(false)
+  const [estimatesCollapsed, setEstimatesCollapsed] = useState(false)
 
   const inputStyle: React.CSSProperties = {
     width: "100%", padding: "12px 14px", boxSizing: "border-box", borderRadius: 8,
@@ -110,7 +134,7 @@ export default function DieselManager() {
   }, [])
 
   async function fetchAll() {
-    await Promise.all([fetchATFs(), fetchCompanies(), fetchDeposits()])
+    await Promise.all([fetchATFs(), fetchCompanies(), fetchDeposits(), fetchEstimates()])
     setLastUpdated(new Date())
     setLoading(false)
   }
@@ -157,6 +181,14 @@ export default function DieselManager() {
     setCompanies(data || [])
   }
 
+  async function fetchEstimates() {
+    const { data } = await supabase
+      .from("fuel_estimates")
+      .select("id, location, diesel_litres, cng_bars")
+      .order("location")
+    setFuelEstimates(data || [])
+  }
+
   async function handleDeposit() {
     if (!canEdit) return
     const amount = parseAmount(depositAmount)
@@ -189,6 +221,104 @@ export default function DieselManager() {
     }
   }
 
+  async function handleAddStation() {
+    if (!canEdit) return
+    const name = newStationName.trim()
+    if (!name) return setStationError("Enter a station name")
+
+    setStationLoading(true)
+    try {
+      const { error } = await apiMutate("fuel", {
+        action: "insert",
+        table: "fuel_companies",
+        data: { company_name: name },
+      })
+      if (error) { setStationError("Failed to create station"); return }
+      setShowAddStationModal(false)
+      setNewStationName("")
+      setStationError("")
+      fetchCompanies()
+    } catch {
+      setStationError("Network error, please try again")
+    } finally {
+      setStationLoading(false)
+    }
+  }
+
+  function openAddEstimate() {
+    setEditingEstimate(null)
+    setEstLocation("")
+    setEstDiesel("")
+    setEstCng("")
+    setEstError("")
+    setShowEstimateModal(true)
+  }
+
+  function openEditEstimate(est: FuelEstimate) {
+    setEditingEstimate(est)
+    setEstLocation(est.location)
+    setEstDiesel(est.diesel_litres != null ? String(est.diesel_litres) : "")
+    setEstCng(est.cng_bars != null ? String(est.cng_bars) : "")
+    setEstError("")
+    setShowEstimateModal(true)
+  }
+
+  async function handleSaveEstimate() {
+    if (!canEdit) return
+    const location = estLocation.trim()
+    if (!location) return setEstError("Enter a location name")
+    const diesel = estDiesel.trim() ? parseFloat(estDiesel) : null
+    const cng = estCng.trim() ? parseFloat(estCng) : null
+    if ((diesel === null || isNaN(diesel)) && (cng === null || isNaN(cng))) {
+      return setEstError("Enter at least one estimate value (diesel or CNG)")
+    }
+
+    setEstLoading(true)
+    try {
+      if (editingEstimate) {
+        const { error } = await apiMutate("admin", {
+          action: "update",
+          table: "fuel_estimates",
+          data: { location, diesel_litres: diesel, cng_bars: cng },
+          filters: { id: editingEstimate.id },
+        })
+        if (error) { setEstError("Failed to update estimate"); return }
+      } else {
+        const { error } = await apiMutate("admin", {
+          action: "insert",
+          table: "fuel_estimates",
+          data: { location, diesel_litres: diesel, cng_bars: cng },
+        })
+        if (error) { setEstError("Failed to add estimate"); return }
+      }
+      setShowEstimateModal(false)
+      setEditingEstimate(null)
+      setEstLocation(""); setEstDiesel(""); setEstCng(""); setEstError("")
+      fetchEstimates()
+    } catch {
+      setEstError("Network error, please try again")
+    } finally {
+      setEstLoading(false)
+    }
+  }
+
+  async function handleDeleteEstimate() {
+    if (!canEdit || !deletingEstimateId) return
+    setDeleteEstLoading(true)
+    try {
+      const { error } = await apiMutate("admin", {
+        action: "delete",
+        table: "fuel_estimates",
+        filters: { id: deletingEstimateId },
+      })
+      if (error) return
+      setDeletingEstimateId(null)
+      fetchEstimates()
+    } finally {
+      setDeleteEstLoading(false)
+    }
+  }
+
   const filteredATFs = filter === "All" ? atfs : atfs.filter(a => a.atf_status === filter)
 
   const balanceMap = useMemo(() => {
@@ -218,8 +348,37 @@ export default function DieselManager() {
     return map
   }, [atfs, deposits, companies])
 
+  const modalOverlayStyle: React.CSSProperties = {
+    position: "fixed", inset: 0, background: "rgba(15, 23, 42, 0.6)", backdropFilter: "blur(4px)",
+    display: "flex", alignItems: isMobile ? "flex-end" : "center", justifyContent: "center",
+    zIndex: 100, padding: isMobile ? 0 : 24
+  }
+
+  const modalBoxStyle: React.CSSProperties = {
+    background: "white", borderRadius: isMobile ? "20px 20px 0 0" : 12,
+    padding: isMobile ? "28px 20px" : 32, width: "100%", maxWidth: 420,
+    maxHeight: "90vh", overflowY: "auto",
+    boxShadow: "0 25px 50px -12px rgba(0, 0, 0, 0.25)"
+  }
+
+  const thStyle: React.CSSProperties = {
+    padding: "10px 14px", fontWeight: 600, fontSize: FONT_SIZE.xs, color: "#64748b",
+    textTransform: "uppercase" as const, letterSpacing: "0.5px", textAlign: "left"
+  }
+
+  const tdStyle: React.CSSProperties = {
+    padding: "10px 14px", fontSize: FONT_SIZE.sm, color: "#0f172a"
+  }
+
+  const smallBtnStyle: React.CSSProperties = {
+    padding: "4px 10px", borderRadius: 6, fontSize: FONT_SIZE.xs, fontWeight: 500,
+    cursor: "pointer", border: "none", transition: "all 0.15s ease", minHeight: 28
+  }
+
   return (
     <div style={{ minHeight: "100vh", background: "#f8fafc", padding: isMobile ? "16px" : "32px", fontFamily: "'Inter', sans-serif" }}>
+      <style>{`@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } } @keyframes slideUp { from { transform: translateY(20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }`}</style>
+
       {/* Header */}
       <div style={{ display: "flex", flexDirection: isMobile ? "column" : "row", justifyContent: "space-between", alignItems: isMobile ? "stretch" : "flex-start", gap: 16, marginBottom: 32 }}>
         <div>
@@ -232,58 +391,221 @@ export default function DieselManager() {
             </p>
           )}
         </div>
-        
-        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+
+        <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
           {atfs.length > 0 && (
-            <div style={{ display: "flex", background: "white", border: "1px solid #e2e8f0", borderRadius: 8, padding: 4, gap: 0 }}>
-              <button onClick={() => setViewMode("card")} style={{ padding: "8px 12px", background: viewMode === "card" ? "#0070f3" : "transparent", color: viewMode === "card" ? "white" : "#64748b", border: "none", borderRadius: 6, cursor: "pointer", fontSize: FONT_SIZE.xs, fontWeight: 600, transition: "all 0.2s ease", minWidth: 44, height: 40, display: "flex", alignItems: "center", justifyContent: "center" }} title="Card view">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M3 3h8v8H3V3zm10 0h8v8h-8V3zM3 13h8v8H3v-8zm10 0h8v8h-8v-8z" /></svg>
+            <div style={{ display: "flex", background: "white", border: "1px solid #e2e8f0", borderRadius: 8, padding: 3, gap: 0 }}>
+              <button onClick={() => setViewMode("card")} style={{ padding: "7px 10px", background: viewMode === "card" ? "#0070f3" : "transparent", color: viewMode === "card" ? "white" : "#64748b", border: "none", borderRadius: 5, cursor: "pointer", fontSize: FONT_SIZE.xs, fontWeight: 600, transition: "all 0.2s ease", minWidth: 36, height: 36, display: "flex", alignItems: "center", justifyContent: "center" }} title="Card view">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M3 3h8v8H3V3zm10 0h8v8h-8V3zM3 13h8v8H3v-8zm10 0h8v8h-8v-8z" /></svg>
               </button>
-              <button onClick={() => setViewMode("table")} style={{ padding: "8px 12px", background: viewMode === "table" ? "#0070f3" : "transparent", color: viewMode === "table" ? "white" : "#64748b", border: "none", borderRadius: 6, cursor: "pointer", fontSize: FONT_SIZE.xs, fontWeight: 600, transition: "all 0.2s ease", minWidth: 44, height: 40, display: "flex", alignItems: "center", justifyContent: "center" }} title="Table view">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M3 4h18v2H3V4zm0 7h18v2H3v-2zm0 7h18v2H3v-2z" /></svg>
+              <button onClick={() => setViewMode("table")} style={{ padding: "7px 10px", background: viewMode === "table" ? "#0070f3" : "transparent", color: viewMode === "table" ? "white" : "#64748b", border: "none", borderRadius: 5, cursor: "pointer", fontSize: FONT_SIZE.xs, fontWeight: 600, transition: "all 0.2s ease", minWidth: 36, height: 36, display: "flex", alignItems: "center", justifyContent: "center" }} title="Table view">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M3 4h18v2H3V4zm0 7h18v2H3v-2zm0 7h18v2H3v-2z" /></svg>
               </button>
             </div>
           )}
-          <button onClick={fetchAll} style={{ padding: "10px 16px", background: "white", color: "#0070f3", border: "1px solid #e2e8f0", borderRadius: 8, cursor: "pointer", fontWeight: 500, fontSize: FONT_SIZE.sm, transition: "all 0.2s ease", display: "flex", alignItems: "center", gap: 6, minHeight: 40, height: 48 }} onMouseEnter={e => { e.currentTarget.style.background = "#f8fafc"; e.currentTarget.style.borderColor = "#0070f3" }} onMouseLeave={e => { e.currentTarget.style.background = "white"; e.currentTarget.style.borderColor = "#e2e8f0" }}>
+          <button onClick={fetchAll} style={{ padding: "0 12px", background: "white", color: "#64748b", border: "1px solid #e2e8f0", borderRadius: 8, cursor: "pointer", fontSize: FONT_SIZE.sm, transition: "all 0.2s ease", display: "flex", alignItems: "center", justifyContent: "center", height: 40 }} title="Refresh">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M23 4v6h-6" /><path d="M1 20v-6h6" /><path d="M3.51 9a9 9 0 0 1 14.85-3.36M20.49 15a9 9 0 0 1-14.85 3.36" /></svg>
           </button>
-          <button onClick={() => setShowDepositModal(true)} style={{ padding: "0 20px", background: "#0070f3", color: "white", border: "none", borderRadius: 8, cursor: "pointer", fontWeight: 600, fontSize: FONT_SIZE.sm, transition: "all 0.2s ease", minHeight: 48, flex: isMobile ? 1 : "none" }} onMouseEnter={e => !isMobile && (e.currentTarget.style.transform = "translateY(-1px)")} onMouseLeave={e => !isMobile && (e.currentTarget.style.transform = "translateY(0)")}>
-            + Top Up
-          </button>
+          {canEdit && (
+            <>
+              <button onClick={() => setShowDepositModal(true)} style={{ padding: "0 14px", background: "#0070f3", color: "white", border: "none", borderRadius: 8, cursor: "pointer", fontWeight: 600, fontSize: FONT_SIZE.sm, height: 40, display: "flex", alignItems: "center", gap: 4, whiteSpace: "nowrap" }}>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>
+                Top Up
+              </button>
+              <button onClick={() => { setShowAddStationModal(true); setStationError(""); setNewStationName("") }} style={{ padding: "0 14px", background: "white", color: "#0070f3", border: "1.5px solid #0070f3", borderRadius: 8, cursor: "pointer", fontWeight: 600, fontSize: FONT_SIZE.sm, height: 40, display: "flex", alignItems: "center", gap: 4, whiteSpace: "nowrap" }}>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>
+                Station
+              </button>
+              <button onClick={openAddEstimate} style={{ padding: "0 14px", background: "white", color: "#16a34a", border: "1.5px solid #16a34a", borderRadius: 8, cursor: "pointer", fontWeight: 600, fontSize: FONT_SIZE.sm, height: 40, display: "flex", alignItems: "center", gap: 4, whiteSpace: "nowrap" }}>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>
+                Estimate
+              </button>
+            </>
+          )}
         </div>
       </div>
 
-      {/* Company Balances */}
-      <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(auto-fill, minmax(280px, 1fr))", gap: 16, marginBottom: 32 }}>
-        {companies.map(c => {
-          const low = c.current_balance < c.low_balance_threshold
-          return (
-            <div key={c.company_id} style={{ background: "white", border: `1px solid ${low ? "#fde68a" : "#e2e8f0"}`, borderRadius: 12, padding: 20, boxShadow: "0 1px 3px rgba(0, 0, 0, 0.05)", position: "relative", overflow: "hidden" }}>
-              {low && <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 4, background: "#ef4444" }} />}
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-                <div>
-                  <p style={{ margin: "0 0 4px", fontSize: FONT_SIZE.sm, color: "#64748b", fontWeight: 500 }}>{c.company_name}</p>
-                  <p style={{ margin: 0, fontWeight: 700, fontSize: FONT_SIZE.xl, color: "#0f172a" }}>
+      {/* Station Balances */}
+      <div style={{ background: "white", border: "1px solid #e2e8f0", borderRadius: 12, overflow: "hidden", marginBottom: 24, boxShadow: "0 1px 3px rgba(0,0,0,0.05)" }}>
+        <div
+          onClick={() => setStationsCollapsed(!stationsCollapsed)}
+          style={{ padding: "14px 16px", borderBottom: stationsCollapsed ? "none" : "1px solid #e2e8f0", display: "flex", justifyContent: "space-between", alignItems: "center", cursor: "pointer", userSelect: "none" }}
+        >
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#64748b" strokeWidth="2" style={{ transition: "transform 0.2s ease", transform: stationsCollapsed ? "rotate(-90deg)" : "rotate(0deg)" }}><polyline points="6 9 12 15 18 9" /></svg>
+            <h2 style={{ margin: 0, fontSize: FONT_SIZE.base, fontWeight: 700, color: "#0f172a" }}>Fuel Stations</h2>
+          </div>
+          <span style={{ fontSize: FONT_SIZE.xs, color: "#94a3b8" }}>{companies.length} station{companies.length !== 1 ? "s" : ""}</span>
+        </div>
+
+        {!stationsCollapsed && (<>
+
+        {companies.length === 0 ? (
+          <div style={{ padding: "32px 16px", textAlign: "center" }}>
+            <p style={{ margin: 0, color: "#94a3b8", fontSize: FONT_SIZE.sm }}>No stations yet. Add one to get started.</p>
+          </div>
+        ) : isMobile ? (
+          <div style={{ display: "flex", flexDirection: "column" }}>
+            {companies.map(c => {
+              const low = c.current_balance < c.low_balance_threshold
+              return (
+                <div key={c.company_id} style={{ padding: "12px 16px", borderBottom: "1px solid #f1f5f9", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <p style={{ margin: 0, fontWeight: 600, fontSize: FONT_SIZE.sm, color: "#0f172a", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{c.company_name}</p>
+                    {low && <span style={{ fontSize: FONT_SIZE.xs, color: "#ef4444", fontWeight: 500 }}>Low balance</span>}
+                  </div>
+                  <span style={{ fontWeight: 700, fontSize: FONT_SIZE.sm, color: low ? "#ef4444" : "#0f172a", whiteSpace: "nowrap" }}>
                     ₦{c.current_balance.toLocaleString()}
-                  </p>
+                  </span>
+                  {canEdit && (
+                    <button
+                      onClick={() => { setDepositCompanyId(c.company_id); setShowDepositModal(true); setDepositError("") }}
+                      style={{ ...smallBtnStyle, background: "#f0f7ff", color: "#0070f3", flexShrink: 0 }}
+                    >
+                      Top Up
+                    </button>
+                  )}
                 </div>
-                <div style={{ width: 40, height: 40, borderRadius: "50%", background: low ? "#fef2f2" : "#f0f7ff", color: low ? "#ef4444" : "#0070f3", display: "flex", alignItems: "center", justifyContent: "center" }}>
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" /></svg>
-                </div>
-              </div>
-              {low && <p style={{ margin: "12px 0 0", fontSize: FONT_SIZE.xs, color: "#ef4444", fontWeight: 500, display: "flex", alignItems: "center", gap: 4 }}><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0zM12 9v4M12 17h.01" /></svg> Balance below threshold</p>}
-            </div>
-          )
-        })}
+              )
+            })}
+          </div>
+        ) : (
+          <table style={{ width: "100%", borderCollapse: "collapse" }}>
+            <thead>
+              <tr style={{ borderBottom: "1px solid #e2e8f0" }}>
+                <th style={thStyle}>Station</th>
+                <th style={{ ...thStyle, textAlign: "right" }}>Balance</th>
+                <th style={thStyle}>Threshold</th>
+                <th style={thStyle}>Status</th>
+                {canEdit && <th style={{ ...thStyle, textAlign: "right" }}>Action</th>}
+              </tr>
+            </thead>
+            <tbody>
+              {companies.map(c => {
+                const low = c.current_balance < c.low_balance_threshold
+                return (
+                  <tr key={c.company_id} style={{ borderBottom: "1px solid #f1f5f9" }} onMouseEnter={e => e.currentTarget.style.background = "#f8fafc"} onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
+                    <td style={{ ...tdStyle, fontWeight: 600 }}>{c.company_name}</td>
+                    <td style={{ ...tdStyle, textAlign: "right", fontWeight: 700, color: low ? "#ef4444" : "#0f172a" }}>₦{c.current_balance.toLocaleString()}</td>
+                    <td style={{ ...tdStyle, color: "#64748b" }}>₦{c.low_balance_threshold.toLocaleString()}</td>
+                    <td style={tdStyle}>
+                      {low ? (
+                        <span style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "2px 8px", borderRadius: 10, fontSize: FONT_SIZE.xs, fontWeight: 600, background: "#fef2f2", color: "#ef4444" }}>
+                          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0zM12 9v4M12 17h.01" /></svg>
+                          Low
+                        </span>
+                      ) : (
+                        <span style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "2px 8px", borderRadius: 10, fontSize: FONT_SIZE.xs, fontWeight: 600, background: "#f0fdf4", color: "#16a34a" }}>
+                          OK
+                        </span>
+                      )}
+                    </td>
+                    {canEdit && (
+                      <td style={{ ...tdStyle, textAlign: "right" }}>
+                        <button
+                          onClick={() => { setDepositCompanyId(c.company_id); setShowDepositModal(true); setDepositError("") }}
+                          style={{ ...smallBtnStyle, background: "#f0f7ff", color: "#0070f3" }}
+                        >
+                          Top Up
+                        </button>
+                      </td>
+                    )}
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        )}
+        </>)}
       </div>
 
-      {/* Filter Pills */}
+      {/* Fuel Estimates */}
+      <div style={{ background: "white", border: "1px solid #e2e8f0", borderRadius: 12, overflow: "hidden", marginBottom: 24, boxShadow: "0 1px 3px rgba(0,0,0,0.05)" }}>
+        <div
+          onClick={() => setEstimatesCollapsed(!estimatesCollapsed)}
+          style={{ padding: "14px 16px", borderBottom: estimatesCollapsed ? "none" : "1px solid #e2e8f0", display: "flex", justifyContent: "space-between", alignItems: "center", cursor: "pointer", userSelect: "none" }}
+        >
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#64748b" strokeWidth="2" style={{ transition: "transform 0.2s ease", transform: estimatesCollapsed ? "rotate(-90deg)" : "rotate(0deg)" }}><polyline points="6 9 12 15 18 9" /></svg>
+            <h2 style={{ margin: 0, fontSize: FONT_SIZE.base, fontWeight: 700, color: "#0f172a" }}>Fuel Consumption Estimates</h2>
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <span style={{ fontSize: FONT_SIZE.xs, color: "#94a3b8" }}>{fuelEstimates.length} location{fuelEstimates.length !== 1 ? "s" : ""}</span>
+            {canEdit && (
+              <button onClick={(e) => { e.stopPropagation(); openAddEstimate() }} style={{ padding: "4px 10px", borderRadius: 6, fontSize: FONT_SIZE.xs, fontWeight: 600, cursor: "pointer", border: "1px solid #16a34a", background: "#f0fdf4", color: "#16a34a", transition: "all 0.15s ease" }}>
+                + Add
+              </button>
+            )}
+          </div>
+        </div>
+
+        {!estimatesCollapsed && (<>
+        {fuelEstimates.length === 0 ? (
+          <div style={{ padding: "32px 16px", textAlign: "center" }}>
+            <p style={{ margin: "0 0 8px", color: "#94a3b8", fontSize: FONT_SIZE.sm }}>No estimates added yet.</p>
+            <p style={{ margin: 0, color: "#94a3b8", fontSize: FONT_SIZE.xs }}>Add locations with diesel litres and CNG bars estimates for fuel consumption logging.</p>
+          </div>
+        ) : isMobile ? (
+          <div style={{ display: "flex", flexDirection: "column" }}>
+            {fuelEstimates.map(est => (
+              <div key={est.id} style={{ padding: "12px 16px", borderBottom: "1px solid #f1f5f9", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <p style={{ margin: 0, fontWeight: 600, fontSize: FONT_SIZE.sm, color: "#0f172a", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{est.location}</p>
+                  <div style={{ display: "flex", gap: 12, marginTop: 4 }}>
+                    {est.diesel_litres != null && <span style={{ fontSize: FONT_SIZE.xs, color: "#64748b" }}>{est.diesel_litres}L diesel</span>}
+                    {est.cng_bars != null && <span style={{ fontSize: FONT_SIZE.xs, color: "#64748b" }}>{est.cng_bars} bars CNG</span>}
+                  </div>
+                </div>
+                {canEdit && (
+                  <div style={{ display: "flex", gap: 4, flexShrink: 0 }}>
+                    <button onClick={() => openEditEstimate(est)} style={{ ...smallBtnStyle, background: "#f0f7ff", color: "#0070f3" }}>Edit</button>
+                    <button onClick={() => setDeletingEstimateId(est.id)} style={{ ...smallBtnStyle, background: "#fef2f2", color: "#ef4444" }}>Del</button>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        ) : (
+          <table style={{ width: "100%", borderCollapse: "collapse" }}>
+            <thead>
+              <tr style={{ borderBottom: "1px solid #e2e8f0" }}>
+                <th style={thStyle}>Location</th>
+                <th style={{ ...thStyle, textAlign: "right" }}>Diesel (L)</th>
+                <th style={{ ...thStyle, textAlign: "right" }}>CNG (Bars)</th>
+                {canEdit && <th style={{ ...thStyle, textAlign: "right" }}>Actions</th>}
+              </tr>
+            </thead>
+            <tbody>
+              {fuelEstimates.map(est => (
+                <tr key={est.id} style={{ borderBottom: "1px solid #f1f5f9" }} onMouseEnter={e => e.currentTarget.style.background = "#f8fafc"} onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
+                  <td style={{ ...tdStyle, fontWeight: 600 }}>{est.location}</td>
+                  <td style={{ ...tdStyle, textAlign: "right", color: est.diesel_litres != null ? "#0f172a" : "#94a3b8" }}>
+                    {est.diesel_litres != null ? `${est.diesel_litres}L` : "—"}
+                  </td>
+                  <td style={{ ...tdStyle, textAlign: "right", color: est.cng_bars != null ? "#0f172a" : "#94a3b8" }}>
+                    {est.cng_bars != null ? `${est.cng_bars}` : "—"}
+                  </td>
+                  {canEdit && (
+                    <td style={{ ...tdStyle, textAlign: "right" }}>
+                      <div style={{ display: "flex", gap: 4, justifyContent: "flex-end" }}>
+                        <button onClick={() => openEditEstimate(est)} style={{ ...smallBtnStyle, background: "#f0f7ff", color: "#0070f3" }}>Edit</button>
+                        <button onClick={() => setDeletingEstimateId(est.id)} style={{ ...smallBtnStyle, background: "#fef2f2", color: "#ef4444" }}>Delete</button>
+                      </div>
+                    </td>
+                  )}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+        </>)}
+      </div>
       <div style={{ display: "flex", gap: 8, marginBottom: 24, flexWrap: "wrap", overflowX: "auto", paddingBottom: 4 }}>
         {filters.map(f => {
           const isActive = filter === f
           const count = f === "All" ? atfs.length : atfs.filter(a => a.atf_status === f).length
           let colorProps = { bg: "white", color: "#64748b", border: "#e2e8f0" }
-          
+
           if (isActive) {
             if (f === "All") colorProps = { bg: "#f1f5f9", color: "#0f172a", border: "#cbd5e1" }
             else colorProps = atfStatusColor(f)
@@ -312,6 +634,7 @@ export default function DieselManager() {
         })}
       </div>
 
+      {/* ATF List */}
       {loading ? (
         <div style={{ display: "flex", justifyContent: "center", padding: "64px 0" }}>
           <div style={{ width: 40, height: 40, borderRadius: "50%", border: "3px solid #e2e8f0", borderTopColor: "#0070f3", animation: "spin 1s linear infinite" }} />
@@ -391,12 +714,12 @@ export default function DieselManager() {
               <table style={{ width: "100%", borderCollapse: "collapse", textAlign: "left", minWidth: 800 }}>
                 <thead>
                   <tr style={{ background: "#f8fafc", borderBottom: "1px solid #e2e8f0" }}>
-                    <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: FONT_SIZE.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px" }}>ATF Code</th>
-                    <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: FONT_SIZE.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px" }}>Truck & Driver</th>
-                    <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: FONT_SIZE.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px" }}>Station</th>
-                    <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: FONT_SIZE.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px", textAlign: "right" }}>Volume</th>
-                    <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: FONT_SIZE.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px", textAlign: "right" }}>Amount</th>
-                    <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: FONT_SIZE.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px" }}>Status</th>
+                    <th style={thStyle}>ATF Code</th>
+                    <th style={thStyle}>Truck & Driver</th>
+                    <th style={thStyle}>Station</th>
+                    <th style={{ ...thStyle, textAlign: "right" }}>Volume</th>
+                    <th style={{ ...thStyle, textAlign: "right" }}>Amount</th>
+                    <th style={thStyle}>Status</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -404,23 +727,17 @@ export default function DieselManager() {
                     const { bg, color, border } = atfStatusColor(atf.atf_status)
                     return (
                       <tr key={atf.request_id} style={{ borderBottom: idx === filteredATFs.length - 1 ? "none" : "1px solid #e2e8f0", transition: "background 0.2s ease" }} onMouseEnter={e => e.currentTarget.style.background = "#f8fafc"} onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
-                        <td style={{ padding: "12px 16px", color: "#0f172a", fontSize: FONT_SIZE.sm, fontFamily: "monospace", fontWeight: 600 }}>
+                        <td style={{ ...tdStyle, fontFamily: "monospace", fontWeight: 600 }}>
                           {atf.atf_code || <span style={{ color: "#94a3b8", fontStyle: "italic", fontWeight: "normal" }}>Pending</span>}
                         </td>
-                        <td style={{ padding: "12px 16px" }}>
-                          <p style={{ margin: 0, color: "#0f172a", fontSize: FONT_SIZE.sm, fontWeight: 500 }}>{atf.plate_number}{atf.kbnl_truck_no ? ` (#${atf.kbnl_truck_no})` : ""}</p>
+                        <td style={tdStyle}>
+                          <p style={{ margin: 0, fontWeight: 500 }}>{atf.plate_number}{atf.kbnl_truck_no ? ` (#${atf.kbnl_truck_no})` : ""}</p>
                           <p style={{ margin: "2px 0 0", color: "#64748b", fontSize: FONT_SIZE.xs }}>{atf.driver_name}</p>
                         </td>
-                        <td style={{ padding: "12px 16px", color: "#475569", fontSize: FONT_SIZE.sm }}>
-                          {atf.company_name}
-                        </td>
-                        <td style={{ padding: "12px 16px", color: "#0f172a", fontSize: FONT_SIZE.sm, textAlign: "right", fontWeight: 500 }}>
-                          {atf.litres}L
-                        </td>
-                        <td style={{ padding: "12px 16px", color: "#0f172a", fontSize: FONT_SIZE.sm, textAlign: "right", fontWeight: 500 }}>
-                          {atf.total_amount ? `₦${atf.total_amount.toLocaleString()}` : "—"}
-                        </td>
-                        <td style={{ padding: "12px 16px" }}>
+                        <td style={{ ...tdStyle, color: "#475569" }}>{atf.company_name}</td>
+                        <td style={{ ...tdStyle, textAlign: "right", fontWeight: 500 }}>{atf.litres}L</td>
+                        <td style={{ ...tdStyle, textAlign: "right", fontWeight: 500 }}>{atf.total_amount ? `₦${atf.total_amount.toLocaleString()}` : "—"}</td>
+                        <td style={tdStyle}>
                           <span style={{ padding: "4px 10px", borderRadius: 6, fontSize: FONT_SIZE.xs, fontWeight: 500, background: bg, color, border: `1px solid ${border}`, whiteSpace: "nowrap" }}>
                             {atf.atf_status}
                           </span>
@@ -437,10 +754,8 @@ export default function DieselManager() {
 
       {/* Deposit Modal */}
       {showDepositModal && (
-        <div style={{ position: "fixed", inset: 0, background: "rgba(15, 23, 42, 0.6)", backdropFilter: "blur(4px)", display: "flex", alignItems: isMobile ? "flex-end" : "center", justifyContent: "center", zIndex: 100, padding: isMobile ? 0 : 24, animation: "fadeIn 0.2s ease-out" }}>
-          <style>{`@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } } @keyframes slideUp { from { transform: translateY(20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }`}</style>
-          <div style={{ background: "white", borderRadius: isMobile ? "20px 20px 0 0" : 12, padding: isMobile ? "28px 20px" : 32, width: "100%", maxWidth: 420, maxHeight: "90vh", overflowY: "auto", boxShadow: "0 25px 50px -12px rgba(0, 0, 0, 0.25)", animation: "slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1)" }}>
-            
+        <div onClick={() => { setShowDepositModal(false); setDepositCompanyId(""); setDepositAmount(""); setDepositNote(""); setDepositError("") }} style={modalOverlayStyle}>
+          <div onClick={e => e.stopPropagation()} style={modalBoxStyle}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24 }}>
               <h3 style={{ margin: 0, color: "#0f172a", fontSize: FONT_SIZE.xl, fontWeight: 700 }}>Top Up Fuel Balance</h3>
               <button onClick={() => { setShowDepositModal(false); setDepositCompanyId(""); setDepositAmount(""); setDepositNote(""); setDepositError("") }} style={{ background: "none", border: "none", color: "#94a3b8", cursor: "pointer", padding: 4 }}><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg></button>
@@ -492,6 +807,124 @@ export default function DieselManager() {
               </button>
               <button onClick={handleDeposit} disabled={depositLoading || !canEdit} style={{ flex: 1, padding: "12px 16px", background: depositLoading || !canEdit ? "#94a3b8" : "#0070f3", color: "white", border: "none", borderRadius: 8, cursor: depositLoading || !canEdit ? "not-allowed" : "pointer", fontWeight: 600, fontSize: FONT_SIZE.md, minHeight: 44, opacity: depositLoading || !canEdit ? 0.7 : 1 }}>
                 {depositLoading ? "Adding..." : "Top Up"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Add Station Modal */}
+      {showAddStationModal && (
+        <div onClick={() => { setShowAddStationModal(false); setNewStationName(""); setStationError("") }} style={modalOverlayStyle}>
+          <div onClick={e => e.stopPropagation()} style={modalBoxStyle}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24 }}>
+              <h3 style={{ margin: 0, color: "#0f172a", fontSize: FONT_SIZE.xl, fontWeight: 700 }}>Add New Station</h3>
+              <button onClick={() => { setShowAddStationModal(false); setNewStationName(""); setStationError("") }} style={{ background: "none", border: "none", color: "#94a3b8", cursor: "pointer", padding: 4 }}><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg></button>
+            </div>
+
+            <div style={{ marginBottom: 24 }}>
+              <label style={{ display: "block", marginBottom: 6, color: "#475569", fontSize: FONT_SIZE.sm, fontWeight: 500 }}>Station Name *</label>
+              <ModernInput
+                type="text"
+                placeholder="e.g. Total Energies, NNPC"
+                value={newStationName}
+                onChange={(e: any) => { setNewStationName(e.target.value); setStationError("") }}
+                style={inputStyle}
+                readOnly={!canEdit}
+              />
+            </div>
+
+            {stationError && <div style={{ padding: 12, background: "#fef2f2", borderLeft: "4px solid #ef4444", borderRadius: 4, marginBottom: 24, color: "#b91c1c", fontSize: FONT_SIZE.sm }}>{stationError}</div>}
+
+            <div style={{ display: "flex", gap: 10 }}>
+              <button onClick={() => { setShowAddStationModal(false); setNewStationName(""); setStationError("") }} style={{ flex: 1, padding: "12px 16px", background: "white", color: "#0f172a", border: "1px solid #cbd5e1", borderRadius: 8, cursor: "pointer", fontWeight: 600, fontSize: FONT_SIZE.md, minHeight: 44 }}>
+                Cancel
+              </button>
+              <button onClick={handleAddStation} disabled={stationLoading || !canEdit} style={{ flex: 1, padding: "12px 16px", background: stationLoading || !canEdit ? "#94a3b8" : "#0070f3", color: "white", border: "none", borderRadius: 8, cursor: stationLoading || !canEdit ? "not-allowed" : "pointer", fontWeight: 600, fontSize: FONT_SIZE.md, minHeight: 44, opacity: stationLoading || !canEdit ? 0.7 : 1 }}>
+                {stationLoading ? "Creating..." : "Create Station"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Add/Edit Estimate Modal */}
+      {showEstimateModal && (
+        <div onClick={() => { setShowEstimateModal(false); setEditingEstimate(null); setEstLocation(""); setEstDiesel(""); setEstCng(""); setEstError("") }} style={modalOverlayStyle}>
+          <div onClick={e => e.stopPropagation()} style={modalBoxStyle}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24 }}>
+              <h3 style={{ margin: 0, color: "#0f172a", fontSize: FONT_SIZE.xl, fontWeight: 700 }}>{editingEstimate ? "Edit Estimate" : "Add Estimate"}</h3>
+              <button onClick={() => { setShowEstimateModal(false); setEditingEstimate(null); setEstLocation(""); setEstDiesel(""); setEstCng(""); setEstError("") }} style={{ background: "none", border: "none", color: "#94a3b8", cursor: "pointer", padding: 4 }}><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg></button>
+            </div>
+
+            <div style={{ display: "flex", flexDirection: "column", gap: 14, marginBottom: 24 }}>
+              <div>
+                <label style={{ display: "block", marginBottom: 6, color: "#475569", fontSize: FONT_SIZE.sm, fontWeight: 500 }}>Location *</label>
+                <ModernInput
+                  type="text"
+                  placeholder="e.g. Lagos, Port Harcourt"
+                  value={estLocation}
+                  onChange={(e: any) => { setEstLocation(e.target.value); setEstError("") }}
+                  style={inputStyle}
+                />
+              </div>
+              <div>
+                <label style={{ display: "block", marginBottom: 6, color: "#475569", fontSize: FONT_SIZE.sm, fontWeight: 500 }}>Diesel (Litres)</label>
+                <ModernInput
+                  type="number"
+                  step="0.1"
+                  placeholder="e.g. 120"
+                  value={estDiesel}
+                  onChange={(e: any) => { setEstDiesel(e.target.value); setEstError("") }}
+                  style={inputStyle}
+                />
+              </div>
+              <div>
+                <label style={{ display: "block", marginBottom: 6, color: "#475569", fontSize: FONT_SIZE.sm, fontWeight: 500 }}>CNG (Bars)</label>
+                <ModernInput
+                  type="number"
+                  step="0.1"
+                  placeholder="e.g. 15"
+                  value={estCng}
+                  onChange={(e: any) => { setEstCng(e.target.value); setEstError("") }}
+                  style={inputStyle}
+                />
+              </div>
+            </div>
+
+            <p style={{ margin: "-10px 0 20px", fontSize: FONT_SIZE.xs, color: "#94a3b8" }}>Enter at least one value (diesel or CNG).</p>
+
+            {estError && <div style={{ padding: 12, background: "#fef2f2", borderLeft: "4px solid #ef4444", borderRadius: 4, marginBottom: 24, color: "#b91c1c", fontSize: FONT_SIZE.sm }}>{estError}</div>}
+
+            <div style={{ display: "flex", gap: 10 }}>
+              <button onClick={() => { setShowEstimateModal(false); setEditingEstimate(null); setEstLocation(""); setEstDiesel(""); setEstCng(""); setEstError("") }} style={{ flex: 1, padding: "12px 16px", background: "white", color: "#0f172a", border: "1px solid #cbd5e1", borderRadius: 8, cursor: "pointer", fontWeight: 600, fontSize: FONT_SIZE.md, minHeight: 44 }}>
+                Cancel
+              </button>
+              <button onClick={handleSaveEstimate} disabled={estLoading || !canEdit} style={{ flex: 1, padding: "12px 16px", background: estLoading || !canEdit ? "#94a3b8" : "#0070f3", color: "white", border: "none", borderRadius: 8, cursor: estLoading || !canEdit ? "not-allowed" : "pointer", fontWeight: 600, fontSize: FONT_SIZE.md, minHeight: 44, opacity: estLoading || !canEdit ? 0.7 : 1 }}>
+                {estLoading ? "Saving..." : editingEstimate ? "Save Changes" : "Add Estimate"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Estimate Confirmation */}
+      {deletingEstimateId && (
+        <div onClick={() => setDeletingEstimateId(null)} style={modalOverlayStyle}>
+          <div onClick={e => e.stopPropagation()} style={{ ...modalBoxStyle, maxWidth: 380, textAlign: "center" }}>
+            <div style={{ width: 56, height: 56, background: "#fef2f2", color: "#ef4444", borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 16px" }}>
+              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 6h18" /><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" /></svg>
+            </div>
+            <h3 style={{ margin: "0 0 8px", color: "#0f172a", fontSize: FONT_SIZE.lg, fontWeight: 700 }}>Delete Estimate</h3>
+            <p style={{ margin: "0 0 24px", color: "#64748b", fontSize: FONT_SIZE.sm, lineHeight: 1.5 }}>
+              Are you sure you want to delete the estimate for <strong>{fuelEstimates.find(e => e.id === deletingEstimateId)?.location}</strong>? This cannot be undone.
+            </p>
+            <div style={{ display: "flex", gap: 10 }}>
+              <button onClick={() => setDeletingEstimateId(null)} style={{ flex: 1, padding: "12px 16px", background: "white", color: "#0f172a", border: "1px solid #cbd5e1", borderRadius: 8, cursor: "pointer", fontWeight: 600, fontSize: FONT_SIZE.md, minHeight: 44 }}>
+                Cancel
+              </button>
+              <button onClick={handleDeleteEstimate} disabled={deleteEstLoading} style={{ flex: 1, padding: "12px 16px", background: deleteEstLoading ? "#94a3b8" : "#ef4444", color: "white", border: "none", borderRadius: 8, cursor: deleteEstLoading ? "not-allowed" : "pointer", fontWeight: 600, fontSize: FONT_SIZE.md, minHeight: 44, opacity: deleteEstLoading ? 0.7 : 1 }}>
+                {deleteEstLoading ? "Deleting..." : "Delete"}
               </button>
             </div>
           </div>

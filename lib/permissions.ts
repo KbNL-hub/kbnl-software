@@ -87,7 +87,7 @@ export const ROLES: { [key: string]: RoleConfig | undefined } & Partial<Record<R
   },
   [Role.ATCOfficer]: {
     sections: [
-      'manage-drivers', 'monitor-trips', 'add-truck',
+      'manage-drivers', 'monitor-trips',
       'monitor-trucks', 'manage-trucks', 'truck-officers',
       'tricycles', 'diesel-manager', 'reports', 'side-trips',
     ],

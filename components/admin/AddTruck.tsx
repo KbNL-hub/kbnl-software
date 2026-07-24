@@ -6,7 +6,8 @@ import { apiMutate } from "@/lib/api-mutation"
 import { usePermissions } from "@/lib/PermissionContext"
 
 const TRUCK_SIZES = ["20", "40/45", "Dina", "Tricycle"]
-const truckStatuses = ["Empty", "Loaded", "Undergoing Repairs", "Decommissioned"]
+const ENGINE_TYPES = ["Diesel Engine", "CNG"]
+const truckStatuses = ["Empty", "Loaded", "To Plant", "Undergoing Repairs", "Decommissioned"]
 
 export default function AddTruck() {
   const { getAccess } = usePermissions()
@@ -19,6 +20,7 @@ export default function AddTruck() {
   const [truckSize, setTruckSize] = useState("")
   const [customTruckSize, setCustomTruckSize] = useState("")
   const [status, setStatus] = useState("Empty")
+  const [engineType, setEngineType] = useState("Diesel Engine")
   const [tricycleNumber, setTricycleNumber] = useState("")
   const [assignedTo, setAssignedTo] = useState("")
   const [phoneNumber, setPhoneNumber] = useState("")
@@ -77,6 +79,7 @@ export default function AddTruck() {
             tricycle_number: tricycleNumber.trim(),
             assigned_to: assignedTo.trim(),
             phone_number: phoneNumber.trim(),
+            engine_type: engineType,
           },
         })
         if (error) { setMessage(error); return }
@@ -91,6 +94,7 @@ export default function AddTruck() {
             capacity: parsedCapacity,
             truck_size: finalTruckSize,
             status,
+            engine_type: engineType,
           },
         })
         if (error) { setMessage(error); return }
@@ -103,6 +107,7 @@ export default function AddTruck() {
       setCapacity("")
       setTruckSize("")
       setCustomTruckSize("")
+      setEngineType("Diesel Engine")
       setStatus("Empty")
       setTricycleNumber("")
       setAssignedTo("")
@@ -263,6 +268,23 @@ export default function AddTruck() {
             readOnly={!canEdit}
           />
         )}
+      </div>
+
+      <div style={{ marginBottom: 16 }}>
+        <label style={{ fontWeight: "bold", display: "block", marginBottom: 6 }}>
+          Engine Type *
+        </label>
+        <ModernInput
+          as="select"
+          value={engineType}
+          onChange={(e) => { setEngineType(e.target.value); setMessage("") }}
+          style={fieldStyle}
+          disabled={!canEdit}
+        >
+          {ENGINE_TYPES.map((t) => (
+            <option key={t} value={t}>{t}</option>
+          ))}
+        </ModernInput>
       </div>
 
       <div style={{ marginBottom: 24 }}>
