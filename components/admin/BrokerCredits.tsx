@@ -23,6 +23,7 @@ type CreditEntry = {
   cleared_at: string | null
   created_by: string
   created_at: string
+  updated_at: string
   age_of_credit: number | null
 }
 type BrokerTotal = Broker & { total_credit: number }
@@ -485,7 +486,7 @@ export default function BrokerCredits() {
                     <span style={{ fontSize: FONT_SIZE.base, fontWeight: 600, color: "#171717" }}>{c.customer_name}</span>
                     <div style={{ display: "flex", gap: 16, marginTop: 4, fontSize: FONT_SIZE.sm, color: "#6b7280", flexWrap: "wrap" }}>
                       <span>₦{formatAmount(String(c.amount))}</span>
-                      <span>{new Date(c.created_at).toLocaleDateString()}</span>
+                      <span>{new Date(c.updated_at).toLocaleDateString()}</span>
                       {c.age_of_credit != null && <span style={{ color: "#9ca3af" }}>{c.age_of_credit} days</span>}
                     </div>
                   </div>
@@ -517,7 +518,7 @@ export default function BrokerCredits() {
                       <td style={{ padding: "12px 16px", color: "#0f172a", fontSize: FONT_SIZE.base, fontWeight: 500 }}>{c.customer_name}</td>
                       <td style={{ padding: "12px 16px", textAlign: "right", color: "#475569", fontSize: FONT_SIZE.sm, fontWeight: 600 }}>₦{formatAmount(String(c.amount))}</td>
                       <td style={{ padding: "12px 16px", textAlign: "right", color: "#64748b", fontSize: FONT_SIZE.sm }}>{c.age_of_credit != null ? `${c.age_of_credit} days` : "—"}</td>
-                      <td style={{ padding: "12px 16px", textAlign: "right", color: "#64748b", fontSize: FONT_SIZE.sm }}>{new Date(c.created_at).toLocaleDateString()}</td>
+                      <td style={{ padding: "12px 16px", textAlign: "right", color: "#64748b", fontSize: FONT_SIZE.sm }}>{new Date(c.updated_at).toLocaleDateString()}</td>
                       <td style={{ padding: "12px 16px", textAlign: "right" }}>
                         <button
                           onClick={() => openUpdateModal(c)}

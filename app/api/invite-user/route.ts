@@ -1,96 +1,12 @@
 import { createClient } from "@supabase/supabase-js"
 import { NextResponse } from "next/server"
 import { generateTempPassword } from "@/lib/auth-helpers"
+import { createRoleEntry, ROLE_TABLE_META } from "@/lib/role-tables"
 
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 )
-
-const ROLE_TABLES: Record<string, (userId: string, data: any) => Promise<string | null>> = {
-  SuperAdmin: async () => null,
-  Driver: async (userId, { fullName, phoneNumber }) => {
-    const { error } = await supabaseAdmin.from("Drivers").upsert(
-      { driver_id: userId, full_name: fullName, phone_number: phoneNumber || null },
-      { onConflict: "driver_id" }
-    )
-    return error?.message || null
-  },
-  Broker: async (userId, { fullName, phoneNumber }) => {
-    const { error } = await supabaseAdmin.from("Brokers").upsert(
-      { broker_id: userId, broker_name: fullName, phone_number: phoneNumber || null },
-      { onConflict: "broker_id" }
-    )
-    return error?.message || null
-  },
-  StationManager: async (userId, { fullName, phoneNumber, companyId }) => {
-    if (!companyId) return "Company is required for Station Manager"
-    const { error } = await supabaseAdmin.from("station_managers").upsert(
-      { manager_id: userId, full_name: fullName, phone_number: phoneNumber || null, company_id: companyId },
-      { onConflict: "manager_id" }
-    )
-    return error?.message || null
-  },
-  TruckOfficer: async (userId, { fullName, phoneNumber }) => {
-    const { error } = await supabaseAdmin.from("truck_officers").upsert(
-      { manager_id: userId, full_name: fullName, phone_number: phoneNumber || null },
-      { onConflict: "manager_id" }
-    )
-    return error?.message || null
-  },
-  TruckAdmin: async (userId, { fullName, phoneNumber }) => {
-    const { error } = await supabaseAdmin.from("truck_admins").upsert(
-      { admin_id: userId, full_name: fullName, phone_number: phoneNumber || null },
-      { onConflict: "admin_id" }
-    )
-    return error?.message || null
-  },
-  StoreOfficer: async (userId, { fullName, phoneNumber, storeName }) => {
-    if (!storeName) return "Store name is required for Store Officer"
-    const { error } = await supabaseAdmin.from("store_officers").upsert(
-      { officer_id: userId, full_name: fullName, phone_number: phoneNumber || null, store_name: storeName },
-      { onConflict: "officer_id" }
-    )
-    return error?.message || null
-  },
-  CashOfficer: async (userId, { fullName, phoneNumber, officeName }) => {
-    if (!officeName) return "Office is required for Cash Officer"
-    const { error } = await supabaseAdmin.from("cash_officers").upsert(
-      { clerk_id: userId, full_name: fullName, phone_number: phoneNumber || null, office_name: officeName, status: "Invited" },
-      { onConflict: "clerk_id" }
-    )
-    return error?.message || null
-  },
-  DeskOfficer: async (userId, { fullName, phoneNumber }) => {
-    const { error } = await supabaseAdmin.from("desk_officers").upsert(
-      { officer_id: userId, full_name: fullName, phone_number: phoneNumber || null },
-      { onConflict: "officer_id" }
-    )
-    return error?.message || null
-  },
-  ATCOfficer: async (userId, { fullName, phoneNumber }) => {
-    const { error } = await supabaseAdmin.from("atc_officers").upsert(
-      { officer_id: userId, full_name: fullName, phone_number: phoneNumber || null },
-      { onConflict: "officer_id" }
-    )
-    return error?.message || null
-  },
-  Supervisor: async (userId, { fullName, phoneNumber }) => {
-    const { error } = await supabaseAdmin.from("supervisors").upsert(
-      { supervisor_id: userId, full_name: fullName, phone_number: phoneNumber || null },
-      { onConflict: "supervisor_id" }
-    )
-    return error?.message || null
-  },
-  CashAuthorizer: async (userId, { fullName, phoneNumber, assignedOffice }) => {
-    if (!assignedOffice) return "Assigned office is required for Cash Authorizer"
-    const { error } = await supabaseAdmin.from("cash_authorizers").upsert(
-      { authorizer_id: userId, full_name: fullName, phone_number: phoneNumber || null, assigned_office: assignedOffice },
-      { onConflict: "authorizer_id" }
-    )
-    return error?.message || null
-  },
-}
 
 export async function POST(req: Request) {
   const { email, fullName, phoneNumber, role, roles, companyId, storeName, officeName, assignedOffice, openingBalance } = await req.json()
@@ -108,7 +24,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "At least one role is required" }, { status: 400 })
   }
 
-  const invalidRoles = selectedRoles.filter((r) => !(r in ROLE_TABLES))
+  const invalidRoles = selectedRoles.filter((r) => !(r in ROLE_TABLE_META))
   if (invalidRoles.length > 0) {
     return NextResponse.json(
       { error: `Unsupported role(s): ${invalidRoles.join(", ")}` },
@@ -180,16 +96,40 @@ export async function POST(req: Request) {
     }
   }
 
+  // Validate required extra fields
+  if (selectedRoles.includes("StationManager") && !companyId) {
+    return NextResponse.json({ error: "Company is required for Station Manager" }, { status: 400 })
+  }
+  if (selectedRoles.includes("StoreOfficer") && !storeName) {
+    return NextResponse.json({ error: "Store name is required for Store Officer" }, { status: 400 })
+  }
+  if (selectedRoles.includes("CashOfficer") && !officeName) {
+    return NextResponse.json({ error: "Office is required for Cash Officer" }, { status: 400 })
+  }
+  if (selectedRoles.includes("CashAuthorizer") && !assignedOffice) {
+    return NextResponse.json({ error: "Assigned office is required for Cash Authorizer" }, { status: 400 })
+  }
+
   // Insert into role-specific tables
-  const dataArgs = { fullName, phoneNumber, companyId, storeName, officeName, assignedOffice }
+  const extraData: Record<string, unknown> = {}
+  if (companyId) extraData.company_id = companyId
+  if (storeName) extraData.store_name = storeName
+  if (officeName) extraData.office_name = officeName
+  if (assignedOffice) extraData.assigned_office = assignedOffice
+
+  const hasExtraData = Object.keys(extraData).length > 0
+
   for (const r of selectedRoles) {
-    const handler = ROLE_TABLES[r]
-    if (handler) {
-      const errMsg = await handler(userId, dataArgs)
-      if (errMsg) {
-        console.error(`Failed to insert ${r} record:`, errMsg)
-        return NextResponse.json({ error: errMsg }, { status: 400 })
-      }
+    const errMsg = await createRoleEntry(
+      r,
+      userId,
+      { full_name: fullName, phone_number: phoneNumber || null },
+      hasExtraData ? extraData : undefined,
+      r === "CashOfficer" ? { status: "Invited" } : undefined
+    )
+    if (errMsg) {
+      console.error(`Failed to insert ${r} record:`, errMsg)
+      return NextResponse.json({ error: errMsg }, { status: 400 })
     }
   }
 

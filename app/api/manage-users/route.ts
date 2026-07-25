@@ -1,6 +1,7 @@
 import { createClient } from "@supabase/supabase-js"
 import { NextRequest, NextResponse } from "next/server"
 import { requireRole, handleApiError } from "@/lib/auth-middleware"
+import { createRoleEntry, deleteRoleEntry } from "@/lib/role-tables"
 
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -79,10 +80,14 @@ export async function POST(req: NextRequest) {
     await requireRole(req, EDIT_ROLES)
 
     const body = await req.json()
-    const { action, userId, roles } = body as {
+    const { action, userId, roles, companyId, storeName, officeName, assignedOffice } = body as {
       action: "deactivate" | "activate" | "reassign-roles"
       userId: string
       roles?: string[]
+      companyId?: string
+      storeName?: string
+      officeName?: string
+      assignedOffice?: string
     }
 
     if (!userId) {
@@ -117,6 +122,14 @@ export async function POST(req: NextRequest) {
           return NextResponse.json({ error: "At least one role is required" }, { status: 400 })
         }
 
+        const [{ data: currentRoles }, { data: profile }] = await Promise.all([
+          supabaseAdmin.from("UserRoles").select("role").eq("user_id", userId),
+          supabaseAdmin.from("Profiles").select("full_name, phone_number").eq("user_id", userId).single(),
+        ])
+
+        const oldRoles = new Set((currentRoles || []).map((r: any) => r.role))
+        const newRoles = new Set(roles)
+
         const { error: rpcError } = await supabaseAdmin.rpc("reassign_user_roles", {
           p_user_id: userId,
           p_roles: roles,
@@ -126,7 +139,47 @@ export async function POST(req: NextRequest) {
           return NextResponse.json({ error: "Failed to reassign roles" }, { status: 500 })
         }
 
-        return NextResponse.json({ success: true })
+        const addedRoles = roles.filter(r => !oldRoles.has(r))
+        const removedRoles = [...oldRoles].filter(r => !newRoles.has(r))
+
+        const extraData: Record<string, unknown> = {}
+        if (companyId) extraData.company_id = companyId
+        if (storeName) extraData.store_name = storeName
+        if (officeName) extraData.office_name = officeName
+        if (assignedOffice) extraData.assigned_office = assignedOffice
+
+        const hasExtraData = Object.keys(extraData).length > 0
+
+        const tableErrors: string[] = []
+
+        for (const role of addedRoles) {
+          if (profile) {
+            const errMsg = await createRoleEntry(
+              role,
+              userId,
+              { full_name: profile.full_name, phone_number: profile.phone_number },
+              hasExtraData ? extraData : undefined
+            )
+            if (errMsg) {
+              console.error(`Failed to create ${role} entry:`, errMsg)
+              tableErrors.push(`Failed to create ${role} record: ${errMsg}`)
+            }
+          }
+        }
+
+        for (const role of removedRoles) {
+          const errMsg = await deleteRoleEntry(role, userId)
+          if (errMsg) {
+            console.error(`Failed to delete ${role} entry:`, errMsg)
+            tableErrors.push(`Failed to remove ${role} record: ${errMsg}`)
+          }
+        }
+
+        if (tableErrors.length > 0) {
+          return NextResponse.json({ success: true, roles, warnings: tableErrors })
+        }
+
+        return NextResponse.json({ success: true, roles })
       }
 
       default:

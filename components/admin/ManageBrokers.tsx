@@ -7,6 +7,7 @@ import { supabase } from "@/lib/supabase"
 import { apiMutate } from "@/lib/api-mutation"
 import ModernInput from "@/components/ModernInput"
 import InviteSuccessCard from "@/components/admin/InviteSuccessCard"
+import ConfirmDeleteModal from "@/components/admin/ConfirmDeleteModal"
 import { usePermissions } from "@/lib/PermissionContext"
 import { formatAmount } from "@/lib/formatAmount"
 
@@ -572,44 +573,26 @@ export default function ManageBrokers() {
                 </button>
               </>
             )}
-
-            {/* Delete Modal */}
-            {deletingId && (
-              <>
-                <div style={{ display: "flex", flexDirection: "column", alignItems: "center", textAlign: "center" }}>
-                  <div style={{ width: 64, height: 64, background: "#fef2f2", color: "#ef4444", borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 20 }}>
-                    <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>
-                  </div>
-                  <h3 style={{ margin: "0 0 12px", color: "#0f172a", fontSize: FONT_SIZE.xl, fontWeight: 700 }}>Delete Broker</h3>
-                  <p style={{ margin: "0 0 20px", color: "#64748b", fontSize: FONT_SIZE.base, lineHeight: 1.5 }}>Are you sure you want to delete this broker? This action cannot be undone and will permanently remove their data.</p>
-                  
-                  {message && <div style={{ padding: 12, background: "#fef2f2", borderLeft: "4px solid #ef4444", borderRadius: 4, marginBottom: 20, color: "#b91c1c", fontSize: FONT_SIZE.sm, width: "100%", textAlign: "left" }}>{message}</div>}
-
-                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, width: "100%" }}>
-                    <button
-                      onClick={closeModals}
-                      style={{ padding: "12px 16px", background: "white", color: "#475569", border: "1px solid #cbd5e1", borderRadius: 8, cursor: "pointer", fontWeight: 600, fontSize: FONT_SIZE.md, minHeight: 44, transition: "all 0.2s" }}
-                      onMouseEnter={e => { e.currentTarget.style.background = "#f8fafc"; e.currentTarget.style.borderColor = "#0070f3"; e.currentTarget.style.color = "#0070f3" }}
-                      onMouseLeave={e => { e.currentTarget.style.background = "white"; e.currentTarget.style.borderColor = "#cbd5e1"; e.currentTarget.style.color = "#475569" }}
-                    >
-                      Cancel
-                    </button>
-                    <button
-                      onClick={() => handleDelete(deletingId)}
-                      disabled={submitting || !canEdit}
-                      style={{ padding: "12px 16px", background: submitting || !canEdit ? "#94a3b8" : "#ef4444", color: "white", border: "none", borderRadius: 8, cursor: submitting || !canEdit ? "not-allowed" : "pointer", fontWeight: 600, fontSize: FONT_SIZE.md, opacity: submitting || !canEdit ? 0.7 : 1, minHeight: 44, transition: "all 0.2s" }}
-                      onMouseEnter={e => { if (!submitting && canEdit) e.currentTarget.style.background = "#dc2626" }}
-                      onMouseLeave={e => { e.currentTarget.style.background = "#ef4444" }}
-                    >
-                      {submitting ? "Deleting..." : "Yes, Delete"}
-                    </button>
-                  </div>
-                </div>
-              </>
-            )}
           </div>
         </div>
       )}
+
+      <ConfirmDeleteModal
+        open={!!deletingId}
+        title="Delete Broker"
+        entityName={brokers.find(b => b.broker_id === deletingId)?.broker_name || "this broker"}
+        warnings={[
+          "All stops and trip records associated with this broker",
+          "All credit records and balances",
+          "All store sales linked to this broker",
+          "Their user profile and login access",
+        ]}
+        onConfirm={() => deletingId && handleDelete(deletingId)}
+        onCancel={closeModals}
+        loading={submitting}
+        disabled={!canEdit}
+        error={message}
+      />
     </div>
   )
 }

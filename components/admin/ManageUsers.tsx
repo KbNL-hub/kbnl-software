@@ -4,7 +4,12 @@ import { useState, useEffect, useMemo, useRef } from "react"
 import { supabase } from "@/lib/supabase"
 import { usePermissions } from "@/lib/PermissionContext"
 import { ROLES } from "@/lib/permissions"
+import { STORE_LOCATIONS } from "@/lib/stores"
 import { Icon } from "@iconify/react"
+
+const OFFICE_LOCATIONS = ["Uyo", "Ikom", "Calabar", "Ogoja"]
+
+type FuelCompany = { company_id: string; company_name: string }
 
 type UserRow = {
   user_id: string
@@ -61,6 +66,12 @@ export default function ManageUsers() {
   const [roleSaveLoading, setRoleSaveLoading] = useState(false)
   const [roleSaveError, setRoleSaveError] = useState("")
 
+  const [companyId, setCompanyId] = useState("")
+  const [storeName, setStoreName] = useState("")
+  const [officeName, setOfficeName] = useState("")
+  const [cashAuthOffice, setCashAuthOffice] = useState("")
+  const [companies, setCompanies] = useState<FuelCompany[]>([])
+
   const [confirmAction, setConfirmAction] = useState<{
     user: UserRow
     action: "deactivate" | "activate"
@@ -94,6 +105,20 @@ export default function ManageUsers() {
     if (canView) fetchUsers()
   }, [canView])
 
+  useEffect(() => {
+    supabase.from("fuel_companies").select("company_id, company_name").order("company_name").then(({ data }) => {
+      if (data) setCompanies(data)
+    })
+  }, [])
+
+  function needsField(field: string): boolean {
+    if (field === "company") return selectedRoles.has("StationManager")
+    if (field === "store") return selectedRoles.has("StoreOfficer")
+    if (field === "cashOffice") return selectedRoles.has("CashOfficer")
+    if (field === "cashAuthOffice") return selectedRoles.has("CashAuthorizer")
+    return false
+  }
+
   const filteredUsers = useMemo(() => {
     let result = users
     if (search.trim()) {
@@ -116,6 +141,10 @@ export default function ManageUsers() {
     setEditingUser(user)
     setSelectedRoles(new Set(user.roles))
     setRoleSaveError("")
+    setCompanyId("")
+    setStoreName("")
+    setOfficeName("")
+    setCashAuthOffice("")
   }
 
   function toggleRole(role: string) {
@@ -134,6 +163,22 @@ export default function ManageUsers() {
       setRoleSaveError("User must have at least one role")
       return
     }
+    if (needsField("company") && !companyId) {
+      setRoleSaveError("Select a company for Station Manager")
+      return
+    }
+    if (needsField("store") && !storeName) {
+      setRoleSaveError("Select a store for Store Officer")
+      return
+    }
+    if (needsField("cashOffice") && !officeName) {
+      setRoleSaveError("Select an office for Cash Officer")
+      return
+    }
+    if (needsField("cashAuthOffice") && !cashAuthOffice) {
+      setRoleSaveError("Select an assigned office for Cash Authorizer")
+      return
+    }
     setRoleSaveLoading(true)
     setRoleSaveError("")
     try {
@@ -148,6 +193,10 @@ export default function ManageUsers() {
           action: "reassign-roles",
           userId: editingUser.user_id,
           roles: [...selectedRoles],
+          companyId: companyId || undefined,
+          storeName: storeName || undefined,
+          officeName: officeName || undefined,
+          assignedOffice: cashAuthOffice || undefined,
         }),
       })
       const data = await res.json()
@@ -155,8 +204,16 @@ export default function ManageUsers() {
         setRoleSaveError(data.error || "Failed to save roles")
         return
       }
+      const updatedRoles: string[] = data.roles || [...selectedRoles]
+      setUsers(prev => prev.map(u =>
+        u.user_id === editingUser.user_id ? { ...u, roles: updatedRoles } : u
+      ))
       setEditingUser(null)
       setSelectedRoles(new Set())
+      setCompanyId("")
+      setStoreName("")
+      setOfficeName("")
+      setCashAuthOffice("")
       await fetchUsers()
     } catch {
       setRoleSaveError("Network error")
@@ -511,7 +568,7 @@ export default function ManageUsers() {
       {/* Role Assignment Modal */}
       {editingUser && (
         <div
-          onClick={() => { setEditingUser(null); setSelectedRoles(new Set()); setRoleSaveError("") }}
+          onClick={() => { setEditingUser(null); setSelectedRoles(new Set()); setRoleSaveError(""); setCompanyId(""); setStoreName(""); setOfficeName(""); setCashAuthOffice("") }}
           style={{
             position: "fixed", inset: 0, background: "rgba(15, 23, 42, 0.6)",
             backdropFilter: "blur(4px)",
@@ -537,7 +594,7 @@ export default function ManageUsers() {
                 </p>
               </div>
               <button
-                onClick={() => { setEditingUser(null); setSelectedRoles(new Set()); setRoleSaveError("") }}
+                onClick={() => { setEditingUser(null); setSelectedRoles(new Set()); setRoleSaveError(""); setCompanyId(""); setStoreName(""); setOfficeName(""); setCashAuthOffice("") }}
                 style={{ background: "none", border: "none", cursor: "pointer", color: "#94a3b8", padding: 4 }}
               >
                 <Icon icon="mdi:close" width={20} />
@@ -568,6 +625,86 @@ export default function ManageUsers() {
               </div>
             </div>
 
+            {needsField("company") && (
+              <div style={{ marginBottom: 16 }}>
+                <label style={labelStyle}>Company (for Station Manager) *</label>
+                <select
+                  value={companyId}
+                  onChange={e => setCompanyId(e.target.value)}
+                  style={{
+                    ...inputStyle,
+                    appearance: "none",
+                    background: "#f9f9f9 url(\"data:image/svg+xml,%3Csvg width='12' height='8' viewBox='0 0 12 8' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M1 1.5L6 6.5L11 1.5' stroke='%23999' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E\") no-repeat right 14px center",
+                  }}
+                >
+                  <option value="">Select company...</option>
+                  {companies.map(c => (
+                    <option key={c.company_id} value={c.company_id}>{c.company_name}</option>
+                  ))}
+                </select>
+              </div>
+            )}
+
+            {needsField("store") && (
+              <div style={{ marginBottom: 16 }}>
+                <label style={labelStyle}>Store (for Store Officer) *</label>
+                <select
+                  value={storeName}
+                  onChange={e => setStoreName(e.target.value)}
+                  style={{
+                    ...inputStyle,
+                    appearance: "none",
+                    background: "#f9f9f9 url(\"data:image/svg+xml,%3Csvg width='12' height='8' viewBox='0 0 12 8' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M1 1.5L6 6.5L11 1.5' stroke='%23999' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E\") no-repeat right 14px center",
+                  }}
+                >
+                  <option value="">Select store...</option>
+                  {STORE_LOCATIONS.map(s => (
+                    <option key={s} value={s}>{s}</option>
+                  ))}
+                </select>
+              </div>
+            )}
+
+            {needsField("cashOffice") && (
+              <div style={{ marginBottom: 16 }}>
+                <label style={labelStyle}>Office (for Cash Officer) *</label>
+                <select
+                  value={officeName}
+                  onChange={e => setOfficeName(e.target.value)}
+                  style={{
+                    ...inputStyle,
+                    appearance: "none",
+                    background: "#f9f9f9 url(\"data:image/svg+xml,%3Csvg width='12' height='8' viewBox='0 0 12 8' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M1 1.5L6 6.5L11 1.5' stroke='%23999' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E\") no-repeat right 14px center",
+                  }}
+                >
+                  <option value="">Select office...</option>
+                  {OFFICE_LOCATIONS.map(o => (
+                    <option key={o} value={o}>{o}</option>
+                  ))}
+                </select>
+              </div>
+            )}
+
+            {needsField("cashAuthOffice") && (
+              <div style={{ marginBottom: 16 }}>
+                <label style={labelStyle}>Assigned Office (for Cash Authorizer) *</label>
+                <select
+                  value={cashAuthOffice}
+                  onChange={e => setCashAuthOffice(e.target.value)}
+                  style={{
+                    ...inputStyle,
+                    appearance: "none",
+                    background: "#f9f9f9 url(\"data:image/svg+xml,%3Csvg width='12' height='8' viewBox='0 0 12 8' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M1 1.5L6 6.5L11 1.5' stroke='%23999' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E\") no-repeat right 14px center",
+                  }}
+                >
+                  <option value="">Select office...</option>
+                  {OFFICE_LOCATIONS.map(o => (
+                    <option key={o} value={o}>{o}</option>
+                  ))}
+                </select>
+              </div>
+            )}
+
             {roleSaveError && (
               <div style={{
                 padding: 12, borderRadius: 10, marginBottom: 16,
@@ -581,7 +718,7 @@ export default function ManageUsers() {
 
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
               <button
-                onClick={() => { setEditingUser(null); setSelectedRoles(new Set()); setRoleSaveError("") }}
+                onClick={() => { setEditingUser(null); setSelectedRoles(new Set()); setRoleSaveError(""); setCompanyId(""); setStoreName(""); setOfficeName(""); setCashAuthOffice("") }}
                 style={{
                   padding: "12px 16px", background: "white",
                   border: "1px solid #cbd5e1", color: "#475569",
