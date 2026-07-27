@@ -25,7 +25,7 @@ const SECTION_IMPORTS = {
 
 type SectionKey = keyof typeof SECTION_IMPORTS
 
-const SECTION_COMPONENTS: Partial<Record<SectionKey, React.ComponentType>> = {}
+const SECTION_COMPONENTS: Partial<Record<SectionKey, React.ComponentType<any>>> = {}
 for (const key of Object.keys(SECTION_IMPORTS) as SectionKey[]) {
   SECTION_COMPONENTS[key] = dynamic(SECTION_IMPORTS[key])
 }
