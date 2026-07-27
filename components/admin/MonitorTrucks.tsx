@@ -90,7 +90,7 @@ const getPillStyle = (filter: string, isActive: boolean) => {
 
 export const revalidate = 0
 export default function MonitorTrucks() {
-  const { isMobile, isDesktop } = useBreakpoint()
+  const { isMobile } = useBreakpoint()
   const { getAccess } = usePermissions()
   const canEdit = getAccess("monitor-trucks").canEdit
   const [trucks, setTrucks] = useState<ActiveTruck[]>([])
@@ -119,7 +119,6 @@ export default function MonitorTrucks() {
   const [ddFilterStatus, setDdFilterStatus] = useState("All")
   const [ddViewMode, setDdViewMode] = useState<ViewMode>(isMobile ? "card" : "table")
   const [showDdForm, setShowDdForm] = useState(false)
-  const [ddLastSaveTime, setDdLastSaveTime] = useState(0)
   const [editingDdTrip, setEditingDdTrip] = useState<DDTrip | null>(null)
   const [ddRoutePoints, setDdRoutePoints] = useState<string[]>([])
   const [ddNewPoint, setDdNewPoint] = useState("")
@@ -196,10 +195,10 @@ export default function MonitorTrucks() {
   }
 
   const lastSaveTimeRef = useRef(0)
-  const [lastSaveTime, setLastSaveTime] = useState(0)
+  const [, setLastSaveTime] = useState(0)
 
+  // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => {
-    fetchActiveTrucks()
     
     const subscription = supabase
       .channel('trips-changes')
@@ -334,7 +333,7 @@ export default function MonitorTrucks() {
     setShowDdStopForm(true)
   }
 
-  function handleDdStopLogged(quantityOffloaded: number) {
+  function handleDdStopLogged(_quantityOffloaded: number) {
     setShowDdStopForm(false)
     setSelectedDdStopTrip(null)
     setDdStopOffloaded(0)
@@ -495,19 +494,6 @@ export default function MonitorTrucks() {
     if (remaining === 0) return "#ef4444"
     if (remaining < loaded * 0.2) return "#f59e0b"
     return "#10b981"
-  }
-
-  const inputStyle: React.CSSProperties = {
-    width: "100%",
-    padding: "10px 12px",
-    paddingRight: 36,
-    boxSizing: "border-box",
-    borderRadius: 8,
-    border: "1px solid #e2e8f0",
-    fontSize: FONT_SIZE.base,
-    background: "white",
-    color: "#0f172a",
-    minHeight: 48,
   }
 
   const labelStyle: React.CSSProperties = {

@@ -67,7 +67,7 @@ const getPillStyle = (filter: string, isActive: boolean) => {
 }
 
 export default function ManageTrucks() {
-  const { isMobile, isDesktop } = useBreakpoint()
+  const { isMobile } = useBreakpoint()
   const { getAccess, activeRole } = usePermissions()
   const baseCanEdit = getAccess("manage-trucks").canEdit
   const canEdit = baseCanEdit && activeRole !== Role.ATCOfficer
@@ -101,11 +101,8 @@ export default function ManageTrucks() {
     }
   }
 
+  // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { fetchTrucks() }, [])
-
-  useEffect(() => {
-    setViewMode(isMobile ? "card" : "table")
-  }, [isMobile])
 
   const filterOptions = ["All", "Empty", "Loaded", "To Plant", "Undergoing Repairs", "Decommissioned"]
   const filteredTrucks = filterStatus === "All" ? trucks : trucks.filter((t) => t.status === filterStatus)

@@ -1,7 +1,7 @@
 import { createClient } from "@supabase/supabase-js"
 import { NextRequest, NextResponse } from "next/server"
 import { requireRole, handleApiError } from "@/lib/auth-middleware"
-import { createRoleEntry, deleteRoleEntry } from "@/lib/role-tables"
+import { createRoleEntry, deleteRoleEntry, ROLE_TABLE_META } from "@/lib/role-tables"
 
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -10,6 +10,11 @@ const supabaseAdmin = createClient(
 
 const ALLOWED_ROLES = ["Admin", "SuperAdmin", "Supervisor"]
 const EDIT_ROLES = ["Admin", "SuperAdmin"]
+
+function hasExtraDataForRole(role: string): boolean {
+  const meta = ROLE_TABLE_META[role]
+  return !!(meta && meta.extraFields && meta.extraFields.length > 0)
+}
 
 async function listAllAuthUsers() {
   const allUsers: any[] = []
@@ -80,12 +85,13 @@ export async function POST(req: NextRequest) {
     await requireRole(req, EDIT_ROLES)
 
     const body = await req.json()
-    const { action, userId, roles, companyId, storeName, officeName, assignedOffice } = body as {
+    const { action, userId, roles, companyId, storeName, storeNames, officeName, assignedOffice } = body as {
       action: "deactivate" | "activate" | "reassign-roles"
       userId: string
       roles?: string[]
       companyId?: string
       storeName?: string
+      storeNames?: string[]
       officeName?: string
       assignedOffice?: string
     }
@@ -141,10 +147,12 @@ export async function POST(req: NextRequest) {
 
         const addedRoles = roles.filter(r => !oldRoles.has(r))
         const removedRoles = [...oldRoles].filter(r => !newRoles.has(r))
+        const unchangedRolesWithExtraData = roles.filter(r => oldRoles.has(r) && hasExtraDataForRole(r))
 
         const extraData: Record<string, unknown> = {}
         if (companyId) extraData.company_id = companyId
         if (storeName) extraData.store_name = storeName
+        if (storeNames && Array.isArray(storeNames) && storeNames.length > 0) extraData.store_names = storeNames
         if (officeName) extraData.office_name = officeName
         if (assignedOffice) extraData.assigned_office = assignedOffice
 
@@ -167,6 +175,21 @@ export async function POST(req: NextRequest) {
           }
         }
 
+        for (const role of unchangedRolesWithExtraData) {
+          if (profile) {
+            const errMsg = await createRoleEntry(
+              role,
+              userId,
+              { full_name: profile.full_name, phone_number: profile.phone_number },
+              extraData
+            )
+            if (errMsg) {
+              console.error(`Failed to update ${role} entry:`, errMsg)
+              tableErrors.push(`Failed to update ${role} record: ${errMsg}`)
+            }
+          }
+        }
+
         for (const role of removedRoles) {
           const errMsg = await deleteRoleEntry(role, userId)
           if (errMsg) {
@@ -176,7 +199,7 @@ export async function POST(req: NextRequest) {
         }
 
         if (tableErrors.length > 0) {
-          return NextResponse.json({ success: true, roles, warnings: tableErrors })
+          return NextResponse.json({ error: tableErrors.join("; "), roles, warnings: tableErrors }, { status: 400 })
         }
 
         return NextResponse.json({ success: true, roles })

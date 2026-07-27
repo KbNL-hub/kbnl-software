@@ -9,7 +9,7 @@ const supabaseAdmin = createClient(
 )
 
 export async function POST(req: Request) {
-  const { email, fullName, phoneNumber, role, roles, companyId, storeName, officeName, assignedOffice, openingBalance } = await req.json()
+  const { email, fullName, phoneNumber, role, roles, companyId, storeName, storeNames, officeName, assignedOffice, openingBalance } = await req.json()
 
   if (!email || !fullName) {
     return NextResponse.json({ error: "Email and full name are required" }, { status: 400 })
@@ -109,11 +109,15 @@ export async function POST(req: Request) {
   if (selectedRoles.includes("CashAuthorizer") && !assignedOffice) {
     return NextResponse.json({ error: "Assigned office is required for Cash Authorizer" }, { status: 400 })
   }
+  if (selectedRoles.includes("StoreSupervisor") && (!storeNames || !Array.isArray(storeNames) || storeNames.length === 0)) {
+    return NextResponse.json({ error: "At least one store is required for Store Supervisor" }, { status: 400 })
+  }
 
   // Insert into role-specific tables
   const extraData: Record<string, unknown> = {}
   if (companyId) extraData.company_id = companyId
   if (storeName) extraData.store_name = storeName
+  if (storeNames && Array.isArray(storeNames) && storeNames.length > 0) extraData.store_names = storeNames
   if (officeName) extraData.office_name = officeName
   if (assignedOffice) extraData.assigned_office = assignedOffice
 

@@ -610,7 +610,14 @@ export default function StoreOfficerDashboard() {
         {/* Stock Summary */}
         <div style={{ background: "white", border: "1px solid #e2e8f0", borderRadius: 12, padding: isMobile ? 16 : 24, marginBottom: 24, boxShadow: "0 1px 3px rgba(0,0,0,0.05)" }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
-            <p style={{ margin: 0, fontWeight: 700, fontSize: FONT_SIZE.lg, color: "#0f172a" }}>Stock Balance</p>
+            <div>
+              {officer?.store_name && (
+                <p style={{ margin: "0 0 2px", fontSize: FONT_SIZE.xs, fontWeight: 600, color: "#0070f3", textTransform: "uppercase", letterSpacing: "0.5px" }}>
+                  {officer.store_name}
+                </p>
+              )}
+              <p style={{ margin: 0, fontWeight: 700, fontSize: FONT_SIZE.lg, color: "#0f172a" }}>Stock Balance</p>
+            </div>
             <p style={{ margin: 0, fontWeight: 700, fontSize: FONT_SIZE.lg, color: "#0f172a" }}>
               Total: <span style={{ color: "#0070f3" }}>{stock.reduce((sum, s) => sum + s.balance, 0).toLocaleString()}</span> <span style={{ fontSize: FONT_SIZE.sm, fontWeight: 500, color: "#64748b" }}>bags</span>
             </p>

@@ -1,10 +1,10 @@
 "use client"
 
-import { useState, useEffect, useMemo, useRef } from "react"
+import { useState, useEffect, useMemo } from "react"
 import { supabase } from "@/lib/supabase"
 import { usePermissions } from "@/lib/PermissionContext"
 import { ROLES } from "@/lib/permissions"
-import { STORE_LOCATIONS } from "@/lib/stores"
+import { fetchStores } from "@/lib/stores"
 import { Icon } from "@iconify/react"
 
 const OFFICE_LOCATIONS = ["Uyo", "Ikom", "Calabar", "Ogoja"]
@@ -25,7 +25,7 @@ type UserRow = {
 }
 
 const ALL_ROLE_KEYS = Object.keys(ROLES).sort((a, b) => {
-  const order = ["SuperAdmin", "Admin", "Supervisor", "Broker", "TruckAdmin", "DeskOfficer", "ATCOfficer", "CashAuthorizer", "Driver", "StationManager", "TruckOfficer", "StoreOfficer", "CashOfficer"]
+  const order = ["SuperAdmin", "Admin", "Supervisor", "Broker", "TruckAdmin", "DeskOfficer", "ATCOfficer", "CashAuthorizer", "Driver", "StationManager", "TruckOfficer", "StoreOfficer", "CashOfficer", "StoreSupervisor"]
   return order.indexOf(a) - order.indexOf(b)
 })
 
@@ -70,7 +70,9 @@ export default function ManageUsers() {
   const [storeName, setStoreName] = useState("")
   const [officeName, setOfficeName] = useState("")
   const [cashAuthOffice, setCashAuthOffice] = useState("")
+  const [storeNames, setStoreNames] = useState<Set<string>>(new Set())
   const [companies, setCompanies] = useState<FuelCompany[]>([])
+  const [storeLocations, setStoreLocations] = useState<string[]>([])
 
   const [confirmAction, setConfirmAction] = useState<{
     user: UserRow
@@ -101,6 +103,7 @@ export default function ManageUsers() {
     }
   }
 
+  // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => {
     if (canView) fetchUsers()
   }, [canView])
@@ -109,11 +112,13 @@ export default function ManageUsers() {
     supabase.from("fuel_companies").select("company_id, company_name").order("company_name").then(({ data }) => {
       if (data) setCompanies(data)
     })
+    fetchStores().then(setStoreLocations)
   }, [])
 
   function needsField(field: string): boolean {
     if (field === "company") return selectedRoles.has("StationManager")
     if (field === "store") return selectedRoles.has("StoreOfficer")
+    if (field === "stores") return selectedRoles.has("StoreSupervisor")
     if (field === "cashOffice") return selectedRoles.has("CashOfficer")
     if (field === "cashAuthOffice") return selectedRoles.has("CashAuthorizer")
     return false
@@ -145,6 +150,40 @@ export default function ManageUsers() {
     setStoreName("")
     setOfficeName("")
     setCashAuthOffice("")
+    setStoreNames(new Set())
+
+    const queries: Promise<void>[] = []
+    if (user.roles.includes("StationManager")) {
+      queries.push(
+        supabase.from("station_managers").select("company_id").eq("manager_id", user.user_id).single()
+          .then(({ data }) => { if (data?.company_id) setCompanyId(data.company_id) })
+      )
+    }
+    if (user.roles.includes("StoreOfficer")) {
+      queries.push(
+        supabase.from("store_officers").select("store_name").eq("officer_id", user.user_id).single()
+          .then(({ data }) => { if (data?.store_name) setStoreName(data.store_name) })
+      )
+    }
+    if (user.roles.includes("CashOfficer")) {
+      queries.push(
+        supabase.from("cash_officers").select("office_name").eq("clerk_id", user.user_id).single()
+          .then(({ data }) => { if (data?.office_name) setOfficeName(data.office_name) })
+      )
+    }
+    if (user.roles.includes("CashAuthorizer")) {
+      queries.push(
+        supabase.from("cash_authorizers").select("assigned_office").eq("authorizer_id", user.user_id).single()
+          .then(({ data }) => { if (data?.assigned_office) setCashAuthOffice(data.assigned_office) })
+      )
+    }
+    if (user.roles.includes("StoreSupervisor")) {
+      queries.push(
+        supabase.from("store_supervisors").select("store_names").eq("supervisor_id", user.user_id).single()
+          .then(({ data }) => { if (data?.store_names) setStoreNames(new Set(data.store_names)) })
+      )
+    }
+    Promise.all(queries)
   }
 
   function toggleRole(role: string) {
@@ -171,6 +210,10 @@ export default function ManageUsers() {
       setRoleSaveError("Select a store for Store Officer")
       return
     }
+    if (needsField("stores") && storeNames.size === 0) {
+      setRoleSaveError("Select at least one store for Store Supervisor")
+      return
+    }
     if (needsField("cashOffice") && !officeName) {
       setRoleSaveError("Select an office for Cash Officer")
       return
@@ -195,6 +238,7 @@ export default function ManageUsers() {
           roles: [...selectedRoles],
           companyId: companyId || undefined,
           storeName: storeName || undefined,
+          storeNames: storeNames.size > 0 ? [...storeNames] : undefined,
           officeName: officeName || undefined,
           assignedOffice: cashAuthOffice || undefined,
         }),
@@ -214,6 +258,7 @@ export default function ManageUsers() {
       setStoreName("")
       setOfficeName("")
       setCashAuthOffice("")
+      setStoreNames(new Set())
       await fetchUsers()
     } catch {
       setRoleSaveError("Network error")
@@ -296,6 +341,7 @@ export default function ManageUsers() {
     TruckOfficer: { bg: "#f0fdf4", text: "#166534" },
     StoreOfficer: { bg: "#f0f9ff", text: "#0c4a6e" },
     CashOfficer: { bg: "#fff7ed", text: "#9a3412" },
+    StoreSupervisor: { bg: "#ecfdf5", text: "#065f46" },
   }
 
   function RoleBadge({ role }: { role: string }) {
@@ -568,7 +614,7 @@ export default function ManageUsers() {
       {/* Role Assignment Modal */}
       {editingUser && (
         <div
-          onClick={() => { setEditingUser(null); setSelectedRoles(new Set()); setRoleSaveError(""); setCompanyId(""); setStoreName(""); setOfficeName(""); setCashAuthOffice("") }}
+          onClick={() => { setEditingUser(null); setSelectedRoles(new Set()); setRoleSaveError(""); setCompanyId(""); setStoreName(""); setOfficeName(""); setCashAuthOffice(""); setStoreNames(new Set()) }}
           style={{
             position: "fixed", inset: 0, background: "rgba(15, 23, 42, 0.6)",
             backdropFilter: "blur(4px)",
@@ -594,7 +640,7 @@ export default function ManageUsers() {
                 </p>
               </div>
               <button
-                onClick={() => { setEditingUser(null); setSelectedRoles(new Set()); setRoleSaveError(""); setCompanyId(""); setStoreName(""); setOfficeName(""); setCashAuthOffice("") }}
+                onClick={() => { setEditingUser(null); setSelectedRoles(new Set()); setRoleSaveError(""); setCompanyId(""); setStoreName(""); setOfficeName(""); setCashAuthOffice(""); setStoreNames(new Set()) }}
                 style={{ background: "none", border: "none", cursor: "pointer", color: "#94a3b8", padding: 4 }}
               >
                 <Icon icon="mdi:close" width={20} />
@@ -658,10 +704,56 @@ export default function ManageUsers() {
                   }}
                 >
                   <option value="">Select store...</option>
-                  {STORE_LOCATIONS.map(s => (
+                  {storeLocations.map(s => (
                     <option key={s} value={s}>{s}</option>
                   ))}
                 </select>
+              </div>
+            )}
+
+            {needsField("stores") && (
+              <div style={{ marginBottom: 16 }}>
+                <label style={labelStyle}>Stores (for Store Supervisor) *</label>
+                <p style={{ margin: "0 0 8px 0", fontSize: 12, color: "#94a3b8" }}>Select one or more stores this supervisor will be responsible for.</p>
+                <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                  {storeLocations.map((s) => (
+                    <div
+                      key={s}
+                      onClick={() => {
+                        setStoreNames(prev => {
+                          const next = new Set(prev)
+                          if (next.has(s)) next.delete(s)
+                          else next.add(s)
+                          return next
+                        })
+                        setRoleSaveError("")
+                      }}
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 10,
+                        padding: "8px 12px",
+                        borderRadius: 8,
+                        border: `1.5px solid ${storeNames.has(s) ? "#0070f3" : "#e5e5e5"}`,
+                        background: storeNames.has(s) ? "rgba(0, 112, 243, 0.06)" : "white",
+                        cursor: "pointer",
+                        transition: "all 0.15s ease",
+                        fontSize: 14,
+                        color: storeNames.has(s) ? "#0070f3" : "#333",
+                        fontWeight: storeNames.has(s) ? 600 : 400,
+                      }}
+                    >
+                      <div style={checkboxStyle(storeNames.has(s))}>
+                        {storeNames.has(s) && (
+                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                            <polyline points="20 6 9 17 4 12" />
+                          </svg>
+                        )}
+                      </div>
+                      {s}
+                    </div>
+                  ))}
+                </div>
               </div>
             )}
 
@@ -718,7 +810,7 @@ export default function ManageUsers() {
 
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
               <button
-                onClick={() => { setEditingUser(null); setSelectedRoles(new Set()); setRoleSaveError(""); setCompanyId(""); setStoreName(""); setOfficeName(""); setCashAuthOffice("") }}
+                onClick={() => { setEditingUser(null); setSelectedRoles(new Set()); setRoleSaveError(""); setCompanyId(""); setStoreName(""); setOfficeName(""); setCashAuthOffice(""); setStoreNames(new Set()) }}
                 style={{
                   padding: "12px 16px", background: "white",
                   border: "1px solid #cbd5e1", color: "#475569",

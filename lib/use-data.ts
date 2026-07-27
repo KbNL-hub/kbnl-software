@@ -8,7 +8,7 @@ type UseDataResult<T> = {
 }
 
 export function useData<T>(
-  buildQuery: () => PromiseLike<{ data: T[] | null; error: any }>,
+  buildQuery: () => PromiseLike<{ data: T[] | null; error: unknown }>,
   deps: unknown[] = [],
 ): UseDataResult<T> {
   const [data, setData] = useState<T[]>([])

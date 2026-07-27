@@ -2,7 +2,8 @@
 
 import { FONT_SIZE } from "@/lib/constants"
 
-import { useState, useEffect, useRef } from "react"
+import Image from "next/image"
+import React, { useState, useEffect, useRef } from "react"
 import { supabase } from "@/lib/supabase"
 import ModernInput from "@/components/ModernInput"
 import InviteSuccessCard from "@/components/admin/InviteSuccessCard"
@@ -59,7 +60,7 @@ const getPillStyle = (filter: string, isActive: boolean) => {
 }
 
 export default function ManageDrivers() {
-  const { isMobile, isDesktop } = useBreakpoint()
+  const { isMobile } = useBreakpoint()
   const { getAccess } = usePermissions()
   const canEdit = getAccess("manage-drivers").canEdit
   const [drivers, setDrivers] = useState<Driver[]>([])
@@ -97,11 +98,8 @@ export default function ManageDrivers() {
     setLoading(false)
   }
 
+  // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { fetchDrivers() }, [])
-
-  useEffect(() => {
-    if (isDesktop) setViewMode("table")
-  }, [isDesktop])
 
   function startEdit(driver: Driver) {
     setEditingDriver(driver)
@@ -392,7 +390,7 @@ export default function ManageDrivers() {
                       <div style={{ display: "flex", alignItems: "center", gap: 12, flex: 1, minWidth: 0 }}>
                         <div style={{ width: 40, height: 40, borderRadius: "50%", background: driver.profile_picture_url ? "transparent" : "linear-gradient(135deg, #0070f3 0%, #0056d4 100%)", color: "white", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 600, fontSize: FONT_SIZE.md, flexShrink: 0, overflow: "hidden" }}>
                           {driver.profile_picture_url ? (
-                            <img src={driver.profile_picture_url} alt={driver.full_name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                                <Image src={driver.profile_picture_url} alt={driver.full_name} width={36} height={36} unoptimized style={{ objectFit: "cover" }} />
                           ) : (
                             driver.full_name.charAt(0).toUpperCase()
                           )}
@@ -467,7 +465,7 @@ export default function ManageDrivers() {
                           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                             <div style={{ width: 36, height: 36, borderRadius: "50%", background: driver.profile_picture_url ? "transparent" : "linear-gradient(135deg, #0070f3 0%, #0056d4 100%)", color: "white", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 600, fontSize: FONT_SIZE.base, flexShrink: 0, overflow: "hidden" }}>
                               {driver.profile_picture_url ? (
-                                <img src={driver.profile_picture_url} alt={driver.full_name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                            <Image src={driver.profile_picture_url} alt={driver.full_name} width={40} height={40} unoptimized style={{ objectFit: "cover" }} />
                               ) : (
                                 driver.full_name.charAt(0).toUpperCase()
                               )}
@@ -559,8 +557,8 @@ export default function ManageDrivers() {
                           placeholder="e.g. John Doe"
                           value={fullName}
                           readOnly={!canEdit}
-                          onChange={(e: any) => { setFullName(e.target.value); setMessage("") }}
-                          onKeyDown={(e: any) => { if (e.key === "Enter") phoneRef.current?.focus() }}
+                          onChange={(e: React.ChangeEvent<HTMLInputElement>) => { setFullName(e.target.value); setMessage("") }}
+                          onKeyDown={(e: React.KeyboardEvent<HTMLInputElement>) => { if (e.key === "Enter") phoneRef.current?.focus() }}
                           style={inputStyle}
                         />
                       </div>
@@ -572,8 +570,8 @@ export default function ManageDrivers() {
                           placeholder="e.g. 08012345678"
                           value={phoneNumber}
                           readOnly={!canEdit}
-                          onChange={(e: any) => { setPhoneNumber(e.target.value); setMessage("") }}
-                          onKeyDown={(e: any) => { if (e.key === "Enter") emailRef.current?.focus() }}
+                          onChange={(e: React.ChangeEvent<HTMLInputElement>) => { setPhoneNumber(e.target.value); setMessage("") }}
+                          onKeyDown={(e: React.KeyboardEvent<HTMLInputElement>) => { if (e.key === "Enter") emailRef.current?.focus() }}
                           style={inputStyle}
                         />
                       </div>
@@ -585,8 +583,8 @@ export default function ManageDrivers() {
                           placeholder="e.g. driver@example.com"
                           value={email}
                           readOnly={!canEdit}
-                          onChange={(e: any) => { setEmail(e.target.value); setMessage("") }}
-                          onKeyDown={(e: any) => { if (e.key === "Enter") handleInvite() }}
+                          onChange={(e: React.ChangeEvent<HTMLInputElement>) => { setEmail(e.target.value); setMessage("") }}
+                          onKeyDown={(e: React.KeyboardEvent<HTMLInputElement>) => { if (e.key === "Enter") handleInvite() }}
                           style={inputStyle}
                         />
                       </div>

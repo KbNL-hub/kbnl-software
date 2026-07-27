@@ -26,6 +26,7 @@ export const ROLE_TABLE_META: Record<string, RoleTableEntry | null> = {
   DeskOfficer: { table: "desk_officers", pkColumn: "officer_id", nameColumn: "full_name" },
   ATCOfficer: { table: "atc_officers", pkColumn: "officer_id", nameColumn: "full_name" },
   CashAuthorizer: { table: "cash_authorizers", pkColumn: "authorizer_id", nameColumn: "full_name", extraFields: ["assigned_office"] },
+  StoreSupervisor: { table: "store_supervisors", pkColumn: "supervisor_id", nameColumn: "full_name", extraFields: ["store_names"] },
 }
 
 export async function createRoleEntry(
@@ -48,8 +49,8 @@ export async function createRoleEntry(
     row.status = options?.status || "Active"
   }
 
-  if (extraData) {
-    for (const key of Object.keys(extraData)) {
+  if (extraData && meta.extraFields) {
+    for (const key of meta.extraFields) {
       if (extraData[key] !== undefined && extraData[key] !== null) {
         row[key] = extraData[key]
       }

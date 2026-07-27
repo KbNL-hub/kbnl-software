@@ -2,13 +2,14 @@
 
 import { FONT_SIZE } from "@/lib/constants"
 
-import { useState, useEffect, useRef } from "react"
+import Image from "next/image"
+import React, { useState, useEffect, useRef } from "react"
 import { supabase } from "@/lib/supabase"
 import { apiMutate } from "@/lib/api-mutation"
 import ModernInput from "@/components/ModernInput"
 import InviteSuccessCard from "@/components/admin/InviteSuccessCard"
 import { usePermissions } from "@/lib/PermissionContext"
-import { STORE_LOCATIONS } from "@/lib/stores"
+import { fetchStores } from "@/lib/stores"
 
 type StoreOfficer = {
   officer_id: string
@@ -46,7 +47,7 @@ function useBreakpoint() {
 export default function StoreOfficers() {
   const { getAccess } = usePermissions()
   const canEdit = getAccess("store-officers").canEdit
-  const { isMobile, isDesktop } = useBreakpoint()
+  const { isMobile } = useBreakpoint()
   const [officers, setOfficers] = useState<StoreOfficer[]>([])
   const [loading, setLoading] = useState(true)
   const [viewMode, setViewMode] = useState<ViewMode>("card")
@@ -67,12 +68,13 @@ export default function StoreOfficers() {
   const [message, setMessage] = useState("")
   const [submitting, setSubmitting] = useState(false)
   const [inviteResult, setInviteResult] = useState<{ tempPassword: string; email: string } | null>(null)
+  const [storeLocations, setStoreLocations] = useState<string[]>([])
 
   const phoneRef = useRef<HTMLInputElement>(null)
   const emailRef = useRef<HTMLInputElement>(null)
   const editPhoneRef = useRef<HTMLInputElement>(null)
 
-  useEffect(() => { fetchOfficers() }, [])
+  useEffect(() => { fetchOfficers(); fetchStores().then(setStoreLocations) }, [])
 
   async function fetchOfficers() {
     setLoading(true)
@@ -419,7 +421,7 @@ export default function StoreOfficers() {
               marginRight: "auto",
             }}
           >
-            Get started by adding a new store officer. You'll manage their contact info and store assignment here.
+            Get started by adding a new store officer. You&apos;ll manage their contact info and store assignment here.
           </p>
           <button
             onClick={() => {
@@ -516,7 +518,7 @@ export default function StoreOfficers() {
                           }}
                         >
                           {officer.profile_picture_url ? (
-                            <img src={officer.profile_picture_url} alt={officer.full_name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                                <Image src={officer.profile_picture_url} alt={officer.full_name} width={36} height={36} unoptimized style={{ objectFit: "cover" }} />
                           ) : (
                             officer.full_name.charAt(0).toUpperCase()
                           )}
@@ -711,7 +713,7 @@ export default function StoreOfficers() {
                               }}
                             >
                               {officer.profile_picture_url ? (
-                                <img src={officer.profile_picture_url} alt={officer.full_name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                            <Image src={officer.profile_picture_url} alt={officer.full_name} width={40} height={40} unoptimized style={{ objectFit: "cover" }} />
                               ) : (
                                 officer.full_name.charAt(0).toUpperCase()
                               )}
@@ -931,8 +933,8 @@ export default function StoreOfficers() {
                           type="text"
                           placeholder="e.g. Jane Doe"
                           value={fullName}
-                          onChange={(e: any) => { setFullName(e.target.value); setMessage("") }}
-                          onKeyDown={(e: any) => { if (e.key === "Enter") phoneRef.current?.focus() }}
+                          onChange={(e: React.ChangeEvent<HTMLInputElement>) => { setFullName(e.target.value); setMessage("") }}
+                          onKeyDown={(e: React.KeyboardEvent<HTMLInputElement>) => { if (e.key === "Enter") phoneRef.current?.focus() }}
                           readOnly={!canEdit}
                           style={inputStyle}
                           autoFocus
@@ -947,8 +949,8 @@ export default function StoreOfficers() {
                           type="text"
                           placeholder="e.g. 08012345678"
                           value={phoneNumber}
-                          onChange={(e: any) => { setPhoneNumber(e.target.value); setMessage("") }}
-                          onKeyDown={(e: any) => { if (e.key === "Enter") emailRef.current?.focus() }}
+                          onChange={(e: React.ChangeEvent<HTMLInputElement>) => { setPhoneNumber(e.target.value); setMessage("") }}
+                          onKeyDown={(e: React.KeyboardEvent<HTMLInputElement>) => { if (e.key === "Enter") emailRef.current?.focus() }}
                           readOnly={!canEdit}
                           style={inputStyle}
                         />
@@ -962,7 +964,7 @@ export default function StoreOfficers() {
                           type="email"
                           placeholder="e.g. officer@example.com"
                           value={email}
-                          onChange={(e: any) => { setEmail(e.target.value); setMessage("") }}
+                          onChange={(e: React.ChangeEvent<HTMLInputElement>) => { setEmail(e.target.value); setMessage("") }}
                           readOnly={!canEdit}
                           style={inputStyle}
                         />
@@ -978,7 +980,7 @@ export default function StoreOfficers() {
                           style={inputStyle}
                         >
                           <option value="">Select store</option>
-                          {STORE_LOCATIONS.map(s => (<option key={s} value={s}>{s}</option>))}
+                          {storeLocations.map(s => (<option key={s} value={s}>{s}</option>))}
                         </select>
                       </div>
                     </div>
@@ -1085,8 +1087,8 @@ export default function StoreOfficers() {
                     <ModernInput
                       type="text"
                       value={editName}
-                      onChange={(e: any) => { setEditName(e.target.value); setMessage("") }}
-                      onKeyDown={(e: any) => { if (e.key === "Enter") editPhoneRef.current?.focus() }}
+                      onChange={(e: React.ChangeEvent<HTMLInputElement>) => { setEditName(e.target.value); setMessage("") }}
+                      onKeyDown={(e: React.KeyboardEvent<HTMLInputElement>) => { if (e.key === "Enter") editPhoneRef.current?.focus() }}
                       readOnly={!canEdit}
                       style={inputStyle}
                       autoFocus
@@ -1100,8 +1102,8 @@ export default function StoreOfficers() {
                       ref={editPhoneRef}
                       type="text"
                       value={editPhone}
-                      onChange={(e: any) => { setEditPhone(e.target.value); setMessage("") }}
-                      onKeyDown={(e: any) => { if (e.key === "Enter") handleUpdate() }}
+                      onChange={(e: React.ChangeEvent<HTMLInputElement>) => { setEditPhone(e.target.value); setMessage("") }}
+                      onKeyDown={(e: React.KeyboardEvent<HTMLInputElement>) => { if (e.key === "Enter") handleUpdate() }}
                       readOnly={!canEdit}
                       style={inputStyle}
                     />

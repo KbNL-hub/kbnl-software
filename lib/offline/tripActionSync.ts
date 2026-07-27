@@ -52,7 +52,7 @@ export class TripActionSyncManager {
   private async syncAction(action: {
     id: string;
     type: 'stop' | 'discrepancy' | 'load_more';
-    data: Record<string, any>;
+    data: Record<string, unknown>;
   }): Promise<SyncResult> {
     try {
       console.log(`[TripSync] Syncing ${action.type}: ${action.id}`);

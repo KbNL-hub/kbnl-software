@@ -2,7 +2,8 @@
 
 import { FONT_SIZE } from "@/lib/constants"
 
-import { useState, useEffect, useRef } from "react"
+import Image from "next/image"
+import React, { useState, useEffect, useRef, useCallback } from "react"
 import { supabase } from "@/lib/supabase"
 import { apiMutate } from "@/lib/api-mutation"
 import ModernInput from "@/components/ModernInput"
@@ -51,7 +52,7 @@ function useBreakpoint() {
 export default function ManageStationManagers() {
   const { getAccess } = usePermissions()
   const canEdit = getAccess("station-managers").canEdit
-  const { isMobile, isDesktop } = useBreakpoint()
+  const { isMobile } = useBreakpoint()
   const [managers, setManagers] = useState<StationManager[]>([])
   const [loading, setLoading] = useState(true)
   const [viewMode, setViewMode] = useState<ViewMode>("card")
@@ -85,18 +86,19 @@ export default function ManageStationManagers() {
   const newCompanyRef = useRef<HTMLInputElement>(null)
   const editPhoneRef = useRef<HTMLInputElement>(null)
 
-  useEffect(() => {
-    fetchAll()
-  }, [])
-
-  async function fetchAll() {
+  const fetchAll = useCallback(async () => {
     setLoading(true)
     try {
       await Promise.all([fetchManagers(), fetchCompanies()])
     } finally {
       setLoading(false)
     }
-  }
+  }, [])
+
+  // eslint-disable-next-line react-hooks/set-state-in-effect
+  useEffect(() => {
+    fetchAll()
+  }, [fetchAll])
 
   async function fetchManagers() {
     const { data } = await supabase
@@ -545,7 +547,7 @@ export default function ManageStationManagers() {
               marginRight: "auto",
             }}
           >
-            Get started by adding a new station manager. You'll manage their contact info and fuel company assignment here.
+            Get started by adding a new station manager. You&apos;ll manage their contact info and fuel company assignment here.
           </p>
           <button
             onClick={() => {
@@ -639,7 +641,7 @@ export default function ManageStationManagers() {
                           }}
                         >
                           {manager.profile_picture_url ? (
-                            <img src={manager.profile_picture_url} alt={manager.full_name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                                <Image src={manager.profile_picture_url} alt={manager.full_name} width={36} height={36} unoptimized style={{ objectFit: "cover" }} />
                           ) : (
                             manager.full_name.charAt(0).toUpperCase()
                           )}
@@ -895,7 +897,7 @@ export default function ManageStationManagers() {
                               }}
                             >
                               {manager.profile_picture_url ? (
-                                <img src={manager.profile_picture_url} alt={manager.full_name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                            <Image src={manager.profile_picture_url} alt={manager.full_name} width={40} height={40} unoptimized style={{ objectFit: "cover" }} />
                               ) : (
                                 manager.full_name.charAt(0).toUpperCase()
                               )}
@@ -1164,11 +1166,11 @@ export default function ManageStationManagers() {
                           type="text"
                           placeholder="e.g. John Doe"
                           value={fullName}
-                          onChange={(e: any) => {
+                          onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
                             setFullName(e.target.value)
                             setMessage("")
                           }}
-                          onKeyDown={(e: any) => {
+                          onKeyDown={(e: React.KeyboardEvent<HTMLInputElement>) => {
                             if (e.key === "Enter") phoneRef.current?.focus()
                           }}
                           style={inputStyle}
@@ -1193,11 +1195,11 @@ export default function ManageStationManagers() {
                           type="text"
                           placeholder="e.g. 08012345678"
                           value={phoneNumber}
-                          onChange={(e: any) => {
+                          onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
                             setPhoneNumber(e.target.value)
                             setMessage("")
                           }}
-                          onKeyDown={(e: any) => {
+                          onKeyDown={(e: React.KeyboardEvent<HTMLInputElement>) => {
                             if (e.key === "Enter") emailRef.current?.focus()
                           }}
                           style={inputStyle}
@@ -1221,11 +1223,11 @@ export default function ManageStationManagers() {
                           type="email"
                           placeholder="e.g. manager@example.com"
                           value={email}
-                          onChange={(e: any) => {
+                          onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
                             setEmail(e.target.value)
                             setMessage("")
                           }}
-                          onKeyDown={(e: any) => {
+                          onKeyDown={(e: React.KeyboardEvent<HTMLInputElement>) => {
                             if (e.key === "Enter") companyRef.current?.focus()
                           }}
                           style={inputStyle}
@@ -1525,11 +1527,11 @@ export default function ManageStationManagers() {
                     <ModernInput
                       type="text"
                       value={editName}
-                      onChange={(e: any) => {
+                      onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
                         setEditName(e.target.value)
                         setMessage("")
                       }}
-                      onKeyDown={(e: any) => {
+                      onKeyDown={(e: React.KeyboardEvent<HTMLInputElement>) => {
                         if (e.key === "Enter") editPhoneRef.current?.focus()
                       }}
                       style={inputStyle}
@@ -1553,11 +1555,11 @@ export default function ManageStationManagers() {
                       ref={editPhoneRef}
                       type="text"
                       value={editPhone}
-                      onChange={(e: any) => {
+                      onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
                         setEditPhone(e.target.value)
                         setMessage("")
                       }}
-                      onKeyDown={(e: any) => {
+                      onKeyDown={(e: React.KeyboardEvent<HTMLInputElement>) => {
                         if (e.key === "Enter") handleUpdate()
                       }}
                       style={inputStyle}

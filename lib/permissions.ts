@@ -32,6 +32,7 @@ export const ALL_SECTIONS = [
   'company-prices',
   'store-sales',
   'side-trips',
+  'our-stores',
 ] as const
 
 export type SectionKey = (typeof ALL_SECTIONS)[number]
@@ -90,6 +91,7 @@ export const ROLES: { [key: string]: RoleConfig | undefined } & Partial<Record<R
       'manage-drivers', 'monitor-trips',
       'monitor-trucks', 'manage-trucks', 'truck-officers',
       'tricycles', 'diesel-manager', 'reports', 'side-trips',
+      'company-prices',
     ],
     access: 'write',
     label: 'ATC Officer',
@@ -119,6 +121,11 @@ export const ROLES: { [key: string]: RoleConfig | undefined } & Partial<Record<R
     access: 'write',
     label: 'Cash Officer',
   },
+  [Role.StoreSupervisor]: {
+    sections: [],
+    access: 'write',
+    label: 'Store Supervisor',
+  },
 }
 
 export const ROLE_DASHBOARDS: Record<Role, string> = {
@@ -135,6 +142,7 @@ export const ROLE_DASHBOARDS: Record<Role, string> = {
   [Role.TruckOfficer]: '/truck-officer',
   [Role.StoreOfficer]: '/store-officer',
   [Role.CashOfficer]: '/cash-officer',
+  [Role.StoreSupervisor]: '/store-supervisor',
 }
 
 export function getRoleDashboard(role: string): string {

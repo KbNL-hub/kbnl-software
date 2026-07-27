@@ -15,8 +15,6 @@ type Truck = {
 
 type ViewMode = "card" | "table"
 
-const TRUCK_STATUSES = ["Empty", "Loaded", "To Plant", "Undergoing Repairs", "Decommissioned"]
-
 const getPillStyle = (filter: string, isActive: boolean) => {
   if (!isActive) {
     return { bg: "white", textColor: "#64748b", borderColor: "#e2e8f0" }

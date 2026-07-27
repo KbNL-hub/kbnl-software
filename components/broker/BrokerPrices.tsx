@@ -34,8 +34,6 @@ export default function BrokerPrices() {
   const [historyExpanded, setHistoryExpanded] = useState(false)
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set())
 
-  useEffect(() => { fetchData() }, [])
-
   async function fetchData() {
     const [priceRes, historyRes] = await Promise.all([
       supabase.from("company_prices").select("*"),
@@ -59,6 +57,9 @@ export default function BrokerPrices() {
     }
     setLoading(false)
   }
+
+  // eslint-disable-next-line react-hooks/set-state-in-effect
+  useEffect(() => { fetchData() }, [])
 
   if (loading) {
     return (

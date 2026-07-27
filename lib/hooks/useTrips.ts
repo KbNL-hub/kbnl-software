@@ -68,7 +68,7 @@ export function useTrips(filter?: TripsFilter) {
             query = query.in("trip_status", ["In transit", "On hold"])
           }
           if (filter?.single) {
-            query = query.single() as any
+            query = query.single() as unknown as typeof query
           }
         }
 

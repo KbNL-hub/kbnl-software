@@ -2,7 +2,7 @@
 
 import { FONT_SIZE, POLLING_INTERVAL } from "@/lib/constants"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useCallback } from "react"
 import { Icon } from "@iconify/react"
 import { supabase } from "@/lib/supabase"
 import { apiMutate } from "@/lib/api-mutation"
@@ -116,13 +116,13 @@ const getPillStyle = (filter: string, isActive: boolean) => {
 const filterOptions = ["Active", "All", "In transit", "On hold", "Completed", "Disputed"]
 
 export default function MonitorTrips() {
-  const { isMobile, isDesktop } = useBreakpoint()
+  const { isMobile } = useBreakpoint()
   const { getAccess } = usePermissions()
   const canEdit = getAccess("monitor-trips").canEdit
   const [trips, setTrips] = useState<Trip[]>([])
   const [loading, setLoading] = useState(true)
   const [filterStatus, setFilterStatus] = useState("Active")
-  const [viewMode, setViewMode] = useState<ViewMode>("card")
+  const [viewMode, setViewMode] = useState<ViewMode>(isMobile ? "card" : "table")
   const [selectedDriver, setSelectedDriver] = useState<Pick<Trip, "driver_name" | "driver_phone" | "driver_status"> | null>(null)
   const [selectedStops, setSelectedStops] = useState<Stop[] | null>(null)
   const [selectedDiscrepancies, setSelectedDiscrepancies] = useState<Discrepancy[]>([])
@@ -133,11 +133,6 @@ export default function MonitorTrips() {
   const [endingTrip, setEndingTrip] = useState<string | null>(null)
   const [endTripError, setEndTripError] = useState<string | null>(null)
   const [endTripLoading, setEndTripLoading] = useState(false)
-
-  useEffect(() => {
-    // Set default viewmode once breakpoint initializes
-    setViewMode(isMobile ? "card" : "table")
-  }, [isMobile])
 
   async function fetchTrips() {
     const { data: tripsData, error } = await supabase
@@ -452,7 +447,7 @@ export default function MonitorTrips() {
     return ddTrips
   }
 
-  async function loadAll() {
+  const loadAll = useCallback(async () => {
     const [normal, dd] = await Promise.all([
       fetchTrips().catch(() => []),
       fetchDdTrips().catch(() => [])
@@ -462,13 +457,14 @@ export default function MonitorTrips() {
     setTrips(allTrips)
     setLastUpdated(new Date())
     setLoading(false)
-  }
+  }, [])
 
+  // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => {
     loadAll()
     const interval = setInterval(loadAll, POLLING_INTERVAL)
     return () => clearInterval(interval)
-  }, [])
+  }, [loadAll])
 
   function handleEndTripClick() {
     if (!selectedStops || !selectedTrip) return
@@ -719,7 +715,7 @@ export default function MonitorTrips() {
 
                     {trip.load_more_entries.length > 0 && (
                       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 12, padding: 10, background: "#fffbeb", borderRadius: 8, border: "1px solid #fde68a" }}>
-                        {trip.load_more_entries.map((entry, i) => (
+                        {trip.load_more_entries.map((entry) => (
                           <div key={entry.id} style={{ fontSize: FONT_SIZE.xs }}>
                             <p style={{ margin: 0, color: "#b45309", fontWeight: 600 }}>{entry.loading_point_name}</p>
                             <p style={{ margin: "2px 0 0", color: "#92400e" }}>{entry.product} <span style={{ fontWeight: 700 }}>+{entry.quantity}</span></p>

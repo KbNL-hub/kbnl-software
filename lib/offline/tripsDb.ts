@@ -7,7 +7,7 @@ interface PendingTripAction {
   id: string;
   type: 'stop' | 'discrepancy' | 'load_more';
   tripId: string;
-  data: Record<string, any>;
+  data: Record<string, unknown>;
   timestamp: number;
   synced: 0 | 1;
   syncAttempts: number;
@@ -70,7 +70,7 @@ function initDB(): Promise<IDBDatabase> {
 export async function savePendingTripAction(
   type: 'stop' | 'discrepancy' | 'load_more',
   tripId: string,
-  data: Record<string, any>
+  data: Record<string, unknown>
 ): Promise<string> {
   const db = await initDB();
   const id = `${type}-${tripId}-${Date.now()}`;

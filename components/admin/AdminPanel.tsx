@@ -40,6 +40,7 @@ const SECTION_IMPORTS = {
   "store-sales": () => import("@/components/admin/StoreSales"),
   "company-prices": () => import("@/components/admin/CompanyPrices"),
   "side-trips": () => import("@/components/admin/SideTrips"),
+  "our-stores": () => import("@/components/admin/OurStores"),
 } as const
 
 type SectionKey = keyof typeof SECTION_IMPORTS
@@ -69,6 +70,7 @@ const NAV_ITEMS: NavItemConfig[] = [
   { label: "Truck Officers",    key: "truck-officers",      icon: "wpf:maintenance" },
   { label: "Truck Admins",      key: "truck-admins",        icon: "mdi:person-star" },
   { label: "Store Officers",    key: "store-officers",      icon: "mdi:storefront" },
+  { label: "Our Stores",        key: "our-stores",           icon: "mdi:storefront-check" },
   { label: "Cash Officers",     key: "cash-officers",       icon: "mdi:account-tie" },
   { label: "Tricycles",         key: "tricycles",           icon: "mdi:rickshaw" },
   { label: "Monitor Trucks",    key: "monitor-trucks",      icon: "mdi:dump-truck" },

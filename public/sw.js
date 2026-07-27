@@ -113,7 +113,7 @@ async function networkFirstHtml(request) {
       cache.put(request, response.clone());
     }
     return response;
-  } catch (error) {
+  } catch {
     // Network failed, return cached version
     const cached = await caches.match(request);
     return cached || createOfflineResponse();
@@ -133,7 +133,7 @@ async function cacheFirst(request) {
       cache.put(request, response.clone());
     }
     return response;
-  } catch (error) {
+  } catch {
     return createOfflineResponse();
   }
 }

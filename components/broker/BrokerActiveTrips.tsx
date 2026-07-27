@@ -71,10 +71,6 @@ export default function BrokerActiveTrips() {
   const [selectedTrip, setSelectedTrip] = useState<Pick<Trip, "atc" | "order_no" | "child_order_no" | "amount_charged" | "payment_mode"> | null>(null)
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null)
 
-  useEffect(() => {
-    setViewMode(isMobile ? "card" : "table")
-  }, [isMobile])
-
   async function loadAll() {
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) { setLoading(false); return }
@@ -84,7 +80,6 @@ export default function BrokerActiveTrips() {
       .select("broker_id")
       .eq("broker_id", user.id)
       .maybeSingle()
-    const bid = rec?.broker_id ?? user.id
 
     const allTrips: Trip[] = []
 
@@ -354,6 +349,7 @@ export default function BrokerActiveTrips() {
     setLoading(false)
   }
 
+  // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => {
     loadAll()
     const interval = setInterval(loadAll, 30000)

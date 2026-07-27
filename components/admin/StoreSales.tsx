@@ -2,10 +2,10 @@
 
 import { FONT_SIZE, POLLING_INTERVAL } from "@/lib/constants"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useCallback } from "react"
 import { Icon } from "@iconify/react"
 import { supabase } from "@/lib/supabase"
-import { STORE_LOCATIONS } from "@/lib/stores"
+import { fetchStores } from "@/lib/stores"
 
 type StoreSale = {
   sale_id: string
@@ -73,7 +73,7 @@ export default function StoreSales() {
   const [sales, setSales] = useState<StoreSale[]>([])
   const [loading, setLoading] = useState(true)
   const [filterStatus, setFilterStatus] = useState("All")
-  const [viewMode, setViewMode] = useState<ViewMode>("card")
+  const [viewMode, setViewMode] = useState<ViewMode>(isMobile ? "card" : "table")
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null)
 
   const [allProducts, setAllProducts] = useState<string[]>([])
@@ -83,17 +83,15 @@ export default function StoreSales() {
   const [dateMode, setDateMode] = useState<"single" | "range">("single")
   const [filterDateFrom, setFilterDateFrom] = useState("")
   const [filterDateTo, setFilterDateTo] = useState("")
+  const [storeLocations, setStoreLocations] = useState<string[]>([])
 
   const hasActiveFilters = filterProduct || filterStore || filterDateFrom || filterDateTo
-
-  useEffect(() => {
-    setViewMode(isMobile ? "card" : "table")
-  }, [isMobile])
 
   useEffect(() => {
     supabase.rpc("get_products").then(({ data }) => {
       if (data) setAllProducts(data.map((r: { value: string }) => r.value))
     })
+    fetchStores().then(setStoreLocations)
   }, [])
 
   async function fetchSales() {
@@ -121,7 +119,7 @@ export default function StoreSales() {
     }))
   }
 
-  async function loadAll(showLoading = true) {
+  const loadAll = useCallback(async (showLoading = true) => {
     if (showLoading) setLoading(true)
     try {
       const data = await fetchSales()
@@ -132,16 +130,18 @@ export default function StoreSales() {
     } finally {
       if (showLoading) setLoading(false)
     }
-  }
-
-  useEffect(() => {
-    loadAll()
   }, [])
 
+  // eslint-disable-next-line react-hooks/set-state-in-effect
+  useEffect(() => {
+    loadAll()
+  }, [loadAll])
+
+  // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => {
     const interval = setInterval(() => loadAll(false), POLLING_INTERVAL)
     return () => clearInterval(interval)
-  }, [])
+  }, [loadAll])
 
   const filteredSales = sales.filter(s => {
     if (filterStatus !== "All" && s.status !== filterStatus) return false
@@ -339,7 +339,7 @@ export default function StoreSales() {
           }}
         >
           <option value="">All Stores</option>
-          {STORE_LOCATIONS.map(s => (
+          {storeLocations.map(s => (
             <option key={s} value={s}>{s}</option>
           ))}
         </select>

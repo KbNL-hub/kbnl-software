@@ -26,12 +26,6 @@ export default function SideTrips() {
   const [loading, setLoading] = useState(true)
   const [viewMode, setViewMode] = useState<ViewMode>("table")
 
-  useEffect(() => {
-    fetchTrips()
-    const interval = setInterval(fetchTrips, POLLING_INTERVAL)
-    return () => clearInterval(interval)
-  }, [])
-
   async function fetchTrips() {
     const { data } = await supabase
       .from("side_trips")
@@ -60,6 +54,13 @@ export default function SideTrips() {
     setTrips(enriched)
     setLoading(false)
   }
+
+  // eslint-disable-next-line react-hooks/set-state-in-effect
+  useEffect(() => {
+    fetchTrips()
+    const interval = setInterval(fetchTrips, POLLING_INTERVAL)
+    return () => clearInterval(interval)
+  }, [])
 
   if (!canView) return null
 

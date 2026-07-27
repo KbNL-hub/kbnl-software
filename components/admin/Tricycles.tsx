@@ -38,7 +38,7 @@ function useBreakpoint() {
 export default function ManageTricycles() {
   const { getAccess } = usePermissions()
   const canEdit = getAccess("tricycles").canEdit
-  const { isMobile, isDesktop } = useBreakpoint()
+  const { isMobile } = useBreakpoint()
   const [tricycles, setTricycles] = useState<Tricycle[]>([])
   const [loading, setLoading] = useState(true)
   const [viewMode, setViewMode] = useState<ViewMode>("card")

@@ -44,7 +44,7 @@ export default function BrokerCreditsView() {
 
       let brokerId = user.id
 
-      const { data: brokerRecord, error: brokerErr } = await supabase
+      const { data: brokerRecord } = await supabase
         .from("Brokers")
         .select("broker_id, credit_limit")
         .eq("broker_id", user.id)
@@ -63,8 +63,8 @@ export default function BrokerCreditsView() {
 
       if (queryError) { setError(queryError.message); setLoading(false); return }
       if (data) setCredits(data as CreditEntry[])
-    } catch (err: any) {
-      setError(err?.message || "Failed to load credits")
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Failed to load credits")
     } finally {
       setLoading(false)
     }

@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from "react"
 import { supabase } from "@/lib/supabase"
 import ModernInput from "@/components/ModernInput"
 import { usePermissions } from "@/lib/PermissionContext"
+import { fetchStores } from "@/lib/stores"
 
 type FuelCompany = {
   company_id: string
@@ -23,14 +24,10 @@ const ALL_ROLES = [
   { key: "TruckOfficer", label: "Truck Officer", group: "other", needsField: null },
   { key: "StoreOfficer", label: "Store Officer", group: "other", needsField: "store" },
   { key: "CashOfficer", label: "Cash Officer", group: "other", needsField: "office" },
+  { key: "StoreSupervisor", label: "Store Supervisor", group: "other", needsField: "stores" },
 ]
 
 const OFFICE_LOCATIONS = ["Uyo", "Ikom", "Calabar", "Ogoja"]
-const STORE_LOCATIONS = [
-  "Calabar Mini Depot", "Ikom Mini Depot", "Ogoja Depot", "Uyo Depot",
-  "Brooks Outlet", "Urua Ekpa Outlet", "Urua Nyemeiko Outlet",
-  "Reserve Store", "E1 Outlet", "Ogoja Outlet",
-]
 
 type InviteResult = {
   success: boolean
@@ -61,6 +58,8 @@ export default function InviteUsers() {
   const [openingBalance, setOpeningBalance] = useState<{ product: string; quantity: string }[]>([
     { product: "", quantity: "" }
   ])
+  const [storeNames, setStoreNames] = useState<Set<string>>(new Set())
+  const [storeLocations, setStoreLocations] = useState<string[]>([])
 
   const phoneRef = useRef<HTMLInputElement>(null)
   const emailRef = useRef<HTMLInputElement>(null)
@@ -72,6 +71,7 @@ export default function InviteUsers() {
     supabase.rpc("get_products").then(({ data }) => {
       if (data) setAllProducts(data.map((r: { value: string }) => r.value))
     })
+    fetchStores().then(setStoreLocations)
   }, [])
 
   function toggleRole(role: string) {
@@ -108,6 +108,7 @@ export default function InviteUsers() {
     if (selectedRoles.size === 0) { setMessage("Select at least one role"); setIsError(true); return }
     if (needsField("company") && !companyId) { setMessage("Select a company for Station Manager"); setIsError(true); return }
     if (needsField("store") && !storeName) { setMessage("Select a store for Store Officer"); setIsError(true); return }
+    if (needsField("stores") && storeNames.size === 0) { setMessage("Select at least one store for Store Supervisor"); setIsError(true); return }
     if (needsField("office") && selectedRoles.has("CashOfficer") && !officeName) { setMessage("Select an office for Cash Officer"); setIsError(true); return }
     if (needsField("office") && selectedRoles.has("CashAuthorizer") && !cashAuthOffice) { setMessage("Select an assigned office for Cash Authorizer"); setIsError(true); return }
 
@@ -134,6 +135,7 @@ export default function InviteUsers() {
           roles: [...selectedRoles],
           companyId: companyId || undefined,
           storeName: storeName || undefined,
+          storeNames: storeNames.size > 0 ? [...storeNames] : undefined,
           officeName: officeName || undefined,
           assignedOffice: cashAuthOffice || undefined,
           openingBalance: validLines.length > 0 ? validLines : undefined,
@@ -187,6 +189,7 @@ export default function InviteUsers() {
     setOfficeName("")
     setCashAuthOffice("")
     setOpeningBalance([{ product: "", quantity: "" }])
+    setStoreNames(new Set())
     setMessage("")
     setResult(null)
     setCopied(false)
@@ -471,7 +474,7 @@ export default function InviteUsers() {
                   }}
                 >
                   <option value="">Select store...</option>
-                  {STORE_LOCATIONS.map((s) => (
+                  {storeLocations.map((s) => (
                     <option key={s} value={s}>{s}</option>
                   ))}
                 </select>
@@ -525,6 +528,52 @@ export default function InviteUsers() {
                   </button>
                 </div>
               )}
+            </div>
+          )}
+
+          {needsField("stores") && (
+            <div style={{ marginBottom: 16 }}>
+              <label style={labelStyle}>Stores (for Store Supervisor) *</label>
+              <p style={{ margin: "0 0 8px 0", fontSize: 12, color: "#94a3b8" }}>Select one or more stores this supervisor will be responsible for.</p>
+              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                {storeLocations.map((s) => (
+                  <div
+                    key={s}
+                    onClick={() => {
+                      setStoreNames(prev => {
+                        const next = new Set(prev)
+                        if (next.has(s)) next.delete(s)
+                        else next.add(s)
+                        return next
+                      })
+                      setMessage("")
+                    }}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 10,
+                      padding: "8px 12px",
+                      borderRadius: 8,
+                      border: `1.5px solid ${storeNames.has(s) ? "#0070f3" : "#e5e5e5"}`,
+                      background: storeNames.has(s) ? "rgba(0, 112, 243, 0.06)" : "white",
+                      cursor: "pointer",
+                      transition: "all 0.15s ease",
+                      fontSize: 14,
+                      color: storeNames.has(s) ? "#0070f3" : "#333",
+                      fontWeight: storeNames.has(s) ? 600 : 400,
+                    }}
+                  >
+                    <div style={checkboxStyle(storeNames.has(s))}>
+                      {storeNames.has(s) && (
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                          <polyline points="20 6 9 17 4 12" />
+                        </svg>
+                      )}
+                    </div>
+                    {s}
+                  </div>
+                ))}
+              </div>
             </div>
           )}
 

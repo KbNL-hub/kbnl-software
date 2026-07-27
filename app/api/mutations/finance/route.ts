@@ -7,15 +7,15 @@ const supabaseAdmin = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!,
 )
 
-const ALLOWED_TABLES = ["customer_payments", "broker_credits", "store_sales", "store_supply_confirmations", "store_supply_lines", "cash_expenses", "cash_expense_items", "cash_offices", "cash_deposits", "admin_office_assignments", "Customers", "Brokers", "store_stock", "store_officers"] as const
+const ALLOWED_TABLES = ["customer_payments", "broker_credits", "store_sales", "store_supply_confirmations", "store_supply_lines", "cash_expenses", "cash_expense_items", "cash_offices", "cash_deposits", "admin_office_assignments", "Customers", "Brokers", "store_stock", "store_officers", "stock_verifications"] as const
 const ALLOWED_RPCS = ["decrement_store_stock"] as const
 
 const TABLE_ROLES: Record<string, string[]> = {
   customer_payments: ["Broker", "Admin", "SuperAdmin", "DeskOfficer", "Supervisor"],
   broker_credits: ["Broker", "Admin", "SuperAdmin", "DeskOfficer"],
-  store_sales: ["StoreOfficer", "Admin", "SuperAdmin", "Supervisor"],
-  store_supply_confirmations: ["StoreOfficer", "Admin", "SuperAdmin"],
-  store_supply_lines: ["StoreOfficer", "Admin", "SuperAdmin"],
+  store_sales: ["StoreOfficer", "Admin", "SuperAdmin", "Supervisor", "StoreSupervisor"],
+  store_supply_confirmations: ["StoreOfficer", "Admin", "SuperAdmin", "StoreSupervisor"],
+  store_supply_lines: ["StoreOfficer", "Admin", "SuperAdmin", "StoreSupervisor"],
   cash_expenses: ["CashOfficer", "Admin", "SuperAdmin", "Broker", "CashAuthorizer"],
   cash_expense_items: ["CashOfficer", "Admin", "SuperAdmin", "Broker"],
   cash_offices: ["CashOfficer", "Admin", "SuperAdmin"],
@@ -24,8 +24,9 @@ const TABLE_ROLES: Record<string, string[]> = {
   admin_office_assignments: ["Admin", "SuperAdmin"],
   Customers: ["Broker", "Admin", "SuperAdmin", "CashOfficer", "DeskOfficer", "Supervisor"],
   Brokers: ["Broker", "Admin", "SuperAdmin", "DeskOfficer", "Supervisor"],
-  store_stock: ["StoreOfficer", "Admin", "SuperAdmin", "Supervisor"],
+  store_stock: ["StoreOfficer", "Admin", "SuperAdmin", "Supervisor", "StoreSupervisor"],
   store_officers: ["Admin", "SuperAdmin"],
+  stock_verifications: ["StoreSupervisor", "Admin", "SuperAdmin"],
 }
 
 const RPC_ROLES: Record<string, string[]> = {

@@ -146,7 +146,7 @@ function downloadXLSX(filename: string, rows: Record<string, unknown>[], sheetNa
 // ── Component ──────────────────────────────────────────────────────────────
 export default function Reports() {
   const [isMobile, setIsMobile] = useState(false)
-  const [isDesktop, setIsDesktop] = useState(true)
+  const [, setIsDesktop] = useState(true)
   const [section, setSection] = useState<"drivers" | "trucks" | "brokers">("drivers")
   const [fromDate, setFromDate] = useState("")
   const [toDate, setToDate] = useState("")
@@ -540,7 +540,8 @@ export default function Reports() {
       "Total Bags Delivered": d.total_bags,
       "Avg Bags per Trip": d.avg_bags_per_trip,
     }))
-    format === "csv" ? downloadCSV("driver_summary.csv", rows) : downloadXLSX("driver_summary.xlsx", rows, "Driver Summary")
+    if (format === "csv") downloadCSV("driver_summary.csv", rows)
+    else downloadXLSX("driver_summary.xlsx", rows, "Driver Summary")
   }
 
   function exportDriverDetail(format: "csv" | "xlsx") {
@@ -556,9 +557,11 @@ export default function Reports() {
       Status: t.trip_status,
       Date: new Date(t.created_at).toLocaleDateString(),
     }))
-    format === "csv"
-      ? downloadCSV(`${drillDown.driver.driver_name}_trips.csv`, rows)
-      : downloadXLSX(`${drillDown.driver.driver_name}_trips.xlsx`, rows, "Trip Detail")
+    if (format === "csv") {
+      downloadCSV(`${drillDown.driver.driver_name}_trips.csv`, rows)
+    } else {
+      downloadXLSX(`${drillDown.driver.driver_name}_trips.xlsx`, rows, "Trip Detail")
+    }
   }
 
   function exportTruckSummary(format: "csv" | "xlsx") {
@@ -574,7 +577,8 @@ export default function Reports() {
       "Total Fuel (₦)": t.total_fuel_amount,
       "Avg Litres/Trip": t.avg_litres_per_trip,
     }))
-    format === "csv" ? downloadCSV("truck_summary.csv", rows) : downloadXLSX("truck_summary.xlsx", rows, "Truck Summary")
+    if (format === "csv") downloadCSV("truck_summary.csv", rows)
+    else downloadXLSX("truck_summary.xlsx", rows, "Truck Summary")
   }
 
   function exportTruckDetail(format: "csv" | "xlsx") {
@@ -612,7 +616,8 @@ export default function Reports() {
       "Total Bags Sold": b.total_bags,
       "Total Revenue (₦)": b.total_revenue,
     }))
-    format === "csv" ? downloadCSV("broker_summary.csv", rows) : downloadXLSX("broker_summary.xlsx", rows, "Broker Summary")
+    if (format === "csv") downloadCSV("broker_summary.csv", rows)
+    else downloadXLSX("broker_summary.xlsx", rows, "Broker Summary")
   }
 
   function exportBrokerDetail(format: "csv" | "xlsx") {
@@ -625,9 +630,11 @@ export default function Reports() {
       "Revenue (₦)": s.revenue,
       Date: new Date(s.stop_time).toLocaleDateString(),
     }))
-    format === "csv"
-      ? downloadCSV(`${drillDown.broker.broker_name}_stops.csv`, rows)
-      : downloadXLSX(`${drillDown.broker.broker_name}_stops.xlsx`, rows, "Stop Detail")
+    if (format === "csv") {
+      downloadCSV(`${drillDown.broker.broker_name}_stops.csv`, rows)
+    } else {
+      downloadXLSX(`${drillDown.broker.broker_name}_stops.xlsx`, rows, "Stop Detail")
+    }
   }
 
   // ── Render ────────────────────────────────────────────────────────────────

@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useCallback } from "react"
 import { Icon } from "@iconify/react"
 import { supabase } from "@/lib/supabase"
 import { apiMutate } from "@/lib/api-mutation"
@@ -55,9 +55,7 @@ export default function MyStops() {
   const [discount, setDiscount] = useState("")
   const [salePrice, setSalePrice] = useState("")
 
-  useEffect(() => { initBroker() }, [])
-
-  async function initBroker() {
+  const initBroker = useCallback(async () => {
     const { data: { session } } = await supabase.auth.getSession()
     if (!session) { window.location.href = "/login"; return }
     setBrokerId(session.user.id)
@@ -67,7 +65,10 @@ export default function MyStops() {
     setCompanyPriceMap(priceMap)
     await fetchStops(session.user.id)
     setLoading(false)
-  }
+  }, [])
+
+  // eslint-disable-next-line react-hooks/set-state-in-effect
+  useEffect(() => { initBroker() }, [initBroker])
 
   async function fetchStops(bId: string) {
     const { data: stops, error } = await supabase
@@ -82,6 +83,7 @@ export default function MyStops() {
 
     if (error) { console.error("Failed to fetch stops:", error); return }
 
+    /* eslint-disable @typescript-eslint/no-explicit-any */
     const enriched = (stops || []).map((stop: any) => ({
       stop_id: stop.stop_id,
       trip_id: stop.trip_id,

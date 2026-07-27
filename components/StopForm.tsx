@@ -5,15 +5,11 @@ import { supabase } from "@/lib/supabase"
 import BrokerDropdown from "./BrokerDropdown"
 import CustomerSelector from "./CustomerSelector"
 import { useOfflineTripAction } from "@/app/hooks/useOfflineTripAction"
+import { fetchStores } from "@/lib/stores"
 
 type Broker = { broker_id: string; broker_name: string; phone_number?: string | null }
 type Customer = { customer_id: string; full_name: string; phone_number: string }
 type Props = { tripId: string; loadedQuantity?: number; offloadedSoFar?: number; onStopLogged: (quantityOffloaded: number) => void }
-
-const STORE_LOCATIONS = [
-  "Calabar Mini Depot", "Ikom Mini Depot", "Ogoja Depot", "Uyo Depot",
-  "Brooks Outlet", "Urua Ekpa Outlet", "Urua Nyemeiko Outlet", "Reserve Store", "E1 Outlet", "Ogoja Outlet",
-]
 
 export default function StopForm({ tripId, loadedQuantity: initialLoaded = 0, offloadedSoFar: initialOffloaded = 0, onStopLogged }: Props) {
   const { submitAction, isOnline } = useOfflineTripAction()
@@ -27,6 +23,7 @@ export default function StopForm({ tripId, loadedQuantity: initialLoaded = 0, of
 
   // Store stop
   const [selectedStore, setSelectedStore] = useState("")
+  const [storeLocations, setStoreLocations] = useState<string[]>([])
 
   const [quantityOffloaded, setQuantityOffloaded] = useState("")
   const [stopLocation, setStopLocation] = useState("")
@@ -72,6 +69,10 @@ export default function StopForm({ tripId, loadedQuantity: initialLoaded = 0, of
     fetchTripData()
     return () => { cancelled = true }
   }, [tripId, initialLoaded, initialOffloaded])
+
+  useEffect(() => {
+    fetchStores().then(setStoreLocations)
+  }, [])
 
   function captureGPS() {
     if (!navigator.geolocation) { setGpsStatus("GPS not supported on this device"); return }
@@ -218,7 +219,7 @@ export default function StopForm({ tripId, loadedQuantity: initialLoaded = 0, of
             style={{ display: "block", width: "100%", padding: "12px 14px", marginTop: 6, boxSizing: "border-box", borderRadius: 8, border: "1.5px solid #ccc", background: "white", color: "#171717", fontSize: 15, minHeight: 48 }}
           >
             <option value="">Select store</option>
-            {STORE_LOCATIONS.map((loc) => (<option key={loc} value={loc}>{loc}</option>))}
+            {storeLocations.map((loc) => (<option key={loc} value={loc}>{loc}</option>))}
           </select>
         </div>
       )}

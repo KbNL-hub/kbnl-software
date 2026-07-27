@@ -1,6 +1,7 @@
 "use client"
 
-import { useState, useEffect, useRef, useMemo } from "react"
+import Image from "next/image"
+import React, { useState, useEffect, useRef, useMemo } from "react"
 import { useRouter } from "next/navigation"
 import { Icon } from "@iconify/react"
 import dynamic from "next/dynamic"
@@ -24,7 +25,7 @@ const SECTION_IMPORTS = {
 
 type SectionKey = keyof typeof SECTION_IMPORTS
 
-const SECTION_COMPONENTS: Partial<Record<SectionKey, React.ComponentType<any>>> = {}
+const SECTION_COMPONENTS: Partial<Record<SectionKey, React.ComponentType>> = {}
 for (const key of Object.keys(SECTION_IMPORTS) as SectionKey[]) {
   SECTION_COMPONENTS[key] = dynamic(SECTION_IMPORTS[key])
 }
@@ -91,10 +92,7 @@ export default function BrokerPanel({ userProfile }: Props) {
   const [pictureLoading, setPictureLoading] = useState(false)
   const [pictureError, setPictureError] = useState("")
 
-  useEffect(() => {
-    if (!isNarrow) setDrawerOpen(false)
-  }, [isNarrow])
-
+  // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => {
     ;(async () => {
       const { data: clerkRecord } = await supabase
@@ -159,7 +157,7 @@ export default function BrokerPanel({ userProfile }: Props) {
       setShowPictureModal(false)
       setSelectedFile(null)
       setPicturePreview(null)
-    } catch (err) {
+    } catch {
       setPictureError("Something went wrong")
       setPictureLoading(false)
     }
@@ -196,6 +194,7 @@ export default function BrokerPanel({ userProfile }: Props) {
       setActive(section)
       SECTION_IMPORTS[section as SectionKey]?.()
     }
+    // eslint-disable-next-line react-hooks/set-state-in-effect
   }, [NAV_ITEMS])
 
   // Handle browser back/forward between sections
@@ -209,16 +208,6 @@ export default function BrokerPanel({ userProfile }: Props) {
     window.addEventListener('popstate', handlePopState)
     return () => window.removeEventListener('popstate', handlePopState)
   }, [NAV_ITEMS])
-
-  const activeLabel = NAV_ITEMS.find(n => n.key === active)?.label ?? "Broker Panel"
-
-  function handleToggleSidebar() {
-    if (isNarrow) {
-      setDrawerOpen(true)
-    } else {
-      setSidebarOpen(!sidebarOpen)
-    }
-  }
 
   function renderContent() {
     const Component = active ? SECTION_COMPONENTS[active as SectionKey] : undefined
@@ -347,7 +336,7 @@ export default function BrokerPanel({ userProfile }: Props) {
                 onMouseLeave={e => { e.currentTarget.style.borderColor = "rgba(255,255,255,0.2)"; e.currentTarget.style.transform = "scale(1)" }}
               >
                 {profilePicUrl ? (
-                  <img src={profilePicUrl} alt={userProfile.full_name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                  <Image src={profilePicUrl} alt={userProfile.full_name} width={40} height={40} unoptimized style={{ objectFit: "cover" }} />
                 ) : (
                   <span style={{ fontSize: isMobile ? 18 : 20, fontWeight: 700, color: "#fff" }}>
                     {userProfile.full_name.charAt(0).toUpperCase()}
@@ -617,7 +606,7 @@ export default function BrokerPanel({ userProfile }: Props) {
             {picturePreview ? (
               <div style={{ marginBottom: 20 }}>
                 <p style={{ margin: "0 0 8px 0", fontSize: fontSize.sm, fontWeight: 600, color: "#0f172a" }}>Preview</p>
-                <img src={picturePreview} alt="Preview" style={{ width: "100%", height: 200, objectFit: "cover", borderRadius: 12, border: "2px solid #e2e8f0" }} />
+                <Image src={picturePreview} alt="Preview" width={400} height={200} unoptimized style={{ objectFit: "cover", borderRadius: 12, border: "2px solid #e2e8f0" }} />
               </div>
             ) : (
               <div onClick={() => fileInputRef.current?.click()} style={{ border: "2px dashed #0070f3", borderRadius: 12, padding: "32px 16px", cursor: "pointer", background: "#f0f7ff", transition: "all 0.2s", marginBottom: 20, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center" }} onMouseEnter={e => { e.currentTarget.style.background = "#e0efff"; e.currentTarget.style.borderColor = "#0055d4" }} onMouseLeave={e => { e.currentTarget.style.background = "#f0f7ff"; e.currentTarget.style.borderColor = "#0070f3" }}>

@@ -2,7 +2,8 @@
 
 import { FONT_SIZE } from "@/lib/constants"
 
-import { useState, useEffect, useRef } from "react"
+import Image from "next/image"
+import React, { useState, useEffect, useRef } from "react"
 import { supabase } from "@/lib/supabase"
 import { apiMutate } from "@/lib/api-mutation"
 import ModernInput from "@/components/ModernInput"
@@ -39,7 +40,7 @@ function useBreakpoint() {
 export default function ManageTruckAdmins() {
   const { getAccess } = usePermissions()
   const canEdit = getAccess("truck-admins").canEdit
-  const { isMobile, isDesktop } = useBreakpoint()
+  const { isMobile } = useBreakpoint()
   const [admins, setAdmins] = useState<TruckAdmin[]>([])
   const [loading, setLoading] = useState(true)
   const [viewMode, setViewMode] = useState<ViewMode>("card")
@@ -156,19 +157,6 @@ export default function ManageTruckAdmins() {
     }
   }
 
-  const inputStyle: React.CSSProperties = {
-    width: "100%",
-    padding: "12px 14px",
-    boxSizing: "border-box",
-    borderRadius: 8,
-    border: "1px solid #e0e0e0",
-    fontSize: FONT_SIZE.base,
-    background: "white",
-    color: "#171717",
-    minHeight: 48,
-    transition: "border-color 0.2s ease",
-  }
-
   return (
     <div style={{ minHeight: "100vh", background: "#f8fafc", padding: isMobile ? "16px" : "32px", fontFamily: "'Inter', sans-serif" }}>
       <div style={{ display: "flex", flexDirection: isMobile ? "column" : "row", justifyContent: "space-between", alignItems: isMobile ? "flex-start" : "center", gap: 16, marginBottom: 32 }}>
@@ -228,7 +216,7 @@ export default function ManageTruckAdmins() {
                       <div style={{ display: "flex", alignItems: "center", gap: 12, flex: 1, minWidth: 0 }}>
                         <div style={{ width: 40, height: 40, borderRadius: "50%", background: admin.profile_picture_url ? "transparent" : "linear-gradient(135deg, #0070f3 0%, #0056d4 100%)", color: "white", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 600, fontSize: FONT_SIZE.md, flexShrink: 0, overflow: "hidden" }}>
                           {admin.profile_picture_url ? (
-                            <img src={admin.profile_picture_url} alt={admin.full_name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                                <Image src={admin.profile_picture_url} alt={admin.full_name} width={36} height={36} unoptimized style={{ objectFit: "cover" }} />
                           ) : (
                             admin.full_name.charAt(0).toUpperCase()
                           )}
@@ -277,7 +265,7 @@ export default function ManageTruckAdmins() {
                           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                             <div style={{ width: 36, height: 36, borderRadius: "50%", background: admin.profile_picture_url ? "transparent" : "linear-gradient(135deg, #0070f3 0%, #0056d4 100%)", color: "white", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 600, fontSize: FONT_SIZE.base, flexShrink: 0, overflow: "hidden" }}>
                               {admin.profile_picture_url ? (
-                                <img src={admin.profile_picture_url} alt={admin.full_name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                            <Image src={admin.profile_picture_url} alt={admin.full_name} width={40} height={40} unoptimized style={{ objectFit: "cover" }} />
                               ) : (
                                 admin.full_name.charAt(0).toUpperCase()
                               )}
@@ -335,15 +323,15 @@ export default function ManageTruckAdmins() {
                     <div style={{ display: "flex", flexDirection: "column", gap: 14, marginBottom: 20 }}>
                       <div>
                         <label style={{ display: "block", marginBottom: 6, color: "#475569", fontSize: FONT_SIZE.sm, fontWeight: 500 }}>Full Name *</label>
-                        <ModernInput type="text" placeholder="e.g. John Doe" value={fullName} onChange={(e: any) => { setFullName(e.target.value); setMessage("") }} onKeyDown={(e: any) => { if (e.key === "Enter") phoneRef.current?.focus() }} readOnly={!canEdit} style={{ width: "100%", padding: "12px 14px", boxSizing: "border-box", borderRadius: 8, border: "1px solid #e0e0e0", fontSize: FONT_SIZE.base, background: "white", color: "#171717", minHeight: 48, transition: "border-color 0.2s ease" }} autoFocus />
+                        <ModernInput type="text" placeholder="e.g. John Doe" value={fullName} onChange={(e: React.ChangeEvent<HTMLInputElement>) => { setFullName(e.target.value); setMessage("") }} onKeyDown={(e: React.KeyboardEvent<HTMLInputElement>) => { if (e.key === "Enter") phoneRef.current?.focus() }} readOnly={!canEdit} style={{ width: "100%", padding: "12px 14px", boxSizing: "border-box", borderRadius: 8, border: "1px solid #e0e0e0", fontSize: FONT_SIZE.base, background: "white", color: "#171717", minHeight: 48, transition: "border-color 0.2s ease" }} autoFocus />
                       </div>
                       <div>
                         <label style={{ display: "block", marginBottom: 6, color: "#475569", fontSize: FONT_SIZE.sm, fontWeight: 500 }}>Phone Number</label>
-                        <ModernInput ref={phoneRef} type="text" placeholder="e.g. 08012345678" value={phoneNumber} onChange={(e: any) => { setPhoneNumber(e.target.value); setMessage("") }} onKeyDown={(e: any) => { if (e.key === "Enter") emailRef.current?.focus() }} readOnly={!canEdit} style={{ width: "100%", padding: "12px 14px", boxSizing: "border-box", borderRadius: 8, border: "1px solid #e0e0e0", fontSize: FONT_SIZE.base, background: "white", color: "#171717", minHeight: 48, transition: "border-color 0.2s ease" }} />
+                        <ModernInput ref={phoneRef} type="text" placeholder="e.g. 08012345678" value={phoneNumber} onChange={(e: React.ChangeEvent<HTMLInputElement>) => { setPhoneNumber(e.target.value); setMessage("") }} onKeyDown={(e: React.KeyboardEvent<HTMLInputElement>) => { if (e.key === "Enter") emailRef.current?.focus() }} readOnly={!canEdit} style={{ width: "100%", padding: "12px 14px", boxSizing: "border-box", borderRadius: 8, border: "1px solid #e0e0e0", fontSize: FONT_SIZE.base, background: "white", color: "#171717", minHeight: 48, transition: "border-color 0.2s ease" }} />
                       </div>
                       <div>
                         <label style={{ display: "block", marginBottom: 6, color: "#475569", fontSize: FONT_SIZE.sm, fontWeight: 500 }}>Email Address *</label>
-                        <ModernInput ref={emailRef} type="email" placeholder="e.g. admin@example.com" value={email} onChange={(e: any) => { setEmail(e.target.value); setMessage("") }} onKeyDown={(e: any) => { if (e.key === "Enter") handleInvite() }} readOnly={!canEdit} style={{ width: "100%", padding: "12px 14px", boxSizing: "border-box", borderRadius: 8, border: "1px solid #e0e0e0", fontSize: FONT_SIZE.base, background: "white", color: "#171717", minHeight: 48, transition: "border-color 0.2s ease" }} />
+                        <ModernInput ref={emailRef} type="email" placeholder="e.g. admin@example.com" value={email} onChange={(e: React.ChangeEvent<HTMLInputElement>) => { setEmail(e.target.value); setMessage("") }} onKeyDown={(e: React.KeyboardEvent<HTMLInputElement>) => { if (e.key === "Enter") handleInvite() }} readOnly={!canEdit} style={{ width: "100%", padding: "12px 14px", boxSizing: "border-box", borderRadius: 8, border: "1px solid #e0e0e0", fontSize: FONT_SIZE.base, background: "white", color: "#171717", minHeight: 48, transition: "border-color 0.2s ease" }} />
                       </div>
                     </div>
                     {message && <div style={{ padding: 12, background: "#fef2f2", borderLeft: "4px solid #ef4444", borderRadius: 4, marginBottom: 20, color: "#b91c1c", fontSize: FONT_SIZE.sm }}>{message}</div>}
@@ -364,11 +352,11 @@ export default function ManageTruckAdmins() {
                 <div style={{ display: "flex", flexDirection: "column", gap: 14, marginBottom: 20 }}>
                   <div>
                     <label style={{ display: "block", marginBottom: 6, color: "#475569", fontSize: FONT_SIZE.sm, fontWeight: 500 }}>Full Name *</label>
-                    <ModernInput type="text" value={editName} onChange={(e: any) => { setEditName(e.target.value); setMessage("") }} onKeyDown={(e: any) => { if (e.key === "Enter") editPhoneRef.current?.focus() }} readOnly={!canEdit} style={{ width: "100%", padding: "12px 14px", boxSizing: "border-box", borderRadius: 8, border: "1px solid #e0e0e0", fontSize: FONT_SIZE.base, background: "white", color: "#171717", minHeight: 48, transition: "border-color 0.2s ease" }} autoFocus />
+                    <ModernInput type="text" value={editName} onChange={(e: React.ChangeEvent<HTMLInputElement>) => { setEditName(e.target.value); setMessage("") }} onKeyDown={(e: React.KeyboardEvent<HTMLInputElement>) => { if (e.key === "Enter") editPhoneRef.current?.focus() }} readOnly={!canEdit} style={{ width: "100%", padding: "12px 14px", boxSizing: "border-box", borderRadius: 8, border: "1px solid #e0e0e0", fontSize: FONT_SIZE.base, background: "white", color: "#171717", minHeight: 48, transition: "border-color 0.2s ease" }} autoFocus />
                   </div>
                   <div>
                     <label style={{ display: "block", marginBottom: 6, color: "#475569", fontSize: FONT_SIZE.sm, fontWeight: 500 }}>Phone Number</label>
-                    <ModernInput ref={editPhoneRef} type="text" value={editPhone} onChange={(e: any) => { setEditPhone(e.target.value); setMessage("") }} onKeyDown={(e: any) => { if (e.key === "Enter") handleUpdate() }} readOnly={!canEdit} style={{ width: "100%", padding: "12px 14px", boxSizing: "border-box", borderRadius: 8, border: "1px solid #e0e0e0", fontSize: FONT_SIZE.base, background: "white", color: "#171717", minHeight: 48, transition: "border-color 0.2s ease" }} />
+                    <ModernInput ref={editPhoneRef} type="text" value={editPhone} onChange={(e: React.ChangeEvent<HTMLInputElement>) => { setEditPhone(e.target.value); setMessage("") }} onKeyDown={(e: React.KeyboardEvent<HTMLInputElement>) => { if (e.key === "Enter") handleUpdate() }} readOnly={!canEdit} style={{ width: "100%", padding: "12px 14px", boxSizing: "border-box", borderRadius: 8, border: "1px solid #e0e0e0", fontSize: FONT_SIZE.base, background: "white", color: "#171717", minHeight: 48, transition: "border-color 0.2s ease" }} />
                   </div>
                 </div>
                 {message && <div style={{ padding: 12, background: "#fef2f2", borderLeft: "4px solid #ef4444", borderRadius: 4, marginBottom: 20, color: "#b91c1c", fontSize: FONT_SIZE.sm }}>{message}</div>}

@@ -2,7 +2,8 @@
 
 import { FONT_SIZE } from "@/lib/constants"
 
-import { useState, useEffect, useRef } from "react"
+import Image from "next/image"
+import React, { useState, useEffect, useRef } from "react"
 import { supabase } from "@/lib/supabase"
 import { apiMutate } from "@/lib/api-mutation"
 import ModernInput from "@/components/ModernInput"
@@ -42,7 +43,7 @@ function useBreakpoint() {
 
 
 export default function ManageBrokers() {
-  const { isMobile, isDesktop } = useBreakpoint()
+  const { isMobile } = useBreakpoint()
   const { getAccess } = usePermissions()
   const canEdit = getAccess("manage-brokers").canEdit
   const [brokers, setBrokers] = useState<Broker[]>([])
@@ -77,6 +78,7 @@ export default function ManageBrokers() {
     setLoading(false)
   }
 
+  // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { fetchBrokers() }, [])
 
   function closeModals() {
@@ -302,7 +304,7 @@ export default function ManageBrokers() {
             <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
           </div>
           <h3 style={{ margin: "0 0 8px", color: "#0f172a", fontSize: FONT_SIZE.xl, fontWeight: 600 }}>No brokers yet</h3>
-          <p style={{ color: "#64748b", fontSize: FONT_SIZE.base, margin: "0 0 24px", maxWidth: 400, marginLeft: "auto", marginRight: "auto" }}>Get started by adding a new broker to the system. You'll be able to manage their contact information here.</p>
+          <p style={{ color: "#64748b", fontSize: FONT_SIZE.base, margin: "0 0 24px", maxWidth: 400, marginLeft: "auto", marginRight: "auto" }}>Get started by adding a new broker to the system. You&apos;ll be able to manage their contact information here.</p>
           <button
             onClick={() => setShowInviteModal(true)}
             disabled={!canEdit}
@@ -324,7 +326,7 @@ export default function ManageBrokers() {
                     <div style={{ display: "flex", alignItems: "center", gap: 12, flex: 1, minWidth: 0 }}>
                       <div style={{ width: 40, height: 40, borderRadius: "50%", background: broker.profile_picture_url ? "transparent" : "linear-gradient(135deg, #0070f3 0%, #0056d4 100%)", color: "white", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 600, fontSize: FONT_SIZE.md, flexShrink: 0, overflow: "hidden" }}>
                         {broker.profile_picture_url ? (
-                          <img src={broker.profile_picture_url} alt={broker.broker_name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                              <Image src={broker.profile_picture_url} alt={broker.broker_name} width={36} height={36} unoptimized style={{ objectFit: "cover" }} />
                         ) : (
                           broker.broker_name.charAt(0).toUpperCase()
                         )}
@@ -390,7 +392,7 @@ export default function ManageBrokers() {
                         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                           <div style={{ width: 36, height: 36, borderRadius: "50%", background: broker.profile_picture_url ? "transparent" : "linear-gradient(135deg, #0070f3 0%, #0056d4 100%)", color: "white", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 600, fontSize: FONT_SIZE.base, flexShrink: 0, overflow: "hidden" }}>
                             {broker.profile_picture_url ? (
-                              <img src={broker.profile_picture_url} alt={broker.broker_name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                          <Image src={broker.profile_picture_url} alt={broker.broker_name} width={40} height={40} unoptimized style={{ objectFit: "cover" }} />
                             ) : (
                               broker.broker_name.charAt(0).toUpperCase()
                             )}
@@ -470,8 +472,8 @@ export default function ManageBrokers() {
                           placeholder="e.g. John Doe"
                           value={fullName}
                           readOnly={!canEdit}
-                          onChange={(e: any) => { setFullName(e.target.value); setMessage("") }}
-                          onKeyDown={(e: any) => { if (e.key === "Enter") phoneRef.current?.focus() }}
+                          onChange={(e: React.ChangeEvent<HTMLInputElement>) => { setFullName(e.target.value); setMessage("") }}
+                          onKeyDown={(e: React.KeyboardEvent<HTMLInputElement>) => { if (e.key === "Enter") phoneRef.current?.focus() }}
                           style={inputStyle}
                         />
                       </div>
@@ -483,8 +485,8 @@ export default function ManageBrokers() {
                           placeholder="e.g. 08012345678"
                           value={phoneNumber}
                           readOnly={!canEdit}
-                          onChange={(e: any) => { setPhoneNumber(e.target.value); setMessage("") }}
-                          onKeyDown={(e: any) => { if (e.key === "Enter") emailRef.current?.focus() }}
+                          onChange={(e: React.ChangeEvent<HTMLInputElement>) => { setPhoneNumber(e.target.value); setMessage("") }}
+                          onKeyDown={(e: React.KeyboardEvent<HTMLInputElement>) => { if (e.key === "Enter") emailRef.current?.focus() }}
                           style={inputStyle}
                         />
                       </div>
@@ -496,8 +498,8 @@ export default function ManageBrokers() {
                           placeholder="e.g. broker@example.com"
                           value={email}
                           readOnly={!canEdit}
-                          onChange={(e: any) => { setEmail(e.target.value); setMessage("") }}
-                          onKeyDown={(e: any) => { if (e.key === "Enter") handleInvite() }}
+                          onChange={(e: React.ChangeEvent<HTMLInputElement>) => { setEmail(e.target.value); setMessage("") }}
+                          onKeyDown={(e: React.KeyboardEvent<HTMLInputElement>) => { if (e.key === "Enter") handleInvite() }}
                           style={inputStyle}
                         />
                       </div>
@@ -532,8 +534,8 @@ export default function ManageBrokers() {
                       type="text"
                       value={editName}
                       readOnly={!canEdit}
-                      onChange={(e: any) => { setEditName(e.target.value); setMessage("") }}
-                      onKeyDown={(e: any) => { if (e.key === "Enter") editPhoneRef.current?.focus() }}
+                      onChange={(e: React.ChangeEvent<HTMLInputElement>) => { setEditName(e.target.value); setMessage("") }}
+                      onKeyDown={(e: React.KeyboardEvent<HTMLInputElement>) => { if (e.key === "Enter") editPhoneRef.current?.focus() }}
                       style={inputStyle}
                     />
                   </div>
@@ -544,8 +546,8 @@ export default function ManageBrokers() {
                       type="text"
                       value={editPhone}
                       readOnly={!canEdit}
-                      onChange={(e: any) => { setEditPhone(e.target.value); setMessage("") }}
-                      onKeyDown={(e: any) => { if (e.key === "Enter") handleUpdate() }}
+                      onChange={(e: React.ChangeEvent<HTMLInputElement>) => { setEditPhone(e.target.value); setMessage("") }}
+                      onKeyDown={(e: React.KeyboardEvent<HTMLInputElement>) => { if (e.key === "Enter") handleUpdate() }}
                       style={inputStyle}
                     />
                   </div>
@@ -556,7 +558,7 @@ export default function ManageBrokers() {
                       placeholder="0"
                       value={editCreditLimit}
                       readOnly={!canEdit}
-                      onChange={(e: any) => { setEditCreditLimit(formatAmount(e.target.value)); setMessage("") }}
+                      onChange={(e: React.ChangeEvent<HTMLInputElement>) => { setEditCreditLimit(formatAmount(e.target.value)); setMessage("") }}
                       style={inputStyle}
                     />
                   </div>

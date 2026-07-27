@@ -2,7 +2,7 @@
 
 import { FONT_SIZE, POLLING_INTERVAL } from "@/lib/constants"
 
-import { useState, useEffect, useRef } from "react"
+import { useState, useEffect, useRef, useMemo } from "react"
 import { supabase } from "@/lib/supabase"
 
 type ActiveTruck = {
@@ -68,7 +68,7 @@ type Props = {
 }
 
 export default function TruckMonitorSection({ plates }: Props) {
-  const { isMobile } = useBreakpoint()
+  useBreakpoint()
   const [trucks, setTrucks] = useState<ActiveTruck[]>([])
   const [loading, setLoading] = useState(true)
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null)
@@ -76,6 +76,7 @@ export default function TruckMonitorSection({ plates }: Props) {
   const [viewMode, setViewMode] = useState<ViewMode>("card")
 
   const lastSaveTimeRef = useRef(0)
+  const platesKey = useMemo(() => plates?.join(",") ?? "", [plates])
 
   const filterOptions = ["All", "In transit", "On hold"]
 
@@ -146,8 +147,8 @@ export default function TruckMonitorSection({ plates }: Props) {
     setLoading(false)
   }
 
+  // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => {
-    fetchActiveTrucks()
 
     const subscription = supabase
       .channel("truck-monitor-changes")
@@ -163,7 +164,7 @@ export default function TruckMonitorSection({ plates }: Props) {
       clearInterval(interval)
       subscription.unsubscribe()
     }
-  }, [plates?.join(",")])
+  }, [platesKey])
 
   const filteredTrucks = filterStatus === "All"
     ? trucks
