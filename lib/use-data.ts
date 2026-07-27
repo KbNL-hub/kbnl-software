@@ -35,7 +35,7 @@ export function useData<T>(
       if (cancelled || !mountedRef.current) return
 
       if (err) {
-        setError(err.message)
+        setError(err instanceof Error ? err.message : String(err))
         setData([])
       } else {
         setData((result || []) as T[])
