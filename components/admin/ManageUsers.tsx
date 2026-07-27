@@ -155,32 +155,32 @@ export default function ManageUsers() {
     const queries: Promise<void>[] = []
     if (user.roles.includes("StationManager")) {
       queries.push(
-        supabase.from("station_managers").select("company_id").eq("manager_id", user.user_id).single()
-          .then(({ data }) => { if (data?.company_id) setCompanyId(data.company_id) })
+        Promise.resolve(supabase.from("station_managers").select("company_id").eq("manager_id", user.user_id).single()
+          .then(({ data }) => { if (data?.company_id) setCompanyId(data.company_id) }))
       )
     }
     if (user.roles.includes("StoreOfficer")) {
       queries.push(
-        supabase.from("store_officers").select("store_name").eq("officer_id", user.user_id).single()
-          .then(({ data }) => { if (data?.store_name) setStoreName(data.store_name) })
+        Promise.resolve(supabase.from("store_officers").select("store_name").eq("officer_id", user.user_id).single()
+          .then(({ data }) => { if (data?.store_name) setStoreName(data.store_name) }))
       )
     }
     if (user.roles.includes("CashOfficer")) {
       queries.push(
-        supabase.from("cash_officers").select("office_name").eq("clerk_id", user.user_id).single()
-          .then(({ data }) => { if (data?.office_name) setOfficeName(data.office_name) })
+        Promise.resolve(supabase.from("cash_officers").select("office_name").eq("clerk_id", user.user_id).single()
+          .then(({ data }) => { if (data?.office_name) setOfficeName(data.office_name) }))
       )
     }
     if (user.roles.includes("CashAuthorizer")) {
       queries.push(
-        supabase.from("cash_authorizers").select("assigned_office").eq("authorizer_id", user.user_id).single()
-          .then(({ data }) => { if (data?.assigned_office) setCashAuthOffice(data.assigned_office) })
+        Promise.resolve(supabase.from("cash_authorizers").select("assigned_office").eq("authorizer_id", user.user_id).single()
+          .then(({ data }) => { if (data?.assigned_office) setCashAuthOffice(data.assigned_office) }))
       )
     }
     if (user.roles.includes("StoreSupervisor")) {
       queries.push(
-        supabase.from("store_supervisors").select("store_names").eq("supervisor_id", user.user_id).single()
-          .then(({ data }) => { if (data?.store_names) setStoreNames(new Set(data.store_names)) })
+        Promise.resolve(supabase.from("store_supervisors").select("store_names").eq("supervisor_id", user.user_id).single()
+          .then(({ data }) => { if (data?.store_names) setStoreNames(new Set(data.store_names)) }))
       )
     }
     Promise.all(queries)
