@@ -1393,6 +1393,28 @@ export default function DriverDashboard() {
               <ModernInput as="textarea" placeholder="Describe the issue…" value={complaintNotes} onChange={e => { setComplaintNotes(e.target.value); setComplaintError("") }} rows={4} style={{ ...inputStyle, resize: "none", minHeight: 100, paddingRight: 12 }} />
             </div>
 
+            <div style={{ padding: "14px 16px", background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: 10, marginBottom: 16, display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+              <div style={{ width: 36, height: 36, background: "#dbeafe", borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                <Icon icon="mdi:phone" width={18} color="#2563eb" />
+              </div>
+              <div style={{ flex: 1, minWidth: 140 }}>
+                <p style={{ margin: 0, fontSize: 13, color: "#1e40af", fontWeight: 600 }}>Can't type? Call us directly</p>
+                <p style={{ margin: "2px 0 0", fontSize: 12, color: "#3b82f6" }}>Prosper Betiang — 08128361851</p>
+              </div>
+              <a
+                href="tel:08128361851"
+                style={{
+                  padding: "8px 16px", background: "#2563eb", color: "white",
+                  border: "none", borderRadius: 6, cursor: "pointer",
+                  fontWeight: 600, fontSize: 13,
+                  display: "flex", alignItems: "center", gap: 6,
+                  minHeight: 36, textDecoration: "none",
+                }}
+              >
+                <Icon icon="mdi:phone" width={14} /> Call Now
+              </a>
+            </div>
+
             {complaintError && (
               <div style={{ padding: 12, background: "#fef2f2", borderLeft: "4px solid #ef4444", borderRadius: 4, marginBottom: 16, color: "#b91c1c", fontSize: FONT_SIZE.sm, fontWeight: 600 }}>
                 {complaintError}

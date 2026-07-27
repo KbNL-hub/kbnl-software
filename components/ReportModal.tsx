@@ -187,6 +187,28 @@ export default function ReportModal({ isOpen, onClose, userId, userRole }: Repor
               />
             </div>
 
+            <div style={{ padding: "14px 16px", background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: 10, marginBottom: 16, display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+              <div style={{ width: 36, height: 36, background: "#dbeafe", borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                <Icon icon="mdi:phone" width={18} color="#2563eb" />
+              </div>
+              <div style={{ flex: 1, minWidth: 140 }}>
+                <p style={{ margin: 0, fontSize: 13, color: "#1e40af", fontWeight: 600 }}>Can't type? Call us directly</p>
+                <p style={{ margin: "2px 0 0", fontSize: 12, color: "#3b82f6" }}>Prosper Betiang — 08128361851</p>
+              </div>
+              <a
+                href="tel:08128361851"
+                style={{
+                  padding: "8px 16px", background: "#2563eb", color: "white",
+                  border: "none", borderRadius: 6, cursor: "pointer",
+                  fontWeight: 600, fontSize: fontSize.sm,
+                  display: "flex", alignItems: "center", gap: 6,
+                  minHeight: 36, textDecoration: "none",
+                }}
+              >
+                <Icon icon="mdi:phone" width={14} /> Call Now
+              </a>
+            </div>
+
             {error && (
               <div style={{ padding: "10px 14px", background: "#fef2f2", border: "1px solid #fecaca", borderRadius: 8, marginBottom: 16, display: "flex", alignItems: "center", gap: 8 }}>
                 <Icon icon="mdi:alert-circle" width={16} color="#dc2626" />
@@ -230,6 +252,28 @@ export default function ReportModal({ isOpen, onClose, userId, userRole }: Repor
           </>
         ) : (
           <>
+            <div style={{ padding: "14px 16px", background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: 10, marginBottom: 16, display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+              <div style={{ width: 36, height: 36, background: "#dbeafe", borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                <Icon icon="mdi:phone" width={18} color="#2563eb" />
+              </div>
+              <div style={{ flex: 1, minWidth: 140 }}>
+                <p style={{ margin: 0, fontSize: 13, color: "#1e40af", fontWeight: 600 }}>Having trouble typing?</p>
+                <p style={{ margin: "2px 0 0", fontSize: 12, color: "#3b82f6" }}>Call us directly — Prosper Betiang</p>
+              </div>
+              <a
+                href="tel:08128361851"
+                style={{
+                  padding: "8px 16px", background: "#2563eb", color: "white",
+                  border: "none", borderRadius: 6, cursor: "pointer",
+                  fontWeight: 600, fontSize: fontSize.sm,
+                  display: "flex", alignItems: "center", gap: 6,
+                  minHeight: 36, textDecoration: "none",
+                }}
+              >
+                <Icon icon="mdi:phone" width={14} /> 08128361851
+              </a>
+            </div>
+
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
               <p style={{ margin: 0, fontSize: fontSize.sm, color: "#64748b" }}>
                 {unresolved.length} open &middot; {resolvedCount} resolved

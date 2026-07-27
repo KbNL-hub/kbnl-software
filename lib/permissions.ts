@@ -80,8 +80,8 @@ export const ROLES: { [key: string]: RoleConfig | undefined } & Partial<Record<R
   },
   [Role.DeskOfficer]: {
     sections: [
-      'manage-brokers', 'customer-payments', 'credit',
-      'reports', 'complaints', 'invite-users',
+      'customer-payments', 'credit',
+      'reports', 'complaints', 'store-sales',
     ],
     access: 'write',
     label: 'Desk Officer',
