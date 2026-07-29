@@ -16,7 +16,7 @@ const TABLE_ROLES: Record<string, string[]> = {
   store_sales: ["StoreOfficer", "Admin", "SuperAdmin", "Supervisor", "StoreSupervisor"],
   store_supply_confirmations: ["StoreOfficer", "Admin", "SuperAdmin", "StoreSupervisor"],
   store_supply_lines: ["StoreOfficer", "Admin", "SuperAdmin", "StoreSupervisor"],
-  cash_expenses: ["CashOfficer", "Admin", "SuperAdmin", "Broker", "CashAuthorizer"],
+  cash_expenses: ["CashOfficer", "Admin", "SuperAdmin", "Broker", "CashAuthorizer", "DeskOfficer"],
   cash_expense_items: ["CashOfficer", "Admin", "SuperAdmin", "Broker"],
   cash_offices: ["CashOfficer", "Admin", "SuperAdmin"],
 
@@ -99,7 +99,7 @@ export async function POST(req: NextRequest) {
         const { data: result, error } = await supabaseAdmin.from(table).insert([data]).select()
         if (error) {
           console.error("Mutation failed", error)
-          return buildError("Mutation failed", 500)
+          return buildError("Action failed, try again. If the issue persists, kindly contact admin or submit a complaint.", 500)
         }
         return NextResponse.json({ data: result })
       }
@@ -110,7 +110,7 @@ export async function POST(req: NextRequest) {
         const { data: result, error } = await supabaseAdmin.from(table).upsert([data], upsertOptions).select()
         if (error) {
           console.error("Mutation failed", error)
-          return buildError("Mutation failed", 500)
+          return buildError("Action failed, try again. If the issue persists, kindly contact admin or submit a complaint.", 500)
         }
         return NextResponse.json({ data: result })
       }
@@ -125,7 +125,7 @@ export async function POST(req: NextRequest) {
         const { data: result, error } = await query.select()
         if (error) {
           console.error("Mutation failed", error)
-          return buildError("Mutation failed", 500)
+          return buildError("Action failed, try again. If the issue persists, kindly contact admin or submit a complaint.", 500)
         }
         return NextResponse.json({ data: result })
       }
@@ -139,7 +139,7 @@ export async function POST(req: NextRequest) {
         const { data: result, error } = await query.select()
         if (error) {
           console.error("Mutation failed", error)
-          return buildError("Mutation failed", 500)
+          return buildError("Action failed, try again. If the issue persists, kindly contact admin or submit a complaint.", 500)
         }
         return NextResponse.json({ data: result })
       }

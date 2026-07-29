@@ -2,7 +2,7 @@
 
 import { FONT_SIZE, POLLING_INTERVAL } from "@/lib/constants"
 
-import { useState, useEffect, useCallback } from "react"
+import { useState, useEffect, useCallback, Fragment } from "react"
 import { Icon } from "@iconify/react"
 import { supabase } from "@/lib/supabase"
 import { fetchStores } from "@/lib/stores"
@@ -24,6 +24,13 @@ type StoreSale = {
   created_at: string
   status: string
   broker_name?: string | null
+  bank_name: string | null
+  depositor_name: string | null
+}
+
+type GroupedSale = {
+  date: string
+  sales: StoreSale[]
 }
 
 type ViewMode = "card" | "table"
@@ -97,7 +104,7 @@ export default function StoreSales() {
   async function fetchSales() {
     const { data, error } = await supabase
       .from("store_sales")
-      .select("sale_id, store_name, product, quantity, price_per_bag, total_amount, customer_name, payment_mode, delivery_mode, tricycle_id, truck_plate, broker_id, sold_at, created_at, status")
+      .select("sale_id, store_name, product, quantity, price_per_bag, total_amount, customer_name, payment_mode, delivery_mode, tricycle_id, truck_plate, broker_id, sold_at, created_at, status, bank_name, depositor_name")
       .order("sold_at", { ascending: false })
 
     if (error) throw error
@@ -156,6 +163,14 @@ export default function StoreSales() {
     }
     return true
   })
+
+  const groupedByDate = filteredSales.reduce<GroupedSale[]>((groups, sale) => {
+    const dateKey = sale.sold_at.slice(0, 10)
+    const existing = groups.find(g => g.date === dateKey)
+    if (existing) { existing.sales.push(sale); return groups }
+    groups.push({ date: dateKey, sales: [sale] })
+    return groups
+  }, [])
 
   function formatAmount(val: number | null | undefined): string {
     if (val == null) return "—"
@@ -494,40 +509,52 @@ export default function StoreSales() {
       ) : (
         <>
           {viewMode === "card" && (
-            <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(auto-fill, minmax(340px, 1fr))", gap: 16 }}>
-              {filteredSales.map((sale) => (
-                <div key={sale.sale_id} style={{ background: "white", borderRadius: 12, padding: 20, border: "1px solid #e2e8f0", boxShadow: "0 1px 3px rgba(0, 0, 0, 0.05)", transition: "all 0.2s ease" }} onMouseEnter={e => !isMobile && (e.currentTarget.style.boxShadow = "0 4px 12px rgba(0, 0, 0, 0.08)", e.currentTarget.style.borderColor = "#cbd5e1")} onMouseLeave={e => !isMobile && (e.currentTarget.style.boxShadow = "0 1px 3px rgba(0, 0, 0, 0.05)", e.currentTarget.style.borderColor = "#e2e8f0")}>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 16 }}>
-                    <div>
-                      <h3 style={{ margin: 0, color: "#0f172a", fontSize: FONT_SIZE.lg, fontWeight: 700 }}>{sale.store_name}</h3>
-                      <p style={{ margin: "4px 0 0", color: "#64748b", fontSize: FONT_SIZE.sm }}>{sale.product}</p>
-                    </div>
-                    <span style={{ padding: "6px 12px", borderRadius: 16, fontSize: FONT_SIZE.xs, fontWeight: 600, background: sale.status === "Confirmed" ? "#ecfdf5" : sale.status === "Pending" ? "#fffbeb" : sale.status === "Rejected" ? "#fef2f2" : "#f1f5f9", color: sale.status === "Confirmed" ? "#10b981" : sale.status === "Pending" ? "#f5a623" : sale.status === "Rejected" ? "#ef4444" : "#475569", border: `1.5px solid ${sale.status === "Confirmed" ? "#10b981" : sale.status === "Pending" ? "#f5a623" : sale.status === "Rejected" ? "#ef4444" : "#cbd5e1"}`, whiteSpace: "nowrap" }}>
-                      {sale.status}
+            <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
+              {groupedByDate.map((group) => (
+                <div key={group.date}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
+                    <Icon icon="mdi:calendar" width={18} color="#64748b" />
+                    <h3 style={{ margin: 0, color: "#0f172a", fontSize: FONT_SIZE.lg, fontWeight: 700 }}>
+                      {new Date(group.date + "T00:00:00").toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" })}
+                    </h3>
+                    <span style={{ padding: "2px 8px", borderRadius: 10, fontSize: FONT_SIZE.xs, fontWeight: 600, background: "#f1f5f9", color: "#64748b" }}>
+                      {group.sales.length} sale{group.sales.length !== 1 ? "s" : ""}
                     </span>
                   </div>
+                  <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(auto-fill, minmax(340px, 1fr))", gap: 16 }}>
+                    {group.sales.map((sale) => (
+                      <div key={sale.sale_id} style={{ background: "white", borderRadius: 12, padding: 20, border: "1px solid #e2e8f0", boxShadow: "0 1px 3px rgba(0, 0, 0, 0.05)", transition: "all 0.2s ease" }} onMouseEnter={e => !isMobile && (e.currentTarget.style.boxShadow = "0 4px 12px rgba(0, 0, 0, 0.08)", e.currentTarget.style.borderColor = "#cbd5e1")} onMouseLeave={e => !isMobile && (e.currentTarget.style.boxShadow = "0 1px 3px rgba(0, 0, 0, 0.05)", e.currentTarget.style.borderColor = "#e2e8f0")}>
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 16 }}>
+                          <div>
+                            <h3 style={{ margin: 0, color: "#0f172a", fontSize: FONT_SIZE.lg, fontWeight: 700 }}>{sale.store_name}</h3>
+                            <p style={{ margin: "4px 0 0", color: "#64748b", fontSize: FONT_SIZE.sm }}>{sale.product}</p>
+                          </div>
+                          <span style={{ padding: "6px 12px", borderRadius: 16, fontSize: FONT_SIZE.xs, fontWeight: 600, background: sale.status === "Confirmed" ? "#ecfdf5" : sale.status === "Pending" ? "#fffbeb" : sale.status === "Rejected" ? "#fef2f2" : "#f1f5f9", color: sale.status === "Confirmed" ? "#10b981" : sale.status === "Pending" ? "#f5a623" : sale.status === "Rejected" ? "#ef4444" : "#475569", border: `1.5px solid ${sale.status === "Confirmed" ? "#10b981" : sale.status === "Pending" ? "#f5a623" : sale.status === "Rejected" ? "#ef4444" : "#cbd5e1"}`, whiteSpace: "nowrap" }}>
+                            {sale.status}
+                          </span>
+                        </div>
 
-                  <div style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 16, paddingBottom: 16, borderBottom: "1px solid #f1f5f9" }}>
-                    <p style={{ margin: 0, fontSize: FONT_SIZE.sm, color: "#475569" }}><span style={{ color: "#94a3b8", width: 90, display: "inline-block" }}>Qty:</span> <span style={{ fontWeight: 500 }}>{sale.quantity} bags</span></p>
-                    <p style={{ margin: 0, fontSize: FONT_SIZE.sm, color: "#475569" }}><span style={{ color: "#94a3b8", width: 90, display: "inline-block" }}>Price/bag:</span> <span style={{ fontWeight: 500 }}>{sale.price_per_bag ? formatAmount(sale.price_per_bag) : "—"}</span></p>
-                    <p style={{ margin: 0, fontSize: FONT_SIZE.sm, color: "#475569" }}><span style={{ color: "#94a3b8", width: 90, display: "inline-block" }}>Total:</span> <span style={{ fontWeight: 600, color: "#10b981" }}>{sale.total_amount ? formatAmount(sale.total_amount) : "—"}</span></p>
-                    <p style={{ margin: 0, fontSize: FONT_SIZE.sm, color: "#475569" }}><span style={{ color: "#94a3b8", width: 90, display: "inline-block" }}>Payment:</span> {sale.payment_mode}</p>
-                    <p style={{ margin: 0, fontSize: FONT_SIZE.sm, color: "#475569" }}><span style={{ color: "#94a3b8", width: 90, display: "inline-block" }}>Delivery:</span> {sale.delivery_mode}{sale.truck_plate ? ` (${sale.truck_plate})` : ""}</p>
-                    {sale.customer_name && (
-                      <p style={{ margin: 0, fontSize: FONT_SIZE.sm, color: "#475569" }}><span style={{ color: "#94a3b8", width: 90, display: "inline-block" }}>Customer:</span> {sale.customer_name}</p>
-                    )}
-                    {sale.broker_name && (
-                      <p style={{ margin: 0, fontSize: FONT_SIZE.sm, color: "#475569" }}><span style={{ color: "#94a3b8", width: 90, display: "inline-block" }}>Broker:</span> {sale.broker_name}</p>
-                    )}
-                  </div>
+                        <div style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 16, paddingBottom: 16, borderBottom: "1px solid #f1f5f9" }}>
+                          <p style={{ margin: 0, fontSize: FONT_SIZE.sm, color: "#475569" }}><span style={{ color: "#94a3b8", width: 90, display: "inline-block" }}>Qty:</span> <span style={{ fontWeight: 500 }}>{sale.quantity} bags</span></p>
+                          <p style={{ margin: 0, fontSize: FONT_SIZE.sm, color: "#475569" }}><span style={{ color: "#94a3b8", width: 90, display: "inline-block" }}>Price/bag:</span> <span style={{ fontWeight: 500 }}>{sale.price_per_bag ? formatAmount(sale.price_per_bag) : "—"}</span></p>
+                          <p style={{ margin: 0, fontSize: FONT_SIZE.sm, color: "#475569" }}><span style={{ color: "#94a3b8", width: 90, display: "inline-block" }}>Total:</span> <span style={{ fontWeight: 600, color: "#10b981" }}>{sale.total_amount ? formatAmount(sale.total_amount) : "—"}</span></p>
+                          <p style={{ margin: 0, fontSize: FONT_SIZE.sm, color: "#475569" }}><span style={{ color: "#94a3b8", width: 90, display: "inline-block" }}>Payment:</span> {sale.payment_mode}</p>
+                          <p style={{ margin: 0, fontSize: FONT_SIZE.sm, color: "#475569" }}><span style={{ color: "#94a3b8", width: 90, display: "inline-block" }}>Delivery:</span> {sale.delivery_mode}{sale.truck_plate ? ` (${sale.truck_plate})` : ""}</p>
+                          {sale.customer_name && (
+                            <p style={{ margin: 0, fontSize: FONT_SIZE.sm, color: "#475569" }}><span style={{ color: "#94a3b8", width: 90, display: "inline-block" }}>Customer:</span> {sale.customer_name}</p>
+                          )}
+                          {sale.broker_name && (
+                            <p style={{ margin: 0, fontSize: FONT_SIZE.sm, color: "#475569" }}><span style={{ color: "#94a3b8", width: 90, display: "inline-block" }}>Broker:</span> {sale.broker_name}</p>
+                          )}
+                        </div>
 
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                    <span style={{ color: "#94a3b8", fontSize: FONT_SIZE.xs }}>
-                      {new Date(sale.sold_at).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}
-                    </span>
-                    <span style={{ color: "#94a3b8", fontSize: FONT_SIZE.xs }}>
-                      {new Date(sale.sold_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
-                    </span>
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                          <span style={{ color: "#94a3b8", fontSize: FONT_SIZE.xs }}>
+                            {new Date(sale.sold_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                          </span>
+                        </div>
+                      </div>
+                    ))}
                   </div>
                 </div>
               ))}
@@ -553,24 +580,39 @@ export default function StoreSales() {
                   </tr>
                 </thead>
                 <tbody>
-                  {filteredSales.map((sale) => (
-                    <tr key={sale.sale_id} style={{ borderBottom: "1px solid #e2e8f0", transition: "background 0.2s ease" }} onMouseEnter={e => e.currentTarget.style.background = "#f8fafc"} onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
-                      <td style={{ padding: "12px 16px", color: "#0f172a", fontSize: FONT_SIZE.base, fontWeight: 600 }}>{sale.store_name}</td>
-                      <td style={{ padding: "12px 16px", color: "#0f172a", fontSize: FONT_SIZE.base }}>{sale.product}</td>
-                      <td style={{ padding: "12px 16px", color: "#0f172a", fontSize: FONT_SIZE.base, fontWeight: 500 }}>{sale.quantity}</td>
-                      <td style={{ padding: "12px 16px", color: "#64748b", fontSize: FONT_SIZE.sm }}>{formatAmount(sale.price_per_bag)}</td>
-                      <td style={{ padding: "12px 16px", color: "#10b981", fontSize: FONT_SIZE.base, fontWeight: 600 }}>{formatAmount(sale.total_amount)}</td>
-                      <td style={{ padding: "12px 16px", color: "#64748b", fontSize: FONT_SIZE.sm }}>{sale.customer_name || "—"}</td>
-                      <td style={{ padding: "12px 16px", color: "#64748b", fontSize: FONT_SIZE.sm }}>{sale.payment_mode}</td>
-                      <td style={{ padding: "12px 16px", color: "#64748b", fontSize: FONT_SIZE.sm }}>{sale.delivery_mode}{sale.truck_plate ? ` (${sale.truck_plate})` : ""}</td>
-                      <td style={{ padding: "12px 16px", color: "#64748b", fontSize: FONT_SIZE.sm }}>{sale.broker_name || "—"}</td>
-                      <td style={{ padding: "12px 16px" }}>
-                        <span style={{ padding: "6px 10px", borderRadius: 14, fontSize: FONT_SIZE.xs, fontWeight: 600, background: sale.status === "Confirmed" ? "#ecfdf5" : sale.status === "Pending" ? "#fffbeb" : sale.status === "Rejected" ? "#fef2f2" : "#f1f5f9", color: sale.status === "Confirmed" ? "#10b981" : sale.status === "Pending" ? "#f5a623" : sale.status === "Rejected" ? "#ef4444" : "#475569", border: `1.5px solid ${sale.status === "Confirmed" ? "#10b981" : sale.status === "Pending" ? "#f5a623" : sale.status === "Rejected" ? "#ef4444" : "#cbd5e1"}` }}>
-                          {sale.status}
-                        </span>
-                      </td>
-                      <td style={{ padding: "12px 16px", color: "#94a3b8", fontSize: FONT_SIZE.xs }}>{new Date(sale.sold_at).toLocaleString()}</td>
-                    </tr>
+                  {groupedByDate.map((group) => (
+                    <Fragment key={group.date}>
+                      <tr>
+                        <td colSpan={11} style={{ padding: "10px 16px", background: "#f8fafc", fontWeight: 700, fontSize: FONT_SIZE.sm, color: "#0f172a", borderBottom: "2px solid #e2e8f0" }}>
+                          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                            <Icon icon="mdi:calendar" width={16} color="#64748b" />
+                            {new Date(group.date + "T00:00:00").toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" })}
+                            <span style={{ padding: "1px 6px", borderRadius: 8, fontSize: FONT_SIZE.xs, fontWeight: 600, background: "#e2e8f0", color: "#64748b" }}>
+                              {group.sales.length}
+                            </span>
+                          </div>
+                        </td>
+                      </tr>
+                      {group.sales.map((sale) => (
+                        <tr key={sale.sale_id} style={{ borderBottom: "1px solid #e2e8f0", transition: "background 0.2s ease" }} onMouseEnter={e => e.currentTarget.style.background = "#f8fafc"} onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
+                          <td style={{ padding: "12px 16px", color: "#0f172a", fontSize: FONT_SIZE.base, fontWeight: 600 }}>{sale.store_name}</td>
+                          <td style={{ padding: "12px 16px", color: "#0f172a", fontSize: FONT_SIZE.base }}>{sale.product}</td>
+                          <td style={{ padding: "12px 16px", color: "#0f172a", fontSize: FONT_SIZE.base, fontWeight: 500 }}>{sale.quantity}</td>
+                          <td style={{ padding: "12px 16px", color: "#64748b", fontSize: FONT_SIZE.sm }}>{formatAmount(sale.price_per_bag)}</td>
+                          <td style={{ padding: "12px 16px", color: "#10b981", fontSize: FONT_SIZE.base, fontWeight: 600 }}>{formatAmount(sale.total_amount)}</td>
+                          <td style={{ padding: "12px 16px", color: "#64748b", fontSize: FONT_SIZE.sm }}>{sale.customer_name || "—"}</td>
+                          <td style={{ padding: "12px 16px", color: "#64748b", fontSize: FONT_SIZE.sm }}>{sale.payment_mode}</td>
+                          <td style={{ padding: "12px 16px", color: "#64748b", fontSize: FONT_SIZE.sm }}>{sale.delivery_mode}{sale.truck_plate ? ` (${sale.truck_plate})` : ""}</td>
+                          <td style={{ padding: "12px 16px", color: "#64748b", fontSize: FONT_SIZE.sm }}>{sale.broker_name || "—"}</td>
+                          <td style={{ padding: "12px 16px" }}>
+                            <span style={{ padding: "6px 10px", borderRadius: 14, fontSize: FONT_SIZE.xs, fontWeight: 600, background: sale.status === "Confirmed" ? "#ecfdf5" : sale.status === "Pending" ? "#fffbeb" : sale.status === "Rejected" ? "#fef2f2" : "#f1f5f9", color: sale.status === "Confirmed" ? "#10b981" : sale.status === "Pending" ? "#f5a623" : sale.status === "Rejected" ? "#ef4444" : "#475569", border: `1.5px solid ${sale.status === "Confirmed" ? "#10b981" : sale.status === "Pending" ? "#f5a623" : sale.status === "Rejected" ? "#ef4444" : "#cbd5e1"}` }}>
+                              {sale.status}
+                            </span>
+                          </td>
+                          <td style={{ padding: "12px 16px", color: "#94a3b8", fontSize: FONT_SIZE.xs }}>{new Date(sale.sold_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</td>
+                        </tr>
+                      ))}
+                    </Fragment>
                   ))}
                 </tbody>
               </table>

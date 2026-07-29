@@ -33,6 +33,7 @@ type CashExpense = {
   status: "Pending" | "Authorised" | "Rejected"
   authorised_by: string | null
   rejection_reason: string | null
+  approval_notes: string | null
   created_at: string
   resolved_at: string | null
 }
@@ -44,7 +45,7 @@ type ExpenseItem = {
   amount: number
 }
 
-const OFFICES = ["Calabar", "Ikom", "Ogoja", "Uyo"]
+const OFFICES = ["Calabar", "Ikom", "Ogoja", "Uyo", "Haulage"]
 
 // Responsive breakpoint hook
 function useBreakpoint() {
@@ -94,6 +95,10 @@ export default function CashExpenses() {
   const [showRejectModal, setShowRejectModal] = useState(false)
   const [rejectId, setRejectId] = useState<string | null>(null)
   const [rejectionReason, setRejectionReason] = useState("")
+
+  const [showApproveModal, setShowApproveModal] = useState(false)
+  const [approveId, setApproveId] = useState<string | null>(null)
+  const [approvalNotes, setApprovalNotes] = useState("")
 
   const [expandedExpense, setExpandedExpense] = useState<string | null>(null)
   const [expenseItems, setExpenseItems] = useState<Record<string, ExpenseItem[]>>({})
@@ -279,15 +284,11 @@ export default function CashExpenses() {
     }
   }
 
-  async function handleAuthorise(expense: CashExpense) {
+  async function handleAuthorise(expense: CashExpense, notes?: string) {
     if (!canAuthorize) { setErrorMsg("You do not have permission to authorise expenses"); return }
     if (!adminUser) return
     if (officeBalance < expense.total_amount) {
       alert("Insufficient office balance to authorise this expense! Current balance is ₦" + officeBalance.toLocaleString() + " but expense total is ₦" + expense.total_amount.toLocaleString())
-      return
-    }
-
-    if (!confirm("Are you sure you want to authorise this expense for ₦" + expense.total_amount.toLocaleString() + "?")) {
       return
     }
 
@@ -297,7 +298,7 @@ export default function CashExpenses() {
       // 1. Update expense status
       const { error: expError } = await apiMutate("finance", {
         action: "update", table: "cash_expenses",
-        data: { status: "Authorised", authorised_by: adminUser.id, resolved_at: toISOString() },
+        data: { status: "Authorised", authorised_by: adminUser.id, resolved_at: toISOString(), approval_notes: notes || null },
         filters: { expense_id: expense.expense_id },
       })
 
@@ -698,6 +699,11 @@ export default function CashExpenses() {
                               <div>
                                 <p style={{ margin: "0 0 4px 0", color: "#16a34a", fontSize: FONT_SIZE.sm, fontWeight: 600 }}>Authorised</p>
                                 <p style={{ margin: 0, color: "#15803d", fontSize: FONT_SIZE.xs }}>By <strong>{adminsMap[exp.authorised_by || ""] || "Admin"}</strong> on {new Date(exp.resolved_at).toLocaleString()}</p>
+                                {exp.approval_notes && (
+                                  <div style={{ marginTop: 8, padding: 12, background: "white", borderRadius: 8, border: "1px solid #bbf7d0", color: "#166534", fontSize: FONT_SIZE.sm, fontStyle: "italic" }}>
+                                    "{exp.approval_notes}"
+                                  </div>
+                                )}
                               </div>
                             </div>
                           ) : (
@@ -723,7 +729,7 @@ export default function CashExpenses() {
                           {isAssigned ? (
                             <div style={{ display: "flex", gap: 12, flexDirection: isMobile ? "column" : "row" }}>
                               <button
-                                onClick={() => handleAuthorise(exp)}
+                                onClick={() => { setApproveId(exp.expense_id); setApprovalNotes(""); setErrorMsg(""); setShowApproveModal(true) }}
                                 disabled={submitting || !canAuthorize}
                                 style={{
                                   flex: 1, padding: "12px", cursor: submitting || !canAuthorize ? "not-allowed" : "pointer", borderRadius: 8, border: "1px solid #16a34a", color: "white", background: submitting || !canAuthorize ? "#94a3b8" : "#16a34a", fontSize: FONT_SIZE.sm, fontWeight: 600, transition: "all 0.2s ease", display: "flex", justifyContent: "center", alignItems: "center", gap: 8, opacity: submitting || !canAuthorize ? 0.7 : 1
@@ -864,6 +870,60 @@ export default function CashExpenses() {
                 onMouseLeave={e => !submitting && (e.currentTarget.style.background = "#ef4444")}
               >
                 {submitting ? "Rejecting..." : "Reject Expense"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 4. Approval Notes Modal */}
+      {showApproveModal && (
+        <div onClick={() => setShowApproveModal(false)} style={{ position: "fixed", inset: 0, background: "rgba(15, 23, 42, 0.6)", backdropFilter: "blur(4px)", display: "flex", alignItems: isMobile ? "flex-end" : "center", justifyContent: "center", zIndex: 100, padding: isMobile ? 0 : 24, animation: "fadeIn 0.2s ease-out" }}>
+          <div onClick={(e) => e.stopPropagation()} style={{ background: "white", borderRadius: isMobile ? "20px 20px 0 0" : 16, padding: isMobile ? "28px 24px" : 32, width: "100%", maxWidth: 440, boxShadow: "0 25px 50px -12px rgba(0, 0, 0, 0.25)", animation: "slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1)" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 12 }}>
+              <div style={{ width: 40, height: 40, background: "#f0fdf4", borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", color: "#16a34a" }}>
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="20 6 9 17 4 12"/></svg>
+              </div>
+              <h3 style={{ margin: 0, color: "#0f172a", fontSize: FONT_SIZE.xl, fontWeight: 700 }}>Authorise Expense</h3>
+            </div>
+            
+            <p style={{ color: "#64748b", fontSize: FONT_SIZE.sm, marginBottom: 24, lineHeight: 1.5 }}>
+              Optionally add notes for this approval. This will be visible in the expense details.
+            </p>
+
+            <div style={{ marginBottom: 24 }}>
+              <label style={{ display: "block", fontWeight: 600, color: "#334155", marginBottom: 8, fontSize: FONT_SIZE.sm }}>Notes (optional)</label>
+              <textarea
+                placeholder="Add any notes about this approval..."
+                value={approvalNotes}
+                onChange={(e) => setApprovalNotes(e.target.value)}
+                style={textareaStyle}
+                autoFocus
+              />
+            </div>
+
+            <div style={{ display: "flex", gap: 12 }}>
+              <button 
+                onClick={() => setShowApproveModal(false)} 
+                style={{ flex: 1, padding: "12px", background: "white", border: "1px solid #cbd5e1", color: "#475569", borderRadius: 8, fontWeight: 600, cursor: "pointer", fontSize: FONT_SIZE.md, transition: "background 0.2s" }}
+                onMouseEnter={e => e.currentTarget.style.background = "#f8fafc"}
+                onMouseLeave={e => e.currentTarget.style.background = "white"}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={async () => {
+                  const expense = expenses.find(e => e.expense_id === approveId)
+                  if (!expense) return
+                  setShowApproveModal(false)
+                  await handleAuthorise(expense, approvalNotes || undefined)
+                }}
+                disabled={submitting}
+                style={{ flex: 1, padding: "12px", background: "#16a34a", border: "none", color: "white", borderRadius: 8, fontWeight: 600, cursor: submitting ? "not-allowed" : "pointer", fontSize: FONT_SIZE.md, opacity: submitting ? 0.7 : 1, transition: "background 0.2s" }}
+                onMouseEnter={e => !submitting && (e.currentTarget.style.background = "#15803d")}
+                onMouseLeave={e => !submitting && (e.currentTarget.style.background = "#16a34a")}
+              >
+                {submitting ? "Authorising..." : "Confirm Authorise"}
               </button>
             </div>
           </div>

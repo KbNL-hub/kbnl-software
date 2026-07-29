@@ -20,6 +20,7 @@ type Payment = {
   amount: number
   status: "Pending" | "Posted"
   posted_by: string | null
+  posted_at: string | null
   created_at: string
 }
 
@@ -48,8 +49,9 @@ export default function CustomerPayments({ brokerId }: { brokerId: string }) {
 
   const [submitting, setSubmitting] = useState(false)
   const [message, setMessage] = useState("")
+  const [profilesMap, setProfilesMap] = useState<Record<string, string>>({})
 
-  useEffect(() => { fetchPayments() }, [brokerId])
+  useEffect(() => { fetchPayments(); fetchProfiles() }, [brokerId])
 
   async function fetchPayments() {
     setLoading(true)
@@ -60,6 +62,15 @@ export default function CustomerPayments({ brokerId }: { brokerId: string }) {
       .order("created_at", { ascending: false })
     if (!error && data) setPayments(data)
     setLoading(false)
+  }
+
+  async function fetchProfiles() {
+    const { data: profiles } = await supabase.from("Profiles").select("user_id, full_name")
+    const { data: brokers } = await supabase.from("Brokers").select("broker_id, broker_name")
+    const pMap: Record<string, string> = {}
+    profiles?.forEach(p => { pMap[p.user_id] = p.full_name })
+    brokers?.forEach(b => { if (!pMap[b.broker_id]) pMap[b.broker_id] = b.broker_name })
+    setProfilesMap(pMap)
   }
 
   function openModal(payment?: Payment) {
@@ -202,6 +213,12 @@ export default function CustomerPayments({ brokerId }: { brokerId: string }) {
                     <Icon icon="mdi:pencil" width={16} /> Edit Payment
                   </button>
                 )}
+                {p.status === "Posted" && (
+                  <div style={{ marginTop: 12, padding: "10px 12px", background: "#f0fdf4", borderRadius: 8, fontSize: fontSize.sm, color: "#166534" }}>
+                    <p style={{ margin: 0, fontWeight: 600 }}>Posted by {profilesMap[p.posted_by || ""] || "Admin"}</p>
+                    {p.posted_at && <p style={{ margin: "4px 0 0 0", color: "#16a34a", fontSize: fontSize.xs }}>{new Date(p.posted_at).toLocaleString()}</p>}
+                  </div>
+                )}
               </div>
             )
           })}
@@ -235,6 +252,11 @@ export default function CustomerPayments({ brokerId }: { brokerId: string }) {
                       <span style={{ padding: "4px 10px", borderRadius: 6, fontSize: fontSize.xs, fontWeight: 500, background: ss.bg, color: ss.color, border: `1px solid ${ss.border}`, display: "inline-block" }}>
                         {p.status}
                       </span>
+                      {p.status === "Posted" && p.posted_by && (
+                        <div style={{ marginTop: 4, fontSize: fontSize.xs, color: "#16a34a" }}>
+                          by {profilesMap[p.posted_by] || "Admin"}
+                        </div>
+                      )}
                     </td>
                     <td style={{ padding: "12px 16px", textAlign: "right" }}>
                       {p.status === "Pending" && (

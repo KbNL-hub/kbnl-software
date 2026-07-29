@@ -48,6 +48,7 @@ export default function OurStores() {
   const [showAddModal, setShowAddModal] = useState(false)
   const [showStockModal, setShowStockModal] = useState(false)
   const [editingStore, setEditingStore] = useState<StoreRow | null>(null)
+  const [expandedStore, setExpandedStore] = useState<string | null>(null)
 
   const [newStoreName, setNewStoreName] = useState("")
   const [editProducts, setEditProducts] = useState<{ product: string; balance: string }[]>([])
@@ -574,27 +575,56 @@ export default function OurStores() {
                             </span>
                           </div>
 
-                          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#64748b" strokeWidth="2">
-                              <path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z" />
-                              <line x1="7" y1="7" x2="7.01" y2="7" />
-                            </svg>
-                            <span style={{ color: "#64748b", fontSize: FONT_SIZE.sm }}>
-                              {stock && stock.products.length > 0 ? (
-                                <span>
-                                  <span style={{ color: "#0f172a", fontWeight: 600, fontSize: FONT_SIZE.md }}>
-                                    {stock.total_balance.toLocaleString()}
-                                  </span>
-                                  <span style={{ marginLeft: 4 }}>bags</span>
-                                  <span style={{ color: "#94a3b8", marginLeft: 6 }}>
-                                    ({stock.products.length} product{stock.products.length !== 1 ? "s" : ""})
-                                  </span>
+                          {stock && stock.products.length > 0 ? (
+                            <div
+                              onClick={() => setExpandedStore(expandedStore === store.store_name ? null : store.store_name)}
+                              style={{
+                                display: "flex", alignItems: "center", justifyContent: "space-between",
+                                padding: "8px 12px", borderRadius: 8, cursor: "pointer",
+                                background: expandedStore === store.store_name ? "#f0f7ff" : "#f8fafc",
+                                border: `1px solid ${expandedStore === store.store_name ? "#bfdbfe" : "#e2e8f0"}`,
+                                transition: "all 0.2s ease", marginTop: 4,
+                              }}
+                              onMouseEnter={e => { if (expandedStore !== store.store_name) e.currentTarget.style.background = "#f1f5f9" }}
+                              onMouseLeave={e => { if (expandedStore !== store.store_name) e.currentTarget.style.background = "#f8fafc" }}
+                            >
+                              <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#64748b" strokeWidth="2">
+                                  <path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z" />
+                                  <line x1="7" y1="7" x2="7.01" y2="7" />
+                                </svg>
+                                <span style={{ color: "#0f172a", fontWeight: 600, fontSize: FONT_SIZE.md }}>
+                                  {stock.total_balance.toLocaleString()}
                                 </span>
-                              ) : (
-                                <span style={{ fontStyle: "italic", color: "#94a3b8" }}>No stock</span>
-                              )}
-                            </span>
-                          </div>
+                                <span style={{ color: "#64748b", fontSize: FONT_SIZE.sm }}>bags</span>
+                                <span style={{ color: "#94a3b8", fontSize: FONT_SIZE.xs }}>
+                                  ({stock.products.length} product{stock.products.length !== 1 ? "s" : ""})
+                                </span>
+                              </div>
+                              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth="2" style={{ transform: expandedStore === store.store_name ? "rotate(180deg)" : "rotate(0deg)", transition: "transform 0.2s", flexShrink: 0 }}>
+                                <polyline points="6 9 12 15 18 9" />
+                              </svg>
+                            </div>
+                          ) : (
+                            <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "8px 12px", fontSize: FONT_SIZE.sm, color: "#94a3b8", fontStyle: "italic" }}>
+                              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth="2">
+                                <path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z" />
+                                <line x1="7" y1="7" x2="7.01" y2="7" />
+                              </svg>
+                              No stock
+                            </div>
+                          )}
+
+                          {expandedStore === store.store_name && stock && stock.products.length > 0 && (
+                            <div style={{ marginTop: 6, padding: "10px 12px", background: "#f8fafc", borderRadius: 8, border: "1px solid #e2e8f0" }}>
+                              {stock.products.map(p => (
+                                <div key={p.product} style={{ display: "flex", justifyContent: "space-between", padding: "5px 0", fontSize: FONT_SIZE.xs, borderBottom: "1px dashed #e2e8f0" }}>
+                                  <span style={{ color: "#475569" }}>{p.product}</span>
+                                  <span style={{ fontWeight: 600, color: "#0f172a" }}>{p.balance.toLocaleString()} bags</span>
+                                </div>
+                              ))}
+                            </div>
+                          )}
                         </div>
                       </div>
 
@@ -670,9 +700,10 @@ export default function OurStores() {
                   {stores.map((store, idx) => {
                     const officer = getOfficer(store.store_name)
                     const stock = getStock(store.store_name)
+                    const isExpanded = expandedStore === store.store_name
                     return (
+                      <React.Fragment key={store.store_id}>
                       <tr
-                        key={store.store_id}
                         style={{
                           borderBottom: idx === stores.length - 1 ? "none" : "1px solid #e2e8f0",
                           transition: "background 0.2s ease",
@@ -689,12 +720,20 @@ export default function OurStores() {
                         <td style={{ padding: "12px 16px", fontSize: FONT_SIZE.base, color: "#64748b" }}>
                           {officer?.phone_number || "—"}
                         </td>
-                        <td style={{ padding: "12px 16px", fontSize: FONT_SIZE.base, fontWeight: 600, color: "#0f172a" }}>
+                        <td
+                          style={{ padding: "12px 16px", fontSize: FONT_SIZE.base, fontWeight: 600, color: "#0f172a", cursor: stock && stock.total_balance > 0 ? "pointer" : "default" }}
+                          onClick={() => { if (stock && stock.total_balance > 0) setExpandedStore(expandedStore === store.store_name ? null : store.store_name) }}
+                        >
                           {stock && stock.total_balance > 0 ? (
-                            <span>
-                              {stock.total_balance.toLocaleString()}
-                              <span style={{ fontWeight: 400, color: "#64748b", marginLeft: 4 }}>bags</span>
-                            </span>
+                            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                              <span>
+                                {stock.total_balance.toLocaleString()}
+                                <span style={{ fontWeight: 400, color: "#64748b", marginLeft: 4 }}>bags</span>
+                              </span>
+                              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth="2" style={{ transform: expandedStore === store.store_name ? "rotate(180deg)" : "rotate(0deg)", transition: "transform 0.2s", flexShrink: 0 }}>
+                                <polyline points="6 9 12 15 18 9" />
+                              </svg>
+                            </div>
                           ) : (
                             <span style={{ color: "#94a3b8", fontStyle: "italic", fontWeight: 400 }}>—</span>
                           )}
@@ -723,6 +762,21 @@ export default function OurStores() {
                           </td>
                         )}
                       </tr>
+                      {isExpanded && stock && stock.products.length > 0 && (
+                        <tr>
+                          <td colSpan={canEdit ? 5 : 4} style={{ padding: "0 16px 12px" }}>
+                            <div style={{ padding: "10px 12px", background: "#f8fafc", borderRadius: 8, border: "1px solid #e2e8f0" }}>
+                              {stock.products.map(p => (
+                                <div key={p.product} style={{ display: "flex", justifyContent: "space-between", padding: "4px 0", fontSize: FONT_SIZE.xs, borderBottom: "1px dashed #e2e8f0" }}>
+                                  <span style={{ color: "#475569" }}>{p.product}</span>
+                                  <span style={{ fontWeight: 600, color: "#0f172a" }}>{p.balance.toLocaleString()} bags</span>
+                                </div>
+                              ))}
+                            </div>
+                          </td>
+                        </tr>
+                      )}
+                      </React.Fragment>
                     )
                   })}
                 </tbody>

@@ -52,6 +52,8 @@ type Sale = {
   broker_id: string | null
   broker_name?: string | null
   status: string
+  bank_name: string | null
+  depositor_name: string | null
 }
 
 type GroupedSale = {
@@ -74,6 +76,7 @@ type SupplyLine = { product: string; quantity: string }
 type SaleLine = { product: string; quantity: string; price_per_bag: string }
 
 const PAYMENT_MODES = ["Cash", "Transfer", "POS", "Broker"]
+const BANKS = ["First Bank", "Access Bank", "Stanbic IBTC", "Sterling Bank", "GTB"]
 
 export default function StoreOfficerDashboard() {
   const bp = useBreakpoint()
@@ -104,6 +107,8 @@ export default function StoreOfficerDashboard() {
   const [saleLines, setSaleLines] = useState<SaleLine[]>([{ product: "", quantity: "", price_per_bag: "" }])
   const [saleCustomer, setSaleCustomer] = useState<{ full_name: string } | null>(null)
   const [salePayment, setSalePayment] = useState("")
+  const [saleBank, setSaleBank] = useState("")
+  const [saleDepositor, setSaleDepositor] = useState("")
   const [saleError, setSaleError] = useState("")
   const [saleLoading, setSaleLoading] = useState(false)
   const [deliveryMode, setDeliveryMode] = useState<"self" | "tricycle" | "truck">("self")
@@ -197,7 +202,7 @@ export default function StoreOfficerDashboard() {
   async function fetchSales(officerId: string) {
     const { data } = await supabase
       .from("store_sales")
-      .select("sale_id, product, quantity, price_per_bag, total_amount, customer_name, payment_mode, delivery_mode, tricycle_id, truck_plate, sold_at, created_at, broker_id, status")
+      .select("sale_id, product, quantity, price_per_bag, total_amount, customer_name, payment_mode, delivery_mode, tricycle_id, truck_plate, sold_at, created_at, broker_id, status, bank_name, depositor_name")
       .eq("officer_id", officerId)
       .order("sold_at", { ascending: false })
 
@@ -368,6 +373,10 @@ export default function StoreOfficerDashboard() {
     if (new Set(saleProducts).size !== saleProducts.length) return setSaleError("Duplicate products — merge them")
 
     if (!salePayment) return setSaleError("Select a payment mode")
+    if (salePayment === "Transfer") {
+      if (!saleBank) return setSaleError("Select a bank for Transfer payments")
+      if (!saleDepositor?.trim()) return setSaleError("Enter depositor name for Transfer payments")
+    }
     if (deliveryMode === "tricycle" && !saleTricycleId) return setSaleError("Select a tricycle")
     if (deliveryMode === "truck" && !saleTruckPlate) return setSaleError("Select a truck")
     if (!saleDate) return setSaleError("Select a sale date")
@@ -408,6 +417,8 @@ export default function StoreOfficerDashboard() {
         broker_id: isBrokerLinked ? saleBroker?.broker_id : null,
         status: isBrokerLinked ? "Pending" : "Confirmed",
         sold_at: saleDateWithTime(saleDate),
+        bank_name: salePayment === "Transfer" ? saleBank : null,
+        depositor_name: salePayment === "Transfer" ? saleDepositor.trim() : null,
       }))
 
       let saleErr: string | null = null
@@ -442,6 +453,8 @@ export default function StoreOfficerDashboard() {
       setSaleLines([{ product: "", quantity: "", price_per_bag: "" }])
       setSaleCustomer(null)
       setSalePayment("")
+      setSaleBank("")
+      setSaleDepositor("")
       setSaleError("")
       setDeliveryMode("self")
       setSaleTricycleId("")
@@ -1253,6 +1266,32 @@ export default function StoreOfficerDashboard() {
               </ModernInput>
             </div>
 
+            {salePayment === "Transfer" && (
+              <>
+                <div style={{ marginBottom: 16 }}>
+                  <label style={{ display: "block", fontWeight: 600, marginBottom: 6, fontSize: FONT_SIZE.sm, color: "#475569" }}>Bank *</label>
+                  <ModernInput
+                    as="select"
+                    value={saleBank}
+                    onChange={e => { setSaleBank(e.target.value); setSaleError("") }}
+                    style={{ width: "100%", padding: "10px 12px", borderRadius: 6, border: "1px solid #e0e0e0", fontSize: FONT_SIZE.base, boxSizing: "border-box", minHeight: 44 }}
+                  >
+                    <option value="">Select bank</option>
+                    {BANKS.map(b => (<option key={b} value={b}>{b}</option>))}
+                  </ModernInput>
+                </div>
+                <div style={{ marginBottom: 24 }}>
+                  <label style={{ display: "block", fontWeight: 600, marginBottom: 6, fontSize: FONT_SIZE.sm, color: "#475569" }}>Depositor Name *</label>
+                  <ModernInput
+                    value={saleDepositor}
+                    onChange={e => { setSaleDepositor(e.target.value); setSaleError("") }}
+                    placeholder="Name on bank account"
+                    style={{ width: "100%", padding: "10px 12px", borderRadius: 6, border: "1px solid #e0e0e0", fontSize: FONT_SIZE.base, boxSizing: "border-box", minHeight: 44 }}
+                  />
+                </div>
+              </>
+            )}
+
             {saleError && <div style={{ padding: 12, background: "#fef2f2", borderLeft: "4px solid #ef4444", borderRadius: 4, marginBottom: 16, color: "#b91c1c", fontSize: FONT_SIZE.sm }}>{saleError}</div>}
 
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
@@ -1261,6 +1300,8 @@ export default function StoreOfficerDashboard() {
                 setSaleLines([{ product: "", quantity: "", price_per_bag: "" }])
                 setSaleCustomer(null)
                 setSalePayment("")
+                setSaleBank("")
+                setSaleDepositor("")
                 setSaleError("")
                 setDeliveryMode("self")
                 setSaleTricycleId("")

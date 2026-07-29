@@ -2,12 +2,6 @@ import { Role } from "./roles"
 
 export type AccessLevel = 'view' | 'write' | 'authorize'
 
-export interface RoleConfig {
-  sections: string[]
-  access: AccessLevel
-  label: string
-}
-
 export const ALL_SECTIONS = [
   'manage-users',
   'invite-users',
@@ -27,6 +21,7 @@ export const ALL_SECTIONS = [
   'customer-payments',
   'credit',
   'cash-expenses',
+  'desk-expenses',
   'complaints',
   'reports',
   'company-prices',
@@ -36,6 +31,13 @@ export const ALL_SECTIONS = [
 ] as const
 
 export type SectionKey = (typeof ALL_SECTIONS)[number]
+
+export interface RoleConfig {
+  sections: string[]
+  access: AccessLevel
+  label: string
+  sectionAccess?: Partial<Record<SectionKey, AccessLevel>>
+}
 
 export const ROLES: { [key: string]: RoleConfig | undefined } & Partial<Record<Role, RoleConfig>> = {
   [Role.Admin]: {
@@ -81,10 +83,14 @@ export const ROLES: { [key: string]: RoleConfig | undefined } & Partial<Record<R
   [Role.DeskOfficer]: {
     sections: [
       'customer-payments', 'credit',
-      'reports', 'complaints', 'store-sales',
+      'reports', 'complaints', 'store-sales', 'our-stores',
+      'desk-expenses',
     ],
     access: 'write',
     label: 'Desk Officer',
+    sectionAccess: {
+      'our-stores': 'view',
+    },
   },
   [Role.ATCOfficer]: {
     sections: [
@@ -171,11 +177,13 @@ export function getEffectiveAccess(
 
     canView = true
 
-    if (config.access === 'write') {
+    const effectiveAccess = config.sectionAccess?.[sectionKey as SectionKey] ?? config.access
+
+    if (effectiveAccess === 'write') {
       canEdit = true
     }
 
-    if (config.access === 'authorize') {
+    if (effectiveAccess === 'authorize') {
       canAuthorize = true
     }
   }

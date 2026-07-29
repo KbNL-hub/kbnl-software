@@ -4,7 +4,6 @@ import ModernInput from "@/components/ModernInput"
 import { Icon } from "@iconify/react"
 import { useState, useEffect, useRef } from "react"
 import { supabase } from "@/lib/supabase"
-import { apiMutate } from "@/lib/api-mutation"
 import { useRouter } from "next/navigation"
 import { getRoleDashboard } from "@/lib/permissions"
 import { getUserRoles } from "@/lib/auth-helpers"
@@ -69,46 +68,28 @@ export default function SetPasswordPage() {
       return
     }
 
-    // Clear must_change_password
-    const { data: { user } } = await supabase.auth.getUser()
-    const userId = user?.id
-    if (userId) {
-      await apiMutate("admin", { action: "update", table: "Profiles", data: { must_change_password: false }, filters: { user_id: userId } })
-
-      // Activate role-specific status
-      const { data: profile } = await supabase
-        .from("Profiles")
-        .select("role")
-        .eq("user_id", userId)
-        .single()
-
-      const role = profile?.role
-      if (role === "Driver") {
-        await apiMutate("admin", { action: "update", table: "Drivers", data: { status: "Active" }, filters: { driver_id: userId } })
-      } else if (role === "StationManager") {
-        await apiMutate("admin", { action: "update", table: "station_managers", data: { status: "Active" }, filters: { manager_id: userId } })
-      } else if (role === "TruckOfficer") {
-        await apiMutate("admin", { action: "update", table: "truck_officers", data: { status: "Active" }, filters: { manager_id: userId } })
-      } else if (role === "TruckAdmin") {
-        await apiMutate("admin", { action: "update", table: "truck_admins", data: { status: "Active" }, filters: { admin_id: userId } })
-      } else if (role === "StoreOfficer") {
-        await apiMutate("admin", { action: "update", table: "store_officers", data: { status: "Active" }, filters: { officer_id: userId } })
-      } else if (role === "CashOfficer") {
-        await apiMutate("admin", { action: "update", table: "cash_officers", data: { status: "Active" }, filters: { clerk_id: userId } })
-      } else if (role === "DeskOfficer") {
-        await apiMutate("admin", { action: "update", table: "desk_officers", data: { status: "Active" }, filters: { officer_id: userId } })
-      } else if (role === "ATCOfficer") {
-        await apiMutate("admin", { action: "update", table: "atc_officers", data: { status: "Active" }, filters: { officer_id: userId } })
-      }
-
-      // Redirect to dashboard
-      const dashboard = role ? getRoleDashboard(role) : "/login"
-      setMessage("Password set! Redirecting...")
-      setIsError(false)
-      setTimeout(() => router.push(dashboard), 1500)
-    } else {
-      router.push("/login")
+    // Clear must_change_password and activate role status via self-service route
+    const { data: { session } } = await supabase.auth.getSession()
+    if (session?.access_token) {
+      await fetch("/api/auth/set-password", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${session.access_token}` },
+      })
     }
+
+    // Redirect to dashboard
+    const { data: { user } } = await supabase.auth.getUser()
+    const { data: profile } = user ? await supabase
+      .from("Profiles")
+      .select("role")
+      .eq("user_id", user.id)
+      .single() : { data: null }
+
+    const role = profile?.role
+    const dashboard = role ? getRoleDashboard(role) : "/login"
+    setMessage("Password set! Redirecting...")
+    setIsError(false)
+    setTimeout(() => router.push(dashboard), 1500)
     setSubmitting(false)
   }
 

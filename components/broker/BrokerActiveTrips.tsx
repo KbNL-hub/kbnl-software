@@ -83,6 +83,10 @@ export default function BrokerActiveTrips() {
 
     const allTrips: Trip[] = []
 
+    // Fetch DD trip IDs first to exclude mirror Trips rows
+    const { data: ddIdRows } = await supabase.from("dd_trips").select("dd_trip_id")
+    const ddTripIdSet = new Set((ddIdRows || []).map(r => r.dd_trip_id))
+
     const { data: tripsData } = await supabase
       .from("Trips")
       .select("*")
@@ -90,7 +94,9 @@ export default function BrokerActiveTrips() {
       .order("created_at", { ascending: false })
 
     if (tripsData) {
-      const tripIds = tripsData.map(t => t.trip_id)
+      // Filter out mirror rows that were created for DD trips
+      const regularTrips = tripsData.filter(t => !ddTripIdSet.has(t.trip_id))
+      const tripIds = regularTrips.map(t => t.trip_id)
 
       const { data: stopCounts } = await supabase
         .rpc("get_trip_stop_counts", { p_trip_ids: tripIds })
@@ -113,7 +119,7 @@ export default function BrokerActiveTrips() {
       }
 
       const enriched = await Promise.all(
-        tripsData.map(async (trip) => {
+        regularTrips.map(async (trip) => {
           const { data: driver } = await supabase
             .from("Drivers")
             .select("full_name, phone_number, status")
@@ -444,8 +450,10 @@ export default function BrokerActiveTrips() {
                   <div>
                     <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
                       <h3 style={{ margin: 0, color: "#0f172a", fontSize: fontSize.lg, fontWeight: 700 }}>{trip.plate_number}</h3>
-                      {trip.isDD && (
+                      {trip.isDD ? (
                         <span style={{ fontSize: 10, padding: "2px 8px", borderRadius: 12, background: "#f3e5f5", color: "#7c3aed", fontWeight: 700, border: "1px solid #d8b4fe" }}>DD</span>
+                      ) : (
+                        <span style={{ fontSize: 10, padding: "2px 8px", borderRadius: 12, background: "#e0f2fe", color: "#0369a1", fontWeight: 700, border: "1px solid #7dd3fc" }}>SC/MDD</span>
                       )}
                     </div>
                     <p style={{ margin: 0, color: "#0070f3", fontSize: fontSize.sm, cursor: "pointer", textDecoration: "underline", fontWeight: 500 }} onClick={() => setSelectedDriver({ driver_name: trip.driver_name, driver_phone: trip.driver_phone, driver_status: trip.driver_status })}>
@@ -539,7 +547,11 @@ export default function BrokerActiveTrips() {
                   <tr key={trip.trip_id} style={{ borderBottom: "1px solid #e2e8f0" }} onMouseEnter={e => e.currentTarget.style.background = "#f8fafc"} onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
                     <td style={{ padding: "12px 16px", color: "#0f172a", fontSize: fontSize.base, fontWeight: 600 }}>
                       {trip.plate_number}
-                      {trip.isDD && <span style={{ marginLeft: 8, fontSize: 10, padding: "2px 8px", borderRadius: 12, background: "#f3e5f5", color: "#7c3aed", fontWeight: 700, border: "1px solid #d8b4fe" }}>DD</span>}
+                      {trip.isDD ? (
+                        <span style={{ marginLeft: 8, fontSize: 10, padding: "2px 8px", borderRadius: 12, background: "#f3e5f5", color: "#7c3aed", fontWeight: 700, border: "1px solid #d8b4fe" }}>DD</span>
+                      ) : (
+                        <span style={{ marginLeft: 8, fontSize: 10, padding: "2px 8px", borderRadius: 12, background: "#e0f2fe", color: "#0369a1", fontWeight: 700, border: "1px solid #7dd3fc" }}>SC/MDD</span>
+                      )}
                     </td>
                     <td style={{ padding: "12px 16px", color: "#0070f3", fontSize: fontSize.base, cursor: "pointer", textDecoration: "underline" }} onClick={() => setSelectedDriver({ driver_name: trip.driver_name, driver_phone: trip.driver_phone, driver_status: trip.driver_status })}>
                       {trip.driver_name}

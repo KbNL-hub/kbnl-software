@@ -74,7 +74,7 @@ export async function POST(req: NextRequest) {
         const { data: result, error } = await supabaseAdmin.from(table).insert([data]).select()
         if (error) {
           console.error("Mutation failed", error)
-          return buildError("Mutation failed", 500)
+          return buildError("Action failed, try again. If the issue persists, kindly contact admin or submit a complaint.", 500)
         }
         return NextResponse.json({ data: result })
       }
@@ -85,7 +85,7 @@ export async function POST(req: NextRequest) {
         const { data: result, error } = await supabaseAdmin.from(table).upsert([data], upsertOptions).select()
         if (error) {
           console.error("Mutation failed", error)
-          return buildError("Mutation failed", 500)
+          return buildError("Action failed, try again. If the issue persists, kindly contact admin or submit a complaint.", 500)
         }
         return NextResponse.json({ data: result })
       }
@@ -102,7 +102,7 @@ export async function POST(req: NextRequest) {
         const { data: result, error } = await query.select()
         if (error) {
           console.error("Mutation failed", error)
-          return buildError("Mutation failed", 500)
+          return buildError("Action failed, try again. If the issue persists, kindly contact admin or submit a complaint.", 500)
         }
         return NextResponse.json({ data: result })
       }
@@ -118,7 +118,7 @@ export async function POST(req: NextRequest) {
         const { data: result, error } = await query.select()
         if (error) {
           console.error("Mutation failed", error)
-          return buildError("Mutation failed", 500)
+          return buildError("Action failed, try again. If the issue persists, kindly contact admin or submit a complaint.", 500)
         }
         return NextResponse.json({ data: result })
       }
