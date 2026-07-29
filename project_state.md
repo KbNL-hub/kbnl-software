@@ -103,7 +103,7 @@ lib/
 
 ### Store / Sales
 - `store_stock` — stock_id, store_name, product, balance, updated_at
-- `store_supply_confirmations` — confirmation_id, stop_id, officer_id, store_name, confirmed_at
+- `store_supply_confirmations` — confirmation_id, stop_id, officer_id, store_name, confirmed_at, discrepancy_quantity (nullable), discrepancy_note (nullable)
 - `store_supply_lines` — line_id, confirmation_id, product, quantity
 - `store_sales` — sale_id, officer_id, store_name, product, quantity, price_per_bag, total_amount (generated), customer_name, payment_mode, delivery_mode (self/tricycle/truck), tricycle_id, sold_at
 - `tricycles` — tricycle_id, tricycle_number, store_name, created_at ← NEW

@@ -54,6 +54,7 @@ type Sale = {
   status: string
   bank_name: string | null
   depositor_name: string | null
+  rejection_reason: string | null
 }
 
 type GroupedSale = {
@@ -67,6 +68,7 @@ type GroupedSale = {
   broker_id: string | null
   broker_name?: string | null
   status: string
+  rejection_reason: string | null
   lines: Sale[]
 }
 
@@ -102,6 +104,8 @@ export default function StoreOfficerDashboard() {
   const [confirmError, setConfirmError] = useState("")
   const [confirmLoading, setConfirmLoading] = useState(false)
   const [allProducts, setAllProducts] = useState<string[]>([])
+  const [showDiscrepancyPrompt, setShowDiscrepancyPrompt] = useState(false)
+  const [discrepancyNote, setDiscrepancyNote] = useState("")
 
   const [showSaleModal, setShowSaleModal] = useState(false)
   const [saleLines, setSaleLines] = useState<SaleLine[]>([{ product: "", quantity: "", price_per_bag: "" }])
@@ -202,7 +206,7 @@ export default function StoreOfficerDashboard() {
   async function fetchSales(officerId: string) {
     const { data } = await supabase
       .from("store_sales")
-      .select("sale_id, product, quantity, price_per_bag, total_amount, customer_name, payment_mode, delivery_mode, tricycle_id, truck_plate, sold_at, created_at, broker_id, status, bank_name, depositor_name")
+      .select("sale_id, product, quantity, price_per_bag, total_amount, customer_name, payment_mode, delivery_mode, tricycle_id, truck_plate, sold_at, created_at, broker_id, status, bank_name, depositor_name, rejection_reason")
       .eq("officer_id", officerId)
       .order("sold_at", { ascending: false })
 
@@ -272,16 +276,39 @@ export default function StoreOfficerDashboard() {
     const totalInLines = supplyLines.reduce((sum, l) => sum + (parseInt(l.quantity) || 0), 0)
     if (supplyLines.some(l => !l.product)) return setConfirmError("Select a product for each line")
     if (supplyLines.some(l => !l.quantity || parseInt(l.quantity) <= 0)) return setConfirmError("Enter a valid quantity for each line")
-    if (totalInLines !== confirmingStop.quantity_offloaded) return setConfirmError(`Total (${totalInLines}) must equal ${confirmingStop.quantity_offloaded}`)
 
     const products = supplyLines.map(l => l.product)
     if (new Set(products).size !== products.length) return setConfirmError("Duplicate products — merge them")
 
+    if (totalInLines !== confirmingStop.quantity_offloaded) {
+      if (!showDiscrepancyPrompt) {
+        setConfirmError("")
+        setShowDiscrepancyPrompt(true)
+        return
+      }
+      if (!discrepancyNote.trim()) {
+        setConfirmError("Please provide a note explaining the quantity difference")
+        return
+      }
+    }
+
     setConfirmLoading(true)
+    setConfirmError("")
+
+    const hasDiscrepancy = totalInLines !== confirmingStop.quantity_offloaded
+    const confirmPayload: Record<string, unknown> = {
+      stop_id: confirmingStop.stop_id,
+      officer_id: officer.officer_id,
+      store_name: officer.store_name,
+    }
+    if (hasDiscrepancy) {
+      confirmPayload.discrepancy_quantity = totalInLines - confirmingStop.quantity_offloaded
+      confirmPayload.discrepancy_note = discrepancyNote.trim()
+    }
 
     const { data: confirmation, error: confError } = await apiMutate("finance", {
       action: "insert", table: "store_supply_confirmations",
-      data: { stop_id: confirmingStop.stop_id, officer_id: officer.officer_id, store_name: officer.store_name },
+      data: confirmPayload,
     })
 
     if (confError || !confirmation) { setConfirmError("Failed to confirm supply"); setConfirmLoading(false); return }
@@ -341,6 +368,8 @@ export default function StoreOfficerDashboard() {
     setConfirmingStop(null)
     setSupplyLines([{ product: "", quantity: "" }])
     setConfirmError("")
+    setShowDiscrepancyPrompt(false)
+    setDiscrepancyNote("")
     await Promise.all([
       refetchStops(),
       fetchStock(officer.store_name),
@@ -501,6 +530,7 @@ export default function StoreOfficerDashboard() {
       broker_id: sale.broker_id,
       broker_name: sale.broker_name,
       status: sale.status,
+      rejection_reason: sale.rejection_reason,
       lines: [sale],
     })
     return groups
@@ -739,7 +769,7 @@ export default function StoreOfficerDashboard() {
                     </div>
                   </div>
                   <button
-                    onClick={() => { setConfirmingStop(stop); setSupplyLines([{ product: "", quantity: "" }]); setConfirmError("") }}
+                    onClick={() => { setConfirmingStop(stop); setSupplyLines([{ product: "", quantity: "" }]); setConfirmError(""); setShowDiscrepancyPrompt(false); setDiscrepancyNote("") }}
                     style={{ width: "100%", padding: "10px 14px", background: "#0070f3", color: "white", border: "none", borderRadius: 8, cursor: "pointer", fontWeight: 600, fontSize: FONT_SIZE.md, minHeight: 44 }}
                   >
                     Confirm Supply
@@ -856,6 +886,19 @@ export default function StoreOfficerDashboard() {
                       }}>
                         {sale.status}
                       </span>
+                      {sale.status === "Rejected" && sale.rejection_reason && (
+                        <div style={{ display: "flex", gap: 10, alignItems: "flex-start", marginTop: 8, padding: 10, background: "#fef2f2", borderRadius: 8, border: "1px solid #fecaca" }}>
+                          <div style={{ background: "#ef4444", color: "white", padding: 3, borderRadius: "50%", flexShrink: 0, marginTop: 1 }}>
+                            <Icon icon="mdi:close" width={12} height={12} />
+                          </div>
+                          <div>
+                            <p style={{ margin: "0 0 4px 0", color: "#ef4444", fontSize: FONT_SIZE.xs, fontWeight: 600 }}>Rejected by broker</p>
+                            <div style={{ padding: "8px 10px", background: "white", borderRadius: 6, border: "1px solid #fecaca", color: "#7f1d1d", fontSize: FONT_SIZE.xs, fontStyle: "italic" }}>
+                              &ldquo;{sale.rejection_reason}&rdquo;
+                            </div>
+                          </div>
+                        </div>
+                      )}
                     </div>
                   )}
 
@@ -926,7 +969,7 @@ export default function StoreOfficerDashboard() {
 
       {/* Confirm Supply Modal */}
       {confirmingStop && (
-        <div onClick={() => { setConfirmingStop(null); setSupplyLines([{ product: "", quantity: "" }]); setConfirmError("") }} style={{ position: "fixed", inset: 0, background: "rgba(15, 23, 42, 0.6)", backdropFilter: "blur(4px)", display: "flex", alignItems: isMobile ? "flex-end" : "center", justifyContent: "center", zIndex: 100, padding: isMobile ? 0 : 24 }}>
+        <div onClick={() => { setConfirmingStop(null); setSupplyLines([{ product: "", quantity: "" }]); setConfirmError(""); setShowDiscrepancyPrompt(false); setDiscrepancyNote("") }} style={{ position: "fixed", inset: 0, background: "rgba(15, 23, 42, 0.6)", backdropFilter: "blur(4px)", display: "flex", alignItems: isMobile ? "flex-end" : "center", justifyContent: "center", zIndex: 100, padding: isMobile ? 0 : 24 }}>
           <div onClick={e => e.stopPropagation()} style={{ background: "white", borderRadius: isMobile ? "20px 20px 0 0" : 12, padding: isMobile ? "28px 20px" : 32, width: "100%", maxWidth: 480, maxHeight: "90vh", overflowY: "auto", boxShadow: "0 25px 50px -12px rgba(0, 0, 0, 0.25)" }}>
             <h3 style={{ margin: "0 0 6px 0", fontSize: FONT_SIZE.xl, fontWeight: 700, color: "#0f172a" }}>Confirm Supply</h3>
             <p style={{ color: "#94a3b8", fontSize: FONT_SIZE.sm, margin: "0 0 4px 0" }}>
@@ -937,7 +980,7 @@ export default function StoreOfficerDashboard() {
             </p>
 
             <p style={{ fontWeight: 700, fontSize: FONT_SIZE.base, margin: "0 0 4px 0", color: "#0f172a" }}>Breakdown by Product *</p>
-            <p style={{ fontSize: FONT_SIZE.xs, color: "#94a3b8", margin: "0 0 12px 0" }}>Total must equal bags delivered</p>
+            <p style={{ fontSize: FONT_SIZE.xs, color: "#94a3b8", margin: "0 0 12px 0" }}>Total should match bags delivered</p>
 
             <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 16 }}>
               {supplyLines.map((line, i) => (
@@ -978,14 +1021,45 @@ export default function StoreOfficerDashboard() {
               + Add Product Line
             </button>
 
+            {showDiscrepancyPrompt && (
+              <div style={{ padding: 16, background: "#fffbeb", border: "1px solid #fde68a", borderRadius: 8, marginBottom: 16 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+                  <Icon icon="mdi:alert-circle" width={20} color="#d97706" />
+                  <p style={{ margin: 0, fontWeight: 700, fontSize: FONT_SIZE.sm, color: "#92400e" }}>Quantity Mismatch Detected</p>
+                </div>
+                <p style={{ margin: "0 0 12px", fontSize: FONT_SIZE.sm, color: "#78350f" }}>
+                  Your count (<strong>{supplyLines.reduce((s, l) => s + (parseInt(l.quantity) || 0), 0)}</strong>) differs from the driver's quantity (<strong>{confirmingStop.quantity_offloaded}</strong>). Please explain the difference.
+                </p>
+                <textarea
+                  value={discrepancyNote}
+                  onChange={e => { setDiscrepancyNote(e.target.value); setConfirmError("") }}
+                  placeholder="e.g. 2 bags were damaged during offloading"
+                  rows={3}
+                  style={{ width: "100%", padding: "10px 12px", borderRadius: 6, border: "1px solid #fbbf24", fontSize: FONT_SIZE.sm, resize: "vertical", boxSizing: "border-box", fontFamily: "inherit", background: "white", color: "#0f172a" }}
+                />
+              </div>
+            )}
+
             {confirmError && <div style={{ padding: 12, background: "#fef2f2", borderLeft: "4px solid #ef4444", borderRadius: 4, marginBottom: 16, color: "#b91c1c", fontSize: FONT_SIZE.sm }}>{confirmError}</div>}
 
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-              <button onClick={() => { setConfirmingStop(null); setSupplyLines([{ product: "", quantity: "" }]); setConfirmError("") }} style={{ padding: "12px 16px", background: "white", border: "1px solid #cbd5e1", color: "#475569", borderRadius: 8, cursor: "pointer", fontWeight: 600, fontSize: FONT_SIZE.md, minHeight: 44 }}>Cancel</button>
-              <button onClick={handleConfirmSupply} disabled={confirmLoading} style={{ padding: "12px 16px", background: "#0070f3", color: "white", border: "none", borderRadius: 8, cursor: confirmLoading ? "not-allowed" : "pointer", fontWeight: 600, fontSize: FONT_SIZE.md, opacity: confirmLoading ? 0.7 : 1, minHeight: 44 }}>
-                {confirmLoading ? "Confirming..." : "Confirm Supply"}
-              </button>
+              <button onClick={() => { setConfirmingStop(null); setSupplyLines([{ product: "", quantity: "" }]); setConfirmError(""); setShowDiscrepancyPrompt(false); setDiscrepancyNote("") }} style={{ padding: "12px 16px", background: "white", border: "1px solid #cbd5e1", color: "#475569", borderRadius: 8, cursor: "pointer", fontWeight: 600, fontSize: FONT_SIZE.md, minHeight: 44 }}>Cancel</button>
+              {showDiscrepancyPrompt ? (
+                <button onClick={() => { setShowDiscrepancyPrompt(false); setConfirmError(""); setDiscrepancyNote("") }} style={{ padding: "12px 16px", background: "white", border: "1px solid #0070f3", color: "#0070f3", borderRadius: 8, cursor: "pointer", fontWeight: 600, fontSize: FONT_SIZE.md, minHeight: 44 }}>
+                  Back to Edit
+                </button>
+              ) : (
+                <button onClick={handleConfirmSupply} disabled={confirmLoading} style={{ padding: "12px 16px", background: "#0070f3", color: "white", border: "none", borderRadius: 8, cursor: confirmLoading ? "not-allowed" : "pointer", fontWeight: 600, fontSize: FONT_SIZE.md, opacity: confirmLoading ? 0.7 : 1, minHeight: 44 }}>
+                  {confirmLoading ? "Confirming..." : "Confirm Supply"}
+                </button>
+              )}
             </div>
+
+            {showDiscrepancyPrompt && (
+              <button onClick={handleConfirmSupply} disabled={confirmLoading} style={{ width: "100%", padding: "12px 16px", background: "#0070f3", color: "white", border: "none", borderRadius: 8, cursor: confirmLoading ? "not-allowed" : "pointer", fontWeight: 600, fontSize: FONT_SIZE.md, opacity: confirmLoading ? 0.7 : 1, minHeight: 44, marginTop: 10 }}>
+                {confirmLoading ? "Confirming..." : "Confirm with Discrepancy"}
+              </button>
+            )}
           </div>
         </div>
       )}

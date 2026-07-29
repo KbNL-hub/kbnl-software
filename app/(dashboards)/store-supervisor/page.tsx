@@ -58,6 +58,7 @@ type Sale = {
   broker_id: string | null
   status: string
   officer_id: string
+  rejection_reason: string | null
 }
 
 type GroupedSale = {
@@ -68,6 +69,7 @@ type GroupedSale = {
   sold_at: string
   broker_id: string | null
   status: string
+  rejection_reason: string | null
   lines: Sale[]
 }
 
@@ -205,7 +207,7 @@ export default function StoreSupervisorDashboard() {
   async function fetchSales(storeName: string) {
     const { data } = await supabase
       .from("store_sales")
-      .select("sale_id, product, quantity, price_per_bag, total_amount, customer_name, payment_mode, delivery_mode, tricycle_id, truck_plate, sold_at, created_at, broker_id, status, officer_id")
+      .select("sale_id, product, quantity, price_per_bag, total_amount, customer_name, payment_mode, delivery_mode, tricycle_id, truck_plate, sold_at, created_at, broker_id, status, officer_id, rejection_reason")
       .eq("store_name", storeName)
       .order("sold_at", { ascending: false })
     setSales(data || [])
@@ -318,6 +320,7 @@ export default function StoreSupervisorDashboard() {
           sold_at: sale.sold_at,
           broker_id: sale.broker_id,
           status: sale.status,
+          rejection_reason: sale.rejection_reason,
           lines: [sale],
         })
       }
@@ -766,6 +769,15 @@ export default function StoreSupervisorDashboard() {
                         <span style={{ fontSize: FONT_SIZE.xs, padding: "4px 10px", borderRadius: 6, background: sale.status === "Pending" ? "#fffbeb" : sale.status === "Confirmed" ? "#ecfdf5" : "#fef2f2", color: getStatusColor(sale.status), fontWeight: 600, display: "inline-block", marginTop: 4 }}>
                           {sale.status}
                         </span>
+                        {sale.status === "Rejected" && sale.rejection_reason && (
+                          <div style={{ marginTop: 8, padding: "8px 10px", background: "#fef2f2", border: "1px solid #fecaca", borderRadius: 6 }}>
+                            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                              <Icon icon="mdi:alert-circle" width={14} color="#b91c1c" />
+                              <span style={{ fontSize: FONT_SIZE.xs, fontWeight: 600, color: "#b91c1c" }}>Rejected:</span>
+                              <span style={{ fontSize: FONT_SIZE.sm, color: "#7f1d1d", fontStyle: "italic", background: "white", padding: "2px 8px", borderRadius: 4, border: "1px solid #fecaca" }}>&ldquo;{sale.rejection_reason}&rdquo;</span>
+                            </div>
+                          </div>
+                        )}
                       </div>
                     )}
 

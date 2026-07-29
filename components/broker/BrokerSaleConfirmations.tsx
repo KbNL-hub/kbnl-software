@@ -26,6 +26,7 @@ type SaleLine = {
   created_at: string
   status: string
   store_name: string
+  rejection_reason: string | null
 }
 
 type SaleGroup = {
@@ -38,6 +39,7 @@ type SaleGroup = {
   sold_at: string
   status: string
   store_name: string
+  rejection_reason: string | null
   lines: SaleLine[]
 }
 
@@ -91,7 +93,7 @@ export default function BrokerSaleConfirmations() {
   async function fetchSales(bId: string) {
     const { data, error } = await supabase
       .from("store_sales")
-      .select("sale_id, product, quantity, price_per_bag, total_amount, customer_name, payment_mode, delivery_mode, tricycle_id, truck_plate, sold_at, created_at, status, store_name")
+      .select("sale_id, product, quantity, price_per_bag, total_amount, customer_name, payment_mode, delivery_mode, tricycle_id, truck_plate, sold_at, created_at, status, store_name, rejection_reason")
       .eq("broker_id", bId)
       .order("sold_at", { ascending: false })
 
@@ -128,6 +130,7 @@ export default function BrokerSaleConfirmations() {
         sold_at: sale.sold_at,
         status: sale.status,
         store_name: sale.store_name,
+        rejection_reason: sale.rejection_reason,
         lines: [sale],
       })
 
@@ -462,9 +465,24 @@ export default function BrokerSaleConfirmations() {
               </div>
             )}
             {activeFilter === "rejected" && (
-              <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "8px 10px", background: "#fef2f2", borderRadius: 7 }}>
-                <Icon icon="mdi:close-circle" width={16} color="#ef4444" />
-                <span style={{ fontSize: 13, color: "#ef4444", fontWeight: "600" }}>Rejected</span>
+              <div style={{ width: "100%" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "8px 10px", background: "#fef2f2", borderRadius: 7 }}>
+                  <Icon icon="mdi:close-circle" width={16} color="#ef4444" />
+                  <span style={{ fontSize: 13, color: "#ef4444", fontWeight: "600" }}>Rejected</span>
+                </div>
+                {group.rejection_reason && (
+                  <div style={{ display: "flex", gap: 10, alignItems: "flex-start", marginTop: 8, padding: 10, background: "#fef2f2", borderRadius: 8, border: "1px solid #fecaca" }}>
+                    <div style={{ background: "#ef4444", color: "white", padding: 3, borderRadius: "50%", flexShrink: 0, marginTop: 1 }}>
+                      <Icon icon="mdi:close" width={12} height={12} />
+                    </div>
+                    <div>
+                      <p style={{ margin: "0 0 4px 0", color: "#ef4444", fontSize: 12, fontWeight: 600 }}>Rejection reason</p>
+                      <div style={{ padding: "8px 10px", background: "white", borderRadius: 6, border: "1px solid #fecaca", color: "#7f1d1d", fontSize: 12, fontStyle: "italic" }}>
+                        &ldquo;{group.rejection_reason}&rdquo;
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
           </div>
