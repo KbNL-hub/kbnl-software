@@ -80,7 +80,7 @@ export function useStops(filter?: StopsFilter) {
         const customerIds = [...new Set(stops.map(s => s.customer_id).filter(Boolean))]
 
         const [tripsResult, customersResult] = await Promise.all([
-          tripIds.length ? supabase.from("Trips").select("trip_id, plate_number, material_centre, ATC, order_no, child_order_no, product, driver_id").in("trip_id", tripIds) : Promise.resolve({ data: [] }),
+          tripIds.length ? supabase.from("Trips").select("trip_id, plate_number, material_centre, ATC, order_no, child_order_no, product, driver_id, driver_name").in("trip_id", tripIds) : Promise.resolve({ data: [] }),
           customerIds.length ? supabase.from("Customers").select("customer_id, full_name").in("customer_id", customerIds) : Promise.resolve({ data: [] }),
         ])
 
@@ -101,6 +101,7 @@ export function useStops(filter?: StopsFilter) {
 
         const enriched = stops.map(s => {
           const trip = tripMap[s.trip_id]
+          const driverNameFromTrip = trip?.driver_name
           return {
             ...s,
             plate_number: trip?.plate_number ?? "Unknown",
@@ -110,7 +111,7 @@ export function useStops(filter?: StopsFilter) {
             child_order_no: trip?.child_order_no ?? null,
             product: trip?.product ?? "",
             customer_name: s.customer_id ? (customerMap[s.customer_id] ?? "Not provided") : "Not provided",
-            driver_name: trip?.driver_id ? (driverMap[trip.driver_id] ?? "Unknown") : "Unknown",
+            driver_name: trip?.driver_id ? (driverMap[trip.driver_id] ?? driverNameFromTrip ?? "Unknown") : (driverNameFromTrip ?? "Unknown"),
             driver_id: trip?.driver_id ?? null,
           }
         })

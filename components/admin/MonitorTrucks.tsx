@@ -448,6 +448,7 @@ export default function MonitorTrucks() {
         order_no: ddLoadName === "HBM" ? ddOrderNo.trim() : null,
         child_order_no: ddLoadName === "HBM" ? ddChildOrderNo.trim() : null,
         trip_status: "In transit",
+        driver_name: ddDriver.trim(),
       },
     })
 
@@ -458,7 +459,7 @@ export default function MonitorTrucks() {
         table: "dd_trips",
         filters: { dd_trip_id: tripId },
       })
-      ddSetMsg("Failed to create trip. Please try again.", "error")
+      ddSetMsg(`Failed to create trip: ${tripErr}`, "error")
       return
     }
 
