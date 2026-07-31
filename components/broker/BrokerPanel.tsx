@@ -12,6 +12,7 @@ import { useBreakpoint } from "@/app/hooks/useBreakpoint"
 import { Role } from "@/lib/roles"
 import { toTitleCase } from "@/lib/title-case"
 import ReportModal from "@/components/ReportModal"
+import { PermissionProvider } from "@/lib/PermissionContext"
 
 const SECTION_IMPORTS = {
   trips: () => import("@/components/broker/BrokerActiveTrips"),
@@ -21,13 +22,15 @@ const SECTION_IMPORTS = {
   "store-sales": () => import("@/components/broker/BrokerSaleConfirmations"),
   prices: () => import("@/components/broker/BrokerPrices"),
   expenses: () => import("@/components/CashOfficerPanel"),
+  "monitor-trucks": () => import("@/components/admin/MonitorTrucks"),
 } as const
 
 type SectionKey = keyof typeof SECTION_IMPORTS
 
 const SECTION_COMPONENTS: Partial<Record<SectionKey, React.ComponentType<any>>> = {}
 for (const key of Object.keys(SECTION_IMPORTS) as SectionKey[]) {
-  SECTION_COMPONENTS[key] = dynamic(SECTION_IMPORTS[key])
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  SECTION_COMPONENTS[key] = dynamic(SECTION_IMPORTS[key] as any)
 }
 
 const BASE_NAV_ITEMS = [
@@ -37,6 +40,7 @@ const BASE_NAV_ITEMS = [
   { label: "My Credits",          key: "credits",  icon: "mdi:credit-card" },
   { label: "Store Sales",         key: "store-sales", icon: "mdi:store" },
   { label: "Company Prices",      key: "prices",      icon: "mdi:currency-ngn" },
+  { label: "Monitor Trucks",      key: "monitor-trucks", icon: "mdi:truck-check" },
 ]
 
 type Props = {
@@ -215,6 +219,9 @@ export default function BrokerPanel({ userProfile }: Props) {
       if (active === "expenses") {
         return <Component clerkId={userProfile.user_id} officeName={clerkOfficeName} fullName={userProfile.full_name} />
       }
+      if (active === "monitor-trucks") {
+        return <Component viewOnly />
+      }
       return <Component />
     }
     return (
@@ -293,7 +300,7 @@ export default function BrokerPanel({ userProfile }: Props) {
   }
 
   return (
-    <>
+    <PermissionProvider userId={userProfile.user_id} defaultRole={userProfile.role}>
       <style>{`
         ::-webkit-scrollbar { width: 10px; height: 10px; }
         ::-webkit-scrollbar-track { background: transparent; }
@@ -631,6 +638,6 @@ export default function BrokerPanel({ userProfile }: Props) {
           </div>
         </div>
       )}
-    </>
+    </PermissionProvider>
   )
 }

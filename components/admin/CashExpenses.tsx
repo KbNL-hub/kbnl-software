@@ -203,15 +203,15 @@ export default function CashExpenses() {
 
   const balanceMap = useMemo(() => {
     const map: Record<string, number> = {}
-    const records: { id: string; amount: number; created_at: string }[] = [
+    const records: { id: string; amount: number; timestamp: string }[] = [
       ...expenses.filter(e => e.status === "Authorised").map(e => ({
-        id: e.expense_id, amount: e.total_amount, created_at: e.created_at
+        id: e.expense_id, amount: e.total_amount, timestamp: e.resolved_at ?? e.created_at
       })),
       ...deposits.map(d => ({
-        id: d.deposit_id, amount: -d.amount, created_at: d.created_at
+        id: d.deposit_id, amount: -d.amount, timestamp: d.created_at
       })),
     ]
-    records.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+    records.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
     let running = officeBalance
     for (const rec of records) {
       map[rec.id] = running
@@ -244,31 +244,27 @@ export default function CashExpenses() {
     setErrorMsg("")
 
     try {
-      // 1. Insert into cash_deposits
-      const { error: depError } = await apiMutate("finance", {
-        action: "insert", table: "cash_deposits",
-        data: { office_name: selectedOffice, amount: parsed, note: depositNote || null, deposited_by: adminUser.id },
+      // Atomic: insert deposit record + increment office balance
+      const { data, error } = await apiMutate("finance", {
+        action: "rpc",
+        function: "add_cash_deposit",
+        params: {
+          p_office_name: selectedOffice,
+          p_amount: parsed,
+          p_note: depositNote || null,
+          p_deposited_by: adminUser.id,
+        },
       })
 
-      if (depError) { setErrorMsg("Failed to log deposit: " + depError); return }
+      if (error) { setErrorMsg("Failed to log deposit: " + error); return }
 
-      // 2. Update cash_offices balance
-      const { error: balError } = await supabase
-        .rpc("increment_office_balance", {
-          o_name: selectedOffice,
-          amount_to_add: parsed
-        })
-
-      // If RPC doesn't exist, we can fallback to direct update
-      if (balError) {
-        const newBal = officeBalance + parsed
-        const { error: directError } = await apiMutate("finance", {
-          action: "update", table: "cash_offices",
-          data: { current_balance: newBal },
-          filters: { office_name: selectedOffice },
-        })
-
-        if (directError) { setErrorMsg("Failed to update balance: " + directError); return }
+      const result = data as { success?: boolean; error?: string; new_balance?: number } | null
+      if (result && result.success === false) {
+        setErrorMsg(result.error || "Failed to log deposit")
+        return
+      }
+      if (result && typeof result.new_balance === "number") {
+        setOfficeBalance(result.new_balance)
       }
 
       setDepositAmount("")
@@ -276,6 +272,7 @@ export default function CashExpenses() {
       setShowDepositModal(false)
       setMessage("₦" + parsed.toLocaleString() + " deposited successfully!")
       fetchOfficeBalance()
+      fetchDeposits()
       setTimeout(() => setMessage(""), 3000)
     } catch {
       setErrorMsg("Network error, please try again")
@@ -295,31 +292,26 @@ export default function CashExpenses() {
     setSubmitting(true)
 
     try {
-      // 1. Update expense status
-      const { error: expError } = await apiMutate("finance", {
-        action: "update", table: "cash_expenses",
-        data: { status: "Authorised", authorised_by: adminUser.id, resolved_at: toISOString(), approval_notes: notes || null },
-        filters: { expense_id: expense.expense_id },
+      // Atomic: check balance, deduct, mark Authorised
+      const { data, error } = await apiMutate("finance", {
+        action: "rpc",
+        function: "authorise_cash_expense",
+        params: { p_expense_id: expense.expense_id, p_admin_id: adminUser.id, p_notes: notes || null },
       })
 
-      if (expError) { alert("Error authorising: " + expError); return }
+      if (error) { alert("Error authorising: " + error); return }
 
-      // 2. Decrease office balance
-      const newBal = officeBalance - expense.total_amount
-      const { error: balError } = await apiMutate("finance", {
-        action: "update", table: "cash_offices",
-        data: { current_balance: newBal },
-        filters: { office_name: selectedOffice },
-      })
-
-      if (balError) {
-        alert("Expense authorised but failed to deduct balance: " + balError)
-      } else {
-        setMessage("Expense authorised and balance updated!")
-        setTimeout(() => setMessage(""), 3000)
+      const result = data as { success?: boolean; error?: string; new_balance?: number } | null
+      if (result && result.success === false) {
+        alert(result.error || "Failed to authorise expense")
+        return
+      }
+      if (result && typeof result.new_balance === "number") {
+        setOfficeBalance(result.new_balance)
       }
 
-      fetchOfficeBalance()
+      setMessage("Expense authorised and balance updated!")
+      setTimeout(() => setMessage(""), 3000)
       fetchExpenses()
     } catch {
       setErrorMsg("Network error, please try again")
@@ -368,6 +360,25 @@ export default function CashExpenses() {
     if (filter === "All") return true
     return e.status === filter
   })
+
+  const logEntries = useMemo(() => {
+    const expenseEntries = filteredExpenses.map(e => ({
+      kind: "expense" as const,
+      id: e.expense_id,
+      timestamp: e.resolved_at ?? e.created_at,
+      data: e,
+    }))
+    if (filter !== "All") return expenseEntries
+    const depositEntries = deposits.map(d => ({
+      kind: "deposit" as const,
+      id: d.deposit_id,
+      timestamp: d.created_at,
+      data: d,
+    }))
+    return [...expenseEntries, ...depositEntries].sort(
+      (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+    )
+  }, [filteredExpenses, deposits, filter])
 
   function toggleExpand(expenseId: string) {
     if (expandedExpense === expenseId) {
@@ -570,7 +581,7 @@ export default function CashExpenses() {
             <div style={{ width: 40, height: 40, borderRadius: "50%", border: "3px solid #e2e8f0", borderTopColor: "#0070f3", animation: "spin 1s linear infinite" }} />
             <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
           </div>
-        ) : filteredExpenses.length === 0 ? (
+        ) : logEntries.length === 0 ? (
           <div style={{ textAlign: "center", padding: "64px 24px", background: "#f8fafc", borderRadius: 12, border: "1px dashed #cbd5e1" }}>
             <div style={{ width: 48, height: 48, background: "white", borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 16px", boxShadow: "0 1px 3px rgba(0,0,0,0.1)" }}>
               <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
@@ -579,7 +590,44 @@ export default function CashExpenses() {
           </div>
         ) : (
           <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-            {filteredExpenses.map(exp => {
+            {logEntries.map(entry => {
+              if (entry.kind === "deposit") {
+                const dep = entry.data
+                const depositorName = adminsMap[dep.deposited_by] || "Cash Officer"
+                return (
+                  <div key={dep.deposit_id} style={{ border: "1px solid #bbf7d0", borderRadius: 12, overflow: "hidden", background: "#f0fdf4", boxShadow: "0 1px 3px rgba(0,0,0,0.05)" }}>
+                    <div style={{ padding: isMobile ? "16px" : "20px 24px", display: "flex", justifyContent: "space-between", alignItems: isMobile ? "flex-start" : "center", flexDirection: isMobile ? "column" : "row", gap: 16 }}>
+                      <div style={{ flex: 1, minWidth: 200, width: "100%" }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 8, flexWrap: "wrap" }}>
+                          <span style={{ fontWeight: 600, color: "#166534", fontSize: FONT_SIZE.md }}>Cash Deposit</span>
+                          <span style={{ padding: "4px 10px", borderRadius: 16, fontSize: FONT_SIZE.xs, fontWeight: 600, background: "#f0fdf4", color: "#16a34a", border: "1px solid #bbf7d0" }}>Income</span>
+                        </div>
+                        <div style={{ display: "flex", alignItems: "center", gap: 8, color: "#64748b", fontSize: FONT_SIZE.xs }}>
+                          <strong style={{ color: "#334155" }}>{depositorName}</strong>
+                          <span>•</span>
+                          <span>{new Date(dep.created_at).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>
+                        </div>
+                        {dep.note && (
+                          <p style={{ margin: "8px 0 0", color: "#475569", fontSize: FONT_SIZE.sm, fontStyle: "italic" }}>"{dep.note}"</p>
+                        )}
+                      </div>
+                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", width: isMobile ? "100%" : "auto", gap: 24 }}>
+                        <div style={{ textAlign: isMobile ? "left" : "right" }}>
+                          <div style={{ fontSize: FONT_SIZE.lg, fontWeight: 700, color: "#16a34a", letterSpacing: "-0.5px" }}>
+                            +₦{dep.amount.toLocaleString()}
+                          </div>
+                          {balanceMap[dep.deposit_id] !== undefined && (
+                            <p style={{ margin: "4px 0 0", fontSize: FONT_SIZE.xs, fontWeight: 600, color: "#166534", background: "#f0fdf4", padding: "2px 8px", borderRadius: 4, display: "inline-block", border: "1px solid #bbf7d0" }}>
+                              Balance after: ₦{balanceMap[dep.deposit_id].toLocaleString()}
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )
+              }
+              const exp = entry.data
               const clerkName = clerksMap[exp.clerk_id] || "Unknown Clerk"
               const clerkPic = clerkPicsMap[exp.clerk_id]
               const isExpanded = expandedExpense === exp.expense_id

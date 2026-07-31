@@ -8,7 +8,7 @@ const supabaseAdmin = createClient(
 )
 
 const ALLOWED_TABLES = ["customer_payments", "broker_credits", "store_sales", "store_supply_confirmations", "store_supply_lines", "cash_expenses", "cash_expense_items", "cash_offices", "cash_deposits", "admin_office_assignments", "Customers", "Brokers", "store_stock", "store_officers", "stock_verifications"] as const
-const ALLOWED_RPCS = ["decrement_store_stock"] as const
+const ALLOWED_RPCS = ["decrement_store_stock", "add_cash_deposit", "authorise_cash_expense"] as const
 
 const TABLE_ROLES: Record<string, string[]> = {
   customer_payments: ["Broker", "Admin", "SuperAdmin", "DeskOfficer", "Supervisor"],
@@ -18,7 +18,7 @@ const TABLE_ROLES: Record<string, string[]> = {
   store_supply_lines: ["StoreOfficer", "Admin", "SuperAdmin", "StoreSupervisor"],
   cash_expenses: ["CashOfficer", "Admin", "SuperAdmin", "Broker", "CashAuthorizer", "DeskOfficer"],
   cash_expense_items: ["CashOfficer", "Admin", "SuperAdmin", "Broker"],
-  cash_offices: ["CashOfficer", "Admin", "SuperAdmin"],
+  cash_offices: ["CashOfficer", "Admin", "SuperAdmin", "CashAuthorizer"],
 
   cash_deposits: ["CashOfficer", "Admin", "SuperAdmin"],
   admin_office_assignments: ["Admin", "SuperAdmin"],
@@ -31,10 +31,14 @@ const TABLE_ROLES: Record<string, string[]> = {
 
 const RPC_ROLES: Record<string, string[]> = {
   decrement_store_stock: ["StoreOfficer", "Admin", "SuperAdmin"],
+  add_cash_deposit: ["CashOfficer", "Admin", "SuperAdmin", "Broker", "CashAuthorizer", "DeskOfficer"],
+  authorise_cash_expense: ["Admin", "SuperAdmin", "Broker", "CashAuthorizer", "DeskOfficer"],
 }
 
 const RPC_PARAM_SCHEMAS: Record<string, string[]> = {
   decrement_store_stock: ["p_store", "p_product", "p_qty"],
+  add_cash_deposit: ["p_office_name", "p_amount", "p_note", "p_deposited_by"],
+  authorise_cash_expense: ["p_expense_id", "p_admin_id", "p_notes"],
 }
 
 function buildError(msg: string, status: number) {

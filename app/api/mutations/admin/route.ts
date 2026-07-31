@@ -13,7 +13,7 @@ const TABLE_ROLES: Record<string, string[]> = {
   Trucks: ["TruckAdmin", "TruckOfficer", "Admin", "SuperAdmin", "ATCOfficer", "Broker", "DeskOfficer", "Supervisor"],
   tricycles: ["TruckAdmin", "Admin", "SuperAdmin", "ATCOfficer", "Broker"],
   reports: ["Admin", "SuperAdmin"],
-  driver_complaints: ["Admin", "SuperAdmin", "TruckAdmin"],
+  driver_complaints: ["Admin", "SuperAdmin", "TruckAdmin", "Driver"],
   truck_officers: ["TruckAdmin", "Admin", "SuperAdmin", "ATCOfficer"],
   truck_admins: ["Admin", "SuperAdmin"],
   cash_officers: ["Admin", "SuperAdmin"],

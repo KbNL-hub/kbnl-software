@@ -1,3 +1,4 @@
+DROP FUNCTION IF EXISTS get_active_mdd_trucks(integer);
 CREATE OR REPLACE FUNCTION get_active_mdd_trucks(p_limit int DEFAULT 50)
 RETURNS json LANGUAGE sql STABLE AS $$
   SELECT COALESCE(json_agg(to_jsonb(t) ORDER BY t.created_at DESC), '[]'::json)
@@ -9,6 +10,7 @@ RETURNS json LANGUAGE sql STABLE AS $$
       tr.trip_status,
       tr.driver_id,
       tr.route_points,
+      tr.created_at,
       d.full_name AS driver_name,
       d.phone_number AS driver_phone,
       tk.kbnl_truck_no

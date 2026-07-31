@@ -2,7 +2,7 @@
 
 import { FONT_SIZE, POLLING_INTERVAL } from "@/lib/constants"
 
-import { useState, useEffect, useRef, useMemo } from "react"
+import { useState, useEffect, useMemo } from "react"
 import { supabase } from "@/lib/supabase"
 
 type ActiveTruck = {
@@ -75,72 +75,33 @@ export default function TruckMonitorSection({ plates }: Props) {
   const [filterStatus, setFilterStatus] = useState("All")
   const [viewMode, setViewMode] = useState<ViewMode>("card")
 
-  const lastSaveTimeRef = useRef(0)
   const platesKey = useMemo(() => plates?.join(",") ?? "", [plates])
 
   const filterOptions = ["All", "In transit", "On hold"]
 
   async function fetchActiveTrucks() {
-    let query = supabase
-      .from("Trips")
-      .select("trip_id, plate_number, loaded_quantity, trip_status, driver_id, route_points")
-      .in("trip_status", ["In transit", "On hold"])
+    const { data: trips } = await supabase.rpc("get_active_mdd_trucks_remaining", {
+      p_plates: plates && plates.length > 0 ? plates : undefined,
+    })
 
-    if (plates && plates.length > 0) {
-      query = query.in("plate_number", plates)
-    }
-
-    const { data: trips } = await query
-
-    if (!trips) {
+    if (!trips || trips.length === 0) {
       setTrucks([])
+      setLastUpdated(new Date())
       setLoading(false)
       return
     }
 
-    const tripIds = trips.map(t => t.trip_id)
-    const { data: allDiscRaw } = await supabase
-      .from("trip_discrepancies")
-      .select("trip_id, shortage, caked_bags")
-      .in("trip_id", tripIds)
-    const discByTrip = new Map<string, { shortage: number; caked_bags: number }[]>()
-    for (const d of allDiscRaw || []) {
-      if (!discByTrip.has(d.trip_id)) discByTrip.set(d.trip_id, [])
-      discByTrip.get(d.trip_id)!.push(d)
-    }
-
-    const enriched = await Promise.all(
-      trips
-        .filter(t => t.driver_id)
-        .map(async (trip) => {
-          const { data: driver } = await supabase
-            .from("Drivers").select("full_name, phone_number").eq("driver_id", trip.driver_id).single()
-
-          const { data: truck } = await supabase
-            .from("Trucks").select("kbnl_truck_no").eq("plate_number", trip.plate_number).single()
-
-          const { data: stops } = await supabase
-            .from("Stops").select("quantity_offloaded").eq("trip_id", trip.trip_id)
-
-          const discData = discByTrip.get(trip.trip_id) || []
-
-          const totalOffloaded = stops?.reduce((sum, s) => sum + (s.quantity_offloaded || 0), 0) ?? 0
-          const totalShortage = (discData || []).reduce((sum, d) => sum + (d.shortage || 0), 0)
-          const totalCaked = (discData || []).reduce((sum, d) => sum + (d.caked_bags || 0), 0)
-
-          return {
-            trip_id: trip.trip_id,
-            plate_number: trip.plate_number,
-            kbnl_truck_no: truck?.kbnl_truck_no ?? null,
-            loaded_quantity: trip.loaded_quantity,
-            remaining: trip.loaded_quantity - totalOffloaded - totalShortage - totalCaked,
-            driver_name: driver?.full_name ?? "Unknown",
-            driver_phone: driver?.phone_number ?? "—",
-            trip_status: trip.trip_status,
-            route_points: trip.route_points ?? [],
-          }
-        })
-    )
+    const enriched = trips.map((trip: any) => ({
+      trip_id: trip.trip_id,
+      plate_number: trip.plate_number,
+      kbnl_truck_no: trip.kbnl_truck_no ?? null,
+      loaded_quantity: trip.loaded_quantity,
+      remaining: trip.remaining ?? trip.loaded_quantity,
+      driver_name: trip.driver_name ?? "Unknown",
+      driver_phone: trip.driver_phone ?? "—",
+      trip_status: trip.trip_status,
+      route_points: trip.route_points ?? [],
+    }))
 
     setTrucks(enriched)
     setLastUpdated(new Date())
@@ -149,21 +110,9 @@ export default function TruckMonitorSection({ plates }: Props) {
 
   // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => {
-
-    const subscription = supabase
-      .channel("truck-monitor-changes")
-      .on("postgres_changes", { event: "*", schema: "public", table: "Trips" }, () => {
-        if (Date.now() - lastSaveTimeRef.current > 2000) {
-          fetchActiveTrucks()
-        }
-      })
-      .subscribe()
-
+    fetchActiveTrucks()
     const interval = setInterval(fetchActiveTrucks, POLLING_INTERVAL)
-    return () => {
-      clearInterval(interval)
-      subscription.unsubscribe()
-    }
+    return () => clearInterval(interval)
   }, [platesKey])
 
   const filteredTrucks = filterStatus === "All"

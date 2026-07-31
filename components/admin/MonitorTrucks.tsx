@@ -30,6 +30,7 @@ type DDTrip = {
   product: string
   loading_point: string
   loaded_quantity: number
+  remaining: number
   atc: string | null
   order_no: string | null
   child_order_no: string | null
@@ -89,7 +90,7 @@ const getPillStyle = (filter: string, isActive: boolean) => {
 }
 
 export const revalidate = 0
-export default function MonitorTrucks() {
+export default function MonitorTrucks({ viewOnly = false }: { viewOnly?: boolean }) {
   const { isMobile } = useBreakpoint()
   const { getAccess } = usePermissions()
   const canEdit = getAccess("monitor-trucks").canEdit
@@ -133,9 +134,15 @@ export default function MonitorTrucks() {
   const [showDdStopForm, setShowDdStopForm] = useState(false)
   const [selectedDdStopTrip, setSelectedDdStopTrip] = useState<DDTrip | null>(null)
   const [ddStopOffloaded, setDdStopOffloaded] = useState(0)
+  const [ddEndConfirmTrip, setDdEndConfirmTrip] = useState<DDTrip | null>(null)
 
   async function fetchActiveTrucks() {
-    const { data: trips } = await supabase.rpc("get_active_mdd_trucks")
+    const { data: trips, error } = await supabase.rpc("get_active_mdd_trucks")
+    if (error) {
+      console.error("MDD fetch error:", error)
+      setLoading(false)
+      return
+    }
 
     if (!trips || trips.length === 0) {
       setTrucks([])
@@ -165,6 +172,7 @@ export default function MonitorTrucks() {
   const [, setLastSaveTime] = useState(0)
 
   useEffect(() => {
+    fetchActiveTrucks()
     const interval = setInterval(fetchActiveTrucks, POLLING_INTERVAL)
     return () => clearInterval(interval)
   }, [])
@@ -258,10 +266,32 @@ export default function MonitorTrucks() {
       .order("created_at", { ascending: false })
       .limit(100)
 
-    if (error) { console.error("DD fetch error:", error); return }
-    if (data) setDdTrips(data)
+    if (error) { console.error("DD fetch error:", error); return [] }
+
+    const trips = (data || []) as DDTrip[]
+    let offloadedByTrip = new Map<string, number>()
+    if (trips.length > 0) {
+      const { data: stops } = await supabase
+        .from("Stops")
+        .select("trip_id, quantity_offloaded")
+        .in("trip_id", trips.map(t => t.dd_trip_id))
+      if (stops) {
+        offloadedByTrip = stops.reduce((map, s) => {
+          map.set(s.trip_id, (map.get(s.trip_id) || 0) + (s.quantity_offloaded || 0))
+          return map
+        }, new Map<string, number>())
+      }
+    }
+
+    const enriched = trips.map(trip => ({
+      ...trip,
+      remaining: Math.max(0, (trip.loaded_quantity || 0) - (offloadedByTrip.get(trip.dd_trip_id) || 0)),
+    }))
+
+    setDdTrips(enriched)
     setDdLoading(false)
     setDdLastUpdated(new Date())
+    return enriched
   }
 
   async function updateDdTripStatus(tripId: string, status: string) {
@@ -290,11 +320,16 @@ export default function MonitorTrucks() {
     setShowDdStopForm(true)
   }
 
-  function handleDdStopLogged(_quantityOffloaded: number) {
+  async function handleDdStopLogged(_quantityOffloaded: number) {
+    const tripId = selectedDdStopTrip?.dd_trip_id
     setShowDdStopForm(false)
     setSelectedDdStopTrip(null)
     setDdStopOffloaded(0)
-    fetchDdTrips()
+    const updated = await fetchDdTrips()
+    const trip = updated.find(t => t.dd_trip_id === tripId)
+    if (trip && trip.trip_status !== "Completed" && trip.remaining <= 0) {
+      setDdEndConfirmTrip(trip)
+    }
   }
 
   async function saveDdRoute() {
@@ -646,19 +681,21 @@ export default function MonitorTrucks() {
                           <p style={{ margin: 0, color: "#0f172a", fontSize: FONT_SIZE.sm }}>{truck.driver_phone}</p>
                         </div>
                       </div>
-                      <button
-                        onClick={() => openRouteEditor(truck)}
-                        disabled={!canEdit}
-                        style={{
-                          width: "100%", padding: "10px 14px", background: !canEdit ? "#94a3b8" : "#0070f3", color: "white",
-                          border: "none", borderRadius: 8, cursor: !canEdit ? "not-allowed" : "pointer", fontSize: FONT_SIZE.md,
-                          fontWeight: 600, transition: "all 0.2s", minHeight: 40
-                        }}
-                        onMouseEnter={e => { if (canEdit) e.currentTarget.style.opacity = "0.9" }}
-                        onMouseLeave={e => { if (canEdit) e.currentTarget.style.opacity = "1" }}
-                      >
-                        {truck.route_points.length > 0 ? "Edit Route" : "Set Route"}
-                      </button>
+                      {!viewOnly && (
+                        <button
+                          onClick={() => openRouteEditor(truck)}
+                          disabled={!canEdit}
+                          style={{
+                            width: "100%", padding: "10px 14px", background: !canEdit ? "#94a3b8" : "#0070f3", color: "white",
+                            border: "none", borderRadius: 8, cursor: !canEdit ? "not-allowed" : "pointer", fontSize: FONT_SIZE.md,
+                            fontWeight: 600, transition: "all 0.2s", minHeight: 40
+                          }}
+                          onMouseEnter={e => { if (canEdit) e.currentTarget.style.opacity = "0.9" }}
+                          onMouseLeave={e => { if (canEdit) e.currentTarget.style.opacity = "1" }}
+                        >
+                          {truck.route_points.length > 0 ? "Edit Route" : "Set Route"}
+                        </button>
+                      )}
                     </div>
                   ))}
                 </div>
@@ -676,7 +713,9 @@ export default function MonitorTrucks() {
                         <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: FONT_SIZE.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px" }}>Remaining</th>
                         <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: FONT_SIZE.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px" }}>Status</th>
                         <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: FONT_SIZE.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px" }}>Route</th>
-                        <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: FONT_SIZE.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px", textAlign: "right" }}>Action</th>
+                        {!viewOnly && (
+                          <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: FONT_SIZE.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px", textAlign: "right" }}>Action</th>
+                        )}
                       </tr>
                     </thead>
                     <tbody>
@@ -702,22 +741,24 @@ export default function MonitorTrucks() {
                           <td style={{ padding: "12px 16px", color: truck.route_points.length > 0 ? "#0f172a" : "#cbd5e1", fontSize: FONT_SIZE.sm }}>
                             {truck.route_points.length > 0 ? truck.route_points.join(" → ") : "No route"}
                           </td>
-                          <td style={{ padding: "12px 16px", textAlign: "right" }}>
-                            <button
-                              onClick={() => openRouteEditor(truck)}
-                              disabled={!canEdit}
-                              style={{
-                                padding: "6px 10px", cursor: !canEdit ? "not-allowed" : "pointer", borderRadius: 6, border: "1.5px solid #0070f3",
-                                color: !canEdit ? "#94a3b8" : "#0070f3", background: !canEdit ? "#e2e8f0" : "#f0f7ff", fontSize: FONT_SIZE.sm, fontWeight: 500,
-                                transition: "all 0.2s", minHeight: 32, minWidth: 32,
-                                display: "inline-flex", alignItems: "center", justifyContent: "center"
-                              }}
-                              onMouseEnter={e => { if (canEdit) e.currentTarget.style.background = "#e0efff" }}
-                              onMouseLeave={e => { if (canEdit) e.currentTarget.style.background = "#f0f7ff" }}
-                            >
-                              Route
-                            </button>
-                          </td>
+                          {!viewOnly && (
+                            <td style={{ padding: "12px 16px", textAlign: "right" }}>
+                              <button
+                                onClick={() => openRouteEditor(truck)}
+                                disabled={!canEdit}
+                                style={{
+                                  padding: "6px 10px", cursor: !canEdit ? "not-allowed" : "pointer", borderRadius: 6, border: "1.5px solid #0070f3",
+                                  color: !canEdit ? "#94a3b8" : "#0070f3", background: !canEdit ? "#e2e8f0" : "#f0f7ff", fontSize: FONT_SIZE.sm, fontWeight: 500,
+                                  transition: "all 0.2s", minHeight: 32, minWidth: 32,
+                                  display: "inline-flex", alignItems: "center", justifyContent: "center"
+                                }}
+                                onMouseEnter={e => { if (canEdit) e.currentTarget.style.background = "#e0efff" }}
+                                onMouseLeave={e => { if (canEdit) e.currentTarget.style.background = "#f0f7ff" }}
+                              >
+                                Route
+                              </button>
+                            </td>
+                          )}
                         </tr>
                       ))}
                     </tbody>
@@ -792,18 +833,20 @@ export default function MonitorTrucks() {
       ) : (
         <div style={{ maxWidth: 960, margin: "0 auto" }}>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16, flexWrap: "wrap", gap: 12 }}>
-            <button
-              onClick={() => { setShowDdForm(true); setDdMessage("") }}
-              disabled={!canEdit}
-              style={{
-                padding: "10px 18px", background: !canEdit ? "#94a3b8" : "#0070f3", color: "white", border: "none",
-                borderRadius: 8, cursor: !canEdit ? "not-allowed" : "pointer", fontSize: FONT_SIZE.sm, fontWeight: 600,
-                display: "flex", alignItems: "center", gap: 6, minHeight: 40,
-              }}
-            >
-              <Icon icon="mdi:plus" width={16} />
-              Log New Trip
-            </button>
+            {!viewOnly && (
+              <button
+                onClick={() => { setShowDdForm(true); setDdMessage("") }}
+                disabled={!canEdit}
+                style={{
+                  padding: "10px 18px", background: !canEdit ? "#94a3b8" : "#0070f3", color: "white", border: "none",
+                  borderRadius: 8, cursor: !canEdit ? "not-allowed" : "pointer", fontSize: FONT_SIZE.sm, fontWeight: 600,
+                  display: "flex", alignItems: "center", gap: 6, minHeight: 40,
+                }}
+              >
+                <Icon icon="mdi:plus" width={16} />
+                Log New Trip
+              </button>
+            )}
 
             <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
               {ddTrips.length > 0 && (
@@ -938,6 +981,10 @@ export default function MonitorTrucks() {
                         <p style={{ margin: 0, color: "#0f172a", fontSize: FONT_SIZE.base, fontWeight: 600 }}>{trip.loaded_quantity}</p>
                       </div>
                       <div>
+                        <p style={{ margin: "0 0 4px 0", color: "#94a3b8", fontSize: FONT_SIZE.xs }}>Bags Remaining</p>
+                        <p style={{ margin: 0, color: remainingColor(trip.remaining, trip.loaded_quantity), fontSize: FONT_SIZE.base, fontWeight: 600 }}>{trip.remaining}</p>
+                      </div>
+                      <div>
                         <p style={{ margin: "0 0 4px 0", color: "#94a3b8", fontSize: FONT_SIZE.xs }}>Manufacturing Company</p>
                         <p style={{ margin: 0, color: "#0f172a", fontSize: FONT_SIZE.sm }}>{trip.loading_point}</p>
                       </div>
@@ -963,7 +1010,7 @@ export default function MonitorTrucks() {
                     <p style={{ margin: "0 0 12px 0", color: "#94a3b8", fontSize: FONT_SIZE.xs }}>
                       Created: {new Date(trip.created_at).toLocaleDateString()}
                     </p>
-                    {trip.trip_status !== "Completed" && (
+                    {!viewOnly && trip.trip_status !== "Completed" && (
                       <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                         <button
                           onClick={() => openDdStopForm(trip)}
@@ -1018,10 +1065,13 @@ export default function MonitorTrucks() {
                       <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: FONT_SIZE.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px" }}>Driver</th>
                       <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: FONT_SIZE.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px" }}>Product</th>
                       <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: FONT_SIZE.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px" }}>Bags</th>
-                      <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: FONT_SIZE.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px" }}>Manufacturingturing Company</th>
+                      <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: FONT_SIZE.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px" }}>Remaining</th>
+                      <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: FONT_SIZE.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px" }}>Manufacturing Company</th>
                       <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: FONT_SIZE.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px" }}>Status</th>
                       <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: FONT_SIZE.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px" }}>Route</th>
-                      <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: FONT_SIZE.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px", textAlign: "right" }}>Actions</th>
+                      {!viewOnly && (
+                        <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: FONT_SIZE.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px", textAlign: "right" }}>Actions</th>
+                      )}
                     </tr>
                   </thead>
                   <tbody>
@@ -1034,6 +1084,7 @@ export default function MonitorTrucks() {
                         <td style={{ padding: "12px 16px", color: "#0f172a", fontSize: FONT_SIZE.base }}>{trip.driver_name}</td>
                         <td style={{ padding: "12px 16px", color: "#475569", fontSize: FONT_SIZE.sm }}>{trip.product}</td>
                         <td style={{ padding: "12px 16px", color: "#0f172a", fontSize: FONT_SIZE.base, fontWeight: 500 }}>{trip.loaded_quantity}</td>
+                        <td style={{ padding: "12px 16px", color: remainingColor(trip.remaining, trip.loaded_quantity), fontSize: FONT_SIZE.base, fontWeight: 600 }}>{trip.remaining}</td>
                         <td style={{ padding: "12px 16px", color: "#475569", fontSize: FONT_SIZE.sm }}>{trip.loading_point}{trip.order_no ? ` (Order: ${trip.order_no}${trip.child_order_no ? ` / Child: ${trip.child_order_no}` : ""})` : trip.atc ? ` (${trip.atc})` : ""}</td>
                         <td style={{ padding: "12px 16px" }}>
                           <span style={{
@@ -1047,21 +1098,23 @@ export default function MonitorTrucks() {
                         <td style={{ padding: "12px 16px", color: trip.route_points && trip.route_points.length > 0 ? "#0f172a" : "#cbd5e1", fontSize: FONT_SIZE.sm }}>
                           {trip.route_points && trip.route_points.length > 0 ? trip.route_points.join(" → ") : "No route"}
                         </td>
-                        <td style={{ padding: "12px 16px", textAlign: "right" }}>
-                          {trip.trip_status !== "Completed" && (
-                          <div style={{ display: "flex", gap: 6, justifyContent: "flex-end" }}>
-                            <button onClick={() => openDdStopForm(trip)} disabled={!canEdit} style={{ padding: "6px 10px", cursor: !canEdit ? "not-allowed" : "pointer", borderRadius: 6, border: "1.5px solid #8b5cf6", color: !canEdit ? "#94a3b8" : "#8b5cf6", background: !canEdit ? "#e2e8f0" : "#f5f3ff", fontSize: FONT_SIZE.xs, fontWeight: 500, transition: "all 0.2s", minHeight: 32, whiteSpace: "nowrap" }}
-                              onMouseEnter={e => { if (canEdit) e.currentTarget.style.background = "#ede9fe" }}
-                              onMouseLeave={e => { if (canEdit) e.currentTarget.style.background = "#f5f3ff" }}>Stop</button>
-                            <button onClick={() => openDdRouteEditor(trip)} disabled={!canEdit} style={{ padding: "6px 10px", cursor: !canEdit ? "not-allowed" : "pointer", borderRadius: 6, border: "1.5px solid #0070f3", color: !canEdit ? "#94a3b8" : "#0070f3", background: !canEdit ? "#e2e8f0" : "#f0f7ff", fontSize: FONT_SIZE.xs, fontWeight: 500, transition: "all 0.2s", minHeight: 32, whiteSpace: "nowrap" }}
-                              onMouseEnter={e => { if (canEdit) e.currentTarget.style.background = "#e0efff" }}
-                              onMouseLeave={e => { if (canEdit) e.currentTarget.style.background = "#f0f7ff" }}>Route</button>
-                            <button onClick={() => updateDdTripStatus(trip.dd_trip_id, "Completed")} disabled={!canEdit} style={{ padding: "6px 10px", cursor: !canEdit ? "not-allowed" : "pointer", borderRadius: 6, border: "1.5px solid #10b981", color: !canEdit ? "#94a3b8" : "#10b981", background: !canEdit ? "#e2e8f0" : "#f0fdf4", fontSize: FONT_SIZE.xs, fontWeight: 500, transition: "all 0.2s", minHeight: 32, whiteSpace: "nowrap" }}
-                              onMouseEnter={e => { if (canEdit) e.currentTarget.style.background = "#dcfce7" }}
-                              onMouseLeave={e => { if (canEdit) e.currentTarget.style.background = "#f0fdf4" }}>Complete</button>
-                          </div>
-                          )}
-                        </td>
+                        {!viewOnly && (
+                          <td style={{ padding: "12px 16px", textAlign: "right" }}>
+                            {trip.trip_status !== "Completed" && (
+                            <div style={{ display: "flex", gap: 6, justifyContent: "flex-end" }}>
+                              <button onClick={() => openDdStopForm(trip)} disabled={!canEdit} style={{ padding: "6px 10px", cursor: !canEdit ? "not-allowed" : "pointer", borderRadius: 6, border: "1.5px solid #8b5cf6", color: !canEdit ? "#94a3b8" : "#8b5cf6", background: !canEdit ? "#e2e8f0" : "#f5f3ff", fontSize: FONT_SIZE.xs, fontWeight: 500, transition: "all 0.2s", minHeight: 32, whiteSpace: "nowrap" }}
+                                onMouseEnter={e => { if (canEdit) e.currentTarget.style.background = "#ede9fe" }}
+                                onMouseLeave={e => { if (canEdit) e.currentTarget.style.background = "#f5f3ff" }}>Stop</button>
+                              <button onClick={() => openDdRouteEditor(trip)} disabled={!canEdit} style={{ padding: "6px 10px", cursor: !canEdit ? "not-allowed" : "pointer", borderRadius: 6, border: "1.5px solid #0070f3", color: !canEdit ? "#94a3b8" : "#0070f3", background: !canEdit ? "#e2e8f0" : "#f0f7ff", fontSize: FONT_SIZE.xs, fontWeight: 500, transition: "all 0.2s", minHeight: 32, whiteSpace: "nowrap" }}
+                                onMouseEnter={e => { if (canEdit) e.currentTarget.style.background = "#e0efff" }}
+                                onMouseLeave={e => { if (canEdit) e.currentTarget.style.background = "#f0f7ff" }}>Route</button>
+                              <button onClick={() => updateDdTripStatus(trip.dd_trip_id, "Completed")} disabled={!canEdit} style={{ padding: "6px 10px", cursor: !canEdit ? "not-allowed" : "pointer", borderRadius: 6, border: "1.5px solid #10b981", color: !canEdit ? "#94a3b8" : "#10b981", background: !canEdit ? "#e2e8f0" : "#f0fdf4", fontSize: FONT_SIZE.xs, fontWeight: 500, transition: "all 0.2s", minHeight: 32, whiteSpace: "nowrap" }}
+                                onMouseEnter={e => { if (canEdit) e.currentTarget.style.background = "#dcfce7" }}
+                                onMouseLeave={e => { if (canEdit) e.currentTarget.style.background = "#f0fdf4" }}>Complete</button>
+                            </div>
+                            )}
+                          </td>
+                        )}
                       </tr>
                     ))}
                   </tbody>
@@ -1273,6 +1326,44 @@ export default function MonitorTrucks() {
               offloadedSoFar={ddStopOffloaded}
               onStopLogged={handleDdStopLogged}
             />
+          </div>
+        </div>
+      )}
+
+      {/* DD end-trip confirm modal — all bags offloaded */}
+      {ddEndConfirmTrip && (
+        <div style={{
+          position: "fixed", inset: 0, zIndex: 10000, background: "rgba(0,0,0,0.5)",
+          display: "flex", justifyContent: "center", alignItems: "center",
+          padding: 16
+        }}>
+          <div style={{ background: "white", borderRadius: 16, padding: 24, width: "100%", maxWidth: 440 }}
+            onClick={e => e.stopPropagation()}>
+            <div style={{ textAlign: "center", marginBottom: 20 }}>
+              <div style={{ width: 56, height: 56, background: "#f0fff4", borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 12px", border: "2px solid #86efac" }}>
+                <Icon icon="mdi:check-circle" width={28} color="#16a34a" />
+              </div>
+              <h3 style={{ margin: 0, color: "#0f172a", fontSize: FONT_SIZE.xl, fontWeight: 700 }}>All bags offloaded!</h3>
+              <p style={{ margin: "8px 0 0", color: "#64748b", fontSize: FONT_SIZE.sm }}>
+                {ddEndConfirmTrip.plate_number} — {ddEndConfirmTrip.product}. Ready to end this trip?
+              </p>
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+              <button
+                onClick={() => { updateDdTripStatus(ddEndConfirmTrip.dd_trip_id, "Completed"); setDdEndConfirmTrip(null) }}
+                style={{ padding: "12px 16px", background: "#10b981", color: "white", border: "none", borderRadius: 8, cursor: "pointer", fontWeight: 700, fontSize: FONT_SIZE.md, minHeight: 44, display: "flex", alignItems: "center", justifyContent: "center", gap: 8, transition: "all 0.2s" }}
+                onMouseEnter={e => { e.currentTarget.style.opacity = "0.9" }}
+                onMouseLeave={e => { e.currentTarget.style.opacity = "1" }}
+              >
+                <Icon icon="mdi:flag-checkered" width={18} /> End Trip
+              </button>
+              <button
+                onClick={() => setDdEndConfirmTrip(null)}
+                style={{ padding: "12px 16px", background: "white", border: "1px solid #cbd5e1", color: "#475569", borderRadius: 8, cursor: "pointer", fontWeight: 700, fontSize: FONT_SIZE.md, minHeight: 44 }}
+              >
+                Not Yet
+              </button>
+            </div>
           </div>
         </div>
       )}

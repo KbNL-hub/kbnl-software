@@ -102,15 +102,15 @@ export default function CashOfficerPanel({ clerkId, officeName, fullName }: Prop
 
   const balanceMap = useMemo(() => {
     const map: Record<string, number> = {}
-    const records: { id: string; amount: number; created_at: string }[] = [
+    const records: { id: string; amount: number; timestamp: string }[] = [
       ...expenses.filter(e => e.status === "Authorised").map(e => ({
-        id: e.expense_id, amount: e.total_amount, created_at: e.created_at
+        id: e.expense_id, amount: e.total_amount, timestamp: e.resolved_at ?? e.created_at
       })),
       ...deposits.map(d => ({
-        id: d.deposit_id, amount: -d.amount, created_at: d.created_at
+        id: d.deposit_id, amount: -d.amount, timestamp: d.created_at
       })),
     ]
-    records.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+    records.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
     let running = officeBalance
     for (const rec of records) {
       map[rec.id] = running
