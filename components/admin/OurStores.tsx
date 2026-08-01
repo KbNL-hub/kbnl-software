@@ -53,6 +53,7 @@ export default function OurStores() {
 
   const [newStoreName, setNewStoreName] = useState("")
   const [editProducts, setEditProducts] = useState<{ product: string; balance: string }[]>([])
+  const [originalProducts, setOriginalProducts] = useState<string[]>([])
   const [message, setMessage] = useState("")
   const [submitting, setSubmitting] = useState(false)
 
@@ -103,6 +104,7 @@ export default function OurStores() {
     setEditingStore(null)
     setNewStoreName("")
     setEditProducts([])
+    setOriginalProducts([])
     setMessage("")
   }
 
@@ -148,11 +150,13 @@ export default function OurStores() {
     const stock = getStock(store.store_name)
     setEditingStore(store)
     if (stock && stock.products.length > 0) {
+      setOriginalProducts(stock.products.map(p => p.product))
       setEditProducts(stock.products.map(p => ({
         product: p.product,
         balance: String(p.balance),
       })))
     } else {
+      setOriginalProducts([])
       setEditProducts([{ product: "", balance: "" }])
     }
     setShowStockModal(true)
@@ -209,6 +213,17 @@ export default function OurStores() {
             setSubmitting(false)
             return
           }
+        }
+      }
+
+      const savedProducts = new Set(valid.map(v => v.product.trim()))
+      for (const origProduct of originalProducts) {
+        if (!savedProducts.has(origProduct)) {
+          await apiMutate("finance", {
+            action: "delete",
+            table: "store_stock",
+            filters: { store_name: editingStore.store_name, product: origProduct },
+          })
         }
       }
 

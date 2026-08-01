@@ -21,12 +21,12 @@ export interface EnrichedATF {
   requested_at: string
   invalidation_reason: string | null
   initiated_by: string | null
-  driver_name?: string
-  company_name?: string
-  officer_name?: string
-  kbnl_truck_no?: string | null
-  fuel_balance?: number
-  engine_type?: string
+  driver_name: string
+  company_name: string
+  officer_name: string
+  kbnl_truck_no: string | null
+  fuel_balance: number | null
+  engine_type: string | null
 }
 
 export function useATFs(filter?: ATFFilter) {
@@ -77,25 +77,27 @@ export function useATFs(filter?: ATFFilter) {
         const driverIds = [...new Set(raw.map(r => r.driver_id).filter(Boolean))]
         const companyIds = [...new Set(raw.map(r => r.company_id).filter(Boolean))]
         const officerIds = [...new Set(raw.map(r => r.initiated_by).filter(Boolean))]
-        const plates = filter?.company_id
-          ? [...new Set(raw.map(r => r.plate_number).filter(Boolean))]
-          : [...new Set(raw.map(r => r.plate_number).filter(Boolean))]
+        const rawPlates = [...new Set(raw.map(r => r.plate_number).filter(Boolean))]
+        const plates = filter?.all ? rawPlates.slice(0, 500) : rawPlates
 
         const [driversResult, companiesResult, officersResult, trucksResult] = await Promise.all([
-          driverIds.length ? supabase.from("Drivers").select("driver_id, full_name").in("driver_id", driverIds) : Promise.resolve({ data: [] }),
-          companyIds.length ? supabase.from("fuel_companies").select("company_id, company_name").in("company_id", companyIds) : Promise.resolve({ data: [] }),
-          officerIds.length ? supabase.from("truck_officers").select("manager_id, full_name").in("manager_id", officerIds) : Promise.resolve({ data: [] }),
-          plates.length ? supabase.from("Trucks").select("plate_number, kbnl_truck_no, fuel_balance, engine_type").in("plate_number", plates) : Promise.resolve({ data: [] }),
+          driverIds.length ? supabase.from("Drivers").select("driver_id, full_name").in("driver_id", driverIds) : Promise.resolve({ data: [], error: null }),
+          companyIds.length ? supabase.from("fuel_companies").select("company_id, company_name").in("company_id", companyIds) : Promise.resolve({ data: [], error: null }),
+          officerIds.length ? supabase.from("truck_officers").select("manager_id, full_name").in("manager_id", officerIds) : Promise.resolve({ data: [], error: null }),
+          plates.length ? supabase.from("Trucks").select("plate_number, kbnl_truck_no, fuel_balance, engine_type").in("plate_number", plates) : Promise.resolve({ data: [], error: null }),
         ])
 
         if (cancelled || !mountedRef.current) return
+
+        const enrichmentError = driversResult.error ?? companiesResult.error ?? officersResult.error ?? trucksResult.error
+        if (enrichmentError) throw enrichmentError
 
         const driverMap = Object.fromEntries((driversResult.data || []).map(d => [d.driver_id, d.full_name]))
         const companyMap = Object.fromEntries((companiesResult.data || []).map(c => [c.company_id, c.company_name]))
         const officerMap = Object.fromEntries((officersResult.data || []).map(o => [o.manager_id, o.full_name]))
         const truckMap = new Map((trucksResult.data || []).map(t => [t.plate_number, { kbnl_truck_no: t.kbnl_truck_no, fuel_balance: t.fuel_balance, engine_type: t.engine_type }]))
 
-        const enriched = raw.map(r => {
+        const enriched: EnrichedATF[] = raw.map(r => {
           const truck = truckMap.get(r.plate_number)
           return {
             ...r,
@@ -108,7 +110,7 @@ export function useATFs(filter?: ATFFilter) {
           }
         })
 
-        setData(enriched as EnrichedATF[])
+        setData(enriched)
       } catch (e) {
         if (cancelled || !mountedRef.current) return
         setError(e instanceof Error ? e.message : "Failed to fetch ATFs")

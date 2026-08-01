@@ -10,7 +10,7 @@ export interface FuelExpense {
   notes: string | null
   location: string | null
   logged_at: string
-  officer_name?: string
+  officer_name: string
   kbnl_truck_no?: string | null
   material_centre?: string | null
   product?: string | null
@@ -47,9 +47,10 @@ export function useFuelExpenses(filter?: FuelExpensesFilter) {
           query = query.eq("manager_id", filter.manager_id)
         }
 
-        const { data: raw } = await query
+        const { data: raw, error: rawError } = await query
         if (cancelled || !mountedRef.current) return
 
+        if (rawError) throw rawError
         if (!raw) { setData([]); setLoading(false); return }
 
         const officerIds = [...new Set(raw.map(r => r.manager_id).filter(Boolean))]
@@ -57,12 +58,15 @@ export function useFuelExpenses(filter?: FuelExpensesFilter) {
         const tripIds = [...new Set(raw.map(r => r.trip_id).filter(Boolean))]
 
         const [officersResult, trucksResult, tripsResult] = await Promise.all([
-          officerIds.length ? supabase.from("truck_officers").select("manager_id, full_name").in("manager_id", officerIds) : Promise.resolve({ data: [] }),
-          plates.length ? supabase.from("Trucks").select("plate_number, kbnl_truck_no").in("plate_number", plates) : Promise.resolve({ data: [] }),
-          tripIds.length ? supabase.from("Trips").select("trip_id, material_centre, product").in("trip_id", tripIds) : Promise.resolve({ data: [] }),
+          officerIds.length ? supabase.from("truck_officers").select("manager_id, full_name").in("manager_id", officerIds) : Promise.resolve({ data: [], error: null }),
+          plates.length ? supabase.from("Trucks").select("plate_number, kbnl_truck_no").in("plate_number", plates) : Promise.resolve({ data: [], error: null }),
+          tripIds.length ? supabase.from("Trips").select("trip_id, material_centre, product").in("trip_id", tripIds) : Promise.resolve({ data: [], error: null }),
         ])
 
         if (cancelled || !mountedRef.current) return
+
+        const enrichmentError = officersResult.error ?? trucksResult.error ?? tripsResult.error
+        if (enrichmentError) throw enrichmentError
 
         const officerMap = Object.fromEntries((officersResult.data || []).map(o => [o.manager_id, o.full_name]))
         const truckMap = Object.fromEntries((trucksResult.data || []).map(t => [t.plate_number, t.kbnl_truck_no]))
@@ -76,7 +80,7 @@ export function useFuelExpenses(filter?: FuelExpensesFilter) {
           product: tripMap[r.trip_id]?.product ?? null,
         }))
 
-        setData(enriched as FuelExpense[])
+        setData(enriched)
       } catch (e) {
         if (cancelled || !mountedRef.current) return
         setError(e instanceof Error ? e.message : "Failed to fetch fuel expenses")

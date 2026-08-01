@@ -127,13 +127,13 @@ export default function ATFSection({
                     </div>
                   )
                 })()}
-                {atf.rate_per_litre && (
+                {atf.rate_per_litre != null && (
                   <div style={{ background: "#f8fafc", borderRadius: 8, padding: "10px 12px", border: "1px solid #e2e8f0" }}>
                     <p style={{ margin: 0, fontSize: FONT_SIZE.xs, color: "#94a3b8" }}>Rate/L</p>
                     <p style={{ margin: "2px 0 0", fontWeight: 700, color: "#0f172a", fontSize: FONT_SIZE.base }}>₦{atf.rate_per_litre.toLocaleString()}</p>
                   </div>
                 )}
-                {atf.total_amount && (
+                {atf.total_amount != null && (
                   <div style={{ background: "#f8fafc", borderRadius: 8, padding: "10px 12px", border: "1px solid #e2e8f0" }}>
                     <p style={{ margin: 0, fontSize: FONT_SIZE.xs, color: "#94a3b8" }}>Total</p>
                     <p style={{ margin: "2px 0 0", fontWeight: 700, color: "#0070f3", fontSize: FONT_SIZE.base }}>₦{atf.total_amount.toLocaleString()}</p>

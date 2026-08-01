@@ -72,6 +72,8 @@ type ATF = {
   requested_at: string
   rate_per_litre: number | null
   total_amount: number | null
+  fuel_balance: number | null
+  engine_type: string | null
 }
 
 type TruckAdmin = {
@@ -87,7 +89,7 @@ function generateATFCode(): string {
   return code
 }
 
-const SECTION_LABELS: Record<string, { label: string; icon: string }> = {
+const SECTION_LABELS = {
   "maintenance": { label: "Maintenance", icon: "mdi:wrench" },
   "monitor": { label: "Monitor Trucks", icon: "mdi:truck-check" },
   "atf": { label: "ATF", icon: "mdi:gas-station" },
@@ -95,7 +97,7 @@ const SECTION_LABELS: Record<string, { label: string; icon: string }> = {
   "balance": { label: "Top Up", icon: "mdi:plus-circle" },
   "side-trips": { label: "Side Trips", icon: "mdi:road-variant" },
   "diesel": { label: "Diesel Consumption", icon: "mdi:fuel" },
-}
+} satisfies Record<string, { label: string; icon: string }>
 
 type SectionKey = keyof typeof SECTION_LABELS
 
@@ -114,7 +116,7 @@ export default function TruckAdminDashboard() {
   const [maintenanceBalance, setMaintenanceBalance] = useState<number | null>(null)
   const [atfs, setAtfs] = useState<ATF[]>([])
   const { data: atfsFromHook, refetch: refetchATFs } = useATFs({ all: true })
-  useEffect(() => { setAtfs(atfsFromHook as ATF[]) }, [atfsFromHook])
+  useEffect(() => { setAtfs(atfsFromHook) }, [atfsFromHook])
   const [loading, setLoading] = useState(true)
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null)
   const [active, setActive] = useState<SectionKey>("maintenance")
@@ -173,7 +175,7 @@ export default function TruckAdminDashboard() {
     ro.observe(el)
     update()
     return () => ro.disconnect()
-  }, [])
+  }, [loading])
 
   async function fetchSideTrips() {
     setSideTripsLoading(true)

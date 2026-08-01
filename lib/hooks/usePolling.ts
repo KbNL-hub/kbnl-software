@@ -19,6 +19,7 @@ export function usePolling(
   const savedCallback = useRef(callback)
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const wasHidden = useRef(false)
+  const inFlight = useRef(false)
 
   savedCallback.current = callback
 
@@ -29,18 +30,32 @@ export function usePolling(
     }
   }, [])
 
+  const runCallback = useCallback(async () => {
+    if (inFlight.current) return
+    inFlight.current = true
+    try {
+      await savedCallback.current()
+    } finally {
+      inFlight.current = false
+    }
+  }, [])
+
   const startPolling = useCallback(() => {
     clearPolling()
     if (!enabled) return
     intervalRef.current = setInterval(() => {
-      savedCallback.current()
+      void runCallback()
     }, intervalMs)
-  }, [intervalMs, enabled, clearPolling])
+  }, [intervalMs, enabled, clearPolling, runCallback])
 
   useEffect(() => {
     if (!enabled) return
 
-    startPolling()
+    if (document.hidden) {
+      wasHidden.current = true
+    } else {
+      startPolling()
+    }
 
     function handleVisibilityChange() {
       if (document.hidden) {
@@ -48,7 +63,7 @@ export function usePolling(
         clearPolling()
       } else if (wasHidden.current) {
         wasHidden.current = false
-        savedCallback.current()
+        void runCallback()
         startPolling()
       }
     }

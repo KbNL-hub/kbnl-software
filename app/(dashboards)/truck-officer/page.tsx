@@ -78,14 +78,18 @@ type Trip = {
 
 type ATF = {
   request_id: string
-  atf_code: string
+  atf_code: string | null
   plate_number: string
   driver_name: string
+  officer_name: string
+  company_name: string
   litres: number
   atf_status: string
   requested_at: string
   rate_per_litre: number | null
   total_amount: number | null
+  fuel_balance: number | null
+  engine_type: string | null
 }
 
 type FuelEstimate = {
@@ -147,7 +151,7 @@ export default function TruckOfficerDashboard() {
   const [atfs, setAtfs] = useState<ATF[]>([])
   const [atfFilter, setAtfFilter] = useState<{ initiated_by: string } | null>(null)
   const { data: atfsFromHook, refetch: refetchATFs } = useATFs(atfFilter ?? undefined)
-  useEffect(() => { setAtfs(atfsFromHook as ATF[]) }, [atfsFromHook])
+  useEffect(() => { setAtfs(atfsFromHook) }, [atfsFromHook])
   const [loading, setLoading] = useState(true)
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null)
   const [tab, setTab] = useState<"reports" | "fuel" | "atf" | "monitor">("reports")
@@ -928,7 +932,7 @@ export default function TruckOfficerDashboard() {
             <div style={{ marginBottom: 16 }}>
               <label style={labelStyle}>Truck *</label>
               <div style={{ position: "relative" }}>
-                <ModernInput as="select" value={fuelPlate} onChange={e => { handleFuelPlateChange(e.target.value); setFuelEstimateId(""); setFuelUseCustom(false); setFuelCustomLitres("") }} style={inputStyle}>
+                <ModernInput as="select" value={fuelPlate} onChange={e => { handleFuelPlateChange(e.target.value); setFuelEstimateId(""); setFuelUseCustom(false); setFuelCustomLitres(""); setFuelLocation("") }} style={inputStyle}>
                   <option value="">Select truck</option>
                   {assignedTrucks.map(t => (
                     <option key={t.plate_number} value={t.plate_number}>

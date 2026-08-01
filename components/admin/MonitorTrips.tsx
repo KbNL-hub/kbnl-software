@@ -508,6 +508,7 @@ export default function MonitorTrips() {
       setQuantityMessage({ stopId: editingQuantity.stopId, text: "Updated", type: "success" })
       setSelectedStops((prev) => prev ? prev.map((s) => s.stop_id === editingQuantity.stopId ? { ...s, quantity_offloaded: editingQuantity.value } : s) : prev)
       setTimeout(() => setQuantityMessage(null), 2000)
+      loadAll()
     }
     setEditingQuantity(null)
     setQuantitySaving(false)
@@ -540,6 +541,9 @@ export default function MonitorTrips() {
     setResolveMessage("")
 
     try {
+      const parsedBags = parseInt(resolveBags)
+      const safeBags = Number.isNaN(parsedBags) || parsedBags < 0 ? resolvingStop.quantity_offloaded : parsedBags
+
       const { error } = await apiMutate("trips", {
         action: "update",
         table: "Stops",
@@ -548,7 +552,7 @@ export default function MonitorTrips() {
           dispute_reason: null,
           disputed_by: null,
           confirmed: false,
-          quantity_offloaded: parseInt(resolveBags) || resolvingStop.quantity_offloaded,
+          quantity_offloaded: safeBags,
           stop_location: resolveLocation || resolvingStop.stop_location,
           broker_id: resolveBrokerId || resolvingStop.broker_id,
         },
