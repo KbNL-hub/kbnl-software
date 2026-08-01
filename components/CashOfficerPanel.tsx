@@ -4,6 +4,7 @@ import { useEffect, useState, useMemo } from "react"
 import { supabase } from "@/lib/supabase"
 import { apiMutate } from "@/lib/api-mutation"
 import { formatAmount, parseAmount } from "@/lib/formatAmount"
+import { usePolling } from "@/lib/hooks/usePolling"
 
 type Props = {
   clerkId: string
@@ -70,15 +71,11 @@ export default function CashOfficerPanel({ clerkId, officeName, fullName }: Prop
     }
   }, [clerkId, officeName])
 
-  useEffect(() => {
-    if (!clerkId || !officeName) return
-    const interval = setInterval(() => {
-      fetchOfficeBalance()
-      fetchExpenses()
-      fetchDeposits()
-    }, 30000)
-    return () => clearInterval(interval)
-  }, [clerkId, officeName])
+  usePolling(() => {
+    fetchOfficeBalance()
+    fetchExpenses()
+    fetchDeposits()
+  }, 30000, !!clerkId && !!officeName)
 
   async function loadData() {
     setLoading(true)

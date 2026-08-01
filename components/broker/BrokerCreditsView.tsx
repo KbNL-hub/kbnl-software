@@ -59,7 +59,7 @@ export default function BrokerCreditsView() {
         .from("broker_credits")
         .select("*")
         .eq("broker_id", brokerId)
-        .order("created_at", { ascending: false })
+        .order("customer_name", { ascending: true })
 
       if (queryError) { setError(queryError.message); setLoading(false); return }
       if (data) setCredits(data as CreditEntry[])

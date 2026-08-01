@@ -13,7 +13,8 @@ import ReportModal from "@/components/ReportModal"
 import ProfilePictureUpload from "@/components/ProfilePictureUpload"
 import TruckMonitorSection from "@/components/admin/TruckMonitorSection"
 import TruckManageSection from "@/components/admin/TruckManageSection"
-import { FONT_SIZE, POLLING_INTERVAL } from "@/lib/constants"
+import { FONT_SIZE } from "@/lib/constants"
+import { usePolling } from "@/lib/hooks/usePolling"
 import { toISOString, formatDateTime, formatDate, formatTime } from "@/lib/date-utils"
 import { requireDashboardRole } from "@/lib/auth-helpers"
 import { Role } from "@/lib/roles"
@@ -62,6 +63,7 @@ type FuelExpense = {
   plate_number: string
   trip_id: string
   litres: number
+  location: string | null
   notes: string | null
   logged_at: string
 }
@@ -181,6 +183,7 @@ export default function TruckOfficerDashboard() {
   const [fuelEstimateId, setFuelEstimateId] = useState("")
   const [fuelUseCustom, setFuelUseCustom] = useState(false)
   const [fuelCustomLitres, setFuelCustomLitres] = useState("")
+  const [fuelLocation, setFuelLocation] = useState("")
 
   // ATF initiation modal
   const [showATFModal, setShowATFModal] = useState(false)
@@ -245,17 +248,14 @@ export default function TruckOfficerDashboard() {
     init()
   }, [])
 
-  useEffect(() => {
+  usePolling(() => {
     if (!officer) return
-    const interval = setInterval(() => {
-      fetchReports(officer.manager_id)
-      fetchProcurements()
-      fetchDeposits()
-      fetchFuelExpenses(officer.manager_id)
-      refetchATFs()
-    }, POLLING_INTERVAL)
-    return () => clearInterval(interval)
-  }, [officer])
+    fetchReports(officer.manager_id)
+    fetchProcurements()
+    fetchDeposits()
+    fetchFuelExpenses(officer.manager_id)
+    refetchATFs()
+  }, 120000, !!officer)
 
   async function fetchTrucks(mId: string) {
     const { data: assignments } = await supabase
@@ -293,7 +293,7 @@ export default function TruckOfficerDashboard() {
   async function fetchFuelExpenses(mId: string) {
     const { data } = await supabase
       .from("truck_fuel_expenses")
-      .select("expense_id, plate_number, trip_id, litres, notes, logged_at")
+      .select("expense_id, plate_number, trip_id, litres, location, notes, logged_at")
       .eq("manager_id", mId)
       .order("logged_at", { ascending: false })
     setFuelExpenses(data || [])
@@ -302,12 +302,20 @@ export default function TruckOfficerDashboard() {
   async function handleFuelPlateChange(plate: string) {
     setFuelPlate(plate); setFuelTripId(""); setFuelTrips([]); setFuelError("")
     if (!plate) return
-    const { data } = await supabase
-      .from("Trips")
-      .select("trip_id, plate_number, material_centre, product, created_at")
-      .eq("plate_number", plate).eq("trip_status", "Completed")
-      .order("created_at", { ascending: false }).limit(30)
-    setFuelTrips(data || [])
+    const [tripsRes, loggedRes] = await Promise.all([
+      supabase
+        .from("Trips")
+        .select("trip_id, plate_number, material_centre, product, created_at")
+        .eq("plate_number", plate).eq("trip_status", "Completed")
+        .order("created_at", { ascending: false }).limit(30),
+      supabase
+        .from("truck_fuel_expenses")
+        .select("trip_id")
+        .eq("plate_number", plate),
+    ])
+    const loggedTripIds = new Set((loggedRes.data || []).map((e: { trip_id: string | null }) => e.trip_id).filter(Boolean))
+    const available = (tripsRes.data || []).filter(t => !loggedTripIds.has(t.trip_id))
+    setFuelTrips(available)
   }
 
   async function handleLogReport() {
@@ -342,6 +350,7 @@ export default function TruckOfficerDashboard() {
 
     let litres: number
     let notes: string | null = fuelNotes.trim() || null
+    const estimate = !fuelUseCustom ? fuelEstimates.find(e => e.id === fuelEstimateId) : null
 
     if (fuelUseCustom) {
       litres = parseFloat(fuelCustomLitres)
@@ -349,7 +358,6 @@ export default function TruckOfficerDashboard() {
       if (!fuelNotes.trim()) return setFuelError("Notes are required when using a custom estimate")
     } else {
       if (!fuelEstimateId) return setFuelError("Select a location estimate")
-      const estimate = fuelEstimates.find(e => e.id === fuelEstimateId)
       if (!estimate) return setFuelError("Invalid estimate selected")
       litres = truck.engine_type === "CNG" ? (estimate.cng_bars ?? 0) : (estimate.diesel_litres ?? 0)
       if (litres <= 0) return setFuelError("No estimate available for this location")
@@ -376,6 +384,7 @@ export default function TruckOfficerDashboard() {
       data: {
         manager_id: officer?.manager_id, plate_number: fuelPlate, trip_id: fuelTripId,
         litres, notes,
+        location: fuelUseCustom ? (fuelLocation.trim() || null) : estimate?.location ?? null,
       },
     })
     if (expenseError) { setFuelError("Failed to log fuel expense"); setFuelLoading(false); return }
@@ -394,7 +403,7 @@ export default function TruckOfficerDashboard() {
     setFuelLoading(false)
     setShowFuelModal(false)
     setFuelPlate(""); setFuelTripId(""); setFuelTrips([]); setFuelLitres(""); setFuelNotes(""); setFuelError("")
-    setFuelEstimateId(""); setFuelUseCustom(false); setFuelCustomLitres("")
+    setFuelEstimateId(""); setFuelUseCustom(false); setFuelCustomLitres(""); setFuelLocation("")
     if (officer) {
       await fetchTrucks(officer.manager_id)
       await fetchFuelExpenses(officer.manager_id)
@@ -782,6 +791,7 @@ export default function TruckOfficerDashboard() {
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 8 }}>
                     <div>
                       <p style={{ margin: 0, fontWeight: 700, fontSize: FONT_SIZE.base, color: "#0f172a" }}>{e.plate_number}</p>
+                      {e.location && <p style={{ margin: "2px 0 0", fontSize: FONT_SIZE.xs, color: "#94a3b8" }}>📍 {e.location}</p>}
                       <p style={{ margin: "2px 0 0", fontSize: FONT_SIZE.xs, color: "#94a3b8" }}>{formatDateTime(e.logged_at)}</p>
                     </div>
                     <span style={{ padding: "4px 10px", borderRadius: 20, fontSize: FONT_SIZE.sm, background: "#f0f7ff", color: "#0070f3", fontWeight: 700, border: "1px solid #bfdbfe" }}>{e.litres}L</span>
@@ -910,7 +920,7 @@ export default function TruckOfficerDashboard() {
 
       {/* Log Fuel Expense Modal */}
       {showFuelModal && (
-        <div onClick={() => { setShowFuelModal(false); setFuelPlate(""); setFuelTripId(""); setFuelTrips([]); setFuelLitres(""); setFuelNotes(""); setFuelError(""); setFuelEstimateId(""); setFuelUseCustom(false); setFuelCustomLitres("") }} style={modalOverlay}>
+        <div onClick={() => { setShowFuelModal(false); setFuelPlate(""); setFuelTripId(""); setFuelTrips([]); setFuelLitres(""); setFuelNotes(""); setFuelError(""); setFuelEstimateId(""); setFuelUseCustom(false); setFuelCustomLitres(""); setFuelLocation("") }} style={modalOverlay}>
           <div onClick={e => e.stopPropagation()} style={modalBox}>
             <h3 style={{ marginBottom: 6, color: "#0f172a", fontSize: FONT_SIZE.xl, fontWeight: 700 }}>Log Fuel Expense</h3>
             <p style={{ margin: "0 0 20px", fontSize: FONT_SIZE.sm, color: "#64748b" }}>Record fuel consumption for a completed trip</p>
@@ -1008,6 +1018,10 @@ export default function TruckOfficerDashboard() {
                             <ModernInput type="number" step="0.1" placeholder={`e.g. ${isDiesel ? "120" : "15"}`} value={fuelCustomLitres} onChange={e => { setFuelCustomLitres(e.target.value); setFuelError("") }} style={inputStyle} />
                           </div>
                           <div style={{ marginBottom: 16 }}>
+                            <label style={labelStyle}>Location (optional)</label>
+                            <ModernInput type="text" placeholder="e.g. Mile 17 filling station" value={fuelLocation} onChange={e => { setFuelLocation(e.target.value); setFuelError("") }} style={inputStyle} />
+                          </div>
+                          <div style={{ marginBottom: 16 }}>
                             <label style={labelStyle}>Notes * (required for custom estimate)</label>
                             <ModernInput as="textarea" placeholder="e.g. Backhaul. Truck used more fuel" value={fuelNotes} onChange={e => { setFuelNotes(e.target.value); setFuelError("") }} rows={3} style={{ ...inputStyle, resize: "none", minHeight: 100, paddingRight: 12 }} />
                           </div>
@@ -1029,7 +1043,7 @@ export default function TruckOfficerDashboard() {
             {fuelError && <div style={{ padding: 12, background: "#fef2f2", borderLeft: "4px solid #ef4444", borderRadius: 4, marginBottom: 16, color: "#b91c1c", fontSize: FONT_SIZE.sm, fontWeight: 600 }}>{fuelError}</div>}
 
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-              <button onClick={() => { setShowFuelModal(false); setFuelPlate(""); setFuelTripId(""); setFuelTrips([]); setFuelLitres(""); setFuelNotes(""); setFuelError(""); setFuelEstimateId(""); setFuelUseCustom(false); setFuelCustomLitres("") }} style={{ padding: "12px 16px", background: "white", border: "1px solid #cbd5e1", color: "#475569", borderRadius: 8, cursor: "pointer", fontWeight: 700, fontSize: FONT_SIZE.md, minHeight: 44 }}>Cancel</button>
+              <button onClick={() => { setShowFuelModal(false); setFuelPlate(""); setFuelTripId(""); setFuelTrips([]); setFuelLitres(""); setFuelNotes(""); setFuelError(""); setFuelEstimateId(""); setFuelUseCustom(false); setFuelCustomLitres(""); setFuelLocation("") }} style={{ padding: "12px 16px", background: "white", border: "1px solid #cbd5e1", color: "#475569", borderRadius: 8, cursor: "pointer", fontWeight: 700, fontSize: FONT_SIZE.md, minHeight: 44 }}>Cancel</button>
               <button onClick={handleLogFuelExpense} disabled={fuelLoading} style={{ padding: "12px 16px", background: "#0070f3", color: "white", border: "none", borderRadius: 8, cursor: fuelLoading ? "not-allowed" : "pointer", fontWeight: 700, fontSize: FONT_SIZE.md, minHeight: 44, opacity: fuelLoading ? 0.7 : 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>{fuelLoading ? <><Icon icon="mdi:loading" width={16} style={{ animation: "spin 1s linear infinite" }} /> Logging...</> : "Log Consumption"}</button>
             </div>
           </div>

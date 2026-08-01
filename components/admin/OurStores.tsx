@@ -1,6 +1,7 @@
 "use client"
 
-import { FONT_SIZE, POLLING_INTERVAL } from "@/lib/constants"
+import { FONT_SIZE } from "@/lib/constants"
+import { usePolling } from "@/lib/hooks/usePolling"
 import React, { useState, useEffect, useCallback, useRef } from "react"
 import { supabase } from "@/lib/supabase"
 import { apiMutate } from "@/lib/api-mutation"
@@ -92,9 +93,9 @@ export default function OurStores() {
 
   useEffect(() => {
     loadAll()
-    const interval = setInterval(() => loadAll(false), POLLING_INTERVAL)
-    return () => clearInterval(interval)
   }, [loadAll])
+
+  usePolling(() => loadAll(false), 120000)
 
   function closeModals() {
     setShowAddModal(false)

@@ -4,6 +4,7 @@ import { useState, useEffect } from "react"
 import { Icon } from "@iconify/react"
 import { supabase } from "@/lib/supabase"
 import { useBreakpoint } from "@/app/hooks/useBreakpoint"
+import { usePolling } from "@/lib/hooks/usePolling"
 
 type Stop = {
   stop_id: string
@@ -358,9 +359,9 @@ export default function BrokerActiveTrips() {
   // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => {
     loadAll()
-    const interval = setInterval(loadAll, 30000)
-    return () => clearInterval(interval)
   }, [])
+
+  usePolling(loadAll, 30000)
 
   function closeModals() {
     setSelectedDriver(null)

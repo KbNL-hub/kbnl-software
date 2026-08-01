@@ -1,6 +1,7 @@
 "use client"
 
-import { FONT_SIZE, POLLING_INTERVAL } from "@/lib/constants"
+import { FONT_SIZE } from "@/lib/constants"
+import { usePolling } from "@/lib/hooks/usePolling"
 
 import { useState, useEffect, useRef } from "react"
 import { supabase } from "@/lib/supabase"
@@ -173,9 +174,9 @@ export default function MonitorTrucks({ viewOnly = false }: { viewOnly?: boolean
 
   useEffect(() => {
     fetchActiveTrucks()
-    const interval = setInterval(fetchActiveTrucks, POLLING_INTERVAL)
-    return () => clearInterval(interval)
   }, [])
+
+  usePolling(fetchActiveTrucks, 120000)
 
   const ddLastSaveTimeRef = useRef(0)
   useEffect(() => {
@@ -188,9 +189,10 @@ export default function MonitorTrucks({ viewOnly = false }: { viewOnly?: boolean
         }
       })
       .subscribe()
-    const interval = setInterval(fetchDdTrips, POLLING_INTERVAL)
-    return () => { clearInterval(interval); subscription.unsubscribe() }
+    return () => { subscription.unsubscribe() }
   }, [])
+
+  usePolling(fetchDdTrips, 120000)
 
   async function openRouteEditor(truck: ActiveTruck) {
     setEditingRoute(truck)

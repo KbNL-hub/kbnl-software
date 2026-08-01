@@ -11,7 +11,8 @@ import CustomerSelector from "@/components/CustomerSelector"
 import ReportModal from "@/components/ReportModal"
 import ModernInput from "@/components/ModernInput"
 import ProfilePictureUpload from "@/components/ProfilePictureUpload"
-import { FONT_SIZE, POLLING_INTERVAL } from "@/lib/constants"
+import { FONT_SIZE } from "@/lib/constants"
+import { usePolling } from "@/lib/hooks/usePolling"
   import { saleDateWithTime } from "@/lib/date-utils"
   import dayjs from "dayjs"
 import { useBreakpoint } from "@/app/hooks/useBreakpoint"
@@ -184,15 +185,12 @@ export default function StoreOfficerDashboard() {
     setLoading(false)
   }
 
-  useEffect(() => {
+  usePolling(() => {
     if (!officer) return
-    const interval = setInterval(() => {
-      refetchStops()
-      fetchStock(officer.store_name)
-      setLastUpdated(new Date())
-    }, POLLING_INTERVAL)
-    return () => clearInterval(interval)
-  }, [officer])
+    refetchStops()
+    fetchStock(officer.store_name)
+    setLastUpdated(new Date())
+  }, 120000, !!officer)
 
   async function fetchStock(storeName: string) {
     const { data } = await supabase

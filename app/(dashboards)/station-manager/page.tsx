@@ -10,7 +10,8 @@ import { Icon } from "@iconify/react"
 import { useBreakpoint } from "@/app/hooks/useBreakpoint"
 import ReportModal from "@/components/ReportModal"
 import ProfilePictureUpload from "@/components/ProfilePictureUpload"
-import { FONT_SIZE, POLLING_INTERVAL } from "@/lib/constants"
+import { FONT_SIZE } from "@/lib/constants"
+import { usePolling } from "@/lib/hooks/usePolling"
 import { toISOString, formatDateTime, formatTime } from "@/lib/date-utils"
 import { requireDashboardRole } from "@/lib/auth-helpers"
 import { Role } from "@/lib/roles"
@@ -135,15 +136,12 @@ export default function StationManagerDashboard() {
     init()
   }, [])
 
-  useEffect(() => {
+  usePolling(() => {
     if (!manager) return
-    const interval = setInterval(() => {
-      fetchCompanyData(manager.company_id)
-      refetchATFs()
-      fetchDeposits(manager.company_id)
-    }, POLLING_INTERVAL)
-    return () => clearInterval(interval)
-  }, [manager])
+    fetchCompanyData(manager.company_id)
+    refetchATFs()
+    fetchDeposits(manager.company_id)
+  }, 120000, !!manager)
 
   async function fetchCompanyData(cId: string) {
     const { data } = await supabase.from("fuel_companies").select("company_name, current_balance, low_balance_threshold").eq("company_id", cId).single()

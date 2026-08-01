@@ -1,6 +1,7 @@
 "use client"
 
-import { FONT_SIZE, POLLING_INTERVAL } from "@/lib/constants"
+import { FONT_SIZE } from "@/lib/constants"
+import { usePolling } from "@/lib/hooks/usePolling"
 
 import { useState, useEffect, useCallback, Fragment } from "react"
 import { Icon } from "@iconify/react"
@@ -145,11 +146,7 @@ export default function StoreSales() {
     loadAll()
   }, [loadAll])
 
-  // eslint-disable-next-line react-hooks/set-state-in-effect
-  useEffect(() => {
-    const interval = setInterval(() => loadAll(false), POLLING_INTERVAL)
-    return () => clearInterval(interval)
-  }, [loadAll])
+  usePolling(() => loadAll(false), 120000)
 
   const filteredSales = sales.filter(s => {
     if (filterStatus !== "All" && s.status !== filterStatus) return false

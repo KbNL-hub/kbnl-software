@@ -64,7 +64,7 @@ export default function ReassignBroker({ stopId, onReassigned }: Props) {
     try {
       const { error } = await apiMutate("trips", {
         action: "update", table: "Stops",
-        data: { disputed: false, dispute_reason: null, disputed_by: null, confirmed: true },
+        data: { disputed: false, dispute_reason: null, disputed_by: null, confirmed: false },
         filters: { stop_id: stopId },
       })
 

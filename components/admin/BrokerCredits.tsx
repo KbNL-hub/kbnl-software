@@ -9,7 +9,8 @@ import { formatAmount, parseAmount } from "@/lib/formatAmount"
 import { useBreakpoint } from "@/app/hooks/useBreakpoint"
 import { usePermissions } from "@/lib/PermissionContext"
 import ModernInput from "@/components/ModernInput"
-import { FONT_SIZE, POLLING_INTERVAL } from "@/lib/constants"
+import { FONT_SIZE } from "@/lib/constants"
+import { usePolling } from "@/lib/hooks/usePolling"
 import { toISOString } from "@/lib/date-utils"
 
 type Broker = { broker_id: string; broker_name: string; credit_limit: number | null }
@@ -86,7 +87,7 @@ export default function BrokerCredits() {
       .from("broker_credits")
       .select("*")
       .eq("broker_id", brokerId)
-      .order("created_at", { ascending: false })
+      .order("customer_name", { ascending: true })
 
     if (data) setCredits(data)
     setLoading(false)
@@ -94,16 +95,13 @@ export default function BrokerCredits() {
 
   useEffect(() => { fetchBrokerTotals() }, [])
 
-  useEffect(() => {
-    const interval = setInterval(() => {
-      if (view === "detail" && selectedBroker) {
-        fetchBrokerCredits(selectedBroker.broker_id)
-      } else {
-        fetchBrokerTotals()
-      }
-    }, POLLING_INTERVAL)
-    return () => clearInterval(interval)
-  }, [view, selectedBroker?.broker_id, fetchBrokerCredits, fetchBrokerTotals])
+  usePolling(() => {
+    if (view === "detail" && selectedBroker) {
+      fetchBrokerCredits(selectedBroker.broker_id)
+    } else {
+      fetchBrokerTotals()
+    }
+  }, 120000)
 
   const companyTotal = brokerTotals.reduce((sum, b) => sum + b.total_credit, 0)
 

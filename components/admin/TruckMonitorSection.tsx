@@ -1,6 +1,7 @@
 "use client"
 
-import { FONT_SIZE, POLLING_INTERVAL } from "@/lib/constants"
+import { FONT_SIZE } from "@/lib/constants"
+import { usePolling } from "@/lib/hooks/usePolling"
 
 import { useState, useEffect, useMemo } from "react"
 import { supabase } from "@/lib/supabase"
@@ -111,9 +112,9 @@ export default function TruckMonitorSection({ plates }: Props) {
   // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => {
     fetchActiveTrucks()
-    const interval = setInterval(fetchActiveTrucks, POLLING_INTERVAL)
-    return () => clearInterval(interval)
   }, [platesKey])
+
+  usePolling(fetchActiveTrucks, 120000)
 
   const filteredTrucks = filterStatus === "All"
     ? trucks

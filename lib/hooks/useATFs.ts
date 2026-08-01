@@ -25,6 +25,8 @@ export interface EnrichedATF {
   company_name?: string
   officer_name?: string
   kbnl_truck_no?: string | null
+  fuel_balance?: number
+  engine_type?: string
 }
 
 export function useATFs(filter?: ATFFilter) {
@@ -77,13 +79,13 @@ export function useATFs(filter?: ATFFilter) {
         const officerIds = [...new Set(raw.map(r => r.initiated_by).filter(Boolean))]
         const plates = filter?.company_id
           ? [...new Set(raw.map(r => r.plate_number).filter(Boolean))]
-          : []
+          : [...new Set(raw.map(r => r.plate_number).filter(Boolean))]
 
         const [driversResult, companiesResult, officersResult, trucksResult] = await Promise.all([
           driverIds.length ? supabase.from("Drivers").select("driver_id, full_name").in("driver_id", driverIds) : Promise.resolve({ data: [] }),
           companyIds.length ? supabase.from("fuel_companies").select("company_id, company_name").in("company_id", companyIds) : Promise.resolve({ data: [] }),
           officerIds.length ? supabase.from("truck_officers").select("manager_id, full_name").in("manager_id", officerIds) : Promise.resolve({ data: [] }),
-          plates.length ? supabase.from("Trucks").select("plate_number, kbnl_truck_no").in("plate_number", plates) : Promise.resolve({ data: [] }),
+          plates.length ? supabase.from("Trucks").select("plate_number, kbnl_truck_no, fuel_balance, engine_type").in("plate_number", plates) : Promise.resolve({ data: [] }),
         ])
 
         if (cancelled || !mountedRef.current) return
@@ -91,15 +93,20 @@ export function useATFs(filter?: ATFFilter) {
         const driverMap = Object.fromEntries((driversResult.data || []).map(d => [d.driver_id, d.full_name]))
         const companyMap = Object.fromEntries((companiesResult.data || []).map(c => [c.company_id, c.company_name]))
         const officerMap = Object.fromEntries((officersResult.data || []).map(o => [o.manager_id, o.full_name]))
-        const truckMap = Object.fromEntries((trucksResult.data || []).map(t => [t.plate_number, t.kbnl_truck_no]))
+        const truckMap = new Map((trucksResult.data || []).map(t => [t.plate_number, { kbnl_truck_no: t.kbnl_truck_no, fuel_balance: t.fuel_balance, engine_type: t.engine_type }]))
 
-        const enriched = raw.map(r => ({
-          ...r,
-          driver_name: driverMap[r.driver_id] ?? "Unknown",
-          company_name: companyMap[r.company_id] ?? "Unknown",
-          officer_name: officerMap[r.initiated_by] ?? "Unknown",
-          kbnl_truck_no: truckMap[r.plate_number] ?? null,
-        }))
+        const enriched = raw.map(r => {
+          const truck = truckMap.get(r.plate_number)
+          return {
+            ...r,
+            driver_name: driverMap[r.driver_id] ?? "Unknown",
+            company_name: companyMap[r.company_id] ?? "Unknown",
+            officer_name: officerMap[r.initiated_by] ?? "Unknown",
+            kbnl_truck_no: truck?.kbnl_truck_no ?? null,
+            fuel_balance: truck?.fuel_balance ?? null,
+            engine_type: truck?.engine_type ?? null,
+          }
+        })
 
         setData(enriched as EnrichedATF[])
       } catch (e) {

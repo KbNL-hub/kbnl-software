@@ -1,6 +1,7 @@
 "use client"
 
-import { FONT_SIZE, POLLING_INTERVAL } from "@/lib/constants"
+import { FONT_SIZE } from "@/lib/constants"
+import { usePolling } from "@/lib/hooks/usePolling"
 
 import { useState, useEffect, useMemo } from "react"
 import ModernInput from "@/components/ModernInput"
@@ -129,9 +130,9 @@ export default function DieselManager() {
 
   useEffect(() => {
     fetchAll()
-    const interval = setInterval(fetchAll, POLLING_INTERVAL)
-    return () => clearInterval(interval)
   }, [])
+
+  usePolling(fetchAll, 120000)
 
   async function fetchAll() {
     await Promise.all([fetchATFs(), fetchCompanies(), fetchDeposits(), fetchEstimates()])

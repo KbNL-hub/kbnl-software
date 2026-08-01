@@ -48,6 +48,20 @@ export default function AuthenticatedLayout({
     }
   }, [session, loading, router]);
 
+  useEffect(() => {
+    function handleVisibilityChange() {
+      if (!document.hidden && session) {
+        supabase.auth.getSession().then(({ data }) => {
+          if (!data.session) {
+            router.push('/login')
+          }
+        })
+      }
+    }
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+    return () => document.removeEventListener('visibilitychange', handleVisibilityChange)
+  }, [session, router]);
+
   if (loading) 
     return (
       <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100vh', flexDirection: 'column' }}>

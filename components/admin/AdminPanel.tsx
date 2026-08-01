@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from "react"
 import { useRouter } from "next/navigation"
 import { Icon } from "@iconify/react"
-import { POLLING_INTERVAL } from "@/lib/constants"
+import { usePolling } from "@/lib/hooks/usePolling"
 import dynamic from "next/dynamic"
 import { supabase } from "@/lib/supabase"
 import { apiMutate } from "@/lib/api-mutation"
@@ -187,9 +187,38 @@ function AdminPanelContent({ userProfile }: Props) {
       }
     }
     checkAlerts()
-    const interval = setInterval(checkAlerts, POLLING_INTERVAL)
-    return () => clearInterval(interval)
   }, [permLoading])
+
+  usePolling(() => {
+    if (permLoading) return
+    const canViewTrips = getAccess("monitor-trips").canView
+    const canViewComplaints = getAccess("complaints").canView
+    const canViewFuel = getAccess("diesel-manager").canView
+    async function checkAlerts() {
+      try {
+        if (canViewTrips) {
+          const { count: disputed } = await supabase
+            .from("Stops").select("*", { count: "exact", head: true }).eq("disputed", true)
+          setDisputedCount(disputed || 0)
+        }
+        if (canViewComplaints) {
+          const { count: driverComplaints } = await supabase
+            .from("driver_complaints").select("*", { count: "exact", head: true }).eq("resolved", false)
+          const { count: userReports } = await supabase
+            .from("reports").select("*", { count: "exact", head: true }).eq("resolved", false)
+          setUnresolvedComplaints((driverComplaints || 0) + (userReports || 0))
+        }
+        if (canViewFuel) {
+          const { data } = await supabase
+            .from("fuel_companies").select("company_id, company_name, current_balance, low_balance_threshold")
+          if (data) setLowBalanceCompanies(data.filter(c => c.current_balance < c.low_balance_threshold))
+        }
+      } catch (err) {
+        console.error("Error checking alerts:", err)
+      }
+    }
+    checkAlerts()
+  }, 120000, !permLoading)
 
   useEffect(() => {
     if (!isNarrow) setDrawerOpen(false)

@@ -1,6 +1,7 @@
 "use client"
 
-import { FONT_SIZE, POLLING_INTERVAL } from "@/lib/constants"
+import { FONT_SIZE } from "@/lib/constants"
+import { usePolling } from "@/lib/hooks/usePolling"
 
 import { useState, useEffect } from "react"
 import { supabase } from "@/lib/supabase"
@@ -54,9 +55,9 @@ export default function Complaints() {
 
   useEffect(() => {
     fetchComplaints()
-    const interval = setInterval(fetchComplaints, POLLING_INTERVAL)
-    return () => clearInterval(interval)
   }, [])
+
+  usePolling(fetchComplaints, 120000)
 
   async function fetchComplaints() {
     const [driverRes, reportRes] = await Promise.all([

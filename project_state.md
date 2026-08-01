@@ -85,7 +85,7 @@ lib/
 - `fuel_companies` — company_id, company_name, current_balance, low_balance_threshold
 - `fuel_deposits` — deposit_id, company_id, amount, note, deposited_at
 - `station_managers` — manager_id, full_name, phone_number, company_id, status
-- `truck_fuel_expenses` — expense_id, manager_id, plate_number, trip_id, litres, notes, logged_at
+- `truck_fuel_expenses` — expense_id, manager_id, plate_number, trip_id, litres, location, notes, logged_at
 
 ### Maintenance
 - `maintenance_assignments` — assignment_id, manager_id, plate_number (UNIQUE)

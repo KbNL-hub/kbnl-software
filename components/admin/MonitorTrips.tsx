@@ -1,17 +1,18 @@
 "use client"
 
-import { FONT_SIZE, POLLING_INTERVAL } from "@/lib/constants"
+import { FONT_SIZE } from "@/lib/constants"
+import { usePolling } from "@/lib/hooks/usePolling"
 
 import { useState, useEffect, useCallback } from "react"
 import { Icon } from "@iconify/react"
 import { supabase } from "@/lib/supabase"
 import { apiMutate } from "@/lib/api-mutation"
-import ReassignBroker from "@/components/admin/ReassignBroker"
 import { usePermissions } from "@/lib/PermissionContext"
 
 type Stop = {
   stop_id: string
   stop_type: "customer" | "store"
+  broker_id: string | null
   broker_name: string | null
   customer_name: string | null
   quantity_offloaded: number
@@ -133,6 +134,16 @@ export default function MonitorTrips() {
   const [endingTrip, setEndingTrip] = useState<string | null>(null)
   const [endTripError, setEndTripError] = useState<string | null>(null)
   const [endTripLoading, setEndTripLoading] = useState(false)
+  const [editingQuantity, setEditingQuantity] = useState<{ stopId: string; value: number } | null>(null)
+  const [quantitySaving, setQuantitySaving] = useState(false)
+  const [quantityMessage, setQuantityMessage] = useState<{ stopId: string; text: string; type: "success" | "error" } | null>(null)
+  const [resolvingStop, setResolvingStop] = useState<Stop | null>(null)
+  const [resolveBags, setResolveBags] = useState("")
+  const [resolveLocation, setResolveLocation] = useState("")
+  const [resolveBrokerId, setResolveBrokerId] = useState("")
+  const [resolveSubmitting, setResolveSubmitting] = useState(false)
+  const [resolveMessage, setResolveMessage] = useState("")
+  const [allBrokers, setAllBrokers] = useState<{ broker_id: string; broker_name: string }[]>([])
 
   async function fetchTrips() {
     const { data: tripsData, error } = await supabase
@@ -244,6 +255,7 @@ export default function MonitorTrips() {
         return {
           stop_id: stop.stop_id,
           stop_type: stop.stop_type,
+          broker_id: stop.broker_id ?? null,
           broker_name,
           customer_name,
           quantity_offloaded: stop.quantity_offloaded,
@@ -394,6 +406,7 @@ export default function MonitorTrips() {
         return {
           stop_id: stop.stop_id,
           stop_type: stop.stop_type,
+          broker_id: stop.broker_id ?? null,
           broker_name,
           customer_name,
           quantity_offloaded: stop.quantity_offloaded,
@@ -462,9 +475,9 @@ export default function MonitorTrips() {
   // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => {
     loadAll()
-    const interval = setInterval(loadAll, POLLING_INTERVAL)
-    return () => clearInterval(interval)
   }, [loadAll])
+
+  usePolling(loadAll, 120000)
 
   function handleEndTripClick() {
     if (!selectedStops || !selectedTrip) return
@@ -475,6 +488,85 @@ export default function MonitorTrips() {
       return
     }
     setEndingTrip(selectedTrip.trip_id)
+  }
+
+  async function handleSaveQuantity() {
+    if (!editingQuantity) return
+    setQuantitySaving(true)
+    setQuantityMessage(null)
+
+    const { error } = await apiMutate("trips", {
+      action: "update",
+      table: "Stops",
+      data: { quantity_offloaded: editingQuantity.value },
+      filters: { stop_id: editingQuantity.stopId },
+    })
+
+    if (error) {
+      setQuantityMessage({ stopId: editingQuantity.stopId, text: "Failed to update quantity", type: "error" })
+    } else {
+      setQuantityMessage({ stopId: editingQuantity.stopId, text: "Updated", type: "success" })
+      setSelectedStops((prev) => prev ? prev.map((s) => s.stop_id === editingQuantity.stopId ? { ...s, quantity_offloaded: editingQuantity.value } : s) : prev)
+      setTimeout(() => setQuantityMessage(null), 2000)
+    }
+    setEditingQuantity(null)
+    setQuantitySaving(false)
+  }
+
+  async function openResolveModal(stop: Stop) {
+    setResolvingStop(stop)
+    setResolveBags(String(stop.quantity_offloaded))
+    setResolveLocation(stop.stop_location)
+    setResolveBrokerId(stop.broker_id ?? "")
+    setResolveMessage("")
+
+    if (allBrokers.length === 0) {
+      const { data } = await supabase.from("Brokers").select("broker_id, broker_name").order("broker_name")
+      setAllBrokers(data || [])
+    }
+  }
+
+  function closeResolveModal() {
+    setResolvingStop(null)
+    setResolveBags("")
+    setResolveLocation("")
+    setResolveBrokerId("")
+    setResolveMessage("")
+  }
+
+  async function handleResolveStop() {
+    if (!resolvingStop) return
+    setResolveSubmitting(true)
+    setResolveMessage("")
+
+    try {
+      const { error } = await apiMutate("trips", {
+        action: "update",
+        table: "Stops",
+        data: {
+          disputed: false,
+          dispute_reason: null,
+          disputed_by: null,
+          confirmed: false,
+          quantity_offloaded: parseInt(resolveBags) || resolvingStop.quantity_offloaded,
+          stop_location: resolveLocation || resolvingStop.stop_location,
+          broker_id: resolveBrokerId || resolvingStop.broker_id,
+        },
+        filters: { stop_id: resolvingStop.stop_id },
+      })
+
+      if (error) {
+        setResolveMessage("Failed to resolve dispute")
+        return
+      }
+
+      closeResolveModal()
+      loadAll()
+    } catch {
+      setResolveMessage("Network error, please try again")
+    } finally {
+      setResolveSubmitting(false)
+    }
   }
 
   async function confirmEndTrip() {
@@ -917,7 +1009,56 @@ export default function MonitorTrips() {
                           <div style={{ marginTop: 10, padding: 12, background: "#fff5f5", borderRadius: 6, border: "1px solid #fecaca" }}>
                             <p style={{ margin: "0 0 6px 0", fontSize: FONT_SIZE.xs, color: "#ef4444", fontWeight: 600 }}>Dispute Reason:</p>
                             <p style={{ margin: "0 0 10px 0", fontSize: FONT_SIZE.sm, color: "#7f1d1d" }}>{stop.dispute_reason}</p>
-                            <ReassignBroker stopId={stop.stop_id} onReassigned={loadAll} />
+
+                            <div style={{ marginBottom: 10 }}>
+                              <p style={{ margin: "0 0 6px 0", fontSize: FONT_SIZE.xs, fontWeight: 600, color: "#0f172a" }}>Bags Offloaded:</p>
+                              {editingQuantity?.stopId === stop.stop_id ? (
+                                <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                                  <input
+                                    type="number"
+                                    min={0}
+                                    value={editingQuantity.value}
+                                    onChange={(e) => setEditingQuantity({ ...editingQuantity, value: parseInt(e.target.value) || 0 })}
+                                    style={{ width: 80, padding: "6px 8px", border: "1px solid #fecaca", borderRadius: 4, fontSize: FONT_SIZE.sm }}
+                                    autoFocus
+                                  />
+                                  <button onClick={handleSaveQuantity} disabled={quantitySaving} style={{ padding: "6px 12px", background: "#16a34a", color: "white", border: "none", borderRadius: 4, fontSize: FONT_SIZE.xs, cursor: quantitySaving ? "not-allowed" : "pointer", opacity: quantitySaving ? 0.7 : 1 }}>
+                                    {quantitySaving ? "..." : "Save"}
+                                  </button>
+                                  <button onClick={() => setEditingQuantity(null)} disabled={quantitySaving} style={{ padding: "6px 12px", background: "white", color: "#64748b", border: "1px solid #e2e8f0", borderRadius: 4, fontSize: FONT_SIZE.xs, cursor: "pointer" }}>
+                                    Cancel
+                                  </button>
+                                </div>
+                              ) : (
+                                <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                                  <span style={{ fontSize: FONT_SIZE.sm, color: "#0f172a" }}>{stop.quantity_offloaded} bags</span>
+                                  {canEdit && (
+                                    <button onClick={() => setEditingQuantity({ stopId: stop.stop_id, value: stop.quantity_offloaded })} style={{ padding: "4px 10px", background: "white", color: "#0070f3", border: "1px solid #0070f3", borderRadius: 4, fontSize: FONT_SIZE.xs, cursor: "pointer" }}>
+                                      Edit
+                                    </button>
+                                  )}
+                                </div>
+                              )}
+                              {quantityMessage?.stopId === stop.stop_id && (
+                                <p style={{ margin: "4px 0 0", fontSize: FONT_SIZE.xs, color: quantityMessage.type === "success" ? "#16a34a" : "#ef4444" }}>{quantityMessage.text}</p>
+                              )}
+                            </div>
+
+                            <button
+                              onClick={() => openResolveModal(stop)}
+                              disabled={!canEdit}
+                              style={{
+                                width: "100%", padding: "8px 0", marginTop: 10,
+                                background: canEdit ? "#0070f3" : "#94a3b8",
+                                color: "white", border: "none", borderRadius: 6,
+                                cursor: canEdit ? "pointer" : "not-allowed",
+                                fontSize: FONT_SIZE.sm, fontWeight: 600,
+                                display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
+                              }}
+                            >
+                              <Icon icon="mdi:check-circle" width={16} />
+                              Resolve Dispute
+                            </button>
                           </div>
                         )}
 
@@ -995,6 +1136,79 @@ export default function MonitorTrips() {
               </button>
               <button onClick={confirmEndTrip} disabled={endTripLoading || !canEdit} style={{ padding: "12px 16px", background: endTripLoading || !canEdit ? "#94a3b8" : "#ef4444", color: "white", border: "none", borderRadius: 8, cursor: endTripLoading || !canEdit ? "not-allowed" : "pointer", fontWeight: 600, fontSize: FONT_SIZE.md, opacity: endTripLoading || !canEdit ? 0.7 : 1, minHeight: 44, transition: "background 0.2s" }} onMouseEnter={e => !endTripLoading && canEdit && (e.currentTarget.style.background = "#dc2626")} onMouseLeave={e => !endTripLoading && canEdit && (e.currentTarget.style.background = "#ef4444")}>
                 {endTripLoading ? "Ending..." : "Yes, End Trip"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {resolvingStop && (
+        <div onClick={closeResolveModal} style={{ position: "fixed", inset: 0, background: "rgba(15, 23, 42, 0.6)", backdropFilter: "blur(4px)", display: "flex", alignItems: isMobile ? "flex-end" : "center", justifyContent: "center", zIndex: 200, padding: isMobile ? 0 : 24, animation: "fadeIn 0.2s ease-out" }}>
+          <div onClick={e => e.stopPropagation()} style={{ background: "white", borderRadius: isMobile ? "20px 20px 0 0" : 12, padding: isMobile ? "28px 20px" : 32, width: "100%", maxWidth: 480, maxHeight: isMobile ? "90vh" : "85vh", overflowY: "auto", boxShadow: "0 25px 50px -12px rgba(0, 0, 0, 0.25)", animation: "slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1)" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
+              <div>
+                <h3 style={{ margin: "0 0 4px 0", color: "#0f172a", fontSize: FONT_SIZE.xl, fontWeight: 700 }}>Resolve Dispute</h3>
+                <p style={{ margin: 0, color: "#94a3b8", fontSize: FONT_SIZE.sm }}>{resolvingStop.stop_location}</p>
+              </div>
+              <button onClick={closeResolveModal} style={{ background: "none", border: "none", color: "#94a3b8", cursor: "pointer", padding: 0, width: 32, height: 32, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+              </button>
+            </div>
+
+            {resolvingStop.dispute_reason && (
+              <div style={{ padding: "10px 14px", background: "#fef2f2", border: "1px solid #fecaca", borderRadius: 8, marginBottom: 20 }}>
+                <p style={{ margin: "0 0 4px 0", fontSize: FONT_SIZE.xs, color: "#ef4444", fontWeight: 600 }}>Dispute Reason</p>
+                <p style={{ margin: 0, fontSize: FONT_SIZE.sm, color: "#7f1d1d" }}>{resolvingStop.dispute_reason}</p>
+              </div>
+            )}
+
+            <div style={{ marginBottom: 16 }}>
+              <label style={{ display: "block", fontWeight: 600, fontSize: FONT_SIZE.sm, color: "#475569", marginBottom: 6 }}>Bags Offloaded</label>
+              <input
+                type="number"
+                min={0}
+                value={resolveBags}
+                onChange={e => setResolveBags(e.target.value)}
+                style={{ width: "100%", padding: "10px 12px", border: "1.5px solid #e2e8f0", borderRadius: 8, fontSize: FONT_SIZE.base, boxSizing: "border-box" }}
+              />
+            </div>
+
+            <div style={{ marginBottom: 16 }}>
+              <label style={{ display: "block", fontWeight: 600, fontSize: FONT_SIZE.sm, color: "#475569", marginBottom: 6 }}>Stop Location</label>
+              <input
+                type="text"
+                value={resolveLocation}
+                onChange={e => setResolveLocation(e.target.value)}
+                style={{ width: "100%", padding: "10px 12px", border: "1.5px solid #e2e8f0", borderRadius: 8, fontSize: FONT_SIZE.base, boxSizing: "border-box" }}
+              />
+            </div>
+
+            <div style={{ marginBottom: 20 }}>
+              <label style={{ display: "block", fontWeight: 600, fontSize: FONT_SIZE.sm, color: "#475569", marginBottom: 6 }}>Broker</label>
+              <select
+                value={resolveBrokerId}
+                onChange={e => setResolveBrokerId(e.target.value)}
+                style={{ width: "100%", padding: "10px 12px", border: "1.5px solid #e2e8f0", borderRadius: 8, fontSize: FONT_SIZE.base, boxSizing: "border-box", background: "white" }}
+              >
+                {allBrokers.map(b => (
+                  <option key={b.broker_id} value={b.broker_id}>{b.broker_name}</option>
+                ))}
+              </select>
+            </div>
+
+            {resolveMessage && (
+              <div style={{ display: "flex", alignItems: "center", gap: 6, color: "#ef4444", marginBottom: 14, fontSize: FONT_SIZE.sm }}>
+                <Icon icon="mdi:alert-circle" width={16} />
+                {resolveMessage}
+              </div>
+            )}
+
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+              <button onClick={closeResolveModal} disabled={resolveSubmitting} style={{ padding: "12px 16px", background: "white", color: "#475569", border: "1px solid #cbd5e1", borderRadius: 8, cursor: "pointer", fontWeight: 600, fontSize: FONT_SIZE.md, minHeight: 44 }}>
+                Cancel
+              </button>
+              <button onClick={handleResolveStop} disabled={resolveSubmitting} style={{ padding: "12px 16px", background: resolveSubmitting ? "#94a3b8" : "#0070f3", color: "white", border: "none", borderRadius: 8, cursor: resolveSubmitting ? "not-allowed" : "pointer", fontWeight: 600, fontSize: FONT_SIZE.md, minHeight: 44, display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
+                {resolveSubmitting ? "Resolving..." : "Resolve & Send Back"}
               </button>
             </div>
           </div>

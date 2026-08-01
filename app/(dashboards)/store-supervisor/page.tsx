@@ -7,7 +7,8 @@ import { apiMutate } from "@/lib/api-mutation"
 import RoleSwitcher from "@/components/RoleSwitcher"
 import ReportModal from "@/components/ReportModal"
 import ProfilePictureUpload from "@/components/ProfilePictureUpload"
-import { FONT_SIZE, POLLING_INTERVAL } from "@/lib/constants"
+import { FONT_SIZE } from "@/lib/constants"
+import { usePolling } from "@/lib/hooks/usePolling"
 import { useBreakpoint } from "@/app/hooks/useBreakpoint"
 import { requireDashboardRole } from "@/lib/auth-helpers"
 import { Role } from "@/lib/roles"
@@ -162,18 +163,13 @@ export default function StoreSupervisorDashboard() {
     setLastUpdated(new Date())
   }, [selectedStore])
 
-  // Polling
-  useEffect(() => {
-    if (!selectedStore) return
-    const interval = setInterval(() => {
-      fetchStock(selectedStore)
-      fetchSales(selectedStore)
-      fetchPastVerifications(selectedStore)
-      refetchStops()
-      setLastUpdated(new Date())
-    }, POLLING_INTERVAL)
-    return () => clearInterval(interval)
-  }, [selectedStore, refetchStops])
+  usePolling(() => {
+    fetchStock(selectedStore)
+    fetchSales(selectedStore)
+    fetchPastVerifications(selectedStore)
+    refetchStops()
+    setLastUpdated(new Date())
+  }, 120000, !!selectedStore)
 
   // Confirmed stops
   useEffect(() => {
