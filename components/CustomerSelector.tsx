@@ -5,8 +5,9 @@ import { Icon } from "@iconify/react"
 import ModernInput from "@/components/ModernInput"
 import { supabase } from "@/lib/supabase"
 import { getCachedCustomers, cacheCustomers } from '@/lib/offline/tripsDb'
+import { generateCustomerId } from '@/lib/customerUtils'
 
-type Customer = { customer_id: string; full_name: string; phone_number: string; isNew?: boolean }
+type Customer = { customer_id: string; full_name: string; phone_number: string; is_new?: boolean; isNew?: boolean }
 type Props = { onSelect: (customer: Customer) => void; allowUnsavedNew?: boolean; initialValue?: string }
 
 export default function CustomerSelector({ onSelect, allowUnsavedNew, initialValue }: Props) {
@@ -39,7 +40,7 @@ export default function CustomerSelector({ onSelect, allowUnsavedNew, initialVal
           // Try online fetch first
           const { data, error } = await supabase
             .from("Customers")
-            .select("customer_id, full_name, phone_number")
+            .select("customer_id, full_name, phone_number, is_new")
             .order("full_name", { ascending: true })
           
           if (!error && data) {
@@ -103,9 +104,10 @@ export default function CustomerSelector({ onSelect, allowUnsavedNew, initialVal
     }
 
     try {
+      const customerId = await generateCustomerId()
       const { data, error } = await supabase
         .from("Customers")
-        .insert([{ full_name: newName, phone_number: newPhone || null }])
+        .insert([{ customer_id: customerId, full_name: newName, phone_number: newPhone || null, is_new: true }])
         .select()
         .single()
 
@@ -117,7 +119,7 @@ export default function CustomerSelector({ onSelect, allowUnsavedNew, initialVal
       // Refresh cache after creating
       const { data: allCustomers, error: fetchError } = await supabase
         .from("Customers")
-        .select("customer_id, full_name, phone_number")
+        .select("customer_id, full_name, phone_number, is_new")
         .order("full_name", { ascending: true })
       
       if (!fetchError && allCustomers) {
@@ -177,11 +179,14 @@ export default function CustomerSelector({ onSelect, allowUnsavedNew, initialVal
               <li
                 key={c.customer_id}
                 onClick={() => handleSelect(c)}
-                style={{ padding: "12px 14px", cursor: "pointer", borderBottom: "1px solid #eee", fontSize: 14, color: "#171717" }}
+                style={{ padding: "12px 14px", cursor: "pointer", borderBottom: "1px solid #eee", fontSize: 14, color: "#171717", display: "flex", alignItems: "center", justifyContent: "space-between" }}
                 onMouseEnter={e => (e.currentTarget.style.background = "#f0f7ff")}
                 onMouseLeave={e => (e.currentTarget.style.background = "white")}
               >
-                {c.full_name}
+                <span>{c.full_name}</span>
+                {c.is_new && (
+                  <span style={{ fontSize: 10, padding: "2px 6px", background: "#fef3c7", color: "#92400e", borderRadius: 4, fontWeight: "bold" }}>NEW</span>
+                )}
               </li>
             ))}
             {isOnline && (
@@ -237,6 +242,9 @@ export default function CustomerSelector({ onSelect, allowUnsavedNew, initialVal
         <div style={{ marginTop: 8, padding: "8px 12px", background: "#f0f7ff", borderRadius: 6, fontSize: 13, color: "#0070f3", fontWeight: 500, display: "flex", alignItems: "center", gap: 6 }}>
           <Icon icon="mdi:check-circle" width={16} />
           Selected: {selected.full_name}
+          {selected.is_new && (
+            <span style={{ fontSize: 10, padding: "2px 6px", background: "#fef3c7", color: "#92400e", borderRadius: 4, fontWeight: "bold" }}>NEW</span>
+          )}
         </div>
       )}
     </div>

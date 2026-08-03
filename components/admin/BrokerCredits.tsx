@@ -543,7 +543,7 @@ export default function BrokerCredits() {
             </h3>
 
             <label style={{ display: "block", fontSize: FONT_SIZE.sm, fontWeight: 600, color: "#374151", marginBottom: 6 }}>Customer</label>
-            <CustomerSelector onSelect={(c) => setSelectedCustomer(c)} allowUnsavedNew={true} />
+            <CustomerSelector onSelect={(c) => setSelectedCustomer(c)} />
 
             <label style={{ display: "block", fontSize: FONT_SIZE.sm, fontWeight: 600, color: "#374151", marginBottom: 6, marginTop: 16 }}>Amount (₦)</label>
             <input

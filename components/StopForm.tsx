@@ -8,7 +8,7 @@ import { useOfflineTripAction } from "@/app/hooks/useOfflineTripAction"
 import { fetchStores } from "@/lib/stores"
 
 type Broker = { broker_id: string; broker_name: string; phone_number?: string | null }
-type Customer = { customer_id: string; full_name: string; phone_number: string }
+type Customer = { customer_id: string; full_name: string; phone_number: string; isNew?: boolean }
 type Props = { tripId: string; loadedQuantity?: number; offloadedSoFar?: number; onStopLogged: (quantityOffloaded: number) => void }
 
 export default function StopForm({ tripId, loadedQuantity: initialLoaded = 0, offloadedSoFar: initialOffloaded = 0, onStopLogged }: Props) {
@@ -122,7 +122,7 @@ export default function StopForm({ tripId, loadedQuantity: initialLoaded = 0, of
 
       if (derivedStopType === "customer") {
         payload.broker_id = selectedBroker!.broker_id
-        payload.customer_id = selectedCustomer?.customer_id ?? null
+        payload.customer_id = selectedCustomer?.isNew ? null : (selectedCustomer?.customer_id || null)
       } else {
         payload.broker_id = null
         payload.customer_id = null
@@ -203,7 +203,7 @@ export default function StopForm({ tripId, loadedQuantity: initialLoaded = 0, of
           <div style={{ marginBottom: 20 }}>
             <label style={{ fontWeight: "bold", fontSize: 15, color: "#171717" }}>Customer</label>
             <div style={{ marginTop: 6 }}>
-              <CustomerSelector onSelect={(customer) => setSelectedCustomer(customer)} />
+              <CustomerSelector onSelect={(customer) => setSelectedCustomer(customer)} allowUnsavedNew={true} />
             </div>
           </div>
         </>

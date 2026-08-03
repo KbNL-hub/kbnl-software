@@ -99,7 +99,7 @@ export default function CustomerPayments({ brokerId }: { brokerId: string }) {
     const payload = {
       broker_id: brokerId, bank_name: bankName, payment_date: paymentDate,
       depositor_name: depositorName.trim(), amount: parsedAmount,
-      customer_id: selectedCustomer.isNew ? null : selectedCustomer.customer_id,
+      customer_id: selectedCustomer?.customer_id || null,
       customer_name: selectedCustomer.full_name,
     }
 
@@ -314,7 +314,7 @@ export default function CustomerPayments({ brokerId }: { brokerId: string }) {
 
             <div style={{ marginBottom: 24 }}>
               <label style={{ display: "block", fontWeight: 600, marginBottom: 6, fontSize: fontSize.sm, color: "#475569" }}>Customer *</label>
-              <CustomerSelector onSelect={(c: any) => { setSelectedCustomer(c); setMessage("") }} allowUnsavedNew={true} initialValue={selectedCustomer?.full_name || ""} />
+              <CustomerSelector onSelect={(c: any) => { setSelectedCustomer(c); setMessage("") }} initialValue={selectedCustomer?.full_name || ""} />
             </div>
 
             {message && (

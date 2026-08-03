@@ -66,7 +66,6 @@ export default function CustomerPaymentsAdmin() {
   const [filterDateTo, setFilterDateTo] = useState("")
   const [showPostModal, setShowPostModal] = useState(false)
   const [selectedPayment, setSelectedPayment] = useState<Payment | null>(null)
-  const [newCustomerId, setNewCustomerId] = useState("")
   const [submitting, setSubmitting] = useState(false)
   const [errorMsg, setErrorMsg] = useState("")
 
@@ -92,7 +91,6 @@ export default function CustomerPaymentsAdmin() {
 
   function openPostModal(payment: Payment) {
     setSelectedPayment(payment)
-    setNewCustomerId("")
     setErrorMsg("")
     setShowPostModal(true)
   }
@@ -107,28 +105,7 @@ export default function CustomerPaymentsAdmin() {
     setErrorMsg("")
 
     try {
-      let finalCustomerId = selectedPayment.customer_id
-      let createdCustomer = false
-
-      if (!finalCustomerId) {
-        if (!newCustomerId.trim()) {
-          setErrorMsg("Please assign a Customer ID for this new customer.")
-          return
-        }
-        
-        finalCustomerId = newCustomerId.trim()
-        
-        const { error: customerError } = await apiMutate("finance", {
-          action: "insert", table: "Customers",
-          data: { customer_id: finalCustomerId, full_name: selectedPayment.customer_name, phone_number: selectedPayment.phone_number || null }
-        })
-
-        if (customerError) {
-          setErrorMsg("Failed to create customer: " + customerError)
-          return
-        }
-        createdCustomer = true
-      }
+      const finalCustomerId = selectedPayment.customer_id
 
       const { error: paymentError } = await apiMutate("finance", {
         action: "update", table: "customer_payments",
@@ -137,11 +114,16 @@ export default function CustomerPaymentsAdmin() {
       })
 
       if (paymentError) {
-        if (createdCustomer) {
-          await apiMutate("finance", { action: "delete", table: "Customers", filters: { customer_id: finalCustomerId } })
-        }
         setErrorMsg("Failed to post: " + paymentError)
         return
+      }
+
+      if (finalCustomerId) {
+        await apiMutate("finance", {
+          action: "update", table: "Customers",
+          data: { is_new: false },
+          filters: { customer_id: finalCustomerId },
+        })
       }
 
       setShowPostModal(false)
@@ -475,19 +457,6 @@ export default function CustomerPaymentsAdmin() {
                 </div>
               </div>
             </div>
-
-            {!selectedPayment.customer_id && (
-              <div style={{ background: "#eff6ff", border: "1.5px solid #bfdbfe", padding: 14, borderRadius: 8, marginBottom: 18 }}>
-                <p style={{ fontWeight: 600, color: "#1e40af", margin: "0 0 10px 0", fontSize: FONT_SIZE.sm, display: "flex", alignItems: "center", gap: 6 }}>
-                  <Icon icon="mdi:information" width="16" height="16" /> New Customer
-                </p>
-                <p style={{ fontSize: FONT_SIZE.sm, color: "#1e3a8a", margin: "0 0 12px 0", lineHeight: 1.4 }}>
-                  Assign an alphanumeric Customer ID to create their profile.
-                </p>
-                <label style={{ display: "block", fontWeight: 600, marginBottom: 6, fontSize: FONT_SIZE.sm, color: "#1e40af" }}>Customer ID *</label>
-                <input type="text" placeholder="e.g. CUST-1049" value={newCustomerId} onChange={e => { setNewCustomerId(e.target.value); setErrorMsg("") }} readOnly={!canEdit} style={{ width: "100%", padding: "10px 12px", borderRadius: 6, border: "1px solid #bfdbfe", boxSizing: "border-box", fontSize: FONT_SIZE.base }} autoFocus />
-              </div>
-            )}
 
             {errorMsg && <div style={{ padding: 12, background: "#fef2f2", borderLeft: "4px solid #ef4444", borderRadius: 4, marginBottom: 18, color: "#b91c1c", fontSize: FONT_SIZE.sm }}>{errorMsg}</div>}
 
