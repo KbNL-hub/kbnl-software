@@ -6,11 +6,20 @@ const supabaseAdmin = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!,
 )
 
-const vapidPublicKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY!
-const vapidPrivateKey = process.env.VAPID_PRIVATE_KEY!
-const vapidSubject = process.env.VAPID_SUBJECT!
+const vapidPublicKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY
+const vapidPrivateKey = process.env.VAPID_PRIVATE_KEY
+const vapidSubject = process.env.VAPID_SUBJECT
 
-webPush.setVapidDetails(vapidSubject, vapidPublicKey, vapidPrivateKey)
+let vapidConfigured = false
+
+function ensureVapid() {
+  if (vapidConfigured) return
+  if (!vapidSubject || !vapidPublicKey || !vapidPrivateKey) {
+    throw new Error('Push is not configured: VAPID_SUBJECT, NEXT_PUBLIC_VAPID_PUBLIC_KEY and VAPID_PRIVATE_KEY are required')
+  }
+  webPush.setVapidDetails(vapidSubject, vapidPublicKey, vapidPrivateKey)
+  vapidConfigured = true
+}
 
 export interface PushSubscription {
   endpoint: string
@@ -29,52 +38,42 @@ export async function saveSubscription(
   subscription: PushSubscription,
   userId: string | null,
   deviceId: string | null,
-  role: string | null,
+  roles: string[] | null,
 ) {
   const { endpoint, keys } = subscription
+  const now = new Date().toISOString()
 
-  const { data: existing } = await supabaseAdmin
-    .from('push_subscriptions')
-    .select('id')
-    .eq('endpoint', endpoint)
-    .single()
+  const roleValues: (string | null)[] = roles && roles.length > 0 ? roles : [null]
 
-  if (existing) {
-    const updateData: Record<string, unknown> = {
-      p256dh: keys.p256dh,
-      auth: keys.auth,
-      is_active: true,
-      updated_at: new Date().toISOString(),
-    }
-    if (userId) updateData.user_id = userId
-    if (deviceId) updateData.device_id = deviceId
-    if (role) updateData.role = role
-
-    const { error } = await supabaseAdmin
-      .from('push_subscriptions')
-      .update(updateData)
-      .eq('id', existing.id)
-
-    if (error) throw error
-    return existing.id
-  }
+  const rows = roleValues.map(role => ({
+    endpoint,
+    p256dh: keys.p256dh,
+    auth: keys.auth,
+    is_active: true,
+    updated_at: now,
+    user_id: userId,
+    device_id: deviceId,
+    role,
+  }))
 
   const { data, error } = await supabaseAdmin
     .from('push_subscriptions')
-    .insert({
-      endpoint,
-      p256dh: keys.p256dh,
-      auth: keys.auth,
-      user_id: userId,
-      device_id: deviceId,
-      role,
-      is_active: true,
-    })
+    .upsert(rows, { onConflict: 'endpoint,role' })
     .select('id')
-    .single()
 
   if (error) throw error
-  return data.id
+
+  // Remove stale role rows for this endpoint that are no longer in the target role set
+  if (roles && roles.length > 0) {
+    const { error: deleteError } = await supabaseAdmin
+      .from('push_subscriptions')
+      .delete()
+      .eq('endpoint', endpoint)
+      .or(`role.is.null,role.not.in.(${roles.map(r => `"${r}"`).join(',')})`)
+    if (deleteError) throw deleteError
+  }
+
+  return data?.[0]?.id
 }
 
 export async function removeSubscription(endpoint: string) {
@@ -82,16 +81,6 @@ export async function removeSubscription(endpoint: string) {
     .from('push_subscriptions')
     .update({ is_active: false })
     .eq('endpoint', endpoint)
-
-  if (error) throw error
-}
-
-export async function linkSubscriptionToUser(endpoint: string, userId: string, role: string) {
-  const { error } = await supabaseAdmin
-    .from('push_subscriptions')
-    .update({ user_id: userId, role, updated_at: new Date().toISOString() })
-    .eq('endpoint', endpoint)
-    .eq('is_active', true)
 
   if (error) throw error
 }
@@ -109,6 +98,7 @@ export async function sendNotification(
   })
 
   try {
+    ensureVapid()
     await webPush.sendNotification(
       subscription,
       message,
@@ -147,7 +137,12 @@ export async function getSubscriptionsByUserId(userId: string) {
     .eq('is_active', true)
 
   if (error) throw error
-  return (data || []).map(row => ({
+  const seen = new Set<string>()
+  return (data || []).filter(row => {
+    if (seen.has(row.endpoint)) return false
+    seen.add(row.endpoint)
+    return true
+  }).map(row => ({
     endpoint: row.endpoint,
     keys: { p256dh: row.p256dh, auth: row.auth },
   }))

@@ -1,7 +1,15 @@
 import { sendToRole, sendToUser, SendNotificationOptions } from './push'
 
-function notify(roles: string[], payload: SendNotificationOptions) {
-  return Promise.allSettled(roles.map(role => sendToRole(role, payload)))
+async function notify(roles: string[], payload: SendNotificationOptions) {
+  const results = await Promise.allSettled(roles.map(role => sendToRole(role, payload)))
+  results.forEach((result, i) => {
+    if (result.status === 'rejected') {
+      console.error(`[Notify] Role ${roles[i]} failed:`, result.reason)
+    } else if (result.value.failed > 0) {
+      console.warn(`[Notify] Role ${roles[i]}: ${result.value.failed} of ${result.value.total} failed`)
+    }
+  })
+  return results
 }
 
 // ─── Driver ──────────────────────────────────────────────

@@ -16,6 +16,19 @@ const ASSETS_TO_CACHE = [
   '/favicon.ico',
 ];
 
+// === Client context (set via postMessage from the page) ===
+let CLIENT_VAPID_KEY = null;
+let CLIENT_DEVICE_ID = null;
+
+function urlBase64ToUint8Array(base64String) {
+  const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
+  const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+  const rawData = atob(base64);
+  const output = new Uint8Array(rawData.length);
+  for (let i = 0; i < rawData.length; ++i) output[i] = rawData.charCodeAt(i);
+  return output;
+}
+
 // Install: Cache essential assets
 self.addEventListener('install', (event) => {
   event.waitUntil(
@@ -154,7 +167,7 @@ function createOfflineResponse() {
   );
 }
 
-// === Message Handler (for manual cache clearing, etc.) ===
+// === Message Handler ===
 self.addEventListener('message', (event) => {
   if (event.data && event.data.type === 'SKIP_WAITING') {
     self.skipWaiting();
@@ -169,6 +182,11 @@ self.addEventListener('message', (event) => {
   if (event.data && event.data.type === 'CACHE_URLS') {
     const cache = caches.open(CACHE_NAME);
     cache.then((c) => c.addAll(event.data.urls));
+  }
+
+  if (event.data && event.data.type === 'SET_CLIENT_CONTEXT') {
+    if (event.data.vapidKey) CLIENT_VAPID_KEY = event.data.vapidKey;
+    if (event.data.deviceId) CLIENT_DEVICE_ID = event.data.deviceId;
   }
 });
 
@@ -211,11 +229,20 @@ self.addEventListener('notificationclick', (event) => {
   const url = event.notification.data?.url || '/'
 
   event.waitUntil(
-    clients.matchAll({ type: 'window', includeUncontrolled: true }).then((windowClients) => {
+    clients.matchAll({ type: 'window', includeUncontrolled: true }).then(async (windowClients) => {
       for (const client of windowClients) {
-        if (client.url.includes(self.location.origin) && 'focus' in client) {
-          client.navigate(url)
-          return client.focus()
+        if (client.url.startsWith(self.location.origin) && 'focus' in client) {
+          await client.focus()
+          if ('navigate' in client) {
+            try {
+              await client.navigate(url)
+              return
+            } catch {
+              // Fall through to openWindow.
+            }
+          } else {
+            return
+          }
         }
       }
       return clients.openWindow(url)
@@ -226,20 +253,35 @@ self.addEventListener('notificationclick', (event) => {
 // === Push Subscription Change Handler ===
 self.addEventListener('pushsubscriptionchange', (event) => {
   event.waitUntil(
-    self.registration.pushManager.subscribe(event.oldSubscription.options).then((subscription) => {
-      return fetch('/api/push/subscribe', {
+    (async () => {
+      const existing = await self.registration.pushManager.getSubscription();
+      const options =
+        event.oldSubscription?.options ||
+        existing?.options ||
+        (CLIENT_VAPID_KEY
+          ? { userVisibleOnly: true, applicationServerKey: urlBase64ToUint8Array(CLIENT_VAPID_KEY) }
+          : null);
+
+      if (!options) {
+        console.error('[SW] pushsubscriptionchange: no options available to re-subscribe');
+        return;
+      }
+
+      const subscription = await self.registration.pushManager.subscribe(options);
+      const json = subscription.toJSON();
+
+      await fetch('/api/push/subscribe', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          endpoint: subscription.endpoint,
-          keys: {
-            p256dh: JSON.parse(JSON.stringify(subscription)).keys.p256dh,
-            auth: JSON.parse(JSON.stringify(subscription)).keys.auth,
-          },
+          endpoint: json.endpoint,
+          keys: { p256dh: json.keys.p256dh, auth: json.keys.auth },
+          deviceId: CLIENT_DEVICE_ID,
+          oldEndpoint: event.oldSubscription?.endpoint,
         }),
-      })
-    })
-  )
+      });
+    })()
+  );
 })
 
 console.log('[SW] Service Worker loaded');

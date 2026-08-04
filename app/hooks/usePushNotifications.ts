@@ -53,14 +53,16 @@ export function usePushNotifications() {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
+    const hasNotification = typeof Notification !== 'undefined'
+
     if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
-      setPermission(Notification.permission)
+      if (hasNotification) setPermission(Notification.permission)
       setIsSubscribed(false)
       setLoading(false)
       return
     }
 
-    setPermission(Notification.permission)
+    if (hasNotification) setPermission(Notification.permission)
 
     waitForServiceWorker(3000).then((reg) => {
       if (!reg) {
@@ -80,6 +82,7 @@ export function usePushNotifications() {
     if (!('serviceWorker' in navigator) || !('PushManager' in window)) return false
 
     try {
+      if (typeof Notification === 'undefined') return false
       const result = await Notification.requestPermission()
       setPermission(result)
 
@@ -103,7 +106,7 @@ export function usePushNotifications() {
         headers['Authorization'] = `Bearer ${session.access_token}`
       }
 
-      await fetch('/api/push/subscribe', {
+      const res = await fetch('/api/push/subscribe', {
         method: 'POST',
         headers,
         body: JSON.stringify({
@@ -112,6 +115,13 @@ export function usePushNotifications() {
           deviceId,
         }),
       })
+
+      if (!res.ok) {
+        console.error('[Push] Server rejected subscription:', res.status)
+        await subscription.unsubscribe().catch(() => {})
+        setIsSubscribed(false)
+        return false
+      }
 
       setIsSubscribed(true)
       return true
@@ -133,12 +143,19 @@ export function usePushNotifications() {
       if (!subscription) return true
 
       const endpoint = subscription.endpoint
+      const { data: { session } } = await supabase.auth.getSession()
+
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+      if (session?.access_token) {
+        headers['Authorization'] = `Bearer ${session.access_token}`
+      }
+
       await subscription.unsubscribe()
 
       await fetch('/api/push/unsubscribe', {
         method: 'DELETE',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ endpoint }),
+        headers,
+        body: JSON.stringify({ endpoint, deviceId: getDeviceId() }),
       })
 
       setIsSubscribed(false)
@@ -167,7 +184,7 @@ export function usePushNotifications() {
         headers['Authorization'] = `Bearer ${session.access_token}`
       }
 
-      await fetch('/api/push/subscribe', {
+      const res = await fetch('/api/push/subscribe', {
         method: 'POST',
         headers,
         body: JSON.stringify({
@@ -176,6 +193,10 @@ export function usePushNotifications() {
           deviceId: getDeviceId(),
         }),
       })
+
+      if (!res.ok) {
+        console.error('[Push] Re-subscribe rejected by server:', res.status)
+      }
     } catch (err) {
       console.error('[Push] Re-subscribe failed:', err)
     }
@@ -188,6 +209,6 @@ export function usePushNotifications() {
     subscribe,
     unsubscribe,
     reSubscribe,
-    isSupported: typeof window !== 'undefined' && 'serviceWorker' in navigator && 'PushManager' in window,
+    isSupported: typeof window !== 'undefined' && 'serviceWorker' in navigator && 'PushManager' in window && typeof Notification !== 'undefined',
   }
 }

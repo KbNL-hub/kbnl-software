@@ -44,11 +44,13 @@ export default function AuthenticatedLayout({
     }
   }, [router]);
 
+  const userId = session?.user?.id
+
   useEffect(() => {
-    if (session && isSubscribed) {
+    if (userId && isSubscribed) {
       reSubscribe()
     }
-  }, [session, isSubscribed, reSubscribe]);
+  }, [userId, isSubscribed, reSubscribe]);
 
   useEffect(() => {
     if (!loading && !session) {

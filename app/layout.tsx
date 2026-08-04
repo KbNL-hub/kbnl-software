@@ -125,7 +125,13 @@ export default function RootLayout({
           dangerouslySetInnerHTML={{
             __html: `
               if ('serviceWorker' in navigator && window.location.protocol === 'https:') {
-                navigator.serviceWorker.register('/sw.js').catch(e => console.log('SW registration failed:', e));
+                navigator.serviceWorker.register('/sw.js').then(function(reg) {
+                  var vapidKey = '${process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY || ''}';
+                  var deviceId = localStorage.getItem('kbnl_device_id') || '';
+                  if (reg.active) {
+                    reg.active.postMessage({ type: 'SET_CLIENT_CONTEXT', vapidKey: vapidKey, deviceId: deviceId });
+                  }
+                }).catch(function(e) { console.log('SW registration failed:', e); });
               }
             `,
           }}

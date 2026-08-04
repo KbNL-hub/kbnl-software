@@ -1,18 +1,26 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { Icon } from '@iconify/react'
 import { usePushNotifications } from '@/app/hooks/usePushNotifications'
 
-const PROMPT_DISMISSED_KEY = 'kbnl_notif_prompt_dismissed'
 const PROMPT_DISMISSED_AT_KEY = 'kbnl_notif_prompt_dismissed_at'
 const RE_PROMPT_INTERVAL_MS = 48 * 60 * 60 * 1000 // 48 hours
+
+function msSinceDismissal(): number | null {
+  const raw = localStorage.getItem(PROMPT_DISMISSED_AT_KEY)
+  if (!raw) return null
+  const at = Number(raw)
+  if (!Number.isFinite(at)) return null
+  return Date.now() - at
+}
 
 export default function NotificationPermissionPrompt() {
   const { permission, isSubscribed, subscribe, isSupported, loading } = usePushNotifications()
   const [visible, setVisible] = useState(false)
   const [subscribing, setSubscribing] = useState(false)
   const [showDeniedHint, setShowDeniedHint] = useState(false)
+  const primaryBtnRef = useRef<HTMLButtonElement>(null)
 
   useEffect(() => {
     if (loading || !isSupported) return
@@ -23,32 +31,31 @@ export default function NotificationPermissionPrompt() {
     }
 
     if (permission === 'denied') {
-      const dismissedAt = localStorage.getItem(PROMPT_DISMISSED_AT_KEY)
-      if (!dismissedAt) {
+      const elapsed = msSinceDismissal()
+      if (elapsed === null) {
         setShowDeniedHint(true)
         return
       }
-      const elapsed = Date.now() - parseInt(dismissedAt, 10)
       if (elapsed >= RE_PROMPT_INTERVAL_MS) {
         setShowDeniedHint(true)
       }
       return
     }
 
-    const dismissedAt = localStorage.getItem(PROMPT_DISMISSED_AT_KEY)
-    if (dismissedAt) {
-      const elapsed = Date.now() - parseInt(dismissedAt, 10)
-      if (elapsed < RE_PROMPT_INTERVAL_MS) return
-    }
+    const elapsed = msSinceDismissal()
+    if (elapsed !== null && elapsed < RE_PROMPT_INTERVAL_MS) return
 
     setVisible(true)
   }, [permission, isSubscribed, loading, isSupported])
+
+  useEffect(() => {
+    if (primaryBtnRef.current) primaryBtnRef.current.focus()
+  }, [visible, showDeniedHint])
 
   if (!visible && !showDeniedHint) return null
   if (!isSupported) return null
 
   function dismiss() {
-    localStorage.setItem(PROMPT_DISMISSED_KEY, 'true')
     localStorage.setItem(PROMPT_DISMISSED_AT_KEY, String(Date.now()))
     setVisible(false)
     setShowDeniedHint(false)
@@ -66,20 +73,25 @@ export default function NotificationPermissionPrompt() {
 
   if (showDeniedHint) {
     return (
-      <div style={{
-        position: 'fixed',
-        bottom: 20,
-        left: '50%',
-        transform: 'translateX(-50%)',
-        zIndex: 9998,
-        background: 'white',
-        borderRadius: 16,
-        boxShadow: '0 8px 32px rgba(0,0,0,0.15)',
-        padding: '24px 28px',
-        maxWidth: 420,
-        width: 'calc(100% - 32px)',
-        textAlign: 'center',
-      }}>
+      <div
+        role="dialog"
+        aria-modal="false"
+        aria-labelledby="notif-deny-title"
+        style={{
+          position: 'fixed',
+          bottom: 20,
+          left: '50%',
+          transform: 'translateX(-50%)',
+          zIndex: 9998,
+          background: 'white',
+          borderRadius: 16,
+          boxShadow: '0 8px 32px rgba(0,0,0,0.15)',
+          padding: '24px 28px',
+          maxWidth: 420,
+          width: 'calc(100% - 32px)',
+          textAlign: 'center',
+        }}
+      >
         <div style={{
           width: 48,
           height: 48,
@@ -92,12 +104,15 @@ export default function NotificationPermissionPrompt() {
         }}>
           <Icon icon="mdi:bell-off-outline" width={24} color="#ef4444" />
         </div>
-        <h3 style={{
-          margin: '0 0 8px',
-          fontSize: 18,
-          fontWeight: 700,
-          color: '#1a1a1a',
-        }}>
+        <h3
+          id="notif-deny-title"
+          style={{
+            margin: '0 0 8px',
+            fontSize: 18,
+            fontWeight: 700,
+            color: '#1a1a1a',
+          }}
+        >
           Notifications Blocked
         </h3>
         <p style={{
@@ -121,6 +136,7 @@ export default function NotificationPermissionPrompt() {
           <li>Refresh this page</li>
         </ol>
         <button
+          ref={primaryBtnRef}
           onClick={dismiss}
           style={{
             background: '#f1f5f9',
@@ -140,20 +156,25 @@ export default function NotificationPermissionPrompt() {
   }
 
   return (
-    <div style={{
-      position: 'fixed',
-      bottom: 20,
-      left: '50%',
-      transform: 'translateX(-50%)',
-      zIndex: 9998,
-      background: 'white',
-      borderRadius: 16,
-      boxShadow: '0 8px 32px rgba(0,0,0,0.15)',
-      padding: '24px 28px',
-      maxWidth: 400,
-      width: 'calc(100% - 32px)',
-      textAlign: 'center',
-    }}>
+    <div
+      role="dialog"
+      aria-modal="false"
+      aria-labelledby="notif-prompt-title"
+      style={{
+        position: 'fixed',
+        bottom: 20,
+        left: '50%',
+        transform: 'translateX(-50%)',
+        zIndex: 9998,
+        background: 'white',
+        borderRadius: 16,
+        boxShadow: '0 8px 32px rgba(0,0,0,0.15)',
+        padding: '24px 28px',
+        maxWidth: 400,
+        width: 'calc(100% - 32px)',
+        textAlign: 'center',
+      }}
+    >
       <div style={{
         width: 48,
         height: 48,
@@ -166,12 +187,15 @@ export default function NotificationPermissionPrompt() {
       }}>
         <Icon icon="mdi:bell-outline" width={24} color="#0070f3" />
       </div>
-      <h3 style={{
-        margin: '0 0 8px',
-        fontSize: 18,
-        fontWeight: 700,
-        color: '#1a1a1a',
-      }}>
+      <h3
+        id="notif-prompt-title"
+        style={{
+          margin: '0 0 8px',
+          fontSize: 18,
+          fontWeight: 700,
+          color: '#1a1a1a',
+        }}
+      >
         Enable Notifications
       </h3>
       <p style={{
@@ -200,6 +224,7 @@ export default function NotificationPermissionPrompt() {
           Not now
         </button>
         <button
+          ref={primaryBtnRef}
           onClick={handleAllow}
           disabled={subscribing}
           style={{

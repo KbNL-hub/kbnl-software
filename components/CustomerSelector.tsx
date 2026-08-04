@@ -106,7 +106,7 @@ export default function CustomerSelector({ onSelect, allowUnsavedNew, initialVal
 
     try {
       const customerId = await generateCustomerId()
-      const { data, error } = await apiMutate<Customer>(
+      const { data, error } = await apiMutate<Customer[]>(
         "finance",
         {
           action: "insert",
@@ -131,7 +131,12 @@ export default function CustomerSelector({ onSelect, allowUnsavedNew, initialVal
         await cacheCustomers(allCustomers)
       }
 
-      handleSelect((data as unknown as Customer[])[0])
+      const createdCustomer = data?.[0]
+      if (!createdCustomer) {
+        setMessage("Customer created but could not be loaded")
+        return
+      }
+      handleSelect(createdCustomer)
       setNewName("")
       setNewPhone("")
       setCreating(false)

@@ -1,11 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { saveSubscription, linkSubscriptionToUser } from '@/lib/push'
+import { saveSubscription, removeSubscription } from '@/lib/push'
 import { createClient } from '@supabase/supabase-js'
+
+const supabaseAdmin = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!,
+)
 
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json()
-    const { endpoint, keys, deviceId, role } = body
+    const { endpoint, keys, deviceId, role, oldEndpoint } = body
 
     if (!endpoint || !keys?.p256dh || !keys?.auth) {
       return NextResponse.json(
@@ -15,48 +20,59 @@ export async function POST(req: NextRequest) {
     }
 
     let userId: string | null = null
-    let userRole = role || null
+    let roles: string[] | null = role ? [role] : null
 
     const authHeader = req.headers.get('Authorization')
     if (authHeader?.startsWith('Bearer ')) {
       const token = authHeader.slice(7)
-      const supabaseAdmin = createClient(
-        process.env.NEXT_PUBLIC_SUPABASE_URL!,
-        process.env.SUPABASE_SERVICE_ROLE_KEY!,
-      )
       const { data: { user } } = await supabaseAdmin.auth.getUser(token)
       if (user) {
         userId = user.id
 
-        const { data: roles } = await supabaseAdmin
+        const { data: userRoles } = await supabaseAdmin
           .from('UserRoles')
           .select('role')
           .eq('user_id', user.id)
-          .order('role', { ascending: true })
 
-        if (roles && roles.length > 0) {
-          userRole = roles[0].role
+        if (userRoles && userRoles.length > 0) {
+          roles = userRoles.map(r => r.role)
         } else {
           const { data: profile } = await supabaseAdmin
             .from('Profiles')
             .select('role')
             .eq('user_id', user.id)
-            .single()
-          userRole = profile?.role || null
+            .maybeSingle()
+          if (profile?.role) roles = [profile.role]
         }
       }
+    }
+
+    // Relink from old endpoint (pushsubscriptionchange in sw.js)
+    let currentDeviceId = deviceId || null
+    if (oldEndpoint && oldEndpoint !== endpoint) {
+      const { data: oldRows } = await supabaseAdmin
+        .from('push_subscriptions')
+        .select('user_id, device_id, role')
+        .eq('endpoint', oldEndpoint)
+        .eq('is_active', true)
+
+      if (oldRows && oldRows.length > 0) {
+        const first = oldRows[0]
+        if (!userId) userId = first.user_id
+        if (!currentDeviceId) currentDeviceId = first.device_id
+        const oldRoles = oldRows.map(r => r.role).filter((r): r is string => !!r)
+        if ((!roles || roles.length === 0) && oldRoles.length > 0) roles = oldRoles
+      }
+
+      await removeSubscription(oldEndpoint)
     }
 
     const id = await saveSubscription(
       { endpoint, keys },
       userId,
-      deviceId || null,
-      userRole,
+      currentDeviceId,
+      roles,
     )
-
-    if (userId && deviceId) {
-      await linkSubscriptionToUser(endpoint, userId, userRole || '')
-    }
 
     return NextResponse.json({ success: true, id })
   } catch (err) {
