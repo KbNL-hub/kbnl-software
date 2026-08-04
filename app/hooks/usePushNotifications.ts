@@ -26,25 +26,13 @@ function getDeviceId(): string {
   return deviceId
 }
 
-function waitForServiceWorker(timeout = 3000): Promise<ServiceWorkerRegistration | null> {
-  return new Promise((resolve) => {
-    if (!('serviceWorker' in navigator)) {
-      resolve(null)
-      return
-    }
-
-    const timer = setTimeout(() => {
-      resolve(null)
-    }, timeout)
-
-    navigator.serviceWorker.ready.then((reg) => {
-      clearTimeout(timer)
-      resolve(reg)
-    }).catch(() => {
-      clearTimeout(timer)
-      resolve(null)
-    })
-  })
+async function getSWRegistration(): Promise<ServiceWorkerRegistration | null> {
+  if (!('serviceWorker' in navigator)) return null
+  try {
+    return await navigator.serviceWorker.ready
+  } catch {
+    return null
+  }
 }
 
 export function usePushNotifications() {
@@ -64,17 +52,15 @@ export function usePushNotifications() {
 
     if (hasNotification) setPermission(Notification.permission)
 
-    waitForServiceWorker(3000).then((reg) => {
-      if (!reg) {
-        setLoading(false)
-        return
-      }
+    navigator.serviceWorker.ready.then((reg) => {
       reg.pushManager.getSubscription().then((subscription) => {
         setIsSubscribed(!!subscription)
         setLoading(false)
       }).catch(() => {
         setLoading(false)
       })
+    }).catch(() => {
+      setLoading(false)
     })
   }, [])
 
@@ -88,7 +74,7 @@ export function usePushNotifications() {
 
       if (result !== 'granted') return false
 
-      const reg = await waitForServiceWorker(5000)
+      const reg = await getSWRegistration()
       if (!reg) return false
 
       const subscription = await reg.pushManager.subscribe({
@@ -135,7 +121,7 @@ export function usePushNotifications() {
     if (!('serviceWorker' in navigator)) return false
 
     try {
-      const reg = await waitForServiceWorker(3000)
+      const reg = await getSWRegistration()
       if (!reg) return false
 
       const subscription = await reg.pushManager.getSubscription()
@@ -170,7 +156,7 @@ export function usePushNotifications() {
     if (!('serviceWorker' in navigator) || !('PushManager' in window)) return
 
     try {
-      const reg = await waitForServiceWorker(3000)
+      const reg = await getSWRegistration()
       if (!reg) return
 
       const subscription = await reg.pushManager.getSubscription()
