@@ -1,6 +1,6 @@
 "use client"
 
-import { FONT_SIZE } from "@/lib/constants"
+import { FONT_SIZE, BANKS } from "@/lib/constants"
 import { toISOString } from "@/lib/date-utils"
 import { useState, useEffect } from "react"
 import { supabase } from "@/lib/supabase"
@@ -56,6 +56,7 @@ export default function CustomerPaymentsAdmin() {
   const [viewMode, setViewMode] = useState<ViewMode>(isMobile ? "card" : "table")
   const [filter, setFilter] = useState<"Pending" | "Posted">("Pending")
   const [filterBank, setFilterBank] = useState("")
+  const [bankDropOpen, setBankDropOpen] = useState(false)
   const [brokersList, setBrokersList] = useState<{ broker_id: string; broker_name: string }[]>([])
   const [filterBroker, setFilterBroker] = useState("")
   const [brokerSearch, setBrokerSearch] = useState("")
@@ -239,10 +240,30 @@ export default function CustomerPaymentsAdmin() {
 
       {/* Secondary Filters */}
       <div style={{ display: "flex", gap: 12, marginBottom: 24, flexWrap: "wrap" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 8, background: "white", border: "1px solid #e2e8f0", borderRadius: 8, padding: "8px 12px", flex: "1 1 180px" }}>
-          <Icon icon="mdi:bank-outline" style={{ color: "#88", flexShrink: 0 }} />
-          <input type="text" placeholder="Filter by bank…" value={filterBank} onChange={e => setFilterBank(e.target.value)} style={{ border: "none", outline: "none", fontSize: FONT_SIZE.sm, width: "100%", color: "#333", background: "transparent" }} />
-          {filterBank && <button onClick={() => setFilterBank("")} style={{ border: "none", background: "none", cursor: "pointer", color: "#aaa", padding: 0, lineHeight: 1 }}>✕</button>}
+        <div style={{ position: "relative", flex: "1 1 180px" }}>
+          <div onClick={() => setBankDropOpen(o => !o)} style={{ display: "flex", alignItems: "center", gap: 8, background: "white", border: `1px solid ${filterBank ? "#0070f3" : "#e2e8f0"}`, borderRadius: 8, padding: "8px 12px", cursor: "pointer", userSelect: "none" }}>
+            <Icon icon="mdi:bank-outline" style={{ color: filterBank ? "#0070f3" : "#888", flexShrink: 0 }} />
+            <span style={{ fontSize: FONT_SIZE.sm, color: filterBank ? "#333" : "#aaa", flex: 1 }}>
+              {filterBank || "Filter by bank…"}
+            </span>
+            {filterBank ? (
+              <button onClick={e => { e.stopPropagation(); setFilterBank(""); setBankDropOpen(false) }} style={{ border: "none", background: "none", cursor: "pointer", color: "#aaa", padding: 0, lineHeight: 1 }}>✕</button>
+            ) : (
+              <Icon icon="mdi:chevron-down" style={{ color: "#aaa", fontSize: 16, transition: "transform 0.15s", transform: bankDropOpen ? "rotate(180deg)" : "rotate(0deg)" }} />
+            )}
+          </div>
+          {bankDropOpen && (
+            <ul style={{ position: "absolute", top: "calc(100% + 4px)", left: 0, right: 0, background: "white", border: "1px solid #e2e8f0", borderRadius: 8, listStyle: "none", margin: 0, padding: 4, maxHeight: 200, overflowY: "auto", zIndex: 50, boxShadow: "0 4px 16px rgba(0,0,0,0.1)" }}>
+              <li onMouseDown={() => { setFilterBank(""); setBankDropOpen(false) }} style={{ padding: "8px 12px", cursor: "pointer", fontSize: FONT_SIZE.sm, color: "#888", borderRadius: 6 }} onMouseEnter={e => (e.currentTarget.style.background = "#f5f5f5")} onMouseLeave={e => (e.currentTarget.style.background = "transparent")}>
+                All banks
+              </li>
+              {BANKS.map(b => (
+                <li key={b} onMouseDown={() => { setFilterBank(b); setBankDropOpen(false) }} style={{ padding: "8px 12px", cursor: "pointer", fontSize: FONT_SIZE.sm, color: "#333", borderRadius: 6, background: filterBank === b ? "#eff6ff" : "transparent", fontWeight: filterBank === b ? "bold" : "normal" }} onMouseEnter={e => { if (filterBank !== b) e.currentTarget.style.background = "#f5f5f5" }} onMouseLeave={e => { e.currentTarget.style.background = filterBank === b ? "#eff6ff" : "transparent" }}>
+                  {b}
+                </li>
+              ))}
+            </ul>
+          )}
         </div>
 
         <div style={{ position: "relative", flex: "1 1 200px" }}>

@@ -172,4 +172,74 @@ self.addEventListener('message', (event) => {
   }
 });
 
+// === Push Notification Handler ===
+self.addEventListener('push', (event) => {
+  if (!event.data) return
+
+  let payload
+  try {
+    payload = event.data.json()
+  } catch {
+    payload = {
+      title: 'KbNL',
+      body: event.data.text(),
+      icon: '/logo-192.png',
+      url: '/',
+      tag: 'kbnl-notification',
+    }
+  }
+
+  const options = {
+    body: payload.body,
+    icon: payload.icon || '/logo-192.png',
+    badge: '/logo-192.png',
+    tag: payload.tag || 'kbnl-notification',
+    data: { url: payload.url || '/' },
+    vibrate: [100, 50, 100],
+    requireInteraction: false,
+  }
+
+  event.waitUntil(
+    self.registration.showNotification(payload.title || 'KbNL', options)
+  )
+})
+
+// === Notification Click Handler ===
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close()
+
+  const url = event.notification.data?.url || '/'
+
+  event.waitUntil(
+    clients.matchAll({ type: 'window', includeUncontrolled: true }).then((windowClients) => {
+      for (const client of windowClients) {
+        if (client.url.includes(self.location.origin) && 'focus' in client) {
+          client.navigate(url)
+          return client.focus()
+        }
+      }
+      return clients.openWindow(url)
+    })
+  )
+})
+
+// === Push Subscription Change Handler ===
+self.addEventListener('pushsubscriptionchange', (event) => {
+  event.waitUntil(
+    self.registration.pushManager.subscribe(event.oldSubscription.options).then((subscription) => {
+      return fetch('/api/push/subscribe', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          endpoint: subscription.endpoint,
+          keys: {
+            p256dh: JSON.parse(JSON.stringify(subscription)).keys.p256dh,
+            auth: JSON.parse(JSON.stringify(subscription)).keys.auth,
+          },
+        }),
+      })
+    })
+  )
+})
+
 console.log('[SW] Service Worker loaded');

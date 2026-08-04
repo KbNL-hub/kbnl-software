@@ -6,6 +6,7 @@ import type { Session } from '@supabase/supabase-js'
 import PWAInstallPrompt from '@/components/PWAInstallPrompt';
 import ErrorBoundary from '@/components/ErrorBoundary';
 import { supabase } from '@/lib/supabase';
+import { usePushNotifications } from '@/app/hooks/usePushNotifications';
 
 export default function AuthenticatedLayout({
   children,
@@ -15,6 +16,7 @@ export default function AuthenticatedLayout({
   const router = useRouter();
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
+  const { reSubscribe, isSubscribed } = usePushNotifications();
 
   useEffect(() => {
     let cancelled = false
@@ -41,6 +43,12 @@ export default function AuthenticatedLayout({
       subscription?.unsubscribe()
     }
   }, [router]);
+
+  useEffect(() => {
+    if (session && isSubscribed) {
+      reSubscribe()
+    }
+  }, [session, isSubscribed, reSubscribe]);
 
   useEffect(() => {
     if (!loading && !session) {

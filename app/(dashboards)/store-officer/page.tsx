@@ -11,7 +11,7 @@ import CustomerSelector from "@/components/CustomerSelector"
 import ReportModal from "@/components/ReportModal"
 import ModernInput from "@/components/ModernInput"
 import ProfilePictureUpload from "@/components/ProfilePictureUpload"
-import { FONT_SIZE } from "@/lib/constants"
+import { FONT_SIZE, BANKS } from "@/lib/constants"
 import { usePolling } from "@/lib/hooks/usePolling"
   import { saleDateWithTime } from "@/lib/date-utils"
   import dayjs from "dayjs"
@@ -79,7 +79,6 @@ type SupplyLine = { product: string; quantity: string }
 type SaleLine = { product: string; quantity: string; price_per_bag: string }
 
 const PAYMENT_MODES = ["Cash", "Transfer", "POS", "Broker"]
-const BANKS = ["First Bank", "Access Bank", "Stanbic IBTC", "Sterling Bank", "GTB"]
 
 export default function StoreOfficerDashboard() {
   const bp = useBreakpoint()

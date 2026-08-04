@@ -4,6 +4,7 @@ import { useEffect, useState } from "react"
 import { Icon } from "@iconify/react"
 import ModernInput from "@/components/ModernInput"
 import { supabase } from "@/lib/supabase"
+import { apiMutate } from "@/lib/api-mutation"
 import { getCachedCustomers, cacheCustomers } from '@/lib/offline/tripsDb'
 import { generateCustomerId } from '@/lib/customerUtils'
 
@@ -75,7 +76,7 @@ export default function CustomerSelector({ onSelect, allowUnsavedNew, initialVal
     loadCustomers()
   }, [isOnline])
 
-  const filtered = customers.filter(c => c.full_name.toLowerCase().includes(search.toLowerCase()))
+  const filtered = customers.filter(c => (c.full_name || "").toLowerCase().includes((search || "").toLowerCase()))
 
   function handleSelect(customer: Customer) {
     setSelected(customer)
@@ -105,11 +106,14 @@ export default function CustomerSelector({ onSelect, allowUnsavedNew, initialVal
 
     try {
       const customerId = await generateCustomerId()
-      const { data, error } = await supabase
-        .from("Customers")
-        .insert([{ customer_id: customerId, full_name: newName, phone_number: newPhone || null, is_new: true }])
-        .select()
-        .single()
+      const { data, error } = await apiMutate<Customer>(
+        "finance",
+        {
+          action: "insert",
+          table: "Customers",
+          data: { customer_id: customerId, full_name: newName, phone_number: newPhone || null, is_new: true }
+        }
+      )
 
       if (error) {
         setMessage("Failed to create customer")
@@ -127,7 +131,7 @@ export default function CustomerSelector({ onSelect, allowUnsavedNew, initialVal
         await cacheCustomers(allCustomers)
       }
 
-      handleSelect(data)
+      handleSelect((data as unknown as Customer[])[0])
       setNewName("")
       setNewPhone("")
       setCreating(false)

@@ -7,6 +7,7 @@ import { apiMutate } from "@/lib/api-mutation"
 import { formatAmount, parseAmount } from "@/lib/formatAmount"
 import { useBreakpoint } from "@/app/hooks/useBreakpoint"
 import CustomerSelector from "./CustomerSelector"
+import { BANKS } from "@/lib/constants"
 
 type Customer = { customer_id: string; full_name: string; isNew?: boolean }
 
@@ -25,8 +26,6 @@ type Payment = {
 }
 
 type ViewMode = "card" | "table"
-
-const BANKS = ["First Bank", "Access Bank", "Stanbic IBTC", "Sterling Bank", "GTB"]
 
 const fontSize = {
   xs: 12, sm: 13, base: 14, md: 15, lg: 16, xl: 20, "2xl": 24, "3xl": 28

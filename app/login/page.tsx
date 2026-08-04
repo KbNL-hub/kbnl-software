@@ -2,6 +2,7 @@
 
 import ModernInput from "@/components/ModernInput";
 import SplashScreen from "@/components/SplashScreen";
+import NotificationPermissionPrompt from "@/components/NotificationPermissionPrompt";
 import { useState, useRef, useEffect } from "react"
 import { supabase } from "@/lib/supabase"
 import { Icon } from "@iconify/react"
@@ -582,6 +583,7 @@ export default function LoginPage() {
           <p style={{ margin: "4px 0 0 0", fontSize: 12, color: "#0070f3" }}>Developed by: Alderton Burke & Partners</p>
         </div>
       </div>
+      <NotificationPermissionPrompt />
     </div>
   );
 }
