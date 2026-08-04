@@ -16,7 +16,7 @@ export default function AuthenticatedLayout({
   const router = useRouter();
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
-  const { reSubscribe, isSubscribed } = usePushNotifications();
+  const { reSubscribe } = usePushNotifications();
 
   useEffect(() => {
     let cancelled = false
@@ -47,10 +47,10 @@ export default function AuthenticatedLayout({
   const userId = session?.user?.id
 
   useEffect(() => {
-    if (userId && isSubscribed) {
+    if (userId) {
       reSubscribe()
     }
-  }, [userId, isSubscribed, reSubscribe]);
+  }, [userId, reSubscribe]);
 
   useEffect(() => {
     if (!loading && !session) {
