@@ -85,6 +85,48 @@ type BrokerStop = {
   stop_time: string
 }
 
+type TruckTripSummary = {
+  plate_number: string
+  kbnl_truck_no: string | null
+  truck_model: string
+  trips_count: number
+  stops_count: number
+  total_bags: number
+  avg_bags_per_trip: number
+}
+
+type DepotSalesSummary = {
+  store_name: string
+  sales_count: number
+  total_quantity: number
+  total_revenue: number
+}
+
+type ProductVolumeSummary = {
+  manufacturer: string
+  products: { product: string; total_volume: number }[]
+  total_volume: number
+}
+
+type FactoryLoadingSummary = {
+  material_centre: string
+  trips_count: number
+  total_loaded: number
+}
+
+type CashOfficeExpenseSummary = {
+  office_name: string
+  expenses_count: number
+  total_amount: number
+}
+
+type SideTripSummary = {
+  driver_id: string
+  driver_name: string
+  side_trips_count: number
+  items: string[]
+}
+
 type DrillDown =
   | { kind: "driver"; driver: DriverSummary; trips: DriverTrip[] }
   | { kind: "truck"; truck: TruckSummary; maintenance: TruckMaintenance[]; fuel: TruckFuel[] }
@@ -92,7 +134,35 @@ type DrillDown =
 
 type ViewMode = "card" | "table"
 
+type ReportType =
+  | "driver-performance"
+  | "truck-trips"
+  | "broker-sales"
+  | "depot-sales"
+  | "product-volume"
+  | "factory-loading"
+  | "cash-expenses"
+  | "truck-health"
+  | "side-trips"
+
 // ── Constants ──────────────────────────────────────────────────────────────
+const PRODUCT_MANUFACTURER: Record<string, string> = {
+  "Supaset": "HBM", "Supafix": "HBM", "Classic": "HBM",
+  "BUA cement": "BUA",
+  "3X": "Dangote", "Falcon": "Dangote",
+}
+
+const REPORT_OPTIONS: { group: string; value: ReportType; label: string }[] = [
+  { group: "Performance", value: "driver-performance", label: "Driver Performance" },
+  { group: "Performance", value: "truck-trips", label: "Truck Trip Summary" },
+  { group: "Sales", value: "broker-sales", label: "Broker Sales Summary" },
+  { group: "Sales", value: "depot-sales", label: "Depot / Outlet Sales" },
+  { group: "Operations", value: "product-volume", label: "Product Volume by Manufacturer" },
+  { group: "Operations", value: "factory-loading", label: "Factory Loading Summary" },
+  { group: "Operations", value: "side-trips", label: "Side Trips by Driver" },
+  { group: "Finance", value: "cash-expenses", label: "Cash Office Expenses" },
+  { group: "Finance", value: "truck-health", label: "Truck Health / Expenses" },
+]
 
 
 // ── Date helpers ───────────────────────────────────────────────────────────
@@ -147,7 +217,7 @@ function downloadXLSX(filename: string, rows: Record<string, unknown>[], sheetNa
 export default function Reports() {
   const [isMobile, setIsMobile] = useState(false)
   const [, setIsDesktop] = useState(true)
-  const [section, setSection] = useState<"drivers" | "trucks" | "brokers">("drivers")
+  const [reportType, setReportType] = useState<ReportType>("driver-performance")
   const [fromDate, setFromDate] = useState("")
   const [toDate, setToDate] = useState("")
   const [dateError, setDateError] = useState("")
@@ -159,6 +229,12 @@ export default function Reports() {
   const [driverSummaries, setDriverSummaries] = useState<DriverSummary[]>([])
   const [truckSummaries, setTruckSummaries] = useState<TruckSummary[]>([])
   const [brokerSummaries, setBrokerSummaries] = useState<BrokerSummary[]>([])
+  const [truckTripSummaries, setTruckTripSummaries] = useState<TruckTripSummary[]>([])
+  const [depotSalesSummaries, setDepotSalesSummaries] = useState<DepotSalesSummary[]>([])
+  const [productVolumeSummaries, setProductVolumeSummaries] = useState<ProductVolumeSummary[]>([])
+  const [factoryLoadingSummaries, setFactoryLoadingSummaries] = useState<FactoryLoadingSummary[]>([])
+  const [cashOfficeExpenseSummaries, setCashOfficeExpenseSummaries] = useState<CashOfficeExpenseSummary[]>([])
+  const [sideTripSummaries, setSideTripSummaries] = useState<SideTripSummary[]>([])
   const [drillDown, setDrillDown] = useState<DrillDown | null>(null)
   const [drillLoading, setDrillLoading] = useState(false)
 
@@ -208,9 +284,17 @@ export default function Reports() {
     setLoading(true)
     setDrillDown(null)
 
-    if (section === "drivers") await fetchDriverReports()
-    else if (section === "trucks") await fetchTruckReports()
-    else await fetchBrokerReports()
+    switch (reportType) {
+      case "driver-performance": await fetchDriverReports(); break
+      case "truck-trips": await fetchTruckTripReports(); break
+      case "broker-sales": await fetchBrokerReports(); break
+      case "depot-sales": await fetchDepotSalesReports(); break
+      case "product-volume": await fetchProductVolumeReports(); break
+      case "factory-loading": await fetchFactoryLoadingReports(); break
+      case "cash-expenses": await fetchCashExpenseReports(); break
+      case "truck-health": await fetchTruckReports(); break
+      case "side-trips": await fetchSideTripReports(); break
+    }
 
     setLoading(false)
     setHasLoaded(true)
@@ -475,12 +559,24 @@ export default function Reports() {
       const stops_count = (stops || []).length
       const total_bags = (stops || []).reduce((sum, s) => sum + s.quantity_offloaded, 0)
 
+      const { data: storeSales } = await supabase
+        .from("store_sales")
+        .select("quantity, total_amount")
+        .eq("broker_id", b.broker_id)
+        .eq("status", "Confirmed")
+        .gte("sold_at", from)
+        .lte("sold_at", to)
+
+      const store_sales_count = (storeSales || []).length
+      const store_bags = (storeSales || []).reduce((sum, s) => sum + (s.quantity || 0), 0)
+      const store_revenue = (storeSales || []).reduce((sum, s) => sum + (s.total_amount || 0), 0)
+
       return {
         broker_id: b.broker_id,
         broker_name: b.broker_name,
-        stops_count,
-        total_bags,
-        total_revenue,
+        stops_count: stops_count + store_sales_count,
+        total_bags: total_bags + store_bags,
+        total_revenue: total_revenue + store_revenue,
       }
     }))
 
@@ -529,6 +625,209 @@ export default function Reports() {
 
     setDrillDown({ kind: "broker", broker, stops })
     setDrillLoading(false)
+  }
+
+  // ── Truck trip summary (#2) ──────────────────────────────────────────────
+  async function fetchTruckTripReports() {
+    const { from, to } = getRange()
+
+    const { data: trucks } = await supabase
+      .from("Trucks")
+      .select("plate_number, kbnl_truck_no, truck_model")
+      .order("plate_number", { ascending: true })
+
+    if (!trucks) return
+
+    const summaries: TruckTripSummary[] = await Promise.all(trucks.map(async (t) => {
+      const { data: trips } = await supabase
+        .from("Trips")
+        .select("trip_id")
+        .eq("plate_number", t.plate_number)
+        .gte("created_at", from)
+        .lte("created_at", to)
+
+      const tripIds = (trips || []).map(tp => tp.trip_id)
+      let stops_count = 0
+      let total_bags = 0
+
+      if (tripIds.length > 0) {
+        const { data: stops } = await supabase
+          .from("Stops")
+          .select("quantity_offloaded")
+          .in("trip_id", tripIds)
+
+        stops_count = (stops || []).length
+        total_bags = (stops || []).reduce((sum, s) => sum + (s.quantity_offloaded || 0), 0)
+      }
+
+      const trips_count = trips?.length ?? 0
+
+      return {
+        plate_number: t.plate_number,
+        kbnl_truck_no: t.kbnl_truck_no,
+        truck_model: t.truck_model,
+        trips_count,
+        stops_count,
+        total_bags,
+        avg_bags_per_trip: trips_count > 0 ? Math.round(total_bags / trips_count) : 0,
+      }
+    }))
+
+    setTruckTripSummaries(summaries.filter(t => t.trips_count > 0))
+  }
+
+  // ── Depot/outlet sales (#4) ──────────────────────────────────────────────
+  async function fetchDepotSalesReports() {
+    const { from, to } = getRange()
+
+    const { data: sales } = await supabase
+      .from("store_sales")
+      .select("store_name, quantity, total_amount")
+      .eq("status", "Confirmed")
+      .gte("sold_at", from)
+      .lte("sold_at", to)
+
+    const storeMap: Record<string, { sales_count: number; total_quantity: number; total_revenue: number }> = {}
+    for (const s of sales || []) {
+      if (!storeMap[s.store_name]) storeMap[s.store_name] = { sales_count: 0, total_quantity: 0, total_revenue: 0 }
+      storeMap[s.store_name].sales_count++
+      storeMap[s.store_name].total_quantity += s.quantity || 0
+      storeMap[s.store_name].total_revenue += s.total_amount || 0
+    }
+
+    const summaries: DepotSalesSummary[] = Object.entries(storeMap)
+      .map(([store_name, v]) => ({ store_name, ...v }))
+      .sort((a, b) => b.total_revenue - a.total_revenue)
+
+    setDepotSalesSummaries(summaries)
+  }
+
+  // ── Product volume by manufacturer (#5) ──────────────────────────────────
+  async function fetchProductVolumeReports() {
+    const { from, to } = getRange()
+
+    const { data: trips } = await supabase
+      .from("Trips")
+      .select("product, loaded_quantity")
+      .gte("created_at", from)
+      .lte("created_at", to)
+
+    const productMap: Record<string, number> = {}
+    for (const t of trips || []) {
+      if (!t.product) continue
+      productMap[t.product] = (productMap[t.product] || 0) + (t.loaded_quantity || 0)
+    }
+
+    const manufacturerGroups: Record<string, { product: string; total_volume: number }[]> = {}
+    for (const [product, total_volume] of Object.entries(productMap)) {
+      const manufacturer = PRODUCT_MANUFACTURER[product] || "Other"
+      if (!manufacturerGroups[manufacturer]) manufacturerGroups[manufacturer] = []
+      manufacturerGroups[manufacturer].push({ product, total_volume })
+    }
+
+    const summaries: ProductVolumeSummary[] = Object.entries(manufacturerGroups)
+      .map(([manufacturer, products]) => ({
+        manufacturer,
+        products,
+        total_volume: products.reduce((sum, p) => sum + p.total_volume, 0),
+      }))
+      .sort((a, b) => b.total_volume - a.total_volume)
+
+    setProductVolumeSummaries(summaries)
+  }
+
+  // ── Factory of loading summary (#6) ──────────────────────────────────────
+  async function fetchFactoryLoadingReports() {
+    const { from, to } = getRange()
+
+    const { data: trips } = await supabase
+      .from("Trips")
+      .select("material_centre, loaded_quantity")
+      .gte("created_at", from)
+      .lte("created_at", to)
+
+    const centreMap: Record<string, { trips_count: number; total_loaded: number }> = {}
+    for (const t of trips || []) {
+      const centre = t.material_centre || "Unknown"
+      if (!centreMap[centre]) centreMap[centre] = { trips_count: 0, total_loaded: 0 }
+      centreMap[centre].trips_count++
+      centreMap[centre].total_loaded += t.loaded_quantity || 0
+    }
+
+    const summaries: FactoryLoadingSummary[] = Object.entries(centreMap)
+      .map(([material_centre, v]) => ({ material_centre, ...v }))
+      .sort((a, b) => b.total_loaded - a.total_loaded)
+
+    setFactoryLoadingSummaries(summaries)
+  }
+
+  // ── Cash office expenses (#7) ────────────────────────────────────────────
+  async function fetchCashExpenseReports() {
+    const { from, to } = getRange()
+
+    const { data: expenses } = await supabase
+      .from("cash_expenses")
+      .select("office_name, total_amount")
+      .eq("status", "Authorised")
+      .gte("created_at", from)
+      .lte("created_at", to)
+
+    const officeMap: Record<string, { expenses_count: number; total_amount: number }> = {}
+    for (const e of expenses || []) {
+      const office = e.office_name || "Unknown"
+      if (!officeMap[office]) officeMap[office] = { expenses_count: 0, total_amount: 0 }
+      officeMap[office].expenses_count++
+      officeMap[office].total_amount += e.total_amount || 0
+    }
+
+    const summaries: CashOfficeExpenseSummary[] = Object.entries(officeMap)
+      .map(([office_name, v]) => ({ office_name, ...v }))
+      .sort((a, b) => b.total_amount - a.total_amount)
+
+    setCashOfficeExpenseSummaries(summaries)
+  }
+
+  // ── Side trips by driver (#9) ────────────────────────────────────────────
+  async function fetchSideTripReports() {
+    const { from, to } = getRange()
+
+    const { data: sideTrips } = await supabase
+      .from("side_trips")
+      .select("driver_id, item_description")
+      .gte("created_at", from)
+      .lte("created_at", to)
+
+    const driverMap: Record<string, { side_trips_count: number; items: Set<string> }> = {}
+    for (const st of sideTrips || []) {
+      if (!driverMap[st.driver_id]) driverMap[st.driver_id] = { side_trips_count: 0, items: new Set() }
+      driverMap[st.driver_id].side_trips_count++
+      if (st.item_description) driverMap[st.driver_id].items.add(st.item_description)
+    }
+
+    const driverIds = Object.keys(driverMap)
+    const nameMap: Record<string, string> = {}
+
+    if (driverIds.length > 0) {
+      const { data: drivers } = await supabase
+        .from("Drivers")
+        .select("driver_id, full_name")
+        .in("driver_id", driverIds)
+
+      for (const d of drivers || []) {
+        nameMap[d.driver_id] = d.full_name
+      }
+    }
+
+    const summaries: SideTripSummary[] = Object.entries(driverMap)
+      .map(([driver_id, v]) => ({
+        driver_id,
+        driver_name: nameMap[driver_id] || "Unknown",
+        side_trips_count: v.side_trips_count,
+        items: Array.from(v.items),
+      }))
+      .sort((a, b) => b.side_trips_count - a.side_trips_count)
+
+    setSideTripSummaries(summaries)
   }
 
   // ── Export helpers ────────────────────────────────────────────────────────
@@ -637,6 +936,73 @@ export default function Reports() {
     }
   }
 
+  function exportTruckTripSummary(format: "csv" | "xlsx") {
+    const rows = truckTripSummaries.map((t) => ({
+      Plate: t.plate_number,
+      "KbNL No.": t.kbnl_truck_no ?? "—",
+      Model: t.truck_model,
+      Trips: t.trips_count,
+      Stops: t.stops_count,
+      "Total Bags": t.total_bags,
+      "Avg Bags/Trip": t.avg_bags_per_trip,
+    }))
+    if (format === "csv") downloadCSV("truck_trip_summary.csv", rows)
+    else downloadXLSX("truck_trip_summary.xlsx", rows, "Truck Trip Summary")
+  }
+
+  function exportDepotSales(format: "csv" | "xlsx") {
+    const rows = depotSalesSummaries.map((s) => ({
+      Store: s.store_name,
+      "Sales Count": s.sales_count,
+      "Total Quantity": s.total_quantity,
+      "Total Revenue (₦)": s.total_revenue,
+    }))
+    if (format === "csv") downloadCSV("depot_sales_summary.csv", rows)
+    else downloadXLSX("depot_sales_summary.xlsx", rows, "Depot Sales")
+  }
+
+  function exportProductVolume(format: "csv" | "xlsx") {
+    const rows = productVolumeSummaries.flatMap((m) =>
+      m.products.map((p) => ({
+        Manufacturer: m.manufacturer,
+        Product: p.product,
+        "Total Volume (bags)": p.total_volume,
+      }))
+    )
+    if (format === "csv") downloadCSV("product_volume_by_manufacturer.csv", rows)
+    else downloadXLSX("product_volume_by_manufacturer.xlsx", rows, "Product Volume")
+  }
+
+  function exportFactoryLoading(format: "csv" | "xlsx") {
+    const rows = factoryLoadingSummaries.map((f) => ({
+      "Loading Point": f.material_centre,
+      Trips: f.trips_count,
+      "Total Loaded (bags)": f.total_loaded,
+    }))
+    if (format === "csv") downloadCSV("factory_loading_summary.csv", rows)
+    else downloadXLSX("factory_loading_summary.xlsx", rows, "Factory Loading")
+  }
+
+  function exportCashExpenses(format: "csv" | "xlsx") {
+    const rows = cashOfficeExpenseSummaries.map((c) => ({
+      Office: c.office_name,
+      "Expenses Count": c.expenses_count,
+      "Total Amount (₦)": c.total_amount,
+    }))
+    if (format === "csv") downloadCSV("cash_office_expenses.csv", rows)
+    else downloadXLSX("cash_office_expenses.xlsx", rows, "Cash Office Expenses")
+  }
+
+  function exportSideTrips(format: "csv" | "xlsx") {
+    const rows = sideTripSummaries.map((s) => ({
+      Driver: s.driver_name,
+      "Side Trips": s.side_trips_count,
+      "Items Carried": s.items.join(", "),
+    }))
+    if (format === "csv") downloadCSV("side_trips_by_driver.csv", rows)
+    else downloadXLSX("side_trips_by_driver.xlsx", rows, "Side Trips")
+  }
+
   // ── Render ────────────────────────────────────────────────────────────────
   return (
     <div style={{ minHeight: "100vh", background: "#f8fafc", padding: isMobile ? "16px" : "32px", fontFamily: "'Inter', sans-serif" }}>
@@ -646,51 +1012,51 @@ export default function Reports() {
           Reports
         </h1>
         <p style={{ margin: "8px 0 0", color: "#64748b", fontSize: FONT_SIZE.base }}>
-           {section === "drivers" ? "Driver performance metrics and trip summaries" : section === "trucks" ? "Truck health, maintenance, and fuel analytics" : "Broker sales and revenue summaries"}
+          {REPORT_OPTIONS.find(r => r.value === reportType)?.label ?? "Select a report"}
         </p>
-      </div>
-
-      {/* Section Tabs */}
-      <div style={{ display: "flex", gap: 8, marginBottom: 24 }}>
-        {(["drivers", "trucks", "brokers"] as const).map((s) => (
-          <button
-            key={s}
-            onClick={() => {
-setSection(s)
-setHasLoaded(false)
-setDrillDown(null)
-}}
-            style={{
-              padding: "8px 16px",
-borderRadius: 20,
-fontSize: FONT_SIZE.sm,
-cursor: "pointer",
-              border: section === s ? "" : "1.5px solid #e2e8f0",
-              background: section === s ? "#171717" : "white",
-              color: section === s ? "#f8fafc" : "#64748b",
-              fontWeight: section === s ? 600 : 500,
-              transition: "all 0.2s ease",
-            }}
-            onMouseEnter={(e) => {
-              if (section !== s) {
-                e.currentTarget.style.background = "#f8fafc"
-                e.currentTarget.style.borderColor = "#cbd5e1"
-              }
-            }}
-            onMouseLeave={(e) => {
-              if (section !== s) {
-                e.currentTarget.style.background = "white"
-                e.currentTarget.style.borderColor = "#e2e8f0"
-              }
-            }}
-          >
-            {s === "drivers" ? "Driver Performance" : s === "trucks" ? "Truck Health" : "Broker Sales"}
-          </button>
-        ))}
       </div>
 
       {/* Filters Card */}
       <div style={{ background: "white", border: "1px solid #e2e8f0", borderRadius: 12, padding: isMobile ? 16 : 20, marginBottom: 24, boxShadow: "0 1px 3px rgba(0, 0, 0, 0.05)" }}>
+        {/* Report Type Dropdown */}
+        <div style={{ marginBottom: 16 }}>
+          <label style={{ display: "block", fontSize: FONT_SIZE.xs, color: "#475569", fontWeight: 500, marginBottom: 8, textTransform: "uppercase", letterSpacing: "0.5px" }}>
+            Report Type
+          </label>
+          <select
+            value={reportType}
+            onChange={(e) => {
+              setReportType(e.target.value as ReportType)
+              setHasLoaded(false)
+              setDrillDown(null)
+            }}
+            style={{
+              width: "100%",
+              padding: "10px 14px",
+              borderRadius: 8,
+              border: "1.5px solid #e2e8f0",
+              background: "white",
+              fontSize: FONT_SIZE.md,
+              color: "#0f172a",
+              fontWeight: 500,
+              cursor: "pointer",
+              outline: "none",
+              appearance: "none" as const,
+              backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%2364748b' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E")`,
+              backgroundRepeat: "no-repeat",
+              backgroundPosition: "right 12px center",
+              paddingRight: 36,
+            }}
+          >
+            {["Performance", "Sales", "Operations", "Finance"].map((group) => (
+              <optgroup key={group} label={group}>
+                {REPORT_OPTIONS.filter(r => r.group === group).map((opt) => (
+                  <option key={opt.value} value={opt.value}>{opt.label}</option>
+                ))}
+              </optgroup>
+            ))}
+          </select>
+        </div>
         <div style={{ marginBottom: 16 }}>
           <label style={{ display: "block", fontSize: FONT_SIZE.xs, color: "#475569", fontWeight: 500, marginBottom: 12, textTransform: "uppercase", letterSpacing: "0.5px" }}>
             Quick Filters
@@ -777,7 +1143,7 @@ cursor: loading ? "not-allowed" : "pointer",
       {!loading && !hasLoaded && <EmptyState icon="📊" title="No report generated" description="Select a date range and click 'Generate Report' to view data." />}
 
       {/* Driver Reports */}
-      {!loading && hasLoaded && section === "drivers" && (
+      {!loading && hasLoaded && reportType === "driver-performance" && (
         <div>
           {driverSummaries.length === 0 ? (
             <EmptyState icon="👥" title="No data available" description="No drivers with trips found in this period." />
@@ -989,7 +1355,7 @@ cursor: loading ? "not-allowed" : "pointer",
       )}
 
       {/* Broker Reports */}
-      {!loading && hasLoaded && section === "brokers" && (
+      {!loading && hasLoaded && reportType === "broker-sales" && (
         <div>
           {brokerSummaries.length === 0 ? (
             <EmptyState icon="🤝" title="No data available" description="No brokers with confirmed stops found in this period." />
@@ -1137,7 +1503,7 @@ cursor: loading ? "not-allowed" : "pointer",
       )}
 
       {/* Truck Reports */}
-      {!loading && hasLoaded && section === "trucks" && (
+      {!loading && hasLoaded && reportType === "truck-health" && (
         <div>
           {truckSummaries.length === 0 ? (
             <EmptyState icon="🚗" title="No data available" description="No trucks found in this period." />
@@ -1432,6 +1798,220 @@ borderRadius: 6,
         </div>
       )}
 </ReportModal>
+        </div>
+      )}
+
+      {/* Truck Trip Summary */}
+      {!loading && hasLoaded && reportType === "truck-trips" && (
+        <div>
+          {truckTripSummaries.length === 0 ? (
+            <EmptyState icon="🚛" title="No data available" description="No trucks with trips found in this period." />
+          ) : (
+            <div>
+              <div style={{ display: "flex", flexDirection: isMobile ? "column" : "row", justifyContent: "space-between", alignItems: isMobile ? "flex-start" : "center", gap: 12, marginBottom: 16 }}>
+                <div>
+                  <h2 style={{ margin: 0, color: "#0f172a", fontSize: FONT_SIZE.lg, fontWeight: 600 }}>Truck Trip Summary</h2>
+                  <p style={{ margin: "4px 0 0", color: "#64748b", fontSize: FONT_SIZE.sm }}>{truckTripSummaries.length} trucks</p>
+                </div>
+                <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+                  <div style={{ display: "flex", background: "white", border: "1px solid #e2e8f0", borderRadius: 8, padding: 4, gap: 0 }}>
+                    <button onClick={() => setViewMode("card")} style={{ padding: "8px 12px", background: viewMode === "card" ? "#0070f3" : "transparent", color: viewMode === "card" ? "white" : "#64748b", border: "none", borderRadius: 6, cursor: "pointer", fontSize: FONT_SIZE.xs, fontWeight: 600, minWidth: 44, height: 40, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M3 3h8v8H3V3zm10 0h8v8h-8V3zM3 13h8v8H3v-8zm10 0h8v8h-8v-8z" /></svg>
+                    </button>
+                    <button onClick={() => setViewMode("table")} style={{ padding: "8px 12px", background: viewMode === "table" ? "#0070f3" : "transparent", color: viewMode === "table" ? "white" : "#64748b", border: "none", borderRadius: 6, cursor: "pointer", fontSize: FONT_SIZE.xs, fontWeight: 600, minWidth: 44, height: 40, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M3 4h18v2H3V4zm0 7h18v2H3v-2zm0 7h18v2H3v-2z" /></svg>
+                    </button>
+                  </div>
+                  <ExportActions onExportCSV={() => exportTruckTripSummary("csv")} onExportXLSX={() => exportTruckTripSummary("xlsx")} />
+                </div>
+              </div>
+              {viewMode === "card" ? (
+                <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(auto-fill, minmax(320px, 1fr))", gap: 12 }}>
+                  {truckTripSummaries.map((truck) => (
+                    <ReportCard key={truck.plate_number}>
+                      <div>
+                        <div style={{ marginBottom: 12 }}>
+                          <h3 style={{ margin: 0, color: "#0f172a", fontSize: FONT_SIZE.lg, fontWeight: 600 }}>{truck.plate_number}</h3>
+                          <p style={{ margin: "4px 0 0", color: "#64748b", fontSize: FONT_SIZE.sm }}>{truck.truck_model}</p>
+                        </div>
+                        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, padding: "12px 0", borderTop: "1px solid #f1f5f9", borderBottom: "1px solid #f1f5f9" }}>
+                          <ReportCardField label="Trips" value={truck.trips_count} />
+                          <ReportCardField label="Stops" value={truck.stops_count} />
+                          <ReportCardField label="Bags" value={truck.total_bags} />
+                          <ReportCardField label="Avg/Trip" value={truck.avg_bags_per_trip} />
+                        </div>
+                      </div>
+                    </ReportCard>
+                  ))}
+                </div>
+              ) : (
+                <DataTable
+                  columns={[
+                    { key: "plate_number", label: "Truck" },
+                    { key: "truck_model", label: "Model" },
+                    { key: "trips_count", label: "Trips" },
+                    { key: "stops_count", label: "Stops" },
+                    { key: "total_bags", label: "Bags Delivered" },
+                    { key: "avg_bags_per_trip", label: "Avg Bags/Trip" },
+                  ]}
+                  rows={truckTripSummaries}
+                  rowKey={(row) => row.plate_number}
+                />
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Depot/Outlet Sales */}
+      {!loading && hasLoaded && reportType === "depot-sales" && (
+        <div>
+          {depotSalesSummaries.length === 0 ? (
+            <EmptyState icon="🏪" title="No data available" description="No confirmed store sales found in this period." />
+          ) : (
+            <div>
+              <div style={{ display: "flex", flexDirection: isMobile ? "column" : "row", justifyContent: "space-between", alignItems: isMobile ? "flex-start" : "center", gap: 12, marginBottom: 16 }}>
+                <div>
+                  <h2 style={{ margin: 0, color: "#0f172a", fontSize: FONT_SIZE.lg, fontWeight: 600 }}>Depot / Outlet Sales</h2>
+                  <p style={{ margin: "4px 0 0", color: "#64748b", fontSize: FONT_SIZE.sm }}>{depotSalesSummaries.length} outlets</p>
+                </div>
+                <ExportActions onExportCSV={() => exportDepotSales("csv")} onExportXLSX={() => exportDepotSales("xlsx")} />
+              </div>
+              <DataTable
+                columns={[
+                  { key: "store_name", label: "Store / Outlet" },
+                  { key: "sales_count", label: "Sales Count" },
+                  { key: "total_quantity", label: "Total Quantity" },
+                  { key: "total_revenue", label: "Revenue", render: (value) => `₦${(value as number).toLocaleString()}` },
+                ]}
+                rows={depotSalesSummaries}
+                rowKey={(row) => row.store_name}
+              />
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Product Volume by Manufacturer */}
+      {!loading && hasLoaded && reportType === "product-volume" && (
+        <div>
+          {productVolumeSummaries.length === 0 ? (
+            <EmptyState icon="📦" title="No data available" description="No trips with product data found in this period." />
+          ) : (
+            <div>
+              <div style={{ display: "flex", flexDirection: isMobile ? "column" : "row", justifyContent: "space-between", alignItems: isMobile ? "flex-start" : "center", gap: 12, marginBottom: 16 }}>
+                <div>
+                  <h2 style={{ margin: 0, color: "#0f172a", fontSize: FONT_SIZE.lg, fontWeight: 600 }}>Product Volume by Manufacturer</h2>
+                  <p style={{ margin: "4px 0 0", color: "#64748b", fontSize: FONT_SIZE.sm }}>{productVolumeSummaries.length} manufacturers</p>
+                </div>
+                <ExportActions onExportCSV={() => exportProductVolume("csv")} onExportXLSX={() => exportProductVolume("xlsx")} />
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+                {productVolumeSummaries.map((m) => (
+                  <div key={m.manufacturer} style={{ background: "white", border: "1px solid #e2e8f0", borderRadius: 12, padding: 20, boxShadow: "0 1px 3px rgba(0,0,0,0.05)" }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+                      <h3 style={{ margin: 0, color: "#0f172a", fontSize: FONT_SIZE.lg, fontWeight: 600 }}>{m.manufacturer}</h3>
+                      <span style={{ padding: "4px 12px", borderRadius: 12, fontSize: FONT_SIZE.sm, fontWeight: 600, background: "#eff6ff", color: "#0070f3" }}>
+                        {m.total_volume.toLocaleString()} bags
+                      </span>
+                    </div>
+                    <DataTable
+                      columns={[
+                        { key: "product", label: "Product" },
+                        { key: "total_volume", label: "Volume (bags)", render: (value) => (value as number).toLocaleString() },
+                      ]}
+                      rows={m.products}
+                      rowKey={(row) => row.product}
+                    />
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Factory Loading Summary */}
+      {!loading && hasLoaded && reportType === "factory-loading" && (
+        <div>
+          {factoryLoadingSummaries.length === 0 ? (
+            <EmptyState icon="🏭" title="No data available" description="No trips with loading point data found in this period." />
+          ) : (
+            <div>
+              <div style={{ display: "flex", flexDirection: isMobile ? "column" : "row", justifyContent: "space-between", alignItems: isMobile ? "flex-start" : "center", gap: 12, marginBottom: 16 }}>
+                <div>
+                  <h2 style={{ margin: 0, color: "#0f172a", fontSize: FONT_SIZE.lg, fontWeight: 600 }}>Factory Loading Summary</h2>
+                  <p style={{ margin: "4px 0 0", color: "#64748b", fontSize: FONT_SIZE.sm }}>{factoryLoadingSummaries.length} loading points</p>
+                </div>
+                <ExportActions onExportCSV={() => exportFactoryLoading("csv")} onExportXLSX={() => exportFactoryLoading("xlsx")} />
+              </div>
+              <DataTable
+                columns={[
+                  { key: "material_centre", label: "Loading Point" },
+                  { key: "trips_count", label: "Trips" },
+                  { key: "total_loaded", label: "Total Loaded (bags)", render: (value) => (value as number).toLocaleString() },
+                ]}
+                rows={factoryLoadingSummaries}
+                rowKey={(row) => row.material_centre}
+              />
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Cash Office Expenses */}
+      {!loading && hasLoaded && reportType === "cash-expenses" && (
+        <div>
+          {cashOfficeExpenseSummaries.length === 0 ? (
+            <EmptyState icon="💰" title="No data available" description="No authorised cash expenses found in this period." />
+          ) : (
+            <div>
+              <div style={{ display: "flex", flexDirection: isMobile ? "column" : "row", justifyContent: "space-between", alignItems: isMobile ? "flex-start" : "center", gap: 12, marginBottom: 16 }}>
+                <div>
+                  <h2 style={{ margin: 0, color: "#0f172a", fontSize: FONT_SIZE.lg, fontWeight: 600 }}>Cash Office Expenses</h2>
+                  <p style={{ margin: "4px 0 0", color: "#64748b", fontSize: FONT_SIZE.sm }}>{cashOfficeExpenseSummaries.length} offices</p>
+                </div>
+                <ExportActions onExportCSV={() => exportCashExpenses("csv")} onExportXLSX={() => exportCashExpenses("xlsx")} />
+              </div>
+              <DataTable
+                columns={[
+                  { key: "office_name", label: "Cash Office" },
+                  { key: "expenses_count", label: "Expenses Count" },
+                  { key: "total_amount", label: "Total Amount", render: (value) => `₦${(value as number).toLocaleString()}` },
+                ]}
+                rows={cashOfficeExpenseSummaries}
+                rowKey={(row) => row.office_name}
+              />
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Side Trips by Driver */}
+      {!loading && hasLoaded && reportType === "side-trips" && (
+        <div>
+          {sideTripSummaries.length === 0 ? (
+            <EmptyState icon="🔄" title="No data available" description="No side trips found in this period." />
+          ) : (
+            <div>
+              <div style={{ display: "flex", flexDirection: isMobile ? "column" : "row", justifyContent: "space-between", alignItems: isMobile ? "flex-start" : "center", gap: 12, marginBottom: 16 }}>
+                <div>
+                  <h2 style={{ margin: 0, color: "#0f172a", fontSize: FONT_SIZE.lg, fontWeight: 600 }}>Side Trips by Driver</h2>
+                  <p style={{ margin: "4px 0 0", color: "#64748b", fontSize: FONT_SIZE.sm }}>{sideTripSummaries.length} drivers</p>
+                </div>
+                <ExportActions onExportCSV={() => exportSideTrips("csv")} onExportXLSX={() => exportSideTrips("xlsx")} />
+              </div>
+              <DataTable
+                columns={[
+                  { key: "driver_name", label: "Driver" },
+                  { key: "side_trips_count", label: "Side Trips" },
+                  { key: "items", label: "Items Carried", render: (value) => (value as string[]).join(", ") || "—" },
+                ]}
+                rows={sideTripSummaries}
+                rowKey={(row) => row.driver_id}
+              />
+            </div>
+          )}
         </div>
       )}
     </div>
