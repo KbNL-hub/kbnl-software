@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { supabase } from '@/lib/supabase'
 
-const VAPID_PUBLIC_KEY = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY!
+const VAPID_PUBLIC_KEY = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY || ''
 const DEVICE_ID_KEY = 'kbnl_device_id'
 
 function urlBase64ToUint8Array(base64String: string) {
@@ -68,6 +68,11 @@ export function usePushNotifications() {
     if (!('serviceWorker' in navigator) || !('PushManager' in window)) return false
 
     try {
+      if (!VAPID_PUBLIC_KEY) {
+        console.error('[Push] NEXT_PUBLIC_VAPID_PUBLIC_KEY is not set. Add it to your environment and rebuild.')
+        return false
+      }
+
       if (typeof Notification === 'undefined') return false
       const result = await Notification.requestPermission()
       setPermission(result)

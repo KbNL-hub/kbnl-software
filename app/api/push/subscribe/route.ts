@@ -76,9 +76,10 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ success: true, id })
   } catch (err) {
-    console.error('[Push Subscribe] Error:', err)
+    const message = err instanceof Error ? err.message : String(err)
+    console.error('[Push Subscribe] Error:', message)
     return NextResponse.json(
-      { error: 'Failed to save subscription' },
+      { error: 'Failed to save subscription', detail: message },
       { status: 500 }
     )
   }
