@@ -7,9 +7,6 @@ const API_CACHE_NAME = 'kbnl-api-v1';
 const ASSETS_TO_CACHE = [
   '/',
   '/login',
-  '/driver',
-  '/broker',
-  '/admin',
   '/offline.html',
   '/logo-192.png',
   '/logo-512.png',
@@ -18,7 +15,6 @@ const ASSETS_TO_CACHE = [
 
 // === Client context (set via postMessage from the page) ===
 let CLIENT_VAPID_KEY = null;
-let CLIENT_DEVICE_ID = null;
 
 function urlBase64ToUint8Array(base64String) {
   const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
@@ -34,7 +30,9 @@ self.addEventListener('install', (event) => {
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => {
       console.log('[SW] Caching essential assets...');
-      return cache.addAll(ASSETS_TO_CACHE);
+      return cache.addAll(ASSETS_TO_CACHE).catch((err) => {
+        console.warn('[SW] Some assets failed to cache:', err);
+      });
     })
   );
   self.skipWaiting();
@@ -186,7 +184,6 @@ self.addEventListener('message', (event) => {
 
   if (event.data && event.data.type === 'SET_CLIENT_CONTEXT') {
     if (event.data.vapidKey) CLIENT_VAPID_KEY = event.data.vapidKey;
-    if (event.data.deviceId) CLIENT_DEVICE_ID = event.data.deviceId;
   }
 });
 
@@ -276,7 +273,6 @@ self.addEventListener('pushsubscriptionchange', (event) => {
         body: JSON.stringify({
           endpoint: json.endpoint,
           keys: { p256dh: json.keys.p256dh, auth: json.keys.auth },
-          deviceId: CLIENT_DEVICE_ID,
           oldEndpoint: event.oldSubscription?.endpoint,
         }),
       });

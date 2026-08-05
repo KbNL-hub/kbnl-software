@@ -3,7 +3,6 @@ import { Geist, Geist_Mono } from "next/font/google";
 import Script from "next/script";
 import "./globals.css";
 import OfflineIndicator from '@/components/TripOfflineIndicator';
-import NotificationBanner from '@/components/NotificationBanner';
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -114,7 +113,6 @@ export default function RootLayout({
         <link rel="dns-prefetch" href="https://your-supabase-url.supabase.co" />
       </head>
       <body className="min-h-full flex flex-col">
-        <NotificationBanner />
         <OfflineIndicator />
         {children}
 
@@ -124,12 +122,11 @@ export default function RootLayout({
           strategy="afterInteractive"
           dangerouslySetInnerHTML={{
             __html: `
-              if ('serviceWorker' in navigator && window.location.protocol === 'https:') {
+              if ('serviceWorker' in navigator && (window.location.protocol === 'https:' || window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')) {
                 navigator.serviceWorker.register('/sw.js').then(function(reg) {
                   var vapidKey = '${process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY || ''}';
-                  var deviceId = localStorage.getItem('kbnl_device_id') || '';
                   if (reg.active) {
-                    reg.active.postMessage({ type: 'SET_CLIENT_CONTEXT', vapidKey: vapidKey, deviceId: deviceId });
+                    reg.active.postMessage({ type: 'SET_CLIENT_CONTEXT', vapidKey: vapidKey });
                   }
                 }).catch(function(e) { console.log('SW registration failed:', e); });
               }

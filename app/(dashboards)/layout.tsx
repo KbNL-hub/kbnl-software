@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import type { Session } from '@supabase/supabase-js'
 import PWAInstallPrompt from '@/components/PWAInstallPrompt';
+import NotificationPermissionPrompt from '@/components/NotificationPermissionPrompt';
 import ErrorBoundary from '@/components/ErrorBoundary';
 import { supabase } from '@/lib/supabase';
 import { usePushNotifications } from '@/app/hooks/usePushNotifications';
@@ -85,6 +86,7 @@ export default function AuthenticatedLayout({
   return (
     <>
       <PWAInstallPrompt />
+      <NotificationPermissionPrompt />
       <ErrorBoundary label="Dashboard">
         {children}
       </ErrorBoundary>

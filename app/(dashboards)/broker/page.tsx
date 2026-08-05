@@ -98,7 +98,7 @@ export default function BrokerDashboard() {
 
     if (brokerData) {
       const { data: brokerDetails } = await supabase
-        .from("brokers")
+        .from("Brokers")
         .select("broker_id, full_name, profile_picture_url")
         .eq("broker_id", user.id)
         .single()
@@ -771,7 +771,7 @@ export default function BrokerDashboard() {
         isOpen={showPictureModal}
         onClose={() => setShowPictureModal(false)}
         userId={broker?.broker_id || ""}
-        table="brokers"
+        table="Brokers"
         idField="broker_id"
         currentUrl={broker?.profile_picture_url}
         onSuccess={(url) => setBroker(prev => prev ? { ...prev, profile_picture_url: url } : prev)}

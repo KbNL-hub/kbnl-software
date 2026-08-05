@@ -4,7 +4,6 @@ import { useState, useEffect, useCallback } from 'react'
 import { supabase } from '@/lib/supabase'
 
 const VAPID_PUBLIC_KEY = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY || ''
-const DEVICE_ID_KEY = 'kbnl_device_id'
 
 function urlBase64ToUint8Array(base64String: string) {
   const padding = '='.repeat((4 - (base64String.length % 4)) % 4)
@@ -17,15 +16,6 @@ function urlBase64ToUint8Array(base64String: string) {
   return outputArray
 }
 
-function getDeviceId(): string {
-  let deviceId = localStorage.getItem(DEVICE_ID_KEY)
-  if (!deviceId) {
-    deviceId = crypto.randomUUID()
-    localStorage.setItem(DEVICE_ID_KEY, deviceId)
-  }
-  return deviceId
-}
-
 async function getSWRegistration(): Promise<ServiceWorkerRegistration | null> {
   if (!('serviceWorker' in navigator)) return null
   try {
@@ -33,6 +23,152 @@ async function getSWRegistration(): Promise<ServiceWorkerRegistration | null> {
   } catch {
     return null
   }
+}
+
+function sleep(ms: number) {
+  return new Promise(resolve => setTimeout(resolve, ms))
+}
+
+// Log the current service worker registration state for diagnostics.
+function logSWState(reg: ServiceWorkerRegistration, tag: string) {
+  console.log(`[Push] ${tag} SW state:`, {
+    controller: navigator.serviceWorker.controller?.scriptURL || null,
+    active: reg.active?.state || null,
+    installing: reg.installing?.state || null,
+    waiting: reg.waiting?.state || null,
+    scope: reg.scope,
+  })
+}
+
+// Wait until the service worker controls the page (or timeout). Some browsers
+// require a controlling SW before pushManager.subscribe() will succeed.
+async function waitForController(reg: ServiceWorkerRegistration, timeoutMs = 5000): Promise<boolean> {
+  if (navigator.serviceWorker.controller) return true
+
+  return new Promise((resolve) => {
+    const timer = setTimeout(() => {
+      navigator.serviceWorker.removeEventListener('controllerchange', onController)
+      resolve(false)
+    }, timeoutMs)
+
+    function onController() {
+      clearTimeout(timer)
+      navigator.serviceWorker.removeEventListener('controllerchange', onController)
+      resolve(true)
+    }
+
+    // Re-check immediately in case the controller was set between the first
+    // check and the listener being attached.
+    if (navigator.serviceWorker.controller) {
+      clearTimeout(timer)
+      resolve(true)
+      return
+    }
+
+    navigator.serviceWorker.addEventListener('controllerchange', onController)
+  })
+}
+
+// Guards against React StrictMode double-firing effects in dev, which can
+// trigger concurrent pushManager.subscribe() calls (the second fails with
+// AbortError "Registration failed - push service error").
+let subscribeInFlight = false
+
+// Some browsers keep a push subscription tied to a *stale* registration after
+// the SW is replaced. That orphan can make Chrome's push service reject new
+// subscriptions with AbortError "Registration failed - push service error".
+// Try to unsubscribe from every registration's push manager, then retry.
+async function clearOrphanedSubscriptions(): Promise<void> {
+  if (!('serviceWorker' in navigator)) return
+  try {
+    const regs = await navigator.serviceWorker.getRegistrations()
+    for (const r of regs) {
+      try {
+        const sub = await r.pushManager.getSubscription()
+        if (sub) await sub.unsubscribe().catch(() => {})
+      } catch {
+        // ignore — registration may not have a push manager available
+      }
+    }
+  } catch {
+    // ignore
+  }
+}
+
+// Create a browser push subscription. Retries transient AbortError failures
+// (e.g. the service worker is mid-activation or the push service hiccups).
+async function createBrowserSubscription(reg: ServiceWorkerRegistration): Promise<PushSubscription | null> {
+  if (!VAPID_PUBLIC_KEY) {
+    console.error('[Push] NEXT_PUBLIC_VAPID_PUBLIC_KEY is not set. Cannot create subscription.')
+    return null
+  }
+
+  const existing = await reg.pushManager.getSubscription().catch(() => null)
+  if (existing) {
+    logSWState(reg, 'existing-subscription')
+    return existing
+  }
+
+  // Ensure the SW controls the page before subscribing.
+  logSWState(reg, 'pre-subscribe')
+  const controlled = await waitForController(reg)
+  if (!controlled) {
+    console.warn('[Push] SW does not control the page; subscribing anyway (may fail).')
+  }
+
+  const options = {
+    userVisibleOnly: true,
+    applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY),
+  }
+
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      const subscription = await reg.pushManager.subscribe(options)
+      logSWState(reg, 'subscribed')
+      return subscription
+    } catch (err) {
+      const name = (err as DOMException)?.name
+      const isTransient = name === 'AbortError' || name === 'InvalidStateError'
+      if (!isTransient) throw err
+      logSWState(reg, `subscribe-failed-${name}`)
+      // Clean up any orphaned subscriptions tied to stale registrations, which
+      // is a common cause of persistent "Registration failed - push service
+      // error" in Chrome after SW unregister/re-register cycles.
+      if (attempt === 1) {
+        console.warn('[Push] Attempting to clear orphaned push subscriptions...')
+        await clearOrphanedSubscriptions()
+      }
+      if (attempt < 2) {
+        console.warn(`[Push] subscribe() failed (${name}), retrying in ${500 * (attempt + 1)}ms...`)
+        await sleep(500 * (attempt + 1))
+      } else {
+        throw err
+      }
+    }
+  }
+  return null
+}
+
+// Send the browser subscription to our API so it can be persisted.
+async function persistSubscription(subscription: PushSubscription): Promise<boolean> {
+  const sub = JSON.parse(JSON.stringify(subscription))
+  const { data: { session } } = await supabase.auth.getSession()
+
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+  if (session?.access_token) {
+    headers['Authorization'] = `Bearer ${session.access_token}`
+  }
+
+  const res = await fetch('/api/push/subscribe', {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({
+      endpoint: sub.endpoint,
+      keys: { p256dh: sub.keys.p256dh, auth: sub.keys.auth },
+    }),
+  })
+
+  return res.ok
 }
 
 export function usePushNotifications() {
@@ -67,12 +203,10 @@ export function usePushNotifications() {
   const subscribe = useCallback(async () => {
     if (!('serviceWorker' in navigator) || !('PushManager' in window)) return false
 
-    try {
-      if (!VAPID_PUBLIC_KEY) {
-        console.error('[Push] NEXT_PUBLIC_VAPID_PUBLIC_KEY is not set. Add it to your environment and rebuild.')
-        return false
-      }
+    if (subscribeInFlight) return false
+    subscribeInFlight = true
 
+    try {
       if (typeof Notification === 'undefined') return false
       const result = await Notification.requestPermission()
       setPermission(result)
@@ -80,35 +214,14 @@ export function usePushNotifications() {
       if (result !== 'granted') return false
 
       const reg = await getSWRegistration()
-      if (!reg) return false
+      if (!reg || !reg.active) return false
 
-      const subscription = await reg.pushManager.subscribe({
-        userVisibleOnly: true,
-        applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY),
-      })
+      const subscription = await createBrowserSubscription(reg)
+      if (!subscription) return false
 
-      const sub = JSON.parse(JSON.stringify(subscription))
-      const deviceId = getDeviceId()
-
-      const { data: { session } } = await supabase.auth.getSession()
-
-      const headers: Record<string, string> = { 'Content-Type': 'application/json' }
-      if (session?.access_token) {
-        headers['Authorization'] = `Bearer ${session.access_token}`
-      }
-
-      const res = await fetch('/api/push/subscribe', {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({
-          endpoint: sub.endpoint,
-          keys: { p256dh: sub.keys.p256dh, auth: sub.keys.auth },
-          deviceId,
-        }),
-      })
-
-      if (!res.ok) {
-        console.error('[Push] Server rejected subscription:', res.status)
+      const ok = await persistSubscription(subscription)
+      if (!ok) {
+        console.error('[Push] Server rejected subscription')
         await subscription.unsubscribe().catch(() => {})
         setIsSubscribed(false)
         return false
@@ -119,6 +232,8 @@ export function usePushNotifications() {
     } catch (err) {
       console.error('[Push] Subscribe failed:', err)
       return false
+    } finally {
+      subscribeInFlight = false
     }
   }, [])
 
@@ -146,7 +261,7 @@ export function usePushNotifications() {
       await fetch('/api/push/unsubscribe', {
         method: 'DELETE',
         headers,
-        body: JSON.stringify({ endpoint, deviceId: getDeviceId() }),
+        body: JSON.stringify({ endpoint }),
       })
 
       setIsSubscribed(false)
@@ -160,36 +275,43 @@ export function usePushNotifications() {
   const reSubscribe = useCallback(async () => {
     if (!('serviceWorker' in navigator) || !('PushManager' in window)) return
 
+    // Skip if a subscribe is already in flight (StrictMode double-fire guard).
+    if (subscribeInFlight) return
+
+    subscribeInFlight = true
+
     try {
       const reg = await getSWRegistration()
-      if (!reg) return
+      if (!reg || !reg.active) return
 
-      const subscription = await reg.pushManager.getSubscription()
+      // If permission is not granted yet, there's nothing to re-subscribe.
+      if (typeof Notification !== 'undefined' && Notification.permission !== 'granted') {
+        return
+      }
+
+      const subscription = await createBrowserSubscription(reg)
       if (!subscription) return
 
-      const sub = JSON.parse(JSON.stringify(subscription))
-      const { data: { session } } = await supabase.auth.getSession()
-
-      const headers: Record<string, string> = { 'Content-Type': 'application/json' }
-      if (session?.access_token) {
-        headers['Authorization'] = `Bearer ${session.access_token}`
-      }
-
-      const res = await fetch('/api/push/subscribe', {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({
-          endpoint: sub.endpoint,
-          keys: { p256dh: sub.keys.p256dh, auth: sub.keys.auth },
-          deviceId: getDeviceId(),
-        }),
-      })
-
-      if (!res.ok) {
-        console.error('[Push] Re-subscribe rejected by server:', res.status)
+      const ok = await persistSubscription(subscription)
+      if (!ok) {
+        console.error('[Push] Re-subscribe rejected by server')
+      } else {
+        setIsSubscribed(true)
       }
     } catch (err) {
-      console.error('[Push] Re-subscribe failed:', err)
+      const name = (err as DOMException)?.name
+      const msg = (err as Error)?.message || ''
+      if (name === 'AbortError' && msg.includes('push service')) {
+        console.error(
+          '[Push] Re-subscribe failed: Chrome push service rejected the subscription. ' +
+          'Clear site data for this origin (Settings > Privacy > Clear browsing data > ' +
+          '"Cookies and other site data"), then reload and log in again.'
+        )
+      } else {
+        console.error('[Push] Re-subscribe failed:', err)
+      }
+    } finally {
+      subscribeInFlight = false
     }
   }, [])
 

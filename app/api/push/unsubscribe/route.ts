@@ -6,7 +6,7 @@ import { createClient } from '@supabase/supabase-js'
 export async function DELETE(req: NextRequest) {
   try {
     const body = await req.json()
-    const { endpoint, deviceId } = body
+    const { endpoint } = body
 
     if (!endpoint) {
       return NextResponse.json(
@@ -24,7 +24,7 @@ export async function DELETE(req: NextRequest) {
 
     const { data: row } = await supabaseAdmin
       .from('push_subscriptions')
-      .select('user_id, device_id')
+      .select('user_id')
       .eq('endpoint', endpoint)
       .maybeSingle()
 
@@ -32,20 +32,15 @@ export async function DELETE(req: NextRequest) {
       return NextResponse.json({ success: true })
     }
 
-    if (row.user_id) {
-      if (row.user_id !== auth.userId) {
-        return NextResponse.json(
-          { error: 'You do not own this subscription' },
-          { status: 403 }
-        )
-      }
-    } else {
-      if (!deviceId || row.device_id !== deviceId) {
-        return NextResponse.json(
-          { error: 'Device ownership could not be verified' },
-          { status: 403 }
-        )
-      }
+    if (!row.user_id) {
+      return NextResponse.json({ success: true })
+    }
+
+    if (row.user_id !== auth.userId) {
+      return NextResponse.json(
+        { error: 'You do not own this subscription' },
+        { status: 403 }
+      )
     }
 
     await removeSubscription(endpoint)

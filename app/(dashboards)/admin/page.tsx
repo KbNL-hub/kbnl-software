@@ -78,7 +78,7 @@ export default function AdminDashboard() {
         let profilePictureUrl: string | undefined = profile.profile_picture_url
         if (dashboardRole === Role.Broker) {
           const { data: brokerData } = await supabase
-            .from("brokers")
+            .from("Brokers")
             .select("profile_picture_url")
             .eq("broker_id", session.user.id)
             .single()

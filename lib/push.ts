@@ -37,7 +37,6 @@ export interface SendNotificationOptions {
 export async function saveSubscription(
   subscription: PushSubscription,
   userId: string | null,
-  deviceId: string | null,
   roles: string[] | null,
 ) {
   const { endpoint, keys } = subscription
@@ -52,7 +51,6 @@ export async function saveSubscription(
     is_active: true,
     updated_at: now,
     user_id: userId,
-    device_id: deviceId,
     role,
   }))
 

@@ -10,7 +10,7 @@ const supabaseAdmin = createClient(
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json()
-    const { endpoint, keys, deviceId, role, oldEndpoint } = body
+    const { endpoint, keys, role, oldEndpoint } = body
 
     if (!endpoint || !keys?.p256dh || !keys?.auth) {
       return NextResponse.json(
@@ -48,18 +48,16 @@ export async function POST(req: NextRequest) {
     }
 
     // Relink from old endpoint (pushsubscriptionchange in sw.js)
-    let currentDeviceId = deviceId || null
     if (oldEndpoint && oldEndpoint !== endpoint) {
       const { data: oldRows } = await supabaseAdmin
         .from('push_subscriptions')
-        .select('user_id, device_id, role')
+        .select('user_id, role')
         .eq('endpoint', oldEndpoint)
         .eq('is_active', true)
 
       if (oldRows && oldRows.length > 0) {
         const first = oldRows[0]
         if (!userId) userId = first.user_id
-        if (!currentDeviceId) currentDeviceId = first.device_id
         const oldRoles = oldRows.map(r => r.role).filter((r): r is string => !!r)
         if ((!roles || roles.length === 0) && oldRoles.length > 0) roles = oldRoles
       }
@@ -70,7 +68,6 @@ export async function POST(req: NextRequest) {
     const id = await saveSubscription(
       { endpoint, keys },
       userId,
-      currentDeviceId,
       roles,
     )
 
