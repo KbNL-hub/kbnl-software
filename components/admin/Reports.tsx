@@ -71,6 +71,8 @@ type BrokerSummary = {
   broker_id: string
   broker_name: string
   stops_count: number
+  store_sales_count: number
+  total_transactions: number
   total_bags: number
   total_revenue: number
 }
@@ -237,6 +239,8 @@ export default function Reports() {
   const [sideTripSummaries, setSideTripSummaries] = useState<SideTripSummary[]>([])
   const [drillDown, setDrillDown] = useState<DrillDown | null>(null)
   const [drillLoading, setDrillLoading] = useState(false)
+  const [reportError, setReportError] = useState<string | null>(null)
+  const [loadingBrokerId, setLoadingBrokerId] = useState<string | null>(null)
 
   // Responsive hook
   useEffect(() => {
@@ -283,32 +287,38 @@ export default function Reports() {
     setDateError("")
     setLoading(true)
     setDrillDown(null)
+    setReportError(null)
 
-    switch (reportType) {
-      case "driver-performance": await fetchDriverReports(); break
-      case "truck-trips": await fetchTruckTripReports(); break
-      case "broker-sales": await fetchBrokerReports(); break
-      case "depot-sales": await fetchDepotSalesReports(); break
-      case "product-volume": await fetchProductVolumeReports(); break
-      case "factory-loading": await fetchFactoryLoadingReports(); break
-      case "cash-expenses": await fetchCashExpenseReports(); break
-      case "truck-health": await fetchTruckReports(); break
-      case "side-trips": await fetchSideTripReports(); break
+    try {
+      switch (reportType) {
+        case "driver-performance": await fetchDriverReports(); break
+        case "truck-trips": await fetchTruckTripReports(); break
+        case "broker-sales": await fetchBrokerReports(); break
+        case "depot-sales": await fetchDepotSalesReports(); break
+        case "product-volume": await fetchProductVolumeReports(); break
+        case "factory-loading": await fetchFactoryLoadingReports(); break
+        case "cash-expenses": await fetchCashExpenseReports(); break
+        case "truck-health": await fetchTruckReports(); break
+        case "side-trips": await fetchSideTripReports(); break
+      }
+      setHasLoaded(true)
+    } catch (err) {
+      setReportError(err instanceof Error ? err.message : "Failed to generate report")
+    } finally {
+      setLoading(false)
     }
-
-    setLoading(false)
-    setHasLoaded(true)
   }
 
   // ── Driver reports ───────────────────────────────────────────────────────
   async function fetchDriverReports() {
     const { from, to } = getRange()
 
-    const { data: drivers } = await supabase
+    const { data: drivers, error: driversErr } = await supabase
       .from("Drivers")
       .select("driver_id, full_name")
       .order("full_name", { ascending: true })
 
+    if (driversErr) throw new Error(`Failed to fetch drivers: ${driversErr.message}`)
     if (!drivers) return
 
     const summaries: DriverSummary[] = await Promise.all(drivers.map(async (d) => {
@@ -387,11 +397,12 @@ export default function Reports() {
   async function fetchTruckReports() {
     const { from, to } = getRange()
 
-    const { data: trucks } = await supabase
+    const { data: trucks, error: trucksErr } = await supabase
       .from("Trucks")
       .select("plate_number, kbnl_truck_no, truck_model")
       .order("plate_number", { ascending: true })
 
+    if (trucksErr) throw new Error(`Failed to fetch trucks: ${trucksErr.message}`)
     if (!trucks) return
 
     const summaries: TruckSummary[] = await Promise.all(trucks.map(async (t) => {
@@ -518,15 +529,16 @@ export default function Reports() {
   async function fetchBrokerReports() {
     const { from, to } = getRange()
 
-    const { data: brokers } = await supabase
+    const { data: brokers, error: brokersErr } = await supabase
       .from("Brokers")
       .select("broker_id, broker_name")
       .order("broker_name", { ascending: true })
 
+    if (brokersErr) throw new Error(`Failed to fetch brokers: ${brokersErr.message}`)
     if (!brokers) return
 
     const summaries: BrokerSummary[] = await Promise.all(brokers.map(async (b) => {
-      const { data: stops } = await supabase
+      const { data: stops, error: stopsErr } = await supabase
         .from("Stops")
         .select("stop_id, quantity_offloaded")
         .eq("broker_id", b.broker_id)
@@ -534,14 +546,18 @@ export default function Reports() {
         .gte("stop_time", from)
         .lte("stop_time", to)
 
+      if (stopsErr) throw new Error(`Failed to fetch broker stops: ${stopsErr.message}`)
+
       const stopIds = (stops || []).map(s => s.stop_id)
       let total_revenue = 0
 
       if (stopIds.length > 0) {
-        const { data: confirmations } = await supabase
+        const { data: confirmations, error: confirmationsErr } = await supabase
           .from("Stop_Confirmations")
           .select("stop_id, price_per_bag")
           .in("stop_id", stopIds)
+
+        if (confirmationsErr) throw new Error(`Failed to fetch stop confirmations: ${confirmationsErr.message}`)
 
         const priceMap: Record<string, number> = {}
         if (confirmations) {
@@ -559,13 +575,15 @@ export default function Reports() {
       const stops_count = (stops || []).length
       const total_bags = (stops || []).reduce((sum, s) => sum + s.quantity_offloaded, 0)
 
-      const { data: storeSales } = await supabase
+      const { data: storeSales, error: storeSalesErr } = await supabase
         .from("store_sales")
         .select("quantity, total_amount")
         .eq("broker_id", b.broker_id)
         .eq("status", "Confirmed")
         .gte("sold_at", from)
         .lte("sold_at", to)
+
+      if (storeSalesErr) throw new Error(`Failed to fetch broker store sales: ${storeSalesErr.message}`)
 
       const store_sales_count = (storeSales || []).length
       const store_bags = (storeSales || []).reduce((sum, s) => sum + (s.quantity || 0), 0)
@@ -574,87 +592,99 @@ export default function Reports() {
       return {
         broker_id: b.broker_id,
         broker_name: b.broker_name,
-        stops_count: stops_count + store_sales_count,
+        stops_count,
+        store_sales_count,
+        total_transactions: stops_count + store_sales_count,
         total_bags: total_bags + store_bags,
         total_revenue: total_revenue + store_revenue,
       }
     }))
 
-    setBrokerSummaries(summaries.filter(b => b.stops_count > 0))
+    setBrokerSummaries(summaries.filter(b => b.total_transactions > 0))
   }
 
   async function fetchBrokerDrillDown(broker: BrokerSummary) {
     setDrillLoading(true)
-    const { from, to } = getRange()
+    setLoadingBrokerId(broker.broker_id)
+    try {
+      const { from, to } = getRange()
 
-    const { data: stopsRaw } = await supabase
-      .from("Stops")
-      .select("stop_id, trip_id, quantity_offloaded, stop_time")
-      .eq("broker_id", broker.broker_id)
-      .eq("confirmed", true)
-      .gte("stop_time", from)
-      .lte("stop_time", to)
-      .order("stop_time", { ascending: false })
+      const { data: stopsRaw } = await supabase
+        .from("Stops")
+        .select("stop_id, trip_id, quantity_offloaded, stop_time")
+        .eq("broker_id", broker.broker_id)
+        .eq("confirmed", true)
+        .gte("stop_time", from)
+        .lte("stop_time", to)
+        .order("stop_time", { ascending: false })
 
-    const stops: BrokerStop[] = await Promise.all((stopsRaw || []).map(async (s) => {
-      const { data: trip } = await supabase
-        .from("Trips")
-        .select("plate_number")
-        .eq("trip_id", s.trip_id)
-        .single()
+      const stops: BrokerStop[] = await Promise.all((stopsRaw || []).map(async (s) => {
+        const { data: trip } = await supabase
+          .from("Trips")
+          .select("plate_number")
+          .eq("trip_id", s.trip_id)
+          .single()
 
-      const { data: confirmation } = await supabase
-        .from("Stop_Confirmations")
-        .select("price_per_bag")
-        .eq("stop_id", s.stop_id)
-        .single()
+        const { data: confirmation } = await supabase
+          .from("Stop_Confirmations")
+          .select("price_per_bag")
+          .eq("stop_id", s.stop_id)
+          .single()
 
-      const price = confirmation?.price_per_bag ?? 0
-      const revenue = s.quantity_offloaded * price
+        const price = confirmation?.price_per_bag ?? 0
+        const revenue = s.quantity_offloaded * price
 
-      return {
-        stop_id: s.stop_id,
-        plate_number: trip?.plate_number ?? "—",
-        customer_name: null,
-        quantity_offloaded: s.quantity_offloaded,
-        price_per_bag: price,
-        revenue,
-        stop_time: s.stop_time,
-      }
-    }))
+        return {
+          stop_id: s.stop_id,
+          plate_number: trip?.plate_number ?? "—",
+          customer_name: null,
+          quantity_offloaded: s.quantity_offloaded,
+          price_per_bag: price,
+          revenue,
+          stop_time: s.stop_time,
+        }
+      }))
 
-    setDrillDown({ kind: "broker", broker, stops })
-    setDrillLoading(false)
+      setDrillDown({ kind: "broker", broker, stops })
+    } finally {
+      setDrillLoading(false)
+      setLoadingBrokerId(null)
+    }
   }
 
   // ── Truck trip summary (#2) ──────────────────────────────────────────────
   async function fetchTruckTripReports() {
     const { from, to } = getRange()
 
-    const { data: trucks } = await supabase
+    const { data: trucks, error: trucksErr } = await supabase
       .from("Trucks")
       .select("plate_number, kbnl_truck_no, truck_model")
       .order("plate_number", { ascending: true })
 
+    if (trucksErr) throw new Error(`Failed to fetch trucks: ${trucksErr.message}`)
     if (!trucks) return
 
     const summaries: TruckTripSummary[] = await Promise.all(trucks.map(async (t) => {
-      const { data: trips } = await supabase
+      const { data: trips, error: tripsErr } = await supabase
         .from("Trips")
         .select("trip_id")
         .eq("plate_number", t.plate_number)
         .gte("created_at", from)
         .lte("created_at", to)
 
+      if (tripsErr) throw new Error(`Failed to fetch trips for truck ${t.plate_number}: ${tripsErr.message}`)
+
       const tripIds = (trips || []).map(tp => tp.trip_id)
       let stops_count = 0
       let total_bags = 0
 
       if (tripIds.length > 0) {
-        const { data: stops } = await supabase
+        const { data: stops, error: stopsErr } = await supabase
           .from("Stops")
           .select("quantity_offloaded")
           .in("trip_id", tripIds)
+
+        if (stopsErr) throw new Error(`Failed to fetch stops for truck ${t.plate_number}: ${stopsErr.message}`)
 
         stops_count = (stops || []).length
         total_bags = (stops || []).reduce((sum, s) => sum + (s.quantity_offloaded || 0), 0)
@@ -680,12 +710,14 @@ export default function Reports() {
   async function fetchDepotSalesReports() {
     const { from, to } = getRange()
 
-    const { data: sales } = await supabase
+    const { data: sales, error: salesErr } = await supabase
       .from("store_sales")
       .select("store_name, quantity, total_amount")
       .eq("status", "Confirmed")
       .gte("sold_at", from)
       .lte("sold_at", to)
+
+    if (salesErr) throw new Error(`Failed to fetch store sales: ${salesErr.message}`)
 
     const storeMap: Record<string, { sales_count: number; total_quantity: number; total_revenue: number }> = {}
     for (const s of sales || []) {
@@ -706,11 +738,13 @@ export default function Reports() {
   async function fetchProductVolumeReports() {
     const { from, to } = getRange()
 
-    const { data: trips } = await supabase
+    const { data: trips, error: tripsErr } = await supabase
       .from("Trips")
       .select("product, loaded_quantity")
       .gte("created_at", from)
       .lte("created_at", to)
+
+    if (tripsErr) throw new Error(`Failed to fetch trips: ${tripsErr.message}`)
 
     const productMap: Record<string, number> = {}
     for (const t of trips || []) {
@@ -740,11 +774,13 @@ export default function Reports() {
   async function fetchFactoryLoadingReports() {
     const { from, to } = getRange()
 
-    const { data: trips } = await supabase
+    const { data: trips, error: tripsErr } = await supabase
       .from("Trips")
       .select("material_centre, loaded_quantity")
       .gte("created_at", from)
       .lte("created_at", to)
+
+    if (tripsErr) throw new Error(`Failed to fetch trips: ${tripsErr.message}`)
 
     const centreMap: Record<string, { trips_count: number; total_loaded: number }> = {}
     for (const t of trips || []) {
@@ -765,12 +801,14 @@ export default function Reports() {
   async function fetchCashExpenseReports() {
     const { from, to } = getRange()
 
-    const { data: expenses } = await supabase
+    const { data: expenses, error: expensesErr } = await supabase
       .from("cash_expenses")
       .select("office_name, total_amount")
       .eq("status", "Authorised")
       .gte("created_at", from)
       .lte("created_at", to)
+
+    if (expensesErr) throw new Error(`Failed to fetch cash expenses: ${expensesErr.message}`)
 
     const officeMap: Record<string, { expenses_count: number; total_amount: number }> = {}
     for (const e of expenses || []) {
@@ -791,11 +829,13 @@ export default function Reports() {
   async function fetchSideTripReports() {
     const { from, to } = getRange()
 
-    const { data: sideTrips } = await supabase
+    const { data: sideTrips, error: sideTripsErr } = await supabase
       .from("side_trips")
       .select("driver_id, item_description")
       .gte("created_at", from)
       .lte("created_at", to)
+
+    if (sideTripsErr) throw new Error(`Failed to fetch side trips: ${sideTripsErr.message}`)
 
     const driverMap: Record<string, { side_trips_count: number; items: Set<string> }> = {}
     for (const st of sideTrips || []) {
@@ -808,10 +848,12 @@ export default function Reports() {
     const nameMap: Record<string, string> = {}
 
     if (driverIds.length > 0) {
-      const { data: drivers } = await supabase
+      const { data: drivers, error: driversErr } = await supabase
         .from("Drivers")
         .select("driver_id, full_name")
         .in("driver_id", driverIds)
+
+      if (driversErr) throw new Error(`Failed to fetch driver names: ${driversErr.message}`)
 
       for (const d of drivers || []) {
         nameMap[d.driver_id] = d.full_name
@@ -912,6 +954,8 @@ export default function Reports() {
     const rows = brokerSummaries.map((b) => ({
       Broker: b.broker_name,
       "Confirmed Stops": b.stops_count,
+      "Store Sales": b.store_sales_count,
+      "Total Transactions": b.total_transactions,
       "Total Bags Sold": b.total_bags,
       "Total Revenue (₦)": b.total_revenue,
     }))
@@ -1006,6 +1050,7 @@ export default function Reports() {
   // ── Render ────────────────────────────────────────────────────────────────
   return (
     <div style={{ minHeight: "100vh", background: "#f8fafc", padding: isMobile ? "16px" : "32px", fontFamily: "'Inter', sans-serif" }}>
+      <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
       {/* Header */}
       <div style={{ marginBottom: 24 }}>
         <h1 style={{ margin: 0, color: "#0f172a", fontSize: isMobile ? FONT_SIZE["2xl"] : FONT_SIZE["3xl"], fontWeight: 700, letterSpacing: "-0.5px" }}>
@@ -1025,6 +1070,7 @@ export default function Reports() {
           </label>
           <select
             value={reportType}
+            disabled={loading}
             onChange={(e) => {
               setReportType(e.target.value as ReportType)
               setHasLoaded(false)
@@ -1039,8 +1085,9 @@ export default function Reports() {
               fontSize: FONT_SIZE.md,
               color: "#0f172a",
               fontWeight: 500,
-              cursor: "pointer",
+              cursor: loading ? "not-allowed" : "pointer",
               outline: "none",
+              opacity: loading ? 0.6 : 1,
               appearance: "none" as const,
               backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%2364748b' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E")`,
               backgroundRepeat: "no-repeat",
@@ -1139,8 +1186,16 @@ cursor: loading ? "not-allowed" : "pointer",
 {/* Loading State */}
       {loading && <LoadingState message="Calculating report data..." />}
 
+      {/* Error State */}
+      {!loading && reportError && (
+        <div style={{ background: "#fef2f2", border: "1px solid #fecaca", borderRadius: 12, padding: 20, marginBottom: 24 }}>
+          <p style={{ margin: 0, color: "#991b1b", fontSize: FONT_SIZE.md, fontWeight: 600 }}>Failed to generate report</p>
+          <p style={{ margin: "8px 0 0", color: "#b91c1c", fontSize: FONT_SIZE.sm }}>{reportError}</p>
+        </div>
+      )}
+
       {/* Empty State */}
-      {!loading && !hasLoaded && <EmptyState icon="📊" title="No report generated" description="Select a date range and click 'Generate Report' to view data." />}
+      {!loading && !hasLoaded && !reportError && <EmptyState icon="📊" title="No report generated" description="Select a date range and click 'Generate Report' to view data." />}
 
       {/* Driver Reports */}
       {!loading && hasLoaded && reportType === "driver-performance" && (
@@ -1160,6 +1215,8 @@ cursor: loading ? "not-allowed" : "pointer",
                   <div style={{ display: "flex", background: "white", border: "1px solid #e2e8f0", borderRadius: 8, padding: 4, gap: 0 }}>
                             <button
                               onClick={() => setViewMode("card")}
+                              aria-label="Show card view"
+                              aria-pressed={viewMode === "card"}
                               style={{
                         padding: "8px 12px",
                         background: viewMode === "card" ? "#0070f3" : "transparent",
@@ -1182,6 +1239,8 @@ cursor: loading ? "not-allowed" : "pointer",
                             </button>
                           <button
                       onClick={() => setViewMode("table")}
+                      aria-label="Show table view"
+                      aria-pressed={viewMode === "table"}
                       style={{
                         padding: "8px 12px",
                         background: viewMode === "table" ? "#0070f3" : "transparent",
@@ -1370,6 +1429,8 @@ cursor: loading ? "not-allowed" : "pointer",
                   <div style={{ display: "flex", background: "white", border: "1px solid #e2e8f0", borderRadius: 8, padding: 4, gap: 0 }}>
                     <button
                       onClick={() => setViewMode("card")}
+                      aria-label="Show card view"
+                      aria-pressed={viewMode === "card"}
                       style={{
                         padding: "8px 12px", background: viewMode === "card" ? "#0070f3" : "transparent",
                         color: viewMode === "card" ? "white" : "#64748b", border: "none", borderRadius: 6,
@@ -1381,6 +1442,8 @@ cursor: loading ? "not-allowed" : "pointer",
                     </button>
                     <button
                       onClick={() => setViewMode("table")}
+                      aria-label="Show table view"
+                      aria-pressed={viewMode === "table"}
                       style={{
                         padding: "8px 12px", background: viewMode === "table" ? "#0070f3" : "transparent",
                         color: viewMode === "table" ? "white" : "#64748b", border: "none", borderRadius: 6,
@@ -1405,20 +1468,31 @@ cursor: loading ? "not-allowed" : "pointer",
                         </div>
                         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, padding: "12px 0", borderTop: "1px solid #f1f5f9", borderBottom: "1px solid #f1f5f9" }}>
                           <ReportCardField label="Confirmed Stops" value={broker.stops_count} />
+                          <ReportCardField label="Store Sales" value={broker.store_sales_count} />
                           <ReportCardField label="Bags Sold" value={broker.total_bags} />
                           <ReportCardField label="Revenue" value={`₦${broker.total_revenue.toLocaleString()}`} />
                         </div>
                         <button
                           onClick={() => fetchBrokerDrillDown(broker)}
+                          disabled={loadingBrokerId === broker.broker_id}
                           style={{
                             width: "100%", marginTop: 12, padding: "10px 14px",
-                            background: "#0070f3", color: "white", border: "none", borderRadius: 8,
-                            cursor: "pointer", fontWeight: 600, fontSize: FONT_SIZE.md, minHeight: 40,
+                            background: loadingBrokerId === broker.broker_id ? "#93c5fd" : "#0070f3", color: "white", border: "none", borderRadius: 8,
+                            cursor: loadingBrokerId === broker.broker_id ? "wait" : "pointer", fontWeight: 600, fontSize: FONT_SIZE.md, minHeight: 40,
+                            opacity: loadingBrokerId === broker.broker_id ? 0.8 : 1,
+                            display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
                           }}
-                          onMouseEnter={(e) => e.currentTarget.style.background = "#0057c7"}
-                          onMouseLeave={(e) => e.currentTarget.style.background = "#0070f3"}
+                          onMouseEnter={(e) => { if (loadingBrokerId !== broker.broker_id) e.currentTarget.style.background = "#0057c7" }}
+                          onMouseLeave={(e) => { if (loadingBrokerId !== broker.broker_id) e.currentTarget.style.background = "#0070f3" }}
                         >
-                          View Stops
+                          {loadingBrokerId === broker.broker_id ? (
+                            <>
+                              <div style={{ width: 14, height: 14, borderRadius: "50%", border: "2px solid rgba(255,255,255,0.3)", borderTopColor: "white", animation: "spin 1s linear infinite" }} />
+                              Loading...
+                            </>
+                          ) : (
+                            "View Stops"
+                          )}
                         </button>
                       </div>
                     </ReportCard>
@@ -1429,6 +1503,8 @@ cursor: loading ? "not-allowed" : "pointer",
                   columns={[
                     { key: "broker_name", label: "Broker" },
                     { key: "stops_count", label: "Confirmed Stops" },
+                    { key: "store_sales_count", label: "Store Sales" },
+                    { key: "total_transactions", label: "Total Transactions" },
                     { key: "total_bags", label: "Bags Sold" },
                     {
                       key: "total_revenue",
@@ -1441,15 +1517,25 @@ cursor: loading ? "not-allowed" : "pointer",
                       render: (_value, broker: BrokerSummary) => (
                         <button
                           onClick={() => fetchBrokerDrillDown(broker)}
+                          disabled={loadingBrokerId === broker.broker_id}
                           style={{
                             padding: "6px 10px", background: "white", color: "#0070f3",
-                            border: "1px solid #e2e8f0", borderRadius: 6, cursor: "pointer",
+                            border: "1px solid #e2e8f0", borderRadius: 6, cursor: loadingBrokerId === broker.broker_id ? "wait" : "pointer",
                             fontWeight: 500, fontSize: FONT_SIZE.xs,
+                            opacity: loadingBrokerId === broker.broker_id ? 0.6 : 1,
+                            display: "flex", alignItems: "center", gap: 6,
                           }}
-                          onMouseEnter={(e) => e.currentTarget.style.background = "#eff6ff"}
-                          onMouseLeave={(e) => e.currentTarget.style.background = "white"}
+                          onMouseEnter={(e) => { if (loadingBrokerId !== broker.broker_id) e.currentTarget.style.background = "#eff6ff" }}
+                          onMouseLeave={(e) => { if (loadingBrokerId !== broker.broker_id) e.currentTarget.style.background = "white" }}
                         >
-                          View Stops
+                          {loadingBrokerId === broker.broker_id ? (
+                            <>
+                              <div style={{ width: 12, height: 12, borderRadius: "50%", border: "2px solid #e2e8f0", borderTopColor: "#0070f3", animation: "spin 1s linear infinite" }} />
+                              Loading...
+                            </>
+                          ) : (
+                            "View Stops"
+                          )}
                         </button>
                       ),
                     },
@@ -1520,6 +1606,8 @@ cursor: loading ? "not-allowed" : "pointer",
                   <div style={{ display: "flex", background: "white", border: "1px solid #e2e8f0", borderRadius: 8, padding: 4, gap: 0 }}>
                 <button
                       onClick={() => setViewMode("card")}
+                      aria-label="Show card view"
+                      aria-pressed={viewMode === "card"}
                       style={{
                         padding: "8px 12px",
                         background: viewMode === "card" ? "#0070f3" : "transparent",
@@ -1542,6 +1630,8 @@ cursor: loading ? "not-allowed" : "pointer",
 </button>
                 <button
                       onClick={() => setViewMode("table")}
+                      aria-label="Show table view"
+                      aria-pressed={viewMode === "table"}
                       style={{
                         padding: "8px 12px",
                         background: viewMode === "table" ? "#0070f3" : "transparent",
@@ -1815,10 +1905,10 @@ borderRadius: 6,
                 </div>
                 <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
                   <div style={{ display: "flex", background: "white", border: "1px solid #e2e8f0", borderRadius: 8, padding: 4, gap: 0 }}>
-                    <button onClick={() => setViewMode("card")} style={{ padding: "8px 12px", background: viewMode === "card" ? "#0070f3" : "transparent", color: viewMode === "card" ? "white" : "#64748b", border: "none", borderRadius: 6, cursor: "pointer", fontSize: FONT_SIZE.xs, fontWeight: 600, minWidth: 44, height: 40, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                    <button onClick={() => setViewMode("card")} aria-label="Show card view" aria-pressed={viewMode === "card"} style={{ padding: "8px 12px", background: viewMode === "card" ? "#0070f3" : "transparent", color: viewMode === "card" ? "white" : "#64748b", border: "none", borderRadius: 6, cursor: "pointer", fontSize: FONT_SIZE.xs, fontWeight: 600, minWidth: 44, height: 40, display: "flex", alignItems: "center", justifyContent: "center" }}>
                       <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M3 3h8v8H3V3zm10 0h8v8h-8V3zM3 13h8v8H3v-8zm10 0h8v8h-8v-8z" /></svg>
                     </button>
-                    <button onClick={() => setViewMode("table")} style={{ padding: "8px 12px", background: viewMode === "table" ? "#0070f3" : "transparent", color: viewMode === "table" ? "white" : "#64748b", border: "none", borderRadius: 6, cursor: "pointer", fontSize: FONT_SIZE.xs, fontWeight: 600, minWidth: 44, height: 40, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                    <button onClick={() => setViewMode("table")} aria-label="Show table view" aria-pressed={viewMode === "table"} style={{ padding: "8px 12px", background: viewMode === "table" ? "#0070f3" : "transparent", color: viewMode === "table" ? "white" : "#64748b", border: "none", borderRadius: 6, cursor: "pointer", fontSize: FONT_SIZE.xs, fontWeight: 600, minWidth: 44, height: 40, display: "flex", alignItems: "center", justifyContent: "center" }}>
                       <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M3 4h18v2H3V4zm0 7h18v2H3v-2zm0 7h18v2H3v-2z" /></svg>
                     </button>
                   </div>
