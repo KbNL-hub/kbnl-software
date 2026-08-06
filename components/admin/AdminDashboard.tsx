@@ -372,7 +372,7 @@ export default function AdminDashboard({ effectiveRole, fullName }: Props) {
       manufacturerCards.map(cfg => ({
         key: `product-${cfg.name.toLowerCase()}`,
         icon: cfg.icon,
-        label: `${cfg.name} Volume (This Month)`,
+        label: `${cfg.name} (This Month)`,
         value: productMap[cfg.name] || 0,
         color: cfg.color,
       }))
@@ -488,23 +488,6 @@ export default function AdminDashboard({ effectiveRole, fullName }: Props) {
             ))}
           </div>
 
-          {truckStats.length > 0 && (
-            <div style={{ marginTop: isMobile ? 24 : 32 }}>
-              <p style={{ margin: "0 0 10px", fontSize: isMobile ? 11 : 12, color: "#64748b", textTransform: "uppercase", letterSpacing: 0.5, fontWeight: 700 }}>
-                Trucks by Status
-              </p>
-              <div style={{
-                display: "grid",
-                gridTemplateColumns: isMobile ? "repeat(2, minmax(0, 1fr))" : "repeat(auto-fill, minmax(160px, 1fr))",
-                gap: isMobile ? 10 : 12,
-              }}>
-                {truckStats.map(card => (
-                  <StatCardComponent key={card.key} card={card} isMobile={isMobile} />
-                ))}
-              </div>
-            </div>
-          )}
-
           {productStats.length > 0 && (
             <div style={{ marginTop: isMobile ? 24 : 32 }}>
               <p style={{ margin: "0 0 10px", fontSize: isMobile ? 11 : 12, color: "#64748b", textTransform: "uppercase", letterSpacing: 0.5, fontWeight: 700 }}>
@@ -516,6 +499,23 @@ export default function AdminDashboard({ effectiveRole, fullName }: Props) {
                 gap: isMobile ? 10 : 12,
               }}>
                 {productStats.map(card => (
+                  <StatCardComponent key={card.key} card={card} isMobile={isMobile} />
+                ))}
+              </div>
+            </div>
+          )}
+
+          {truckStats.length > 0 && (
+            <div style={{ marginTop: isMobile ? 24 : 32 }}>
+              <p style={{ margin: "0 0 10px", fontSize: isMobile ? 11 : 12, color: "#64748b", textTransform: "uppercase", letterSpacing: 0.5, fontWeight: 700 }}>
+                Trucks by Status
+              </p>
+              <div style={{
+                display: "grid",
+                gridTemplateColumns: isMobile ? "repeat(2, minmax(0, 1fr))" : "repeat(auto-fill, minmax(160px, 1fr))",
+                gap: isMobile ? 10 : 12,
+              }}>
+                {truckStats.map(card => (
                   <StatCardComponent key={card.key} card={card} isMobile={isMobile} />
                 ))}
               </div>
