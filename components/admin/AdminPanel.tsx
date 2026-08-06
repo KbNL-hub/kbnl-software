@@ -12,7 +12,6 @@ import { useBreakpoint } from "@/app/hooks/useBreakpoint"
 import NoClearance from "@/components/admin/NoClearance"
 import { PermissionProvider, usePermissions } from "@/lib/PermissionContext"
 import { ROLES } from "@/lib/permissions"
-import { toTitleCase } from "@/lib/title-case"
 import { Role } from "@/lib/roles"
 
 const SECTION_IMPORTS = {
@@ -45,12 +44,13 @@ const SECTION_IMPORTS = {
 } as const
 
 type SectionKey = keyof typeof SECTION_IMPORTS
+type NavKey = SectionKey | "__dashboard__"
 
 const SECTION_KEYS = new Set(Object.keys(SECTION_IMPORTS) as SectionKey[])
 const isSectionKey = (value: string | null): value is SectionKey =>
   !!value && SECTION_KEYS.has(value as SectionKey)
 
-type NavItemConfig = { label: string; key: SectionKey; icon: string }
+type NavItemConfig = { label: string; key: NavKey; icon: string }
 
 const SECTION_COMPONENTS: Partial<Record<SectionKey, React.ComponentType<any>>> = {}
 for (const key of Object.keys(SECTION_IMPORTS) as SectionKey[]) {
@@ -58,8 +58,10 @@ for (const key of Object.keys(SECTION_IMPORTS) as SectionKey[]) {
 }
 
 const ReportModal = dynamic(() => import("@/components/ReportModal"))
+const AdminDashboard = dynamic(() => import("@/components/admin/AdminDashboard"))
 
 const NAV_ITEMS: NavItemConfig[] = [
+  { label: "Dashboard",        key: "__dashboard__",        icon: "mdi:view-dashboard" },
   { label: "Users",            key: "manage-users",        icon: "mdi:account-group" },
   { label: "Invite Users",     key: "invite-users",        icon: "mdi:account-plus-outline" },
   { label: "Add New Truck",     key: "add-truck",          icon: "mdi:truck-plus" },
@@ -111,7 +113,7 @@ function AdminPanelContent({ userProfile }: Props) {
   const isNarrow = isMobile || isTablet
 
   const router = useRouter()
-  const [active, setActive] = useState<SectionKey | "">("")
+  const [active, setActive] = useState<NavKey>("__dashboard__")
   const [sidebarOpen, setSidebarOpen] = useState(true)
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [showReportModal, setShowReportModal] = useState(false)
@@ -130,8 +132,8 @@ function AdminPanelContent({ userProfile }: Props) {
   const [pictureLoading, setPictureLoading] = useState(false)
   const [pictureError, setPictureError] = useState("")
 
-  // Filter nav items based on user permissions
-  const visibleNavItems = NAV_ITEMS.filter(item => sections.includes(item.key))
+  // Filter nav items based on user permissions (dashboard is always visible)
+  const visibleNavItems = NAV_ITEMS.filter(item => item.key === "__dashboard__" || sections.includes(item.key as SectionKey))
 
   // Measure actual banner height for mobile drawer offset
   useEffect(() => {
@@ -239,6 +241,8 @@ function AdminPanelContent({ userProfile }: Props) {
     if (isSectionKey(section)) {
       setActive(section)
       SECTION_IMPORTS[section]()
+    } else {
+      setActive("__dashboard__")
     }
   }, [])
 
@@ -247,17 +251,20 @@ function AdminPanelContent({ userProfile }: Props) {
     const handlePopState = () => {
       const params = new URLSearchParams(window.location.search)
       const section = params.get('section')
-      setActive(isSectionKey(section) ? section : "")
+      setActive(isSectionKey(section) ? section : "__dashboard__")
     }
     window.addEventListener('popstate', handlePopState)
     return () => window.removeEventListener('popstate', handlePopState)
   }, [])
 
-  function navigate(key: SectionKey) {
+  function navigate(key: NavKey) {
     setActive(key)
-    SECTION_IMPORTS[key]()
+    if (key !== "__dashboard__") SECTION_IMPORTS[key as SectionKey]()
     if (isNarrow) setDrawerOpen(false)
-    window.history.pushState(null, '', `${window.location.pathname}?section=${key}`)
+    const url = key === "__dashboard__"
+      ? window.location.pathname
+      : `${window.location.pathname}?section=${key}`
+    window.history.pushState(null, '', url)
   }
 
   async function handleLogout() {
@@ -330,22 +337,20 @@ function AdminPanelContent({ userProfile }: Props) {
   const activeLabel = activeItem?.label ?? "Admin Panel"
 
   function renderContent() {
-    if (active) {
-      if (permLoading) return null
-      const access = getAccess(active)
-      if (!access.canView) {
-        return <NoClearance sectionLabel={activeLabel} />
-      }
+    if (active === "__dashboard__") {
+      return <AdminDashboard effectiveRole={effectiveRole} fullName={userProfile.full_name} />
     }
 
-    const Component = active ? SECTION_COMPONENTS[active] : undefined
+    const sectionKey = active as SectionKey
+    if (permLoading) return null
+    const access = getAccess(sectionKey)
+    if (!access.canView) {
+      return <NoClearance sectionLabel={activeLabel} />
+    }
+
+    const Component = SECTION_COMPONENTS[sectionKey]
     if (Component) return <Component />
-    return (
-      <div>
-        <h1 style={{ marginBottom: 8, fontSize: isMobile ? 22 : 28, color: "#171717" }}>Welcome, {toTitleCase(userProfile.full_name)}</h1>
-        <p style={{ color: "#888", fontSize: 15 }}>Select a section from the {isNarrow ? "menu" : "sidebar"}.</p>
-      </div>
-    )
+    return null
   }
 
   function NavItem({ item, showLabel }: { item: typeof NAV_ITEMS[0]; showLabel: boolean }) {

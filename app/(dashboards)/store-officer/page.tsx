@@ -18,7 +18,7 @@ import { usePolling } from "@/lib/hooks/usePolling"
 import { useBreakpoint } from "@/app/hooks/useBreakpoint"
 import { requireDashboardRole } from "@/lib/auth-helpers"
 import { Role } from "@/lib/roles"
-import { formatDateTime, formatDate, formatTime } from "@/lib/date-utils"
+import { formatDateTime, formatTime } from "@/lib/date-utils"
 import { useStops } from "@/lib/hooks/useStops"
 
 type Officer = { officer_id: string; full_name: string; store_name: string; profile_picture_url?: string }
@@ -80,6 +80,12 @@ type SaleLine = { product: string; quantity: string; price_per_bag: string }
 
 const PAYMENT_MODES = ["Cash", "Transfer", "POS", "Broker"]
 
+function getCurrentMonthRange() {
+  const from = dayjs().startOf("month").toISOString()
+  const to = dayjs().endOf("month").toISOString()
+  return { from, to }
+}
+
 export default function StoreOfficerDashboard() {
   const bp = useBreakpoint()
   const isMobile = bp === "mobile"
@@ -89,9 +95,15 @@ export default function StoreOfficerDashboard() {
   const [pendingStops, setPendingStops] = useState<PendingStop[]>([])
   const [stopsFilter, setStopsFilter] = useState<{ store_name: string; pending: boolean } | null>(null)
   const { data: stopsFromHook, refetch: refetchStops } = useStops(stopsFilter ?? undefined)
-  useEffect(() => { setPendingStops(stopsFromHook as PendingStop[]); setLastUpdated(new Date()) }, [stopsFromHook])
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setPendingStops(stopsFromHook as PendingStop[])
+    setLastUpdated(new Date())
+  }, [stopsFromHook])
   const [stock, setStock] = useState<StockBalance[]>([])
   const [sales, setSales] = useState<Sale[]>([])
+  const [monthlyStats, setMonthlyStats] = useState({ revenue: 0, bagsSold: 0, bagsReceived: 0 })
+  const [stockExpanded, setStockExpanded] = useState(true)
   const [loading, setLoading] = useState(true)
   const [tab, setTab] = useState<"supply" | "sales" | "stock">("supply")
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null)
@@ -152,7 +164,6 @@ export default function StoreOfficerDashboard() {
       .from("Profiles").select("full_name").eq("user_id", session.user.id).single()
 
     let storeName = ""
-    let officerId = session.user.id
 
     if (profile) {
       const { data: officerData } = await supabase
@@ -164,7 +175,6 @@ export default function StoreOfficerDashboard() {
       if (officerData) {
         setOfficer(officerData)
         storeName = officerData.store_name
-        officerId = officerData.officer_id
       } else {
         setOfficer({ officer_id: session.user.id, full_name: profile.full_name, store_name: "" })
       }
@@ -176,7 +186,8 @@ export default function StoreOfficerDashboard() {
 
     await Promise.all([
       fetchStock(storeName),
-      fetchSales(officerId),
+      fetchSales(storeName),
+      fetchMonthlyStats(storeName),
       fetchTricycles(),
       fetchTrucks(),
       fetchBrokers(),
@@ -188,6 +199,7 @@ export default function StoreOfficerDashboard() {
     if (!officer) return
     refetchStops()
     fetchStock(officer.store_name)
+    fetchMonthlyStats(officer.store_name)
     setLastUpdated(new Date())
   }, 120000, !!officer)
 
@@ -200,11 +212,45 @@ export default function StoreOfficerDashboard() {
     setStock(data || [])
   }
 
-  async function fetchSales(officerId: string) {
+  async function fetchMonthlyStats(storeName: string) {
+    const { from, to } = getCurrentMonthRange()
+
+    const { data: monthSales } = await supabase
+      .from("store_sales")
+      .select("quantity, total_amount")
+      .eq("store_name", storeName)
+      .eq("status", "Confirmed")
+      .gte("sold_at", from)
+      .lte("sold_at", to)
+
+    const revenue = (monthSales || []).reduce((sum, s) => sum + (s.total_amount || 0), 0)
+    const bagsSold = (monthSales || []).reduce((sum, s) => sum + (s.quantity || 0), 0)
+
+    const { data: confirmations } = await supabase
+      .from("store_supply_confirmations")
+      .select("confirmation_id")
+      .eq("store_name", storeName)
+      .gte("confirmed_at", from)
+      .lte("confirmed_at", to)
+
+    const confIds = (confirmations || []).map(c => c.confirmation_id)
+    let bagsReceived = 0
+    if (confIds.length > 0) {
+      const { data: lines } = await supabase
+        .from("store_supply_lines")
+        .select("quantity")
+        .in("confirmation_id", confIds)
+      bagsReceived = (lines || []).reduce((sum, l) => sum + (l.quantity || 0), 0)
+    }
+
+    setMonthlyStats({ revenue, bagsSold, bagsReceived })
+  }
+
+  async function fetchSales(storeName: string) {
     const { data } = await supabase
       .from("store_sales")
       .select("sale_id, product, quantity, price_per_bag, total_amount, customer_name, payment_mode, delivery_mode, tricycle_id, truck_plate, sold_at, created_at, broker_id, status, bank_name, depositor_name, rejection_reason")
-      .eq("officer_id", officerId)
+      .eq("store_name", storeName)
       .order("sold_at", { ascending: false })
 
     if (!data) { setSales([]); return }
@@ -370,6 +416,7 @@ export default function StoreOfficerDashboard() {
     await Promise.all([
       refetchStops(),
       fetchStock(officer.store_name),
+      fetchMonthlyStats(officer.store_name),
     ])
     setUpdatedStockProducts(supplyLines.map(l => l.product))
     setTimeout(() => setUpdatedStockProducts([]), 3000)
@@ -492,7 +539,11 @@ export default function StoreOfficerDashboard() {
       setBrokerSearch("")
       setSaleDate(new Date().toISOString().split("T")[0])
 
-      await Promise.all([fetchSales(officer.officer_id), fetchStock(officer.store_name)])
+      await Promise.all([
+        fetchSales(officer.store_name),
+        fetchStock(officer.store_name),
+        fetchMonthlyStats(officer.store_name),
+      ])
     } catch (err) {
       setSaleError("An error occurred")
       setSaleLoading(false)
@@ -647,9 +698,95 @@ export default function StoreOfficerDashboard() {
 
       <div style={{ padding: isMobile ? "16px" : "32px", maxWidth: 1200, margin: "0 auto" }}>
 
+        {/* Monthly Stats */}
+        <div style={{ marginBottom: 24 }}>
+          <div style={{
+            background: "#0070f3",
+            borderRadius: 16,
+            padding: isMobile ? "18px 16px" : "24px 28px",
+            display: "flex",
+            alignItems: "center",
+            gap: isMobile ? 14 : 18,
+            boxShadow: "0 4px 16px rgba(0, 112, 243, 0.25)",
+            marginBottom: isMobile ? 10 : 12,
+          }}>
+            <div style={{
+              width: isMobile ? 44 : 52,
+              height: isMobile ? 44 : 52,
+              borderRadius: 12,
+              background: "rgba(255,255,255,0.18)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              flexShrink: 0,
+            }}>
+              <Icon icon="mdi:cash-multiple" width={isMobile ? 22 : 26} color="#ffffff" />
+            </div>
+            <div style={{ minWidth: 0 }}>
+              <p style={{
+                margin: 0,
+                fontSize: isMobile ? 12 : 13,
+                color: "rgba(255,255,255,0.75)",
+                fontWeight: 500,
+                whiteSpace: "nowrap",
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+              }}>
+                Revenue (This Month)
+              </p>
+              <p style={{
+                margin: "4px 0 0",
+                fontSize: isMobile ? 26 : 36,
+                fontWeight: 800,
+                color: "#ffffff",
+                lineHeight: 1.1,
+                letterSpacing: "-0.02em",
+              }}>
+                ₦{monthlyStats.revenue.toLocaleString()}
+              </p>
+            </div>
+          </div>
+
+          <div style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+            gap: isMobile ? 10 : 12,
+          }}>
+            <div style={{ background: "white", borderRadius: 16, padding: isMobile ? "14px" : "16px 20px", border: "1px solid #eef0f2", display: "flex", alignItems: "center", gap: isMobile ? 12 : 14 }}>
+              <div style={{ width: isMobile ? 38 : 42, height: isMobile ? 38 : 42, borderRadius: 11, background: "rgba(0, 112, 243, 0.08)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                <Icon icon="mdi:package-variant" width={isMobile ? 18 : 20} color="#0070f3" />
+              </div>
+              <div style={{ minWidth: 0, flex: 1 }}>
+                <p style={{ margin: 0, fontSize: isMobile ? 11 : 12, color: "#64748b", fontWeight: 500, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                  Bags Sold (This Month)
+                </p>
+                <p style={{ margin: "3px 0 0", fontSize: isMobile ? 20 : 22, fontWeight: 700, color: "#0f172a", lineHeight: 1.2, letterSpacing: "-0.01em" }}>
+                  {monthlyStats.bagsSold.toLocaleString()}
+                </p>
+              </div>
+            </div>
+            <div style={{ background: "white", borderRadius: 16, padding: isMobile ? "14px" : "16px 20px", border: "1px solid #eef0f2", display: "flex", alignItems: "center", gap: isMobile ? 12 : 14 }}>
+              <div style={{ width: isMobile ? 38 : 42, height: isMobile ? 38 : 42, borderRadius: 11, background: "rgba(0, 112, 243, 0.08)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                <Icon icon="mdi:truck-delivery" width={isMobile ? 18 : 20} color="#0070f3" />
+              </div>
+              <div style={{ minWidth: 0, flex: 1 }}>
+                <p style={{ margin: 0, fontSize: isMobile ? 11 : 12, color: "#64748b", fontWeight: 500, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                  Bags Received (This Month)
+                </p>
+                <p style={{ margin: "3px 0 0", fontSize: isMobile ? 20 : 22, fontWeight: 700, color: "#0f172a", lineHeight: 1.2, letterSpacing: "-0.01em" }}>
+                  {monthlyStats.bagsReceived.toLocaleString()}
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+
         {/* Stock Summary */}
         <div style={{ background: "white", border: "1px solid #e2e8f0", borderRadius: 12, padding: isMobile ? 16 : 24, marginBottom: 24, boxShadow: "0 1px 3px rgba(0,0,0,0.05)" }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+          <div
+            onClick={() => setStockExpanded(prev => !prev)}
+            style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: stockExpanded ? 16 : 0, cursor: "pointer", userSelect: "none" }}
+          >
             <div>
               {officer?.store_name && (
                 <p style={{ margin: "0 0 2px", fontSize: FONT_SIZE.xs, fontWeight: 600, color: "#0070f3", textTransform: "uppercase", letterSpacing: "0.5px" }}>
@@ -658,35 +795,39 @@ export default function StoreOfficerDashboard() {
               )}
               <p style={{ margin: 0, fontWeight: 700, fontSize: FONT_SIZE.lg, color: "#0f172a" }}>Stock Balance</p>
             </div>
-            <p style={{ margin: 0, fontWeight: 700, fontSize: FONT_SIZE.lg, color: "#0f172a" }}>
-              Total: <span style={{ color: "#0070f3" }}>{stock.reduce((sum, s) => sum + s.balance, 0).toLocaleString()}</span> <span style={{ fontSize: FONT_SIZE.sm, fontWeight: 500, color: "#64748b" }}>bags</span>
-            </p>
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <p style={{ margin: 0, fontWeight: 700, fontSize: FONT_SIZE.lg, color: "#0f172a" }}>
+                Total: <span style={{ color: "#0070f3" }}>{stock.reduce((sum, s) => sum + s.balance, 0).toLocaleString()}</span> <span style={{ fontSize: FONT_SIZE.sm, fontWeight: 500, color: "#64748b" }}>bags</span>
+              </p>
+              <Icon icon={stockExpanded ? "mdi:chevron-up" : "mdi:chevron-down"} width={20} color="#64748b" />
+            </div>
           </div>
-          {stock.length === 0
-            ? <p style={{ color: "#64748b", fontSize: FONT_SIZE.base, margin: 0 }}>No stock recorded yet.</p>
-            : (
-              <div style={{ display: "grid", gridTemplateColumns: isMobile ? "repeat(2, 1fr)" : "repeat(auto-fit, minmax(160px, 1fr))", gap: 12 }}>
-                {stock.map(s => {
-                  const isUpdated = updatedStockProducts.includes(s.product)
-                  return (
-                  <div key={s.product} style={{
-                    background: "#f0f7ff",
-                    border: `1.5px solid ${isUpdated ? "#6ee7b7" : "#bfdbfe"}`,
-                    borderRadius: 8,
-                    padding: "12px 14px",
-                    animation: isUpdated ? "pulseGlow 0.6s ease 3" : undefined,
-                    transition: "box-shadow 0.3s, border-color 0.3s",
-                  }}>
-                    <p style={{ margin: 0, fontSize: FONT_SIZE.xs, color: "#64748b" }}>{s.product}</p>
-                    <p style={{ margin: "6px 0 0", fontWeight: 700, fontSize: FONT_SIZE["2xl"], color: s.balance === 0 ? "#ef4444" : s.balance < 50 ? "#f5a623" : "#0070f3" }}>
-                      {s.balance}<span style={{ fontSize: FONT_SIZE.xs, fontWeight: 500, color: "#64748b", marginLeft: 4 }}>bags</span>
-                    </p>
-                  </div>
-                  )
-                })}
-              </div>
-            )
-          }
+          {stockExpanded && (
+            stock.length === 0
+              ? <p style={{ color: "#64748b", fontSize: FONT_SIZE.base, margin: 0 }}>No stock recorded yet.</p>
+              : (
+                <div style={{ display: "grid", gridTemplateColumns: isMobile ? "repeat(2, minmax(0, 1fr))" : "repeat(auto-fit, minmax(160px, 1fr))", gap: 12 }}>
+                  {stock.map(s => {
+                    const isUpdated = updatedStockProducts.includes(s.product)
+                    return (
+                    <div key={s.product} style={{
+                      background: "#f0f7ff",
+                      border: `1.5px solid ${isUpdated ? "#6ee7b7" : "#bfdbfe"}`,
+                      borderRadius: 8,
+                      padding: "12px 14px",
+                      animation: isUpdated ? "pulseGlow 0.6s ease 3" : undefined,
+                      transition: "box-shadow 0.3s, border-color 0.3s",
+                    }}>
+                      <p style={{ margin: 0, fontSize: FONT_SIZE.xs, color: "#64748b" }}>{s.product}</p>
+                      <p style={{ margin: "6px 0 0", fontWeight: 700, fontSize: FONT_SIZE["2xl"], color: s.balance === 0 ? "#ef4444" : s.balance < 50 ? "#f5a623" : "#0070f3" }}>
+                        {s.balance}<span style={{ fontSize: FONT_SIZE.xs, fontWeight: 500, color: "#64748b", marginLeft: 4 }}>bags</span>
+                      </p>
+                    </div>
+                    )
+                  })}
+                </div>
+              )
+          )}
         </div>
 
         {/* Tabs */}

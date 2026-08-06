@@ -10,9 +10,10 @@ import { apiMutate } from "@/lib/api-mutation"
 import RoleSwitcher from "@/components/RoleSwitcher"
 import { useBreakpoint } from "@/app/hooks/useBreakpoint"
 import { Role } from "@/lib/roles"
-import { toTitleCase } from "@/lib/title-case"
 import ReportModal from "@/components/ReportModal"
 import { PermissionProvider } from "@/lib/PermissionContext"
+
+const BrokerDashboard = dynamic(() => import("@/components/broker/BrokerDashboard"))
 
 const SECTION_IMPORTS = {
   trips: () => import("@/components/broker/BrokerActiveTrips"),
@@ -34,6 +35,7 @@ for (const key of Object.keys(SECTION_IMPORTS) as SectionKey[]) {
 }
 
 const BASE_NAV_ITEMS = [
+  { label: "Dashboard",          key: "__dashboard__",   icon: "mdi:view-dashboard" },
   { label: "Active Trips",        key: "trips",    icon: "mdi:truck-fast" },
   { label: "My Stops",            key: "stops",    icon: "mdi:truck-delivery" },
   { label: "Customer Payments",   key: "payments", icon: "mdi:cash-register" },
@@ -169,9 +171,12 @@ export default function BrokerPanel({ userProfile }: Props) {
 
   function navigate(key: string) {
     setActive(key)
-    SECTION_IMPORTS[key as SectionKey]?.()
+    if (key !== "__dashboard__") SECTION_IMPORTS[key as SectionKey]?.()
     if (isNarrow) setDrawerOpen(false)
-    window.history.pushState(null, '', `${window.location.pathname}?section=${key}`)
+    const url = key === "__dashboard__"
+      ? window.location.pathname
+      : `${window.location.pathname}?section=${key}`
+    window.history.pushState(null, '', url)
   }
 
   async function handleLogout() {
@@ -197,6 +202,8 @@ export default function BrokerPanel({ userProfile }: Props) {
     if (section && validKeys.includes(section)) {
       setActive(section)
       SECTION_IMPORTS[section as SectionKey]?.()
+    } else {
+      setActive("__dashboard__")
     }
     // eslint-disable-next-line react-hooks/set-state-in-effect
   }, [NAV_ITEMS])
@@ -207,14 +214,18 @@ export default function BrokerPanel({ userProfile }: Props) {
       const params = new URLSearchParams(window.location.search)
       const section = params.get('section')
       const validKeys = NAV_ITEMS.map(n => n.key)
-      setActive(section && validKeys.includes(section) ? section : "")
+      setActive(section && validKeys.includes(section) ? section : "__dashboard__")
     }
     window.addEventListener('popstate', handlePopState)
     return () => window.removeEventListener('popstate', handlePopState)
   }, [NAV_ITEMS])
 
   function renderContent() {
-    const Component = active ? SECTION_COMPONENTS[active as SectionKey] : undefined
+    if (active === "__dashboard__" || active === "") {
+      return <BrokerDashboard userId={userProfile.user_id} fullName={userProfile.full_name} />
+    }
+
+    const Component = SECTION_COMPONENTS[active as SectionKey]
     if (Component) {
       if (active === "expenses") {
         return <Component clerkId={userProfile.user_id} officeName={clerkOfficeName} fullName={userProfile.full_name} />
@@ -224,12 +235,7 @@ export default function BrokerPanel({ userProfile }: Props) {
       }
       return <Component />
     }
-    return (
-      <div>
-        <h1 style={{ marginBottom: 8, fontSize: isMobile ? 22 : 28, color: "#171717" }}>Welcome, {toTitleCase(userProfile.full_name)}</h1>
-        <p style={{ color: "#888", fontSize: 15 }}>Select a section from the {isNarrow ? "menu" : "sidebar"}.</p>
-      </div>
-    )
+    return null
   }
 
   function NavItem({ item, showLabel }: { item: typeof NAV_ITEMS[0]; showLabel: boolean }) {
