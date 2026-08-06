@@ -87,6 +87,13 @@ const FACTORY_PRODUCTS: Record<string, string[]> = {
 
 const SIDE_TRIP_ITEMS = ["Yam", "Plantain", "Cassava", "Maize", "Rice", "Other foodstuff"]
 
+function getCurrentMonthRange() {
+  const now = new Date()
+  const from = new Date(now.getFullYear(), now.getMonth(), 1)
+  const to = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999)
+  return { from: toISOString(from), to: toISOString(to) }
+}
+
 const COMPLAINT_TYPES = [
   "Breakdown", "Tyre Blowout", "Accident", "Police / Checkpoint Issue",
   "Fuel Problem", "Mechanical Fault", "Road Blockage", "Other",
@@ -114,6 +121,7 @@ export default function DriverDashboard() {
   const [stops, setStops] = useState<Stop[]>([])
   const [remaining, setRemaining] = useState(0)
   const [offloadedSoFar, setOffloadedSoFar] = useState(0)
+  const [monthlyStats, setMonthlyStats] = useState({ trips: 0, bagsDelivered: 0 })
   const [loading, setLoading] = useState(true)
   const [submitting, setSubmitting] = useState(false)
   const [message, setMessage] = useState("")
@@ -297,6 +305,7 @@ export default function DriverDashboard() {
     setAtfFilter({ driver_id: user.id })
     if (!mountedRef.current) return
     fetchSideTrips(user.id)
+    await fetchMonthlyStats(user.id)
     setLoading(false)
   }
 
@@ -347,6 +356,32 @@ export default function DriverDashboard() {
       .order("created_at", { ascending: false })
 
     setMySideTrips(data || [])
+  }
+
+  async function fetchMonthlyStats(userId: string) {
+    if (!mountedRef.current) return
+    const { from, to } = getCurrentMonthRange()
+
+    const { data: trips } = await supabase
+      .from("Trips")
+      .select("trip_id")
+      .eq("driver_id", userId)
+      .eq("trip_status", "Completed")
+      .gte("created_at", from)
+      .lte("created_at", to)
+
+    const tripIds = (trips || []).map(t => t.trip_id)
+    let bagsDelivered = 0
+    if (tripIds.length > 0) {
+      const { data: stops } = await supabase
+        .from("Stops")
+        .select("quantity_offloaded")
+        .in("trip_id", tripIds)
+      bagsDelivered = (stops || []).reduce((sum, s) => sum + (s.quantity_offloaded || 0), 0)
+    }
+
+    if (!mountedRef.current) return
+    setMonthlyStats({ trips: tripIds.length, bagsDelivered })
   }
 
   async function handleSubmitSideTrip() {
@@ -456,6 +491,7 @@ export default function DriverDashboard() {
     await apiMutate("trips", { action: "update", table: "Trips", data: { trip_status: "Completed", updated_at: toISOString() }, filters: { trip_id: activeTrip.trip_id } })
     await apiMutate("trips", { action: "update", table: "Trucks", data: { status: "Empty" }, filters: { plate_number: activeTrip.plate_number } })
     setSubmitting(false); setShowEndConfirm(false); setActiveTrip(null); setStops([]); setLoadMoreEntries([]); setRemaining(0); setOffloadedSoFar(0); navigateTo("dashboard")
+    if (driver?.driver_id) fetchMonthlyStats(driver.driver_id)
   }
 
   async function handleHoldTrip() {
@@ -715,6 +751,8 @@ export default function DriverDashboard() {
         .new-report-btn:hover { background: #d48a1c !important; }
         .mark-resolved-btn:hover:not(:disabled) { background: #15803d !important; }
         .btn-outline-hold:hover { background: #f8fafc !important; border-color: #cbd5e1 !important; }
+        .card-lift { transition: transform .18s ease, box-shadow .18s ease, border-color .18s ease; }
+        .card-lift:hover { transform: translateY(-2px) !important; box-shadow: 0 2px 4px rgba(16,24,40,.05), 0 16px 32px rgba(16,24,40,.08) !important; }
       `}</style>
 
       {/* Profile Banner */}
@@ -780,37 +818,91 @@ export default function DriverDashboard() {
         </div>
       </div>
 
-      <div style={{ padding: isMobile ? "16px" : "32px", maxWidth: 1200, margin: "0 auto", paddingBottom: 80 }}>
+      <div style={{ paddingLeft: isMobile ? 16 : 32, paddingRight: isMobile ? 16 : 32, paddingTop: isMobile ? 16 : 32, paddingBottom: 80, maxWidth: 1200, margin: "0 auto" }}>
 
         {/* ── Dashboard ── */}
         {view === "dashboard" && (
-          <div style={{ paddingTop: isMobile ? 32 : 48 }}>
-            <div style={{ marginBottom: 36, textAlign: "center" }}>
+          <div style={{ maxWidth: 440, margin: "0 auto", paddingTop: isMobile ? 24 : 32 }}>
+            <div style={{ marginBottom: 24, textAlign: "center" }}>
               <h2 style={{ margin: 0, fontSize: isMobile ? FONT_SIZE["2xl"] : FONT_SIZE.xl, color: "#0f172a", fontWeight: 700 }}>
                 {activeTrip ? `Continue Your Trip?` : "Ready to go?"}
               </h2>
               <p style={{ margin: "8px 0 0", color: "#64748b", fontSize: FONT_SIZE.base }}>
-                {activeTrip ? `${activeTrip.plate_number} • ${activeTrip.material_centre}` : "No active trip. Start a trip below."}
+                {activeTrip ? `${activeTrip.plate_number} • ${activeTrip.material_centre}` : "Your deliveries are waiting."}
               </p>
             </div>
 
-            <div style={{ display: "flex", flexDirection: "column", gap: 12, maxWidth: 320, margin: "240px auto" }}>
-              <button onClick={() => navigateTo(activeTrip ? "active-trip" : "start-trip")} className="btn-hover-opacity" style={{ width: "100%", padding: "14px 16px", background: "#0070f3", color: "white", border: "none", borderRadius: 10, cursor: "pointer", fontWeight: 700, fontSize: FONT_SIZE.md, minHeight: 52, display: "flex", alignItems: "center", justifyContent: "center", gap: 8, transition: "opacity 0.2s" }}>
-                <Icon icon={activeTrip ? "mdi:truck-fast" : "mdi:truck-outline"} width={20} />
-                {activeTrip ? "Continue Trip" : "Start a Trip"}
-              </button>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: isMobile ? 12 : 14, marginBottom: 26 }}>
+              <div className="card-lift" style={{ background: "#fff", borderRadius: 18, border: "1px solid #eef2f6", padding: isMobile ? "18px" : "22px", boxShadow: "0 1px 2px rgba(16,24,40,.03), 0 10px 24px rgba(16,24,40,.04)" }}>
+                <p style={{ margin: 0, fontSize: isMobile ? 30 : 34, fontWeight: 700, fontVariantNumeric: "tabular-nums", color: "#111827", lineHeight: 1.1 }}>
+                  {monthlyStats.trips.toLocaleString()}
+                </p>
+                <p style={{ margin: "8px 0 0", fontSize: 12, color: "#6b7280", textTransform: "uppercase", letterSpacing: ".08em", fontWeight: 600 }}>
+                  Trips This Month
+                </p>
+              </div>
+              <div className="card-lift" style={{ background: "#fff", borderRadius: 18, border: "1px solid #eef2f6", padding: isMobile ? "18px" : "22px", boxShadow: "0 1px 2px rgba(16,24,40,.03), 0 10px 24px rgba(16,24,40,.04)" }}>
+                <p style={{ margin: 0, fontSize: isMobile ? 30 : 34, fontWeight: 700, fontVariantNumeric: "tabular-nums", color: "#111827", lineHeight: 1.1 }}>
+                  {monthlyStats.bagsDelivered.toLocaleString()}
+                </p>
+                <p style={{ margin: "8px 0 0", fontSize: 12, color: "#6b7280", textTransform: "uppercase", letterSpacing: ".08em", fontWeight: 600 }}>
+                  Bags Delivered
+                </p>
+              </div>
+            </div>
 
-              <button onClick={() => navigateTo("fuel")} className="btn-outline-blue" style={{ width: "100%", padding: "12px 16px", background: "white", color: "#0070f3", border: "1.5px solid #0070f3", borderRadius: 10, cursor: "pointer", fontWeight: 600, fontSize: FONT_SIZE.md, minHeight: 48, display: "flex", alignItems: "center", justifyContent: "center", gap: 8, position: "relative", transition: "all 0.2s" }}>
-                <Icon icon="mdi:gas-station" width={18} />
-                Fuel
-                {hasPendingATF && (
-                  <span style={{ position: "absolute", top: 10, right: 14, width: 8, height: 8, borderRadius: "50%", background: "#f5a623", border: "2px solid white" }} />
-                )}
-              </button>
+            <p style={{ margin: "34px 0 12px", textAlign: "center", fontSize: FONT_SIZE.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: 1, fontWeight: 700 }}>Actions</p>
 
-              <button onClick={() => navigateTo("side-trips")} className="btn-outline-amber" style={{ width: "100%", padding: "12px 16px", background: "white", color: "#f5a623", border: "1.5px solid #f5a623", borderRadius: 10, cursor: "pointer", fontWeight: 600, fontSize: FONT_SIZE.md, minHeight: 48, display: "flex", alignItems: "center", justifyContent: "center", gap: 8, position: "relative", transition: "all 0.2s" }}>
-                <Icon icon="mdi:road-variant" width={18} />
-                Record Side Trip
+            <button
+              onClick={() => navigateTo(activeTrip ? "active-trip" : "start-trip")}
+              className="card-lift"
+              style={{ width: "100%", display: "flex", alignItems: "center", gap: 16, background: "#0070f3", border: "2px solid #0070f3", borderRadius: 20, padding: "16px 18px", cursor: "pointer", boxShadow: "0 1px 2px rgba(16,24,40,.03), 0 10px 24px rgba(16,24,40,.04)", textAlign: "left" }}
+            >
+              <div style={{ width: isMobile ? 46 : 52, height: isMobile ? 46 : 52, borderRadius: 16, background: "#fff", color: "#0070f3", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                <Icon icon={activeTrip ? "mdi:truck-fast" : "mdi:truck-outline"} width={24} color="#0070f3" />
+              </div>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <p style={{ margin: 0, fontSize: 17, fontWeight: 700, color: "#fff" }}>
+                  {activeTrip ? "Continue Trip" : "Start Trip"}
+                </p>
+                <p style={{ margin: "4px 0 0", color: "rgba(255,255,255,0.78)", fontSize: 13, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                  {activeTrip ? `${activeTrip.material_centre} • ${activeTrip.loaded_quantity.toLocaleString()} bags on board` : "Begin today's delivery route"}
+                </p>
+              </div>
+              <Icon icon="mdi:chevron-right" width={22} color="#fff" />
+            </button>
+
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: isMobile ? 12 : 14, marginTop: 18 }}>
+              <button
+                onClick={() => navigateTo("fuel")}
+                className="card-lift"
+                style={{ background: "#fff", borderRadius: 20, border: "1px solid #eef2f6", padding: "18px", boxShadow: "0 1px 2px rgba(16,24,40,.03), 0 10px 24px rgba(16,24,40,.04)", cursor: "pointer", textAlign: "left" }}
+              >
+                <div style={{ position: "relative" }}>
+                  <div style={{ width: 44, height: 44, borderRadius: 14, background: "#edf5ff", color: "#0070f3", display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 16 }}>
+                    <Icon icon="mdi:gas-station" width={22} />
+                  </div>
+                  {hasPendingATF && (
+                    <span style={{ position: "absolute", top: -2, left: 30, width: 10, height: 10, borderRadius: "50%", background: "#f5a623", border: "2px solid white" }} />
+                  )}
+                </div>
+                <p style={{ margin: 0, fontWeight: 600, fontSize: 15, color: "#111827" }}>Fuel</p>
+                <p style={{ margin: "6px 0 0", color: "#6b7280", fontSize: 13, lineHeight: 1.45 }}>
+                  {hasPendingATF ? "You have an approval to fuel." : "Log a fuel purchase."}
+                </p>
+              </button>
+              <button
+                onClick={() => navigateTo("side-trips")}
+                className="card-lift"
+                style={{ background: "#fff", borderRadius: 20, border: "1px solid #eef2f6", padding: "18px", boxShadow: "0 1px 2px rgba(16,24,40,.03), 0 10px 24px rgba(16,24,40,.04)", cursor: "pointer", textAlign: "left" }}
+              >
+                <div style={{ width: 44, height: 44, borderRadius: 14, background: "#fff8e1", color: "#f5a623", display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 16 }}>
+                  <Icon icon="mdi:road-variant" width={22} color="#f5a623" />
+                </div>
+                <p style={{ margin: 0, fontWeight: 600, fontSize: 15, color: "#111827" }}>Side Trips</p>
+                <p style={{ margin: "6px 0 0", color: "#6b7280", fontSize: 13, lineHeight: 1.45 }}>
+                  Record additional stops.
+                </p>
               </button>
             </div>
           </div>

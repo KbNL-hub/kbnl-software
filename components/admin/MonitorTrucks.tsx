@@ -305,6 +305,14 @@ export default function MonitorTrucks({ viewOnly = false }: { viewOnly?: boolean
     })
 
     if (error) { alert(`Failed to update status: ${error}`); return }
+
+    await apiMutate("trips", {
+      action: "update",
+      table: "Trips",
+      data: { trip_status: status },
+      filters: { trip_id: tripId },
+    })
+
     ddLastSaveTimeRef.current = Date.now()
     setDdTrips(prev => prev.map(t => t.dd_trip_id === tripId ? { ...t, trip_status: status } : t))
   }

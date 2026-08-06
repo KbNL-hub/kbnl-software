@@ -21,6 +21,20 @@ type StatCard = {
   isCurrency?: boolean
 }
 
+const PRODUCT_MANUFACTURER: Record<string, string> = {
+  "Supaset": "HBM", "Supafix": "HBM", "Classic": "HBM",
+  "BUA cement": "BUA",
+  "3X": "Dangote", "Falcon": "Dangote",
+}
+
+const TRUCK_STATUS_CARDS: { status: string; icon: string; color: string }[] = [
+  { status: "Loaded", icon: "mdi:truck", color: "#0070f3" },
+  { status: "Empty", icon: "mdi:truck-outline", color: "#10b981" },
+  { status: "To Plant", icon: "mdi:factory", color: "#8b5cf6" },
+  { status: "Undergoing Repairs", icon: "mdi:wrench", color: "#f59e0b" },
+  { status: "Decommissioned", icon: "mdi:truck-remove", color: "#ef4444" },
+]
+
 function getCurrentMonthRange() {
   const now = new Date()
   const from = new Date(now.getFullYear(), now.getMonth(), 1).toISOString()
@@ -228,6 +242,8 @@ export default function AdminDashboard({ effectiveRole, fullName }: Props) {
   const bp = useBreakpoint()
   const isMobile = bp === "mobile"
   const [stats, setStats] = useState<StatCard[]>([])
+  const [truckStats, setTruckStats] = useState<StatCard[]>([])
+  const [productStats, setProductStats] = useState<StatCard[]>([])
   const [loading, setLoading] = useState(true)
 
   const roleGroup = getRoleGroup(effectiveRole)
@@ -258,9 +274,10 @@ export default function AdminDashboard({ effectiveRole, fullName }: Props) {
       stopsResult,
       storeSalesResult,
       activeTripsResult,
-      ddTripsResult,
+      totalTripsResult,
       usersResult,
       trucksResult,
+      productTripsResult,
     ] = await Promise.all([
       supabase
         .from("Stops")
@@ -279,16 +296,23 @@ export default function AdminDashboard({ effectiveRole, fullName }: Props) {
         .select("trip_id", { count: "exact", head: true })
         .in("trip_status", ["In transit", "On hold"]),
       supabase
-        .from("dd_trips")
-        .select("dd_trip_id", { count: "exact", head: true })
-        .in("trip_status", ["In transit", "On hold"]),
+        .from("Trips")
+        .select("trip_id", { count: "exact", head: true })
+        .eq("trip_status", "Completed")
+        .gte("created_at", from)
+        .lte("created_at", to),
       supabase
         .from("Profiles")
         .select("user_id", { count: "exact", head: true })
         .eq("is_deactivated", false),
       supabase
         .from("Trucks")
-        .select("plate_number"),
+        .select("status"),
+      supabase
+        .from("Trips")
+        .select("product, loaded_quantity")
+        .gte("created_at", from)
+        .lte("created_at", to),
     ])
 
     const bagsFromStops = (stopsResult.data || []).reduce(
@@ -318,12 +342,48 @@ export default function AdminDashboard({ effectiveRole, fullName }: Props) {
       (sum, s) => sum + (s.total_amount || 0), 0
     )
 
+    const truckCounts: Record<string, number> = {}
+    for (const t of trucksResult.data || []) {
+      truckCounts[t.status] = (truckCounts[t.status] || 0) + 1
+    }
+    setTruckStats(
+      TRUCK_STATUS_CARDS.map(cfg => ({
+        key: `truck-${cfg.status.toLowerCase().replace(/\s+/g, "-")}`,
+        icon: cfg.icon,
+        label: cfg.status,
+        value: truckCounts[cfg.status] || 0,
+        color: cfg.color,
+      }))
+    )
+
+    const productMap: Record<string, number> = {}
+    for (const t of productTripsResult.data || []) {
+      if (!t.product) continue
+      const manufacturer = PRODUCT_MANUFACTURER[t.product]
+      if (!manufacturer) continue
+      productMap[manufacturer] = (productMap[manufacturer] || 0) + (t.loaded_quantity || 0)
+    }
+    const manufacturerCards: { name: string; icon: string; color: string }[] = [
+      { name: "HBM", icon: "mdi:factory", color: "#0070f3" },
+      { name: "Dangote", icon: "mdi:factory", color: "#10b981" },
+      { name: "BUA", icon: "mdi:factory", color: "#8b5cf6" },
+    ]
+    setProductStats(
+      manufacturerCards.map(cfg => ({
+        key: `product-${cfg.name.toLowerCase()}`,
+        icon: cfg.icon,
+        label: `${cfg.name} Volume (This Month)`,
+        value: productMap[cfg.name] || 0,
+        color: cfg.color,
+      }))
+    )
+
     setStats([
       { key: "revenue", icon: "mdi:cash-multiple", label: "Revenue (This Month)", value: revenue, color: "#10b981", isCurrency: true },
       { key: "bags", icon: "mdi:package-variant", label: "Bags Sold (This Month)", value: bagsSold, color: "#0070f3" },
-      { key: "trips", icon: "mdi:truck-check", label: "Active Trips", value: (activeTripsResult.count || 0) + (ddTripsResult.count || 0), color: "#8b5cf6" },
-      { key: "users", icon: "mdi:account-group", label: "Active Users", value: usersResult.count || 0, color: "#f59e0b" },
-      { key: "trucks", icon: "mdi:bus-wrench", label: "Total Trucks", value: trucksResult.data?.length ?? 0, color: "#ef4444" },
+      { key: "trips", icon: "mdi:truck-check", label: "Active Trips", value: activeTripsResult.count || 0, color: "#8b5cf6" },
+      { key: "total-trips", icon: "mdi:check-decagram", label: "Total Trips (This Month)", value: totalTripsResult.count || 0, color: "#f59e0b" },
+      { key: "users", icon: "mdi:account-group", label: "Active Users", value: usersResult.count || 0, color: "#ef4444" },
     ])
   }
 
@@ -360,14 +420,10 @@ export default function AdminDashboard({ effectiveRole, fullName }: Props) {
   }
 
   async function fetchATCStats() {
-    const [tripsResult, ddTripsResult, pendingConfirmResult, disputedResult] = await Promise.all([
+    const [tripsResult, pendingConfirmResult, disputedResult] = await Promise.all([
       supabase
         .from("Trips")
         .select("trip_id", { count: "exact", head: true })
-        .in("trip_status", ["In transit", "On hold"]),
-      supabase
-        .from("dd_trips")
-        .select("dd_trip_id", { count: "exact", head: true })
         .in("trip_status", ["In transit", "On hold"]),
       supabase
         .from("Stops")
@@ -380,8 +436,8 @@ export default function AdminDashboard({ effectiveRole, fullName }: Props) {
     ])
 
     setStats([
-      { key: "trucks-transit", icon: "mdi:truck-check", label: "Trucks In Transit", value: (tripsResult.count || 0) + (ddTripsResult.count || 0), color: "#0070f3" },
-      { key: "active-trips", icon: "mdi:road-variant", label: "Active Trips", value: (tripsResult.count || 0) + (ddTripsResult.count || 0), color: "#8b5cf6" },
+      { key: "trucks-transit", icon: "mdi:truck-check", label: "Trucks In Transit", value: tripsResult.count || 0, color: "#0070f3" },
+      { key: "active-trips", icon: "mdi:road-variant", label: "Active Trips", value: tripsResult.count || 0, color: "#8b5cf6" },
       { key: "pending-confirm", icon: "mdi:clock-outline", label: "Pending Confirmation", value: pendingConfirmResult.count || 0, color: "#f59e0b" },
       { key: "disputed", icon: "mdi:alert", label: "Disputed Stops", value: disputedResult.count || 0, color: "#ef4444" },
     ])
@@ -431,6 +487,40 @@ export default function AdminDashboard({ effectiveRole, fullName }: Props) {
               <StatCardComponent key={card.key} card={card} isMobile={isMobile} />
             ))}
           </div>
+
+          {truckStats.length > 0 && (
+            <div style={{ marginTop: isMobile ? 24 : 32 }}>
+              <p style={{ margin: "0 0 10px", fontSize: isMobile ? 11 : 12, color: "#64748b", textTransform: "uppercase", letterSpacing: 0.5, fontWeight: 700 }}>
+                Trucks by Status
+              </p>
+              <div style={{
+                display: "grid",
+                gridTemplateColumns: isMobile ? "repeat(2, minmax(0, 1fr))" : "repeat(auto-fill, minmax(160px, 1fr))",
+                gap: isMobile ? 10 : 12,
+              }}>
+                {truckStats.map(card => (
+                  <StatCardComponent key={card.key} card={card} isMobile={isMobile} />
+                ))}
+              </div>
+            </div>
+          )}
+
+          {productStats.length > 0 && (
+            <div style={{ marginTop: isMobile ? 24 : 32 }}>
+              <p style={{ margin: "0 0 10px", fontSize: isMobile ? 11 : 12, color: "#64748b", textTransform: "uppercase", letterSpacing: 0.5, fontWeight: 700 }}>
+                Product Volume by Manufacturer
+              </p>
+              <div style={{
+                display: "grid",
+                gridTemplateColumns: isMobile ? "repeat(2, minmax(0, 1fr))" : "repeat(auto-fill, minmax(160px, 1fr))",
+                gap: isMobile ? 10 : 12,
+              }}>
+                {productStats.map(card => (
+                  <StatCardComponent key={card.key} card={card} isMobile={isMobile} />
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       )}
     </div>
