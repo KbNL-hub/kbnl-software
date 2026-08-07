@@ -36,6 +36,7 @@ export default function ReportModal({ isOpen, onClose, userId, userRole }: Repor
       setMode("list")
       fetchReports()
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen])
 
   useEffect(() => {

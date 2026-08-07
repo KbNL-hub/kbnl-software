@@ -152,6 +152,7 @@ export default function StoreOfficerDashboard() {
   const [showPictureModal, setShowPictureModal] = useState(false)
   const [showReportModal, setShowReportModal] = useState(false)
 
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { init() }, [])
 
   async function init() {

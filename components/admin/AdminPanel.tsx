@@ -190,7 +190,7 @@ function AdminPanelContent({ userProfile }: Props) {
       }
     }
     checkAlerts()
-  }, [permLoading])
+  }, [permLoading, getAccess])
 
   usePolling(() => {
     if (permLoading) return

@@ -69,6 +69,7 @@ export default function CashOfficerPanel({ clerkId, officeName }: Props) {
     if (clerkId && officeName) {
       loadData()
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [clerkId, officeName])
 
   usePolling(() => {

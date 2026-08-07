@@ -130,6 +130,7 @@ export default function DieselManager() {
 
   useEffect(() => {
     fetchAll()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   usePolling(fetchAll, 120000)

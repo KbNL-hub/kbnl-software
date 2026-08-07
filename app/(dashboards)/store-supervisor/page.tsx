@@ -190,7 +190,7 @@ export default function StoreSupervisorDashboard() {
         notes: "",
       })))
     }
-  }, [stock])
+  }, [stock, verificationRows.length])
 
   async function fetchStock(storeName: string) {
     const { data } = await supabase

@@ -214,6 +214,7 @@ export default function DriverDashboard() {
     mountedRef.current = true
     initDriver()
     return () => { mountedRef.current = false }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   // Sync initial view from URL
@@ -653,7 +654,7 @@ export default function DriverDashboard() {
       }
     })()
     return () => { cancelled = true }
-  }, [showMyComplaints, complaintsRefreshKey])
+  }, [showMyComplaints, complaintsRefreshKey, driver?.driver_id])
 
   async function handleMarkResolved(id: string) {
     setResolvingComplaintId(id)

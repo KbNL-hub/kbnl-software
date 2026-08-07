@@ -135,7 +135,7 @@ export default function StationManagerDashboard() {
       setLoading(false)
     }
     init()
-  }, [])
+  }, [router])
 
   usePolling(() => {
     if (!manager) return

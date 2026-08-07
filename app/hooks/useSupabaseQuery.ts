@@ -92,6 +92,7 @@ export function useSupabaseQuery<T = Record<string, unknown>>({
     return () => {
       cancelled = true
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [table, select, JSON.stringify(filters), order?.column, order?.ascending, limit, enabled, refreshKey])
 
   return { data, loading, error, refetch }

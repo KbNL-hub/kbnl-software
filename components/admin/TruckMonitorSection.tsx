@@ -112,6 +112,7 @@ export default function TruckMonitorSection({ plates }: Props) {
    
   useEffect(() => {
     fetchActiveTrucks()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [platesKey])
 
   usePolling(fetchActiveTrucks, 120000)

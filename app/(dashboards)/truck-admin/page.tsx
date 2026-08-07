@@ -203,7 +203,7 @@ export default function TruckAdminDashboard() {
 
   useEffect(() => {
     if (active === "side-trips" && sideTrips.length === 0) fetchSideTrips()
-  }, [active])
+  }, [active, sideTrips.length])
 
   useEffect(() => {
     async function init() {
@@ -234,7 +234,7 @@ export default function TruckAdminDashboard() {
       setLoading(false)
     }
     init()
-  }, [])
+  }, [router])
 
   usePolling(() => {
     fetchReports(); fetchProcurements(); fetchMaintenanceBalance(); refetchATFs(); fetchDeposits()

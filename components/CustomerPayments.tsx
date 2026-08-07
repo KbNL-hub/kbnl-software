@@ -50,6 +50,7 @@ export default function CustomerPayments({ brokerId }: { brokerId: string }) {
   const [message, setMessage] = useState("")
   const [profilesMap, setProfilesMap] = useState<Record<string, string>>({})
 
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { fetchPayments(); fetchProfiles() }, [brokerId])
 
   async function fetchPayments() {

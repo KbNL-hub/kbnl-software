@@ -62,6 +62,7 @@ export default function BrokerSaleConfirmations() {
   const [submitting, setSubmitting] = useState(false)
   const [companyPriceMap, setCompanyPriceMap] = useState<Record<string, number>>({})
 
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { initBroker() }, [])
 
   const initBroker = useCallback(async () => {
@@ -73,6 +74,7 @@ export default function BrokerSaleConfirmations() {
       fetchCompanyPrices(session.user.id),
     ])
     setLoading(false)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
    

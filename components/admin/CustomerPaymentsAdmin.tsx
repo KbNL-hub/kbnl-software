@@ -70,6 +70,7 @@ export default function CustomerPaymentsAdmin() {
   const [submitting, setSubmitting] = useState(false)
   const [errorMsg, setErrorMsg] = useState("")
 
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { initData() }, [])
 
   async function initData() {

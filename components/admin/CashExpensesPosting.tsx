@@ -60,6 +60,7 @@ export default function CashExpensesPosting() {
   const [submitting, setSubmitting] = useState(false)
   const [message, setMessage] = useState("")
 
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { initData() }, [])
 
   async function initData() {

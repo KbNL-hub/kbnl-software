@@ -251,7 +251,7 @@ export default function TruckOfficerDashboard() {
       setLoading(false)
     }
     init()
-  }, [])
+  }, [router])
 
   usePolling(() => {
     if (!officer) return

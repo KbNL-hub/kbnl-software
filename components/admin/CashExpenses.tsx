@@ -112,6 +112,7 @@ export default function CashExpenses() {
       fetchExpenses()
       fetchDeposits()
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedOffice])
 
   async function initData() {

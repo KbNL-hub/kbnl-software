@@ -93,7 +93,7 @@ export default function BrokerCredits() {
     setLoading(false)
   }, [])
 
-  useEffect(() => { fetchBrokerTotals() }, [])
+  useEffect(() => { fetchBrokerTotals() }, [fetchBrokerTotals])
 
   usePolling(() => {
     if (view === "detail" && selectedBroker) {
