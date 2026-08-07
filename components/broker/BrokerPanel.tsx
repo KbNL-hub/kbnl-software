@@ -98,7 +98,7 @@ export default function BrokerPanel({ userProfile }: Props) {
   const [pictureLoading, setPictureLoading] = useState(false)
   const [pictureError, setPictureError] = useState("")
 
-  // eslint-disable-next-line react-hooks/set-state-in-effect
+   
   useEffect(() => {
     ;(async () => {
       const { data: clerkRecord } = await supabase
@@ -205,7 +205,7 @@ export default function BrokerPanel({ userProfile }: Props) {
     } else {
       setActive("__dashboard__")
     }
-    // eslint-disable-next-line react-hooks/set-state-in-effect
+     
   }, [NAV_ITEMS])
 
   // Handle browser back/forward between sections

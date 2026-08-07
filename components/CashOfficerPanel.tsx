@@ -44,7 +44,7 @@ type ExpenseItem = {
   amount: number
 }
 
-export default function CashOfficerPanel({ clerkId, officeName, fullName }: Props) {
+export default function CashOfficerPanel({ clerkId, officeName }: Props) {
   const [officeBalance, setOfficeBalance] = useState<number>(0)
   const [expenses, setExpenses] = useState<CashExpense[]>([])
   const [deposits, setDeposits] = useState<CashDeposit[]>([])
@@ -563,7 +563,7 @@ export default function CashOfficerPanel({ clerkId, officeName, fullName }: Prop
                   <div>
                     ❌ Rejected on {new Date(viewingExpense.resolved_at).toLocaleString()}
                     <div style={{ marginTop: 4, paddingLeft: 12, borderLeft: "2px solid #ff4444", color: "#c53030" }}>
-                      Reason: "{viewingExpense.rejection_reason}"
+                      Reason: &quot;{viewingExpense.rejection_reason}&quot;
                     </div>
                   </div>
                 )}

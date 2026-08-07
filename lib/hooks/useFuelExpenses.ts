@@ -93,7 +93,7 @@ export function useFuelExpenses(filter?: FuelExpensesFilter) {
     fetchData()
 
     return () => { cancelled = true; mountedRef.current = false }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, [queryKey, filter?.manager_id])
 
   return { data, loading, error, refetch }

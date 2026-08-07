@@ -1,8 +1,7 @@
 "use client"
 
-import { Icon } from "@iconify/react"
 import { FONT_SIZE } from "@/lib/constants"
-import { formatDateTime, formatTime } from "@/lib/date-utils"
+import { formatDateTime } from "@/lib/date-utils"
 
 type ATF = {
   request_id: string
@@ -66,8 +65,8 @@ const atfFilterColor = (filter: string, activeFilter: string) => {
 }
 
 export default function ATFSection({
-  atfs, atfFilter, setAtfFilter, filteredATFs, filteredATFsAll,
-  safeAtfPage, atfTotalPages, setAtfPage, atfPage,
+  atfFilter, setAtfFilter, filteredATFs, filteredATFsAll,
+  safeAtfPage, atfTotalPages, setAtfPage,
   onAuthorise, onInvalidate, onRefresh, PAGE_SIZE,
 }: Props) {
   return (

@@ -418,7 +418,7 @@ export default function MyStops() {
                 ) : selectedStop.atc ? (
                   <div><p style={{ margin: 0, fontSize: 11, color: "#aaa" }}>ATC</p><p style={{ margin: "2px 0 0", fontSize: 13, color: "#171717" }}>{selectedStop.atc}</p></div>
                 ) : null}
-                <div><p style={{ margin: 0, fontSize: 11, color: "#aaa" }}>Driver's Customer</p><p style={{ margin: "2px 0 0", fontSize: 13, color: "#171717" }}>{selectedStop.customer_name}</p></div>
+                <div><p style={{ margin: 0, fontSize: 11, color: "#aaa" }}>Driver&apos;s Customer</p><p style={{ margin: "2px 0 0", fontSize: 13, color: "#171717" }}>{selectedStop.customer_name}</p></div>
               </div>
             </div>
 

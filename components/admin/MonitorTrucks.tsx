@@ -330,7 +330,7 @@ export default function MonitorTrucks({ viewOnly = false }: { viewOnly?: boolean
     setShowDdStopForm(true)
   }
 
-  async function handleDdStopLogged(_quantityOffloaded: number) {
+  async function handleDdStopLogged() {
     const tripId = selectedDdStopTrip?.dd_trip_id
     setShowDdStopForm(false)
     setSelectedDdStopTrip(null)

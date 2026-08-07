@@ -8,7 +8,6 @@ import { apiMutate } from "@/lib/api-mutation"
 import RoleSwitcher from "@/components/RoleSwitcher"
 import StopForm from "@/components/StopForm"
 import ModernInput from "@/components/ModernInput"
-import TripOfflineIndicator from "@/components/TripOfflineIndicator"
 import ProfilePictureUpload from "@/components/ProfilePictureUpload"
 import { useBreakpoint } from "@/app/hooks/useBreakpoint"
 import { useOfflineTripAction } from "@/app/hooks/useOfflineTripAction"
@@ -114,7 +113,7 @@ export default function DriverDashboard() {
   const bp = useBreakpoint()
   const isMobile = bp === "mobile"
 
-  const { submitAction, isSubmitting: isOfflineSubmitting, isOnline } = useOfflineTripAction()
+  const { submitAction, isOnline } = useOfflineTripAction()
 
   const [driver, setDriver] = useState<Driver | null>(null)
   const [activeTrip, setActiveTrip] = useState<Trip | null>(null)
@@ -203,7 +202,6 @@ export default function DriverDashboard() {
   const [allProducts, setAllProducts] = useState<string[]>([])
 
   const loadedQtyRef = useRef<HTMLInputElement | null>(null)
-  const allStoreLocations = [...LOADING_POINT_MAP.Depot, ...LOADING_POINT_MAP.Outlet]
 
   const mountedRef = useRef(true)
 
@@ -685,12 +683,6 @@ export default function DriverDashboard() {
   }
 
   // Styles
-  const chevron = (
-    <Icon icon="mdi:chevron-down" width={18} color="#aaa"
-      style={{ position: "absolute", right: 12, top: "50%", transform: "translateY(-50%)", pointerEvents: "none" }}
-    />
-  )
-
   const inputStyle: React.CSSProperties = {
     width: "100%", padding: "10px 12px", paddingRight: 36,
     boxSizing: "border-box", borderRadius: 8,
@@ -1065,7 +1057,7 @@ export default function DriverDashboard() {
               </div>
 
               <div style={{ marginBottom: 16 }}>
-                <label style={labelStyle}>Item You're Carrying *</label>
+                <label style={labelStyle}>Item You&apos;re Carrying *</label>
                 <div style={{ position: "relative" }}>
                   <ModernInput as="select" value={sideTripItem} onChange={e => { setSideTripItem(e.target.value); setSideTripCustomItem(""); setSideTripMessage("") }} style={inputStyle}>
                     <option value="">Select item</option>
@@ -1490,7 +1482,7 @@ export default function DriverDashboard() {
                 <Icon icon="mdi:phone" width={18} color="#2563eb" />
               </div>
               <div style={{ flex: 1, minWidth: 140 }}>
-                <p style={{ margin: 0, fontSize: 13, color: "#1e40af", fontWeight: 600 }}>Can't type? Call us directly</p>
+                <p style={{ margin: 0, fontSize: 13, color: "#1e40af", fontWeight: 600 }}>Can&apos;t type? Call us directly</p>
                 <p style={{ margin: "2px 0 0", fontSize: 12, color: "#3b82f6" }}>Prosper Betiang — 08128361851</p>
               </div>
               <a

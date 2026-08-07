@@ -15,7 +15,7 @@ import TruckMonitorSection from "@/components/admin/TruckMonitorSection"
 import TruckManageSection from "@/components/admin/TruckManageSection"
 import { FONT_SIZE } from "@/lib/constants"
 import { usePolling } from "@/lib/hooks/usePolling"
-import { toISOString, formatDateTime, formatDate, formatTime } from "@/lib/date-utils"
+import { formatDateTime, formatDate, formatTime } from "@/lib/date-utils"
 import { requireDashboardRole } from "@/lib/auth-helpers"
 import { Role } from "@/lib/roles"
 import { useATFs } from "@/lib/hooks/useATFs"
@@ -145,8 +145,8 @@ export default function TruckOfficerDashboard() {
   const [officer, setOfficer] = useState<TruckOfficer | null>(null)
   const [assignedTrucks, setAssignedTrucks] = useState<AssignedTruck[]>([])
   const [reports, setReports] = useState<MaintenanceReport[]>([])
-  const [procurements, setProcurements] = useState<BulkProcurement[]>([])
-  const [deposits, setDeposits] = useState<MaintenanceDeposit[]>([])
+  const [, setProcurements] = useState<BulkProcurement[]>([])
+  const [, setDeposits] = useState<MaintenanceDeposit[]>([])
   const [fuelExpenses, setFuelExpenses] = useState<FuelExpense[]>([])
   const [atfs, setAtfs] = useState<ATF[]>([])
   const [atfFilter, setAtfFilter] = useState<{ initiated_by: string } | null>(null)
@@ -179,7 +179,7 @@ export default function TruckOfficerDashboard() {
   const [fuelPlate, setFuelPlate] = useState("")
   const [fuelTrips, setFuelTrips] = useState<Trip[]>([])
   const [fuelTripId, setFuelTripId] = useState("")
-  const [fuelLitres, setFuelLitres] = useState("")
+  const [, setFuelLitres] = useState("")
   const [fuelNotes, setFuelNotes] = useState("")
   const [fuelError, setFuelError] = useState("")
   const [fuelLoading, setFuelLoading] = useState(false)
@@ -275,7 +275,7 @@ export default function TruckOfficerDashboard() {
     setAssignedTrucks(trucks || [])
   }
 
-  async function fetchReports(_mId: string) {
+  async function fetchReports() {
     const { data } = await supabase
       .from("maintenance_reports")
       .select("report_id, plate_number, manager_id, maintenance_type, maintenance_location, amount, notes, status, rejection_reason, reported_at")
@@ -353,7 +353,7 @@ export default function TruckOfficerDashboard() {
     if (!truck) return setFuelError("Truck not found")
 
     let litres: number
-    let notes: string | null = fuelNotes.trim() || null
+    const notes: string | null = fuelNotes.trim() || null
     const estimate = !fuelUseCustom ? fuelEstimates.find(e => e.id === fuelEstimateId) : null
 
     if (fuelUseCustom) {

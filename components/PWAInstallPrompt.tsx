@@ -14,7 +14,10 @@ export default function PWAInstallPrompt() {
   const { hasBeenPrompted, markAsPrompted } = usePWAInstall();
   const [isInstalled, setIsInstalled] = useState(false);
   const promptedRef = useRef(hasBeenPrompted);
-  promptedRef.current = hasBeenPrompted;
+
+  useEffect(() => {
+    promptedRef.current = hasBeenPrompted;
+  }, [hasBeenPrompted]);
 
   useEffect(() => {
     if (window.matchMedia('(display-mode: standalone)').matches) {

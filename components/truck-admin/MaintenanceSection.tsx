@@ -1,6 +1,5 @@
 "use client"
 
-import { Icon } from "@iconify/react"
 import { FONT_SIZE } from "@/lib/constants"
 import { formatDateTime, formatTime } from "@/lib/date-utils"
 
@@ -70,8 +69,8 @@ const statusColor = (status: string) => {
 }
 
 export default function MaintenanceSection({
-  reports, procurements, balanceMap, filter, setFilter,
-  feedPage, setFeedPage, filteredFeed, filteredFeedAll,
+  balanceMap, filter, setFilter,
+  setFeedPage, filteredFeed, filteredFeedAll,
   feedTotalPages, safeFeedPage, lastUpdated, onRefresh,
   onValidate, onReject, PAGE_SIZE,
 }: Props) {

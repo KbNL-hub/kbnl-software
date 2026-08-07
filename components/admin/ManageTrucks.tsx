@@ -101,7 +101,7 @@ export default function ManageTrucks() {
     }
   }
 
-  // eslint-disable-next-line react-hooks/set-state-in-effect
+   
   useEffect(() => { fetchTrucks() }, [])
 
   const filterOptions = ["All", "Empty", "Loaded", "To Plant", "Undergoing Repairs", "Decommissioned"]

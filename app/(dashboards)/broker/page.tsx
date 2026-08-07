@@ -15,7 +15,7 @@ import { useBreakpoint } from "@/app/hooks/useBreakpoint"
 import { FONT_SIZE } from "@/lib/constants"
 import { requireDashboardRole } from "@/lib/auth-helpers"
 import { Role } from "@/lib/roles"
-import { formatDate, formatDateTime } from "@/lib/date-utils"
+import { formatDate } from "@/lib/date-utils"
 import { useStops } from "@/lib/hooks/useStops"
 
 type Broker = {
@@ -80,8 +80,6 @@ export default function BrokerDashboard() {
   const [showReportModal, setShowReportModal] = useState(false)
   const [activeView, setActiveView] = useState<"broker" | "payments">("broker")
 
-  useEffect(() => { initBroker() }, [])
-
   async function initBroker() {
     const { data: { session } } = await supabase.auth.getSession()
     if (!session) { window.location.href = "/login"; return }
@@ -116,6 +114,8 @@ export default function BrokerDashboard() {
     setCompanyPriceMap(priceMap)
     setLoading(false)
   }
+
+  useEffect(() => { initBroker() }, [])
 
   function openConfirmModal(stop: Stop) {
     const cp = companyPriceMap[stop.product]
@@ -644,7 +644,7 @@ export default function BrokerDashboard() {
                   </div>
                 ) : null}
                 <div>
-                  <p style={{ margin: 0, fontSize: 11, color: "#aaa" }}>Driver's Customer</p>
+                  <p style={{ margin: 0, fontSize: 11, color: "#aaa" }}>Driver&apos;s Customer</p>
                   <p style={{ margin: "2px 0 0", fontSize: 13, color: "#171717" }}>{selectedStop.customer_name}</p>
                 </div>
               </div>

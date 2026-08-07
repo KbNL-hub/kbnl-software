@@ -3,12 +3,8 @@
 import { useState, useEffect } from "react"
 import { supabase } from "@/lib/supabase"
 import CustomerPayments from "@/components/CustomerPayments"
-import { useBreakpoint } from "@/app/hooks/useBreakpoint"
 
 export default function BrokerPayments() {
-  const bp = useBreakpoint()
-  const isMobile = bp === "mobile"
-
   const [brokerId, setBrokerId] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
 
@@ -19,7 +15,7 @@ export default function BrokerPayments() {
     setLoading(false)
   }
 
-  // eslint-disable-next-line react-hooks/set-state-in-effect
+   
   useEffect(() => {
     initBroker()
   }, [])

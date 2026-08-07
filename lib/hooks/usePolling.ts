@@ -21,7 +21,9 @@ export function usePolling(
   const wasHidden = useRef(false)
   const inFlight = useRef(false)
 
-  savedCallback.current = callback
+  useEffect(() => {
+    savedCallback.current = callback
+  }, [callback])
 
   const clearPolling = useCallback(() => {
     if (intervalRef.current !== null) {
@@ -74,5 +76,5 @@ export function usePolling(
       clearPolling()
       document.removeEventListener("visibilitychange", handleVisibilityChange)
     }
-  }, [enabled, startPolling, clearPolling])
+  }, [enabled, startPolling, clearPolling, runCallback])
 }

@@ -9,12 +9,6 @@ import { formatAmount, parseAmount } from "@/lib/formatAmount"
 import ModernInput from "@/components/ModernInput"
 import { usePermissions } from "@/lib/PermissionContext"
 
-type CashOffice = {
-  office_id: string
-  office_name: string
-  current_balance: number
-}
-
 type CashDeposit = {
   deposit_id: string
   office_name: string
@@ -72,7 +66,7 @@ function useBreakpoint() {
 export default function CashExpenses() {
   const { getAccess } = usePermissions()
   const { canEdit, canAuthorize } = getAccess("cash-expenses")
-  const { isMobile, isDesktop } = useBreakpoint()
+  const { isMobile } = useBreakpoint()
   const [selectedOffice, setSelectedOffice] = useState<string>("Calabar")
   const [assignedOffice, setAssignedOffice] = useState<string | null>(null)
   const [isCashAuthorizer, setIsCashAuthorizer] = useState(false)
@@ -608,7 +602,7 @@ export default function CashExpenses() {
                           <span>{new Date(dep.created_at).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>
                         </div>
                         {dep.note && (
-                          <p style={{ margin: "8px 0 0", color: "#475569", fontSize: FONT_SIZE.sm, fontStyle: "italic" }}>"{dep.note}"</p>
+                          <p style={{ margin: "8px 0 0", color: "#475569", fontSize: FONT_SIZE.sm, fontStyle: "italic" }}>&quot;{dep.note}&quot;</p>
                         )}
                       </div>
                       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", width: isMobile ? "100%" : "auto", gap: 24 }}>
@@ -749,7 +743,7 @@ export default function CashExpenses() {
                                 <p style={{ margin: 0, color: "#15803d", fontSize: FONT_SIZE.xs }}>By <strong>{adminsMap[exp.authorised_by || ""] || "Admin"}</strong> on {new Date(exp.resolved_at).toLocaleString()}</p>
                                 {exp.approval_notes && (
                                   <div style={{ marginTop: 8, padding: 12, background: "white", borderRadius: 8, border: "1px solid #bbf7d0", color: "#166534", fontSize: FONT_SIZE.sm, fontStyle: "italic" }}>
-                                    "{exp.approval_notes}"
+                                    &quot;{exp.approval_notes}&quot;
                                   </div>
                                 )}
                               </div>
@@ -763,7 +757,7 @@ export default function CashExpenses() {
                                 <p style={{ margin: "0 0 4px 0", color: "#ef4444", fontSize: FONT_SIZE.sm, fontWeight: 600 }}>Rejected</p>
                                 <p style={{ margin: "0 0 12px 0", color: "#b91c1c", fontSize: FONT_SIZE.xs }}>By <strong>{adminsMap[exp.authorised_by || ""] || "Admin"}</strong> on {new Date(exp.resolved_at).toLocaleString()}</p>
                                 <div style={{ padding: 12, background: "white", borderRadius: 8, border: "1px solid #fecaca", color: "#7f1d1d", fontSize: FONT_SIZE.sm, fontStyle: "italic" }}>
-                                  "{exp.rejection_reason}"
+                                  &quot;{exp.rejection_reason}&quot;
                                 </div>
                               </div>
                             </div>

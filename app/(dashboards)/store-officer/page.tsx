@@ -544,7 +544,7 @@ export default function StoreOfficerDashboard() {
         fetchStock(officer.store_name),
         fetchMonthlyStats(officer.store_name),
       ])
-    } catch (err) {
+    } catch {
       setSaleError("An error occurred")
       setSaleLoading(false)
     }
@@ -583,11 +583,6 @@ export default function StoreOfficerDashboard() {
     })
     return groups
   }, [])
-
-  const salesSortOptions = [
-    { label: "Most recent added", value: true },
-    { label: "By sale date", value: false },
-  ] as const
 
   const filteredSales = groupedSales.filter(s => {
     if (salesFilter !== "All" && s.payment_mode !== salesFilter) return false
@@ -1166,7 +1161,7 @@ export default function StoreOfficerDashboard() {
                   <p style={{ margin: 0, fontWeight: 700, fontSize: FONT_SIZE.sm, color: "#92400e" }}>Quantity Mismatch Detected</p>
                 </div>
                 <p style={{ margin: "0 0 12px", fontSize: FONT_SIZE.sm, color: "#78350f" }}>
-                  Your count (<strong>{supplyLines.reduce((s, l) => s + (parseInt(l.quantity) || 0), 0)}</strong>) differs from the driver's quantity (<strong>{confirmingStop.quantity_offloaded}</strong>). Please explain the difference.
+                  Your count (<strong>{supplyLines.reduce((s, l) => s + (parseInt(l.quantity) || 0), 0)}</strong>) differs from the driver&apos;s quantity (<strong>{confirmingStop.quantity_offloaded}</strong>). Please explain the difference.
                 </p>
                 <textarea
                   value={discrepancyNote}

@@ -8,24 +8,11 @@ import { useState } from "react"
 
 type ViewMode = "card" | "table"
 
-const atfStatusColor = (status: string) => {
-  switch (status) {
-    default: return { bg: "#f8fafc", color: "#64748b", border: "#e2e8f0" }
-  }
-}
-
 export default function DieselConsumptionSection() {
   const { data: fuelExpenses, loading } = useFuelExpenses()
   const [viewMode, setViewMode] = useState<ViewMode>("card")
 
   const totalLitres = fuelExpenses.reduce((sum, e) => sum + e.litres, 0)
-
-  const inputStyle: React.CSSProperties = {
-    width: "100%", padding: "10px 12px", paddingRight: 36,
-    boxSizing: "border-box", borderRadius: 8,
-    border: "1px solid #e2e8f0", fontSize: FONT_SIZE.base,
-    background: "white", color: "#0f172a", minHeight: 48,
-  }
 
   return (
     <div>

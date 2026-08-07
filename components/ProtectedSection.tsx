@@ -39,7 +39,7 @@ export default function ProtectedSection({
             Not Authorized
           </p>
           <p style={{ margin: "6px 0 0", fontSize: 14, color: "#64748b" }}>
-            You don't have permission to access this section.
+            You don&apos;t have permission to access this section.
           </p>
         </div>
       </div>

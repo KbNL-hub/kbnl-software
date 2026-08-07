@@ -26,8 +26,6 @@ export default function CashOfficerDashboard() {
   const [showReportModal, setShowReportModal] = useState(false)
   const [avatarHover, setAvatarHover] = useState(false)
 
-  useEffect(() => { init() }, [])
-
   async function init() {
     const { data: { session } } = await supabase.auth.getSession()
     if (!session) { router.push("/login"); return }
@@ -54,6 +52,8 @@ export default function CashOfficerDashboard() {
 
     setLoading(false)
   }
+
+  useEffect(() => { init() }, [])
 
   if (loading) return (
     <div style={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: "100vh", fontFamily: "'Inter', sans-serif" }}>

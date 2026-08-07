@@ -95,7 +95,7 @@ export default function InviteSuccessCard({ tempPassword, email, onClose }: Prop
         textAlign: "left",
       }}>
         <p style={{ margin: 0, fontSize: 12, color: "#78350f", lineHeight: 1.5 }}>
-          ⚠️ Share this password securely. They'll be asked to change it on first login.
+          ⚠️ Share this password securely. They&apos;ll be asked to change it on first login.
         </p>
       </div>
 

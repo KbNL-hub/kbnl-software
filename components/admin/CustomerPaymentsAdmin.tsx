@@ -49,7 +49,7 @@ function useBreakpoint() {
 export default function CustomerPaymentsAdmin() {
   const { getAccess } = usePermissions()
   const canEdit = getAccess("customer-payments").canEdit
-  const { isMobile, isDesktop } = useBreakpoint()
+  const { isMobile } = useBreakpoint()
   const [payments, setPayments] = useState<Payment[]>([])
   const [profilesMap, setProfilesMap] = useState<Record<string, string>>({})
   const [loading, setLoading] = useState(true)

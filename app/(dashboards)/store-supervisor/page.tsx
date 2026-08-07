@@ -745,7 +745,6 @@ export default function StoreSupervisorDashboard() {
             <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
               {groupedSales.slice(0, salesPage * PAGE_SIZE).map(sale => {
                 const totalAmount = sale.lines.reduce((sum, l) => sum + (l.total_amount || 0), 0)
-                const totalBags = sale.lines.reduce((sum, l) => sum + l.quantity, 0)
                 return (
                   <div key={sale.group_id} style={{ background: "white", border: "1px solid #e2e8f0", borderRadius: 12, padding: 16, boxShadow: "0 1px 3px rgba(0,0,0,0.05)" }}>
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 10 }}>

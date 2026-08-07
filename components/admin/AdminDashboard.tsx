@@ -111,6 +111,138 @@ function FeaturedCard({ card, isMobile }: { card: StatCard; isMobile: boolean })
   )
 }
 
+function CompanyCreditCard({ total, isMobile }: { total: number; isMobile: boolean }) {
+  return (
+    <div
+      style={{
+        background: "#eff6ff",
+        border: "1.5px solid #0070f3",
+        borderRadius: 16,
+        padding: isMobile ? "14px 16px" : "18px 28px",
+        display: "flex",
+        alignItems: "center",
+        gap: isMobile ? 12 : 16,
+        marginBottom: isMobile ? 12 : 16,
+      }}
+    >
+      <div
+        style={{
+          width: isMobile ? 38 : 44,
+          height: isMobile ? 38 : 44,
+          borderRadius: 11,
+          background: "white",
+          border: "1px solid #bfdbfe",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          flexShrink: 0,
+        }}
+      >
+        <Icon icon="mdi:credit-card-outline" width={isMobile ? 20 : 24} color="#0070f3" />
+      </div>
+      <div style={{ minWidth: 0 }}>
+        <p style={{
+          margin: 0,
+          fontSize: isMobile ? 11 : 12,
+          color: "#171717",
+          fontWeight: 600,
+          whiteSpace: "nowrap",
+          overflow: "hidden",
+          textOverflow: "ellipsis",
+        }}>
+          Company Credit (Active)
+        </p>
+        <p style={{
+          margin: "3px 0 0",
+          fontSize: isMobile ? 20 : 26,
+          fontWeight: 800,
+          color: "#0070f3",
+          lineHeight: 1.2,
+          letterSpacing: "-0.01em",
+        }}>
+          {"\u20A6"}{total.toLocaleString()}
+        </p>
+      </div>
+    </div>
+  )
+}
+
+function TruckSummaryCard({ stats, isMobile }: { stats: StatCard[]; isMobile: boolean }) {
+  const total = stats.reduce((sum, s) => sum + (s.value || 0), 0)
+  return (
+    <div
+      style={{
+        background: "white",
+        borderRadius: 16,
+        padding: isMobile ? "14px 16px" : "16px 24px",
+        border: "1px solid #eef0f2",
+        display: "flex",
+        flexDirection: isMobile ? "column" : "row",
+        alignItems: isMobile ? "flex-start" : "center",
+        gap: isMobile ? 14 : 20,
+      }}
+    >
+      <div style={{ display: "flex", alignItems: "center", gap: isMobile ? 12 : 14, flexShrink: 0 }}>
+        <div
+          style={{
+            width: isMobile ? 38 : 44,
+            height: isMobile ? 38 : 44,
+            borderRadius: 11,
+            background: "#0070f314",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            flexShrink: 0,
+          }}
+        >
+          <Icon icon="mdi:truck" width={isMobile ? 20 : 24} color="#0070f3" />
+        </div>
+        <div>
+          <p style={{ margin: 0, fontSize: isMobile ? 11 : 12, color: "#64748b", fontWeight: 500 }}>
+            Total Trucks
+          </p>
+          <p style={{
+            margin: "2px 0 0",
+            fontSize: isMobile ? 24 : 28,
+            fontWeight: 800,
+            color: "#0f172a",
+            lineHeight: 1.2,
+            letterSpacing: "-0.01em",
+          }}>
+            {total.toLocaleString()}
+          </p>
+        </div>
+      </div>
+      <div style={{
+        display: "flex",
+        flexWrap: "wrap",
+        gap: isMobile ? 8 : 10,
+        flex: 1,
+        justifyContent: isMobile ? "flex-start" : "flex-end",
+      }}>
+        {stats.map(s => (
+          <span key={s.key} style={{
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 6,
+            padding: "5px 10px",
+            borderRadius: 999,
+            background: `${s.color}14`,
+            fontSize: isMobile ? 11 : 12,
+            fontWeight: 600,
+            color: "#334155",
+            whiteSpace: "nowrap",
+          }}>
+            <span style={{ width: 8, height: 8, borderRadius: "50%", background: s.color, flexShrink: 0 }} />
+            {s.label}
+            <span style={{ fontWeight: 700, color: "#0f172a" }}>{s.value.toLocaleString()}</span>
+          </span>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 function StatCardComponent({ card, isMobile }: { card: StatCard; isMobile: boolean }) {
   return (
     <div
@@ -244,6 +376,7 @@ export default function AdminDashboard({ effectiveRole, fullName }: Props) {
   const [stats, setStats] = useState<StatCard[]>([])
   const [truckStats, setTruckStats] = useState<StatCard[]>([])
   const [productStats, setProductStats] = useState<StatCard[]>([])
+  const [creditTotal, setCreditTotal] = useState(0)
   const [loading, setLoading] = useState(true)
 
   const roleGroup = getRoleGroup(effectiveRole)
@@ -278,6 +411,7 @@ export default function AdminDashboard({ effectiveRole, fullName }: Props) {
       usersResult,
       trucksResult,
       productTripsResult,
+      creditsResult,
     ] = await Promise.all([
       supabase
         .from("Stops")
@@ -313,6 +447,10 @@ export default function AdminDashboard({ effectiveRole, fullName }: Props) {
         .select("product, loaded_quantity")
         .gte("created_at", from)
         .lte("created_at", to),
+      supabase
+        .from("broker_credits")
+        .select("amount")
+        .eq("status", "Active"),
     ])
 
     const bagsFromStops = (stopsResult.data || []).reduce(
@@ -322,6 +460,11 @@ export default function AdminDashboard({ effectiveRole, fullName }: Props) {
       (sum, s) => sum + (s.quantity || 0), 0
     )
     const bagsSold = bagsFromStops + bagsFromStoreSales
+    setCreditTotal(
+      (creditsResult.data || []).reduce(
+        (sum, c) => sum + (Number(c.amount) || 0), 0
+      )
+    )
 
     let revenue = 0
     const stopIds = (stopsResult.data || []).map(s => s.stop_id)
@@ -478,6 +621,9 @@ export default function AdminDashboard({ effectiveRole, fullName }: Props) {
           {stats.length > 0 && (
             <FeaturedCard card={stats[0]} isMobile={isMobile} />
           )}
+          {roleGroup === "admin" && creditTotal > 0 && (
+            <CompanyCreditCard total={creditTotal} isMobile={isMobile} />
+          )}
           <div style={{
             display: "grid",
             gridTemplateColumns: isMobile ? "repeat(2, minmax(0, 1fr))" : "repeat(auto-fill, minmax(220px, 1fr))",
@@ -510,15 +656,7 @@ export default function AdminDashboard({ effectiveRole, fullName }: Props) {
               <p style={{ margin: "0 0 10px", fontSize: isMobile ? 11 : 12, color: "#64748b", textTransform: "uppercase", letterSpacing: 0.5, fontWeight: 700 }}>
                 Trucks by Status
               </p>
-              <div style={{
-                display: "grid",
-                gridTemplateColumns: isMobile ? "repeat(2, minmax(0, 1fr))" : "repeat(auto-fill, minmax(160px, 1fr))",
-                gap: isMobile ? 10 : 12,
-              }}>
-                {truckStats.map(card => (
-                  <StatCardComponent key={card.key} card={card} isMobile={isMobile} />
-                ))}
-              </div>
+              <TruckSummaryCard stats={truckStats} isMobile={isMobile} />
             </div>
           )}
         </div>

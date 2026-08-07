@@ -74,7 +74,7 @@ export async function POST(req: NextRequest) {
         return buildError(`RPC function "${fnName}" is not supported by this endpoint`, 400)
       }
       const rolesForRpc = RPC_ROLES[fnName] || ["Admin"]
-      const auth = await requireRole(req, rolesForRpc)
+      await requireRole(req, rolesForRpc)
       const allowedKeys = RPC_PARAM_SCHEMAS[fnName] || []
       const safeParams = Object.fromEntries(
         Object.entries(params || {}).filter(([k]) => allowedKeys.includes(k))

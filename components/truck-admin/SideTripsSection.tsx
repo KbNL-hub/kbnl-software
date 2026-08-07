@@ -2,7 +2,6 @@
 
 import { Icon } from "@iconify/react"
 import { FONT_SIZE } from "@/lib/constants"
-import { useState } from "react"
 
 type SideTrip = {
   id: string

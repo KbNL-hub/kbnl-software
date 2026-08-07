@@ -6,7 +6,6 @@ import { usePolling } from "@/lib/hooks/usePolling"
 import { useState, useEffect } from "react"
 import { supabase } from "@/lib/supabase"
 import { apiMutate } from "@/lib/api-mutation"
-import { Icon } from "@iconify/react"
 import { usePermissions } from "@/lib/PermissionContext"
 
 type Complaint = {
@@ -43,7 +42,7 @@ function useBreakpoint() {
 const filters = ["All", "Unresolved", "Resolved"]
 
 export default function Complaints() {
-  const { isMobile, isDesktop } = useBreakpoint()
+  const { isMobile } = useBreakpoint()
   const { getAccess } = usePermissions()
   const canEdit = getAccess("complaints").canEdit
   const [complaints, setComplaints] = useState<Complaint[]>([])

@@ -9,7 +9,7 @@ import { ExportActions } from "./ExportActions"
 import { EmptyState } from "./EmptyState"
 import { LoadingState } from "./LoadingState"
 import { ReportModal } from "./ReportModal"
-import { ReportCard, ReportCardField, ReportCardSection } from "./ReportCard"
+import { ReportCard, ReportCardField } from "./ReportCard"
 import { QuickFilterPills } from "./QuickFilterPills"
 import { DateRangeSelector } from "./DateRangeSelector"
 

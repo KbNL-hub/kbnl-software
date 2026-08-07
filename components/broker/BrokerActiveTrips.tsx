@@ -76,7 +76,7 @@ export default function BrokerActiveTrips() {
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) { setLoading(false); return }
 
-    const { data: rec } = await supabase
+    await supabase
       .from("Brokers")
       .select("broker_id")
       .eq("broker_id", user.id)
@@ -356,7 +356,7 @@ export default function BrokerActiveTrips() {
     setLoading(false)
   }
 
-  // eslint-disable-next-line react-hooks/set-state-in-effect
+   
   useEffect(() => {
     loadAll()
   }, [])

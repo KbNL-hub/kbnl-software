@@ -109,7 +109,7 @@ export default function TruckMonitorSection({ plates }: Props) {
     setLoading(false)
   }
 
-  // eslint-disable-next-line react-hooks/set-state-in-effect
+   
   useEffect(() => {
     fetchActiveTrucks()
   }, [platesKey])

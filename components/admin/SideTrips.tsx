@@ -56,7 +56,7 @@ export default function SideTrips() {
     setLoading(false)
   }
 
-  // eslint-disable-next-line react-hooks/set-state-in-effect
+   
   useEffect(() => {
     fetchTrips()
   }, [])

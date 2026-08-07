@@ -12,7 +12,7 @@ type Customer = { customer_id: string; full_name: string; phone_number: string; 
 type Props = { tripId: string; loadedQuantity?: number; offloadedSoFar?: number; onStopLogged: (quantityOffloaded: number) => void }
 
 export default function StopForm({ tripId, loadedQuantity: initialLoaded = 0, offloadedSoFar: initialOffloaded = 0, onStopLogged }: Props) {
-  const { submitAction, isOnline } = useOfflineTripAction()
+  const { submitAction } = useOfflineTripAction()
   const [loadedQuantity, setLoadedQuantity] = useState(initialLoaded)
   const [offloadedSoFar, setOffloadedSoFar] = useState(initialOffloaded)
   const [stopType, setStopType] = useState<"customer" | "store">("customer")

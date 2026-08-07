@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from "react"
 import { supabase } from "@/lib/supabase"
 
-interface UseSupabaseQueryOptions<T> {
+interface UseSupabaseQueryOptions {
   table: string
   select?: string
   filters?: Record<string, unknown>
@@ -26,7 +26,7 @@ export function useSupabaseQuery<T = Record<string, unknown>>({
   order,
   limit,
   enabled = true,
-}: UseSupabaseQueryOptions<T>): UseSupabaseQueryResult<T> {
+}: UseSupabaseQueryOptions): UseSupabaseQueryResult<T> {
   const [data, setData] = useState<T[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)

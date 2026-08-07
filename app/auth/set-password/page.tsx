@@ -6,7 +6,6 @@ import { useState, useEffect, useRef } from "react"
 import { supabase } from "@/lib/supabase"
 import { useRouter } from "next/navigation"
 import { getRoleDashboard } from "@/lib/permissions"
-import { getUserRoles } from "@/lib/auth-helpers"
 
 export default function SetPasswordPage() {
   const [password, setPassword] = useState("")
@@ -36,7 +35,6 @@ export default function SetPasswordPage() {
 
       if (!profile?.must_change_password) {
         // Already set — redirect to dashboard
-        const roles = await getUserRoles(session.user.id)
         const primaryRole = profile ? await supabase
           .from("Profiles")
           .select("role")

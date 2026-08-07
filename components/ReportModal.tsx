@@ -192,7 +192,7 @@ export default function ReportModal({ isOpen, onClose, userId, userRole }: Repor
                 <Icon icon="mdi:phone" width={18} color="#2563eb" />
               </div>
               <div style={{ flex: 1, minWidth: 140 }}>
-                <p style={{ margin: 0, fontSize: 13, color: "#1e40af", fontWeight: 600 }}>Can't type? Call us directly</p>
+                <p style={{ margin: 0, fontSize: 13, color: "#1e40af", fontWeight: 600 }}>Can&apos;t type? Call us directly</p>
                 <p style={{ margin: "2px 0 0", fontSize: 12, color: "#3b82f6" }}>Prosper Betiang — 08128361851</p>
               </div>
               <a

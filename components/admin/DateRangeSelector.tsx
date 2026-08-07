@@ -15,7 +15,7 @@ interface DateRangeSelectorProps {
 
 
 
-export function DateRangeSelector({ fromDate, toDate, onFromChange, onToChange, error, isMobile }: DateRangeSelectorProps) {
+export function DateRangeSelector({ fromDate, toDate, onFromChange, onToChange, error }: DateRangeSelectorProps) {
   const [isOpen, setIsOpen] = useState(false)
 
   const dateLabel = fromDate && toDate ? `${fromDate} to ${toDate}` : fromDate ? fromDate : "Select dates"

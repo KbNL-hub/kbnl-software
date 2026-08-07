@@ -307,7 +307,7 @@ export default function CustomerPayments({ brokerId }: { brokerId: string }) {
             </div>
 
             <div style={{ marginBottom: 16 }}>
-              <label style={{ display: "block", fontWeight: 600, marginBottom: 6, fontSize: fontSize.sm, color: "#475569" }}>Depositor's Name *</label>
+              <label style={{ display: "block", fontWeight: 600, marginBottom: 6, fontSize: fontSize.sm, color: "#475569" }}>Depositor&apos;s Name *</label>
               <input type="text" placeholder="Name of person who made the deposit" value={depositorName} onChange={e => setDepositorName(e.target.value)} style={{ width: "100%", padding: "12px 14px", borderRadius: 8, border: "1.5px solid #e2e8f0", fontSize: fontSize.base, background: "white", color: "#0f172a", minHeight: 48, boxSizing: "border-box" }} />
             </div>
 

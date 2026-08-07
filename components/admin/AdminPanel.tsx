@@ -119,7 +119,7 @@ function AdminPanelContent({ userProfile }: Props) {
   const [showReportModal, setShowReportModal] = useState(false)
   const bannerRef = useRef<HTMLDivElement>(null)
   const [bannerHeight, setBannerHeight] = useState(64)
-  const { sections, getAccess, loading: permLoading, userRoles, activeRole, setActiveRole } = usePermissions()
+  const { sections, getAccess, loading: permLoading, activeRole, setActiveRole } = usePermissions()
   const effectiveRole = activeRole ?? userProfile.role
   const isViewOnly = effectiveRole ? (ROLES[effectiveRole as Role]?.access === "view") : false
 
@@ -324,7 +324,7 @@ function AdminPanelContent({ userProfile }: Props) {
       setShowPictureModal(false)
       setSelectedFile(null)
       setPicturePreview(null)
-    } catch (err) {
+    } catch {
       if (uploadedPath && !profileSaved) {
         try { await supabase.storage.from("profile-pictures").remove([uploadedPath]) } catch {}
       }

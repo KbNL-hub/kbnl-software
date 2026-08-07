@@ -22,9 +22,6 @@ import ProcurementSection from "@/components/truck-admin/ProcurementSection"
 import BalanceSection from "@/components/truck-admin/BalanceSection"
 import SideTripsSection from "@/components/truck-admin/SideTripsSection"
 import DieselConsumptionSection from "@/components/truck-admin/DieselConsumptionSection"
-import dynamic from "next/dynamic"
-
-const ProfilePictureUploadModal = dynamic(() => import("@/components/ProfilePictureUpload"))
 
 type MaintenanceReport = {
   report_id: string
@@ -474,13 +471,6 @@ export default function TruckAdminDashboard() {
   const atfTotalPages = Math.ceil(filteredATFsAll.length / PAGE_SIZE) || 1
   const safeAtfPage = Math.min(atfPage, atfTotalPages)
   const filteredATFs = filteredATFsAll.slice(0, safeAtfPage * PAGE_SIZE)
-
-  const inputStyle: React.CSSProperties = {
-    width: "100%", padding: "10px 12px", paddingRight: 36,
-    boxSizing: "border-box", borderRadius: 8,
-    border: "1px solid #e2e8f0", fontSize: FONT_SIZE.base,
-    background: "white", color: "#0f172a", minHeight: 48,
-  }
 
   const labelStyle: React.CSSProperties = {
     fontWeight: 600, display: "block",

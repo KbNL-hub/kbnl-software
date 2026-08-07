@@ -47,7 +47,7 @@ function useBreakpoint() {
 export default function CashOfficers() {
   const { getAccess } = usePermissions()
   const canEdit = getAccess("cash-officers").canEdit
-  const { isMobile, isDesktop } = useBreakpoint()
+  const { isMobile } = useBreakpoint()
   const [clerks, setClerks] = useState<CashOfficer[]>([])
   const [loading, setLoading] = useState(true)
   const [viewMode, setViewMode] = useState<ViewMode>("card")
@@ -415,7 +415,7 @@ export default function CashOfficers() {
               marginRight: "auto",
             }}
           >
-            Get started by adding a new cash officer. You'll manage their contact info and office assignment here.
+            Get started by adding a new cash officer. You&apos;ll manage their contact info and office assignment here.
           </p>
           <button
             onClick={() => {

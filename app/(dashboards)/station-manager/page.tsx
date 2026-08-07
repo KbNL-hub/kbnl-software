@@ -12,7 +12,7 @@ import ReportModal from "@/components/ReportModal"
 import ProfilePictureUpload from "@/components/ProfilePictureUpload"
 import { FONT_SIZE } from "@/lib/constants"
 import { usePolling } from "@/lib/hooks/usePolling"
-import { toISOString, formatDateTime, formatTime } from "@/lib/date-utils"
+import { formatDateTime, formatTime } from "@/lib/date-utils"
 import { requireDashboardRole } from "@/lib/auth-helpers"
 import { Role } from "@/lib/roles"
 import { useATFs } from "@/lib/hooks/useATFs"
@@ -201,7 +201,7 @@ export default function StationManagerDashboard() {
 
     setDispenseLoading(true)
 
-    const { data, error } = await apiMutate("fuel", {
+    const { error } = await apiMutate("fuel", {
       action: "rpc",
       function: "dispense_fuel",
       params: {
@@ -488,7 +488,7 @@ export default function StationManagerDashboard() {
                 {atf.atf_status === "Authorised" && (
                   <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
                     <button onClick={() => { setDispensingATF(atf); setRatePerLitre(""); setDispenseError("") }} className="btn-hover-opacity" style={{ padding: "10px 14px", background: "#0070f3", color: "white", border: "none", borderRadius: 8, cursor: "pointer", fontWeight: 700, fontSize: FONT_SIZE.sm, minHeight: 40, transition: "opacity 0.2s" }}>
-                      I've Dispensed
+                      I&apos;ve Dispensed
                     </button>
                     <button onClick={() => { setInvalidatingATF(atf); setInvalidateReason(""); setInvalidateError("") }} className="invalidate-btn" style={{ padding: "10px 14px", background: "white", color: "#ef4444", border: "1.5px solid #ef4444", borderRadius: 8, cursor: "pointer", fontWeight: 700, fontSize: FONT_SIZE.sm, minHeight: 40, transition: "all 0.2s" }}>
                       Invalidate
@@ -595,7 +595,7 @@ export default function StationManagerDashboard() {
                 <>
                   <p style={{ margin: "0 0 28px", color: "#64748b", fontSize: FONT_SIZE.sm, lineHeight: 1.6 }}>
                     Did you receive <strong style={{ color: "#0f172a", fontSize: FONT_SIZE.base }}>₦{d.amount.toLocaleString()}</strong>
-                    {d.note ? <> for <em>"{d.note}"</em></> : ""}?
+                    {d.note ? <> for <em>&quot;{d.note}&quot;</em></> : ""}?
                   </p>
                   <div style={{ display: "flex", flexDirection: isMobile ? "column-reverse" : "row", gap: 10 }}>
                     <button

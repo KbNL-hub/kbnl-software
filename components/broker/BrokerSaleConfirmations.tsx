@@ -75,7 +75,7 @@ export default function BrokerSaleConfirmations() {
     setLoading(false)
   }, [])
 
-  // eslint-disable-next-line react-hooks/set-state-in-effect
+   
   useEffect(() => { initBroker() }, [initBroker])
 
   async function fetchCompanyPrices(bId: string) {

@@ -13,6 +13,15 @@ export default function TripOfflineIndicator() {
   const [pendingCount, setPendingCount] = useState(0);
   const [isSyncing, setIsSyncing] = useState(false);
 
+  async function updatePendingCount() {
+    try {
+      const count = await getPendingTripActionCount();
+      setPendingCount(count);
+    } catch (error) {
+      console.error('[TripOfflineIndicator] Error getting pending count:', error);
+    }
+  }
+
   useEffect(() => {
     // Check initial status
     setIsOnline(navigator.onLine);
@@ -42,15 +51,6 @@ export default function TripOfflineIndicator() {
       window.removeEventListener('offline', handleOffline);
     };
   }, []);
-
-  async function updatePendingCount() {
-    try {
-      const count = await getPendingTripActionCount();
-      setPendingCount(count);
-    } catch (error) {
-      console.error('[TripOfflineIndicator] Error getting pending count:', error);
-    }
-  }
 
   // Don't show if everything is fine
   if (isOnline && pendingCount === 0 && !isSyncing) {
