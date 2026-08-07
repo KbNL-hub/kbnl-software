@@ -8,7 +8,7 @@ import { apiMutate } from "@/lib/api-mutation"
 import { getCachedCustomers, cacheCustomers } from '@/lib/offline/tripsDb'
 import { generateCustomerId } from '@/lib/customerUtils'
 
-type Customer = { customer_id: string; full_name: string; phone_number: string; is_new?: boolean; isNew?: boolean }
+export type Customer = { customer_id: string; full_name: string; phone_number: string; is_new?: boolean; isNew?: boolean }
 type Props = { onSelect: (customer: Customer) => void; allowUnsavedNew?: boolean; initialValue?: string }
 
 export default function CustomerSelector({ onSelect, allowUnsavedNew, initialValue }: Props) {

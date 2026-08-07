@@ -6,10 +6,8 @@ import { supabase } from "@/lib/supabase"
 import { apiMutate } from "@/lib/api-mutation"
 import { formatAmount, parseAmount } from "@/lib/formatAmount"
 import { useBreakpoint } from "@/app/hooks/useBreakpoint"
-import CustomerSelector from "./CustomerSelector"
+import CustomerSelector, { Customer } from "./CustomerSelector"
 import { BANKS } from "@/lib/constants"
-
-type Customer = { customer_id: string; full_name: string; isNew?: boolean }
 
 type Payment = {
   payment_id: string
@@ -80,7 +78,7 @@ export default function CustomerPayments({ brokerId }: { brokerId: string }) {
       setPaymentDate(payment.payment_date)
       setDepositorName(payment.depositor_name || "")
       setAmount(payment.amount.toString())
-      setSelectedCustomer({ customer_id: payment.customer_id || "", full_name: payment.customer_name || "", isNew: !payment.customer_id })
+      setSelectedCustomer({ customer_id: payment.customer_id || "", full_name: payment.customer_name || "", phone_number: "", isNew: !payment.customer_id })
     } else {
       setEditingPayment(null); setBankName(""); setPaymentDate(""); setDepositorName(""); setAmount(""); setSelectedCustomer(null)
     }
@@ -314,7 +312,7 @@ export default function CustomerPayments({ brokerId }: { brokerId: string }) {
 
             <div style={{ marginBottom: 24 }}>
               <label style={{ display: "block", fontWeight: 600, marginBottom: 6, fontSize: fontSize.sm, color: "#475569" }}>Customer *</label>
-              <CustomerSelector onSelect={(c: any) => { setSelectedCustomer(c); setMessage("") }} initialValue={selectedCustomer?.full_name || ""} />
+              <CustomerSelector onSelect={(c: Customer) => { setSelectedCustomer(c); setMessage("") }} initialValue={selectedCustomer?.full_name || ""} />
             </div>
 
             {message && (

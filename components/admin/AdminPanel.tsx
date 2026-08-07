@@ -1,5 +1,6 @@
 "use client"
 
+import React from "react"
 import Image from "next/image"
 import { useState, useEffect, useRef } from "react"
 import { useRouter } from "next/navigation"
@@ -53,7 +54,7 @@ const isSectionKey = (value: string | null): value is SectionKey =>
 
 type NavItemConfig = { label: string; key: NavKey; icon: string }
 
-const SECTION_COMPONENTS: Partial<Record<SectionKey, React.ComponentType<any>>> = {}
+const SECTION_COMPONENTS: Partial<Record<SectionKey, React.ComponentType<Record<string, unknown>>>> = {}
 for (const key of Object.keys(SECTION_IMPORTS) as SectionKey[]) {
   SECTION_COMPONENTS[key] = dynamic(SECTION_IMPORTS[key])
 }

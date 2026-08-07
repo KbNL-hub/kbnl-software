@@ -1,5 +1,6 @@
 "use client"
 
+import React from "react"
 import { useCallback, useEffect, useState } from "react"
 import { supabase } from "@/lib/supabase"
 import { apiMutate } from "@/lib/api-mutation"
@@ -561,7 +562,7 @@ export default function BrokerCredits() {
               type="text"
               placeholder="e.g. 30"
               value={ageOfCreditInput}
-              onChange={(e: any) => { setAgeOfCreditInput(formatAmount(e.target.value)); setLimitConfirmRequired(false) }}
+              onChange={(e: React.ChangeEvent<HTMLInputElement>) => { setAgeOfCreditInput(formatAmount(e.target.value)); setLimitConfirmRequired(false) }}
               readOnly={!canEdit}
               style={{ width: "100%", boxSizing: "border-box", minHeight: 48 }}
             />
@@ -607,7 +608,7 @@ export default function BrokerCredits() {
               type="text"
               placeholder="e.g. 30"
               value={ageOfCreditInput}
-              onChange={(e: any) => setAgeOfCreditInput(formatAmount(e.target.value))}
+              onChange={(e: React.ChangeEvent<HTMLInputElement>) => setAgeOfCreditInput(formatAmount(e.target.value))}
               readOnly={!canEdit}
               style={{ width: "100%", boxSizing: "border-box", minHeight: 48 }}
             />

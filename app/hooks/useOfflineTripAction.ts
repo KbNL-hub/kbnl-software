@@ -12,7 +12,7 @@ interface UseOfflineTripActionResult {
     type: 'stop' | 'discrepancy' | 'load_more',
     tripId: string,
     tableName: string,
-    data: Record<string, any>
+    data: Record<string, unknown>
   ) => Promise<{ success: boolean; error?: string; offline?: boolean }>;
   isSubmitting: boolean;
   isOnline: boolean;
@@ -39,7 +39,7 @@ export function useOfflineTripAction(): UseOfflineTripActionResult {
       type: 'stop' | 'discrepancy' | 'load_more',
       tripId: string,
       tableName: string,
-      data: Record<string, any>
+      data: Record<string, unknown>
     ) => {
       setIsSubmitting(true);
 

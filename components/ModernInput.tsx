@@ -111,11 +111,13 @@ const ModernInput = forwardRef<HTMLElement, ModernInputProps>(
           : style?.boxShadow,
     }
 
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const handleFocus = (e: any) => {
       setState("focused")
       onFocus?.(e)
     }
 
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const handleBlur = (e: any) => {
       setState(isFilled ? "filled" : "idle")
       onBlur?.(e)

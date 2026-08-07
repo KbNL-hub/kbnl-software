@@ -1,5 +1,6 @@
 "use client"
 
+import React from "react"
 import { FONT_SIZE } from "@/lib/constants"
 import { usePolling } from "@/lib/hooks/usePolling"
 
@@ -769,7 +770,7 @@ export default function DieselManager() {
                 <ModernInput
                   as="select"
                   value={depositCompanyId}
-                  onChange={(e: any) => { setDepositCompanyId(e.target.value); setDepositError("") }}
+                  onChange={(e: React.ChangeEvent<HTMLSelectElement>) => { setDepositCompanyId(e.target.value); setDepositError("") }}
                   style={inputStyle}
                 >
                   <option value="">Select company</option>
@@ -783,7 +784,7 @@ export default function DieselManager() {
                   inputMode="numeric"
                   placeholder="e.g. 500,000"
                   value={depositAmount}
-                  onChange={(e: any) => { setDepositAmount(formatAmount(e.target.value)); setDepositError("") }}
+                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => { setDepositAmount(formatAmount(e.target.value)); setDepositError("") }}
                   style={inputStyle}
                   readOnly={!canEdit}
                 />
@@ -794,7 +795,7 @@ export default function DieselManager() {
                   type="text"
                   placeholder="e.g. Monthly top-up"
                   value={depositNote}
-                  onChange={(e: any) => setDepositNote(e.target.value)}
+                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => setDepositNote(e.target.value)}
                   style={inputStyle}
                   readOnly={!canEdit}
                 />
@@ -830,7 +831,7 @@ export default function DieselManager() {
                 type="text"
                 placeholder="e.g. Total Energies, NNPC"
                 value={newStationName}
-                onChange={(e: any) => { setNewStationName(e.target.value); setStationError("") }}
+                onChange={(e: React.ChangeEvent<HTMLInputElement>) => { setNewStationName(e.target.value); setStationError("") }}
                 style={inputStyle}
                 readOnly={!canEdit}
               />
@@ -866,7 +867,7 @@ export default function DieselManager() {
                   type="text"
                   placeholder="e.g. Lagos, Port Harcourt"
                   value={estLocation}
-                  onChange={(e: any) => { setEstLocation(e.target.value); setEstError("") }}
+                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => { setEstLocation(e.target.value); setEstError("") }}
                   style={inputStyle}
                 />
               </div>
@@ -877,7 +878,7 @@ export default function DieselManager() {
                   step="0.1"
                   placeholder="e.g. 120"
                   value={estDiesel}
-                  onChange={(e: any) => { setEstDiesel(e.target.value); setEstError("") }}
+                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => { setEstDiesel(e.target.value); setEstError("") }}
                   style={inputStyle}
                 />
               </div>
@@ -888,7 +889,7 @@ export default function DieselManager() {
                   step="0.1"
                   placeholder="e.g. 15"
                   value={estCng}
-                  onChange={(e: any) => { setEstCng(e.target.value); setEstError("") }}
+                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => { setEstCng(e.target.value); setEstError("") }}
                   style={inputStyle}
                 />
               </div>

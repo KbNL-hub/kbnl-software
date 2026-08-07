@@ -50,9 +50,9 @@ export function useSupabaseQuery<T = Record<string, unknown>>({
       setError(null)
 
       try {
-        let query: any = supabase
+        let query = supabase
           .from(table)
-          .select(select) as any
+          .select(select)
 
         if (filters) {
           for (const [key, value] of Object.entries(filters)) {

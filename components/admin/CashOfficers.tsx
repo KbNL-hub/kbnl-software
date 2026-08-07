@@ -1,5 +1,6 @@
 "use client"
 
+import React from "react"
 import Image from "next/image"
 import { FONT_SIZE } from "@/lib/constants"
 
@@ -749,15 +750,15 @@ export default function CashOfficers() {
                     <div style={{ display: "flex", flexDirection: "column", gap: 14, marginBottom: 20 }}>
                       <div>
                         <label style={{ display: "block", marginBottom: 6, color: "#475569", fontSize: FONT_SIZE.sm, fontWeight: 500 }}>Full Name *</label>
-                        <ModernInput type="text" placeholder="e.g. John Doe" value={fullName} onChange={(e: any) => { setFullName(e.target.value); setMessage("") }} onKeyDown={(e: any) => { if (e.key === "Enter") phoneRef.current?.focus() }} readOnly={!canEdit} style={inputStyle} autoFocus />
+                        <ModernInput type="text" placeholder="e.g. John Doe" value={fullName} onChange={(e: React.ChangeEvent<HTMLInputElement>) => { setFullName(e.target.value); setMessage("") }} onKeyDown={(e: React.KeyboardEvent<HTMLInputElement>) => { if (e.key === "Enter") phoneRef.current?.focus() }} readOnly={!canEdit} style={inputStyle} autoFocus />
                       </div>
                       <div>
                         <label style={{ display: "block", marginBottom: 6, color: "#475569", fontSize: FONT_SIZE.sm, fontWeight: 500 }}>Phone Number</label>
-                        <ModernInput ref={phoneRef} type="text" placeholder="e.g. 08012345678" value={phoneNumber} onChange={(e: any) => { setPhoneNumber(e.target.value); setMessage("") }} onKeyDown={(e: any) => { if (e.key === "Enter") emailRef.current?.focus() }} readOnly={!canEdit} style={inputStyle} />
+                        <ModernInput ref={phoneRef} type="text" placeholder="e.g. 08012345678" value={phoneNumber} onChange={(e: React.ChangeEvent<HTMLInputElement>) => { setPhoneNumber(e.target.value); setMessage("") }} onKeyDown={(e: React.KeyboardEvent<HTMLInputElement>) => { if (e.key === "Enter") emailRef.current?.focus() }} readOnly={!canEdit} style={inputStyle} />
                       </div>
                       <div>
                         <label style={{ display: "block", marginBottom: 6, color: "#475569", fontSize: FONT_SIZE.sm, fontWeight: 500 }}>Email Address *</label>
-                        <ModernInput ref={emailRef} type="email" placeholder="e.g. clerk@example.com" value={email} onChange={(e: any) => { setEmail(e.target.value); setMessage("") }} readOnly={!canEdit} style={inputStyle} />
+                        <ModernInput ref={emailRef} type="email" placeholder="e.g. clerk@example.com" value={email} onChange={(e: React.ChangeEvent<HTMLInputElement>) => { setEmail(e.target.value); setMessage("") }} readOnly={!canEdit} style={inputStyle} />
                       </div>
                       <div>
                         <label style={{ display: "block", marginBottom: 6, color: "#475569", fontSize: FONT_SIZE.sm, fontWeight: 500 }}>Assigned Office *</label>
@@ -813,11 +814,11 @@ export default function CashOfficers() {
                 <div style={{ display: "flex", flexDirection: "column", gap: 14, marginBottom: 20 }}>
                   <div>
                     <label style={{ display: "block", marginBottom: 6, color: "#475569", fontSize: FONT_SIZE.sm, fontWeight: 500 }}>Full Name *</label>
-                    <ModernInput type="text" value={editName} onChange={(e: any) => { setEditName(e.target.value); setMessage("") }} onKeyDown={(e: any) => { if (e.key === "Enter") editPhoneRef.current?.focus() }} readOnly={!canEdit} style={inputStyle} autoFocus />
+                    <ModernInput type="text" value={editName} onChange={(e: React.ChangeEvent<HTMLInputElement>) => { setEditName(e.target.value); setMessage("") }} onKeyDown={(e: React.KeyboardEvent<HTMLInputElement>) => { if (e.key === "Enter") editPhoneRef.current?.focus() }} readOnly={!canEdit} style={inputStyle} autoFocus />
                   </div>
                   <div>
                     <label style={{ display: "block", marginBottom: 6, color: "#475569", fontSize: FONT_SIZE.sm, fontWeight: 500 }}>Phone Number</label>
-                    <ModernInput ref={editPhoneRef} type="text" value={editPhone} onChange={(e: any) => { setEditPhone(e.target.value); setMessage("") }} onKeyDown={(e: any) => { if (e.key === "Enter") handleUpdate() }} readOnly={!canEdit} style={inputStyle} />
+                    <ModernInput ref={editPhoneRef} type="text" value={editPhone} onChange={(e: React.ChangeEvent<HTMLInputElement>) => { setEditPhone(e.target.value); setMessage("") }} onKeyDown={(e: React.KeyboardEvent<HTMLInputElement>) => { if (e.key === "Enter") handleUpdate() }} readOnly={!canEdit} style={inputStyle} />
                   </div>
                 </div>
 

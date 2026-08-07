@@ -56,7 +56,7 @@ export default function LoginPage() {
       return
     }
 
-    function isNetworkError(err: any) {
+    function isNetworkError(err: { message?: string } | null) {
       const msg = err?.message?.toLowerCase() || ""
       return msg.includes("failed to fetch") ||
         msg.includes("networkerror") ||
@@ -65,7 +65,7 @@ export default function LoginPage() {
         msg.includes("fetch")
     }
 
-    function queryWithTimeout<T>(promise: PromiseLike<{ data: T | null; error: any }>, ms = 10000): Promise<{ data: T | null; error: any }> {
+    function queryWithTimeout<T>(promise: PromiseLike<{ data: T | null; error: { message?: string } | null }>, ms = 10000): Promise<{ data: T | null; error: { message?: string } | null }> {
       return Promise.race([
         promise,
         new Promise<{ data: null; error: { message: string } }>((resolve) =>

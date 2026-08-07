@@ -92,7 +92,7 @@ export default function TruckMonitorSection({ plates }: Props) {
       return
     }
 
-    const enriched = trips.map((trip: any) => ({
+    const enriched = trips.map((trip: { trip_id: string; plate_number: string; kbnl_truck_no: string | null; loaded_quantity: number; remaining: number | null; driver_name: string | null; driver_phone: string | null; trip_status: string; route_points: unknown[] }) => ({
       trip_id: trip.trip_id,
       plate_number: trip.plate_number,
       kbnl_truck_no: trip.kbnl_truck_no ?? null,

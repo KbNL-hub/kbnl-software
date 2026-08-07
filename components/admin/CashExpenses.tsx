@@ -1,10 +1,12 @@
 "use client"
 
+import React from "react"
 import Image from "next/image"
 import { FONT_SIZE } from "@/lib/constants"
 import { toISOString } from "@/lib/date-utils"
 import { useState, useEffect, useMemo } from "react"
 import { supabase } from "@/lib/supabase"
+import type { User } from "@supabase/supabase-js"
 import { apiMutate } from "@/lib/api-mutation"
 import { formatAmount, parseAmount } from "@/lib/formatAmount"
 import ModernInput from "@/components/ModernInput"
@@ -71,7 +73,7 @@ export default function CashExpenses() {
   const [selectedOffice, setSelectedOffice] = useState<string>("Calabar")
   const [assignedOffice, setAssignedOffice] = useState<string | null>(null)
   const [isCashAuthorizer, setIsCashAuthorizer] = useState(false)
-  const [adminUser, setAdminUser] = useState<any>(null)
+  const [adminUser, setAdminUser] = useState<User | null>(null)
   const [officeBalance, setOfficeBalance] = useState<number>(0)
   const [expenses, setExpenses] = useState<CashExpense[]>([])
   const [deposits, setDeposits] = useState<CashDeposit[]>([])
@@ -830,7 +832,7 @@ export default function CashExpenses() {
                 type="text"
                 placeholder="e.g. 50,000"
                 value={depositAmount}
-                onChange={(e: any) => { setDepositAmount(formatAmount(e.target.value)); setErrorMsg("") }}
+                onChange={(e: React.ChangeEvent<HTMLInputElement>) => { setDepositAmount(formatAmount(e.target.value)); setErrorMsg("") }}
                 style={{ ...inputStyle, fontSize: FONT_SIZE.lg, fontWeight: 600, height: 56 }}
                 autoFocus
               />

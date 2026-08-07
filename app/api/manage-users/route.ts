@@ -1,7 +1,29 @@
-import { createClient } from "@supabase/supabase-js"
+import { createClient, type User } from "@supabase/supabase-js"
 import { NextRequest, NextResponse } from "next/server"
 import { requireRole, handleApiError } from "@/lib/auth-middleware"
 import { createRoleEntry, deleteRoleEntry, ROLE_TABLE_META } from "@/lib/role-tables"
+
+interface Profile {
+  user_id: string
+  full_name: string | null
+  phone_number: string | null
+  role: string | null
+  is_deactivated: boolean | null
+  must_change_password: boolean | null
+}
+
+interface ManagedUser {
+  user_id: string
+  email: string | undefined
+  full_name: string
+  phone_number: string
+  role: string
+  is_deactivated: boolean
+  must_change_password: boolean
+  created_at: string
+  last_sign_in_at: string | undefined
+  roles: string[]
+}
 
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -17,7 +39,7 @@ function hasExtraDataForRole(role: string): boolean {
 }
 
 async function listAllAuthUsers() {
-  const allUsers: any[] = []
+  const allUsers: User[] = []
   let page = 1
   const perPage = 1000
   let total = 0
@@ -45,7 +67,7 @@ export async function GET(req: NextRequest) {
       supabaseAdmin.from("UserRoles").select("*"),
     ])
 
-    const profileMap = new Map((profiles.data || []).map((p: any) => [p.user_id, p]))
+    const profileMap = new Map<string, Partial<Profile>>((profiles.data || []).map((p: Profile) => [p.user_id, p]))
     const rolesMap = new Map<string, string[]>()
     for (const ur of userRoles.data || []) {
       const existing = rolesMap.get(ur.user_id) || []
@@ -53,12 +75,12 @@ export async function GET(req: NextRequest) {
       rolesMap.set(ur.user_id, existing)
     }
 
-    const users = authUsers.map((au: any) => {
+    const users: ManagedUser[] = authUsers.map((au) => {
       const profile = profileMap.get(au.id) || {}
       return {
         user_id: au.id,
         email: au.email,
-        full_name: profile.full_name || au.user_metadata?.full_name || "",
+        full_name: profile.full_name || (au.user_metadata?.full_name as string) || "",
         phone_number: profile.phone_number || "",
         role: profile.role || "",
         is_deactivated: profile.is_deactivated || false,
@@ -69,7 +91,7 @@ export async function GET(req: NextRequest) {
       }
     })
 
-    users.sort((a: any, b: any) => {
+    users.sort((a, b) => {
       if (a.is_deactivated !== b.is_deactivated) return a.is_deactivated ? 1 : -1
       return (a.full_name || "").localeCompare(b.full_name || "")
     })
@@ -133,7 +155,7 @@ export async function POST(req: NextRequest) {
           supabaseAdmin.from("Profiles").select("full_name, phone_number").eq("user_id", userId).single(),
         ])
 
-        const oldRoles = new Set((currentRoles || []).map((r: any) => r.role))
+        const oldRoles = new Set((currentRoles || []).map((r: { role: string }) => r.role))
         const newRoles = new Set(roles)
 
         const { error: rpcError } = await supabaseAdmin.rpc("reassign_user_roles", {

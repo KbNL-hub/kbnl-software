@@ -28,7 +28,7 @@ const SECTION_IMPORTS = {
 
 type SectionKey = keyof typeof SECTION_IMPORTS
 
-const SECTION_COMPONENTS: Partial<Record<SectionKey, React.ComponentType<any>>> = {}
+const SECTION_COMPONENTS: Partial<Record<SectionKey, React.ComponentType<Record<string, unknown>>>> = {}
 for (const key of Object.keys(SECTION_IMPORTS) as SectionKey[]) {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   SECTION_COMPONENTS[key] = dynamic(SECTION_IMPORTS[key] as any)

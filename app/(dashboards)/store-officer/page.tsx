@@ -1,6 +1,7 @@
 "use client"
 
 import Image from "next/image"
+import React from "react"
 import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import { supabase } from "@/lib/supabase"
@@ -8,7 +9,7 @@ import { apiMutate } from "@/lib/api-mutation"
 import RoleSwitcher from "@/components/RoleSwitcher"
 import { formatAmount, parseAmount } from "@/lib/formatAmount"
 import { Icon } from "@iconify/react"
-import CustomerSelector from "@/components/CustomerSelector"
+import CustomerSelector, { Customer } from "@/components/CustomerSelector"
 import ReportModal from "@/components/ReportModal"
 import ModernInput from "@/components/ModernInput"
 import ProfilePictureUpload from "@/components/ProfilePictureUpload"
@@ -1137,7 +1138,7 @@ export default function StoreOfficerDashboard() {
                     placeholder="Qty"
                     value={line.quantity}
                     onChange={e => updateSupplyLine(i, "quantity", e.target.value)}
-                    onKeyDown={(e: any) => { if (e.key === "-" || e.key === "e") e.preventDefault() }}
+                    onKeyDown={(e: React.KeyboardEvent<HTMLInputElement>) => { if (e.key === "-" || e.key === "e") e.preventDefault() }}
                     style={{ flex: 1, width: isMobile ? 90 : 110, flexShrink: 0, padding: "10px 12px", borderRadius: 6, border: "1px solid #e0e0e0", fontSize: FONT_SIZE.sm, boxSizing: "border-box" }}
                   />
                   {supplyLines.length > 1 && (
@@ -1339,7 +1340,7 @@ export default function StoreOfficerDashboard() {
             <div style={{ marginBottom: 16 }}>
               <label style={{ display: "block", fontWeight: 600, marginBottom: 6, fontSize: FONT_SIZE.sm, color: "#475569" }}>Customer Name <span style={{ fontWeight: 400, color: "#94a3b8" }}>(optional)</span></label>
               <CustomerSelector 
-                onSelect={(c: any) => { setSaleCustomer(c); setSaleError("") }} 
+                onSelect={(c: Customer) => { setSaleCustomer(c); setSaleError("") }} 
                 allowUnsavedNew={true}
                 initialValue={saleCustomer?.full_name || ""}
               />

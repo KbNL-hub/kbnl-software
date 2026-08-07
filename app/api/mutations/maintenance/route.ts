@@ -1,6 +1,7 @@
 import { createClient } from "@supabase/supabase-js"
 import { NextRequest, NextResponse } from "next/server"
 import { requireRole, handleApiError } from "@/lib/auth-middleware"
+import { includes } from "@/lib/type-utils"
 
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -42,12 +43,12 @@ export async function POST(req: NextRequest) {
     }
 
     if (action === "rpc") {
-      if (!fnName || !ALLOWED_RPCS.includes(fnName as any)) {
+      if (!fnName || !includes(ALLOWED_RPCS, fnName)) {
         return buildError(`RPC function "${fnName}" is not supported by this endpoint`, 400)
       }
       const rolesForRpc = RPC_ROLES[fnName] || ["Admin"]
       const auth = await requireRole(req, rolesForRpc)
-      const result = await supabaseAdmin.rpc(fnName as any, {
+      const result = await supabaseAdmin.rpc(fnName, {
         ...params,
         p_admin_id: auth.userId,
       })
@@ -57,7 +58,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ data: result.data })
     }
 
-    if (!table || !ALLOWED_TABLES.includes(table as any)) {
+    if (!table || !includes(ALLOWED_TABLES, table)) {
       return buildError(`Table "${table}" is not supported by this endpoint`, 400)
     }
 

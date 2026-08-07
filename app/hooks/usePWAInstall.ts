@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
+import type { Session } from '@supabase/supabase-js';
 
 const STORAGE_KEY = 'kbnl_pwa_prompted';
 const FIRST_LOGIN_KEY = 'kbnl_first_login';
@@ -7,7 +8,7 @@ const FIRST_LOGIN_KEY = 'kbnl_first_login';
 export function usePWAInstall() {
   const [hasBeenPrompted, setHasBeenPrompted] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
-  const [session, setSession] = useState<any>(null);
+  const [session, setSession] = useState<Session | null>(null);
 
   useEffect(() => {
     // Get session on mount

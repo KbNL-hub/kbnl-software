@@ -1,6 +1,7 @@
 import { createClient } from "@supabase/supabase-js"
 import { NextRequest, NextResponse } from "next/server"
 import { requireRole, handleApiError } from "@/lib/auth-middleware"
+import { includes } from "@/lib/type-utils"
 
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -46,7 +47,7 @@ export async function POST(req: NextRequest) {
       conflict?: string
     }
 
-    if (!ALLOWED_TABLES.includes(table as any)) {
+    if (!includes(ALLOWED_TABLES, table)) {
       return buildError(`Table "${table}" is not supported by this endpoint`, 400)
     }
 

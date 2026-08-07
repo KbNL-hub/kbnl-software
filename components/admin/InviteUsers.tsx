@@ -1,5 +1,6 @@
 "use client"
 
+import React from "react"
 import { useState, useEffect, useRef } from "react"
 import { supabase } from "@/lib/supabase"
 import ModernInput from "@/components/ModernInput"
@@ -362,8 +363,8 @@ export default function InviteUsers() {
               <ModernInput
                 type="text" placeholder="e.g. John Doe"
                 value={fullName}
-                onChange={(e: any) => { setFullName(e.target.value); setMessage("") }}
-                onKeyDown={(e: any) => { if (e.key === "Enter") phoneRef.current?.focus() }}
+                onChange={(e: React.ChangeEvent<HTMLInputElement>) => { setFullName(e.target.value); setMessage("") }}
+                onKeyDown={(e: React.KeyboardEvent<HTMLInputElement>) => { if (e.key === "Enter") phoneRef.current?.focus() }}
                 style={inputStyle}
                 autoFocus
                 readOnly={!canEdit}
@@ -375,8 +376,8 @@ export default function InviteUsers() {
                 ref={phoneRef}
                 type="text" placeholder="e.g. 08012345678"
                 value={phoneNumber}
-                onChange={(e: any) => { setPhoneNumber(e.target.value); setMessage("") }}
-                onKeyDown={(e: any) => { if (e.key === "Enter") emailRef.current?.focus() }}
+                onChange={(e: React.ChangeEvent<HTMLInputElement>) => { setPhoneNumber(e.target.value); setMessage("") }}
+                onKeyDown={(e: React.KeyboardEvent<HTMLInputElement>) => { if (e.key === "Enter") emailRef.current?.focus() }}
                 style={inputStyle}
                 readOnly={!canEdit}
               />
@@ -387,7 +388,7 @@ export default function InviteUsers() {
                 ref={emailRef}
                 type="email" placeholder="e.g. user@company.com"
                 value={email}
-                onChange={(e: any) => { setEmail(e.target.value); setMessage("") }}
+                onChange={(e: React.ChangeEvent<HTMLInputElement>) => { setEmail(e.target.value); setMessage("") }}
                 style={inputStyle}
                 readOnly={!canEdit}
               />

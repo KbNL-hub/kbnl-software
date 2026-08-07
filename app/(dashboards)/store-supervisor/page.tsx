@@ -112,7 +112,7 @@ export default function StoreSupervisorDashboard() {
   // Stops (supplies) - read-only
   const stopsFilter = useMemo(() => selectedStore ? { store_name: selectedStore, pending: false } : null, [selectedStore])
   const { data: stopsFromHook, refetch: refetchStops } = useStops(stopsFilter ?? undefined)
-  const confirmedStops = useMemo(() => (stopsFromHook as any[]).filter((s: any) => s.confirmed && !s.disputed) || [], [stopsFromHook])
+  const confirmedStops = useMemo(() => (stopsFromHook || []).filter(s => s.confirmed && !s.disputed), [stopsFromHook])
   const [stopsPage, setStopsPage] = useState(1)
 
   // Profile picture
@@ -675,7 +675,7 @@ export default function StoreSupervisorDashboard() {
             )}
 
             <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-              {confirmedStops.slice(0, stopsPage * PAGE_SIZE).map((stop: any) => (
+              {confirmedStops.slice(0, stopsPage * PAGE_SIZE).map(stop => (
                 <div key={stop.stop_id} style={{ background: "white", border: "1px solid #e2e8f0", borderRadius: 12, padding: 16, boxShadow: "0 1px 3px rgba(0,0,0,0.05)" }}>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
                     <div>

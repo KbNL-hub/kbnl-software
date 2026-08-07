@@ -1,6 +1,7 @@
 import { createClient } from "@supabase/supabase-js"
 import { NextRequest, NextResponse } from "next/server"
 import { requireRole, handleApiError } from "@/lib/auth-middleware"
+import { includes } from "@/lib/type-utils"
 
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -42,7 +43,7 @@ export async function POST(req: NextRequest) {
     }
 
     if (action !== "transaction") {
-      if (!table || !ALLOWED_TABLES.includes(table as any)) {
+      if (!table || !includes(ALLOWED_TABLES, table)) {
         return buildError(`Table "${table}" is not supported by this endpoint`, 400)
       }
       if (!["insert", "update", "delete", "upsert"].includes(action)) {
@@ -117,7 +118,7 @@ export async function POST(req: NextRequest) {
           if (!["insert", "update", "delete", "upsert"].includes(sa.action)) {
             return buildError(`Invalid sub-action "${sa.action}"`, 400)
           }
-          if (!ALLOWED_TABLES.includes(sa.table as any)) {
+          if (!includes(ALLOWED_TABLES, sa.table)) {
             return buildError(`Table "${sa.table}" is not supported by this endpoint`, 400)
           }
         }

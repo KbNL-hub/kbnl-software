@@ -82,7 +82,7 @@ export default function Complaints() {
       }
     }))
 
-    const reportComplaints = await Promise.all((reportRes.data || []).map(async (r: any) => {
+    const reportComplaints = await Promise.all((reportRes.data || []).map(async (r: { id: string; user_id: string; role: string; message: string; created_at: string; resolved: boolean | null }) => {
       const { data: profile } = await supabase.from("Profiles").select("full_name").eq("user_id", r.user_id).single()
       return {
         complaint_id: `report-${r.id}`,
