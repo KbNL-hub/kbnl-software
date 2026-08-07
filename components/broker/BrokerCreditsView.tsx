@@ -5,6 +5,7 @@ import { Icon } from "@iconify/react"
 import { supabase } from "@/lib/supabase"
 import { formatAmount } from "@/lib/formatAmount"
 import { useBreakpoint } from "@/app/hooks/useBreakpoint"
+import { formatDateTime } from "@/lib/date-utils"
 
 type CreditEntry = {
   credit_id: string
@@ -16,6 +17,7 @@ type CreditEntry = {
   created_at: string
   cleared_at: string | null
   age_of_credit: number | null
+  updated_at: string
 }
 
 type ViewMode = "card" | "table"
@@ -74,6 +76,10 @@ export default function BrokerCreditsView() {
     .filter(c => c.status === "Active")
     .reduce((sum, c) => sum + Number(c.amount), 0)
 
+  const lastUpdated = credits.length > 0
+    ? credits.reduce((latest, c) => c.updated_at > latest ? c.updated_at : latest, credits[0].updated_at)
+    : null
+
   const displayedCredits = credits
 
   const tblHeadStyle: React.CSSProperties = {
@@ -103,6 +109,11 @@ export default function BrokerCreditsView() {
         <p style={{ fontSize: isMobile ? 28 : 36, fontWeight: "bold", margin: 0 }}>
           ₦{formatAmount(String(activeTotal)) || "0"}
         </p>
+        {lastUpdated && (
+          <p style={{ fontSize: fontSize.xs, opacity: 0.5, margin: "6px 0 0" }}>
+            Last updated: {formatDateTime(lastUpdated)}
+          </p>
+        )}
       </div>
 
       {/* Credit limit exceeded banner */}

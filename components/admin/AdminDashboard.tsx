@@ -6,6 +6,7 @@ import { supabase } from "@/lib/supabase"
 import { useBreakpoint } from "@/app/hooks/useBreakpoint"
 import { Role } from "@/lib/roles"
 import { toTitleCase } from "@/lib/title-case"
+import { formatDateTime } from "@/lib/date-utils"
 
 type Props = {
   effectiveRole: string
@@ -111,7 +112,7 @@ function FeaturedCard({ card, isMobile }: { card: StatCard; isMobile: boolean })
   )
 }
 
-function CompanyCreditCard({ total, isMobile }: { total: number; isMobile: boolean }) {
+function CompanyCreditCard({ total, lastUpdated, isMobile }: { total: number; lastUpdated: string | null; isMobile: boolean }) {
   return (
     <div
       style={{
@@ -162,6 +163,11 @@ function CompanyCreditCard({ total, isMobile }: { total: number; isMobile: boole
         }}>
           {"\u20A6"}{total.toLocaleString()}
         </p>
+        {lastUpdated && (
+          <p style={{ margin: "4px 0 0", fontSize: isMobile ? 10 : 11, color: "#64748b" }}>
+            Last updated: {formatDateTime(lastUpdated)}
+          </p>
+        )}
       </div>
     </div>
   )
@@ -377,12 +383,17 @@ export default function AdminDashboard({ effectiveRole, fullName }: Props) {
   const [truckStats, setTruckStats] = useState<StatCard[]>([])
   const [productStats, setProductStats] = useState<StatCard[]>([])
   const [creditTotal, setCreditTotal] = useState(0)
+  const [lastCreditUpdate, setLastCreditUpdate] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
 
   const roleGroup = getRoleGroup(effectiveRole)
 
   async function fetchStats() {
     setLoading(true)
+    setTruckStats([])
+    setProductStats([])
+    setCreditTotal(0)
+    setLastCreditUpdate(null)
     try {
       const { from, to } = getCurrentMonthRange()
 
@@ -449,7 +460,7 @@ export default function AdminDashboard({ effectiveRole, fullName }: Props) {
         .lte("created_at", to),
       supabase
         .from("broker_credits")
-        .select("amount")
+        .select("amount, updated_at")
         .eq("status", "Active"),
     ])
 
@@ -464,6 +475,12 @@ export default function AdminDashboard({ effectiveRole, fullName }: Props) {
       (creditsResult.data || []).reduce(
         (sum, c) => sum + (Number(c.amount) || 0), 0
       )
+    )
+    const creditData = creditsResult.data || []
+    setLastCreditUpdate(
+      creditData.length > 0
+        ? creditData.reduce((latest: string, c: { updated_at: string }) => c.updated_at > latest ? c.updated_at : latest, creditData[0].updated_at)
+        : null
     )
 
     let revenue = 0
@@ -587,13 +604,28 @@ export default function AdminDashboard({ effectiveRole, fullName }: Props) {
   }
 
   async function fetchCashStats() {
-    const { count } = await supabase
-      .from("customer_payments")
-      .select("payment_id", { count: "exact", head: true })
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return
+
+    const { data: authorizer } = await supabase
+      .from("cash_authorizers")
+      .select("assigned_office")
+      .eq("authorizer_id", user.id)
+      .maybeSingle()
+
+    const query = supabase
+      .from("cash_expenses")
+      .select("expense_id", { count: "exact", head: true })
       .eq("status", "Pending")
 
+    if (authorizer?.assigned_office) {
+      query.eq("office_name", authorizer.assigned_office)
+    }
+
+    const { count } = await query
+
     setStats([
-      { key: "payments", icon: "mdi:cash-register", label: "Pending Payments", value: count || 0, color: "#8b5cf6" },
+      { key: "expenses", icon: "mdi:cash-register", label: "Pending Expenses", value: count || 0, color: "#8b5cf6" },
     ])
   }
 
@@ -622,7 +654,7 @@ export default function AdminDashboard({ effectiveRole, fullName }: Props) {
             <FeaturedCard card={stats[0]} isMobile={isMobile} />
           )}
           {roleGroup === "admin" && creditTotal > 0 && (
-            <CompanyCreditCard total={creditTotal} isMobile={isMobile} />
+            <CompanyCreditCard total={creditTotal} lastUpdated={lastCreditUpdate} isMobile={isMobile} />
           )}
           <div style={{
             display: "grid",
