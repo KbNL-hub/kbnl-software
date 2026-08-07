@@ -79,7 +79,7 @@ type Broker = { broker_id: string; broker_name: string }
 type SupplyLine = { product: string; quantity: string }
 type SaleLine = { product: string; quantity: string; price_per_bag: string }
 
-const PAYMENT_MODES = ["Cash", "Transfer", "POS", "Broker"]
+const PAYMENT_MODES = ["Transfer", "POS", "Broker"]
 
 function getCurrentMonthRange() {
   const from = dayjs().startOf("month").toISOString()
@@ -1228,7 +1228,7 @@ export default function StoreOfficerDashboard() {
                 <input
                   type="checkbox"
                   checked={isBrokerLinked}
-                  onChange={e => { setIsBrokerLinked(e.target.checked); setSaleBroker(null); setSaleError("") }}
+                  onChange={e => { setIsBrokerLinked(e.target.checked); setSaleBroker(null); setSaleError(""); if (!e.target.checked && salePayment === "Broker") setSalePayment("") }}
                   style={{ width: 18, height: 18, cursor: "pointer" }}
                 />
                 <span style={{ margin: "4px 0 0", fontWeight: 600, color: "#0070f3", fontSize: FONT_SIZE.sm }}>Broker-linked sales</span>
@@ -1473,7 +1473,7 @@ export default function StoreOfficerDashboard() {
                 style={{ width: "100%", padding: "10px 12px", borderRadius: 6, border: "1px solid #e0e0e0", fontSize: FONT_SIZE.base, boxSizing: "border-box", minHeight: 44 }}
               >
                 <option value="">Select payment mode</option>
-                {PAYMENT_MODES.map(m => (<option key={m} value={m}>{m}</option>))}
+                {PAYMENT_MODES.filter(m => isBrokerLinked || m !== "Broker").map(m => (<option key={m} value={m}>{m}</option>))}
               </ModernInput>
             </div>
 
