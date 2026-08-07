@@ -242,7 +242,7 @@ export default function TruckOfficerDashboard() {
 
       await Promise.all([
         fetchTrucks(managerId),
-        fetchReports(managerId),
+        fetchReports(),
         fetchProcurements(),
         fetchDeposits(),
         fetchFuelExpenses(managerId),
@@ -254,7 +254,7 @@ export default function TruckOfficerDashboard() {
 
   usePolling(() => {
     if (!officer) return
-    fetchReports(officer.manager_id)
+    fetchReports()
     fetchProcurements()
     fetchDeposits()
     fetchFuelExpenses(officer.manager_id)
@@ -343,7 +343,7 @@ export default function TruckOfficerDashboard() {
     if (error) { setLogError("Failed to log report"); return }
     setShowLogModal(false)
     setLogPlate(""); setLogType(""); setLogTypeCustom(""); setLogAmount(""); setLogLocation(""); setLogNotes(""); setLogError("")
-    if (officer) fetchReports(officer.manager_id)
+    if (officer) fetchReports()
   }
 
   async function handleLogFuelExpense() {
@@ -677,7 +677,7 @@ export default function TruckOfficerDashboard() {
               </div>
               <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                 {lastUpdated && <span style={{ fontSize: FONT_SIZE.xs, color: "#94a3b8", whiteSpace: "nowrap" }}>Updated {formatTime(lastUpdated)}</span>}
-                <button onClick={() => officer && fetchReports(officer.manager_id)} className="refresh-btn" style={{ padding: "6px 12px", fontSize: FONT_SIZE.xs, cursor: "pointer", borderRadius: 6, border: "1px solid #e2e8f0", background: "white", color: "#64748b", transition: "all 0.2s", fontWeight: 600 }}>
+                <button onClick={() => officer && fetchReports()} className="refresh-btn" style={{ padding: "6px 12px", fontSize: FONT_SIZE.xs, cursor: "pointer", borderRadius: 6, border: "1px solid #e2e8f0", background: "white", color: "#64748b", transition: "all 0.2s", fontWeight: 600 }}>
                   Refresh
                 </button>
                 <button
