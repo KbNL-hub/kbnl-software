@@ -105,6 +105,7 @@ export default function ManageUsers() {
 
    
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     if (canView) fetchUsers()
   }, [canView])
 

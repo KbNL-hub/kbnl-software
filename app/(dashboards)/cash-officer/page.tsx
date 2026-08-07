@@ -54,7 +54,7 @@ export default function CashOfficerDashboard() {
     setLoading(false)
   }
 
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+  // eslint-disable-next-line react-hooks/exhaustive-deps, react-hooks/set-state-in-effect
   useEffect(() => { init() }, [])
 
   if (loading) return (

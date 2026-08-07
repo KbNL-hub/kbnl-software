@@ -114,7 +114,11 @@ function AdminPanelContent({ userProfile }: Props) {
   const isNarrow = isMobile || isTablet
 
   const router = useRouter()
-  const [active, setActive] = useState<NavKey>("__dashboard__")
+  const [active, setActive] = useState<NavKey>(() => {
+    const params = new URLSearchParams(window.location.search)
+    const section = params.get('section')
+    return isSectionKey(section) ? section : "__dashboard__"
+  })
   const [sidebarOpen, setSidebarOpen] = useState(true)
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [showReportModal, setShowReportModal] = useState(false)
@@ -150,12 +154,10 @@ function AdminPanelContent({ userProfile }: Props) {
   const [disputedCount, setDisputedCount] = useState(0)
   const [unresolvedComplaints, setUnresolvedComplaints] = useState(0)
   const [lowBalanceCompanies, setLowBalanceCompanies] = useState<LowBalanceCompany[]>([])
-  const [dismissedAlerts, setDismissedAlerts] = useState<Set<string>>(new Set())
-
-  useEffect(() => {
+  const [dismissedAlerts, setDismissedAlerts] = useState<Set<string>>(() => {
     const stored = sessionStorage.getItem("dismissedFuelAlerts")
-    if (stored) setDismissedAlerts(new Set(JSON.parse(stored)))
-  }, [])
+    return stored ? new Set(JSON.parse(stored)) : new Set()
+  })
 
   useEffect(() => {
     if (permLoading) return
@@ -224,6 +226,7 @@ function AdminPanelContent({ userProfile }: Props) {
   }, 120000, !permLoading)
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     if (!isNarrow) setDrawerOpen(false)
   }, [isNarrow])
 
@@ -235,15 +238,12 @@ function AdminPanelContent({ userProfile }: Props) {
 
   const visibleAlerts = lowBalanceCompanies.filter(c => !dismissedAlerts.has(c.company_id))
 
-  // Sync initial section from URL and preload its chunk
+  // Preload chunk for initial URL section
   useEffect(() => {
     const params = new URLSearchParams(window.location.search)
     const section = params.get('section')
     if (isSectionKey(section)) {
-      setActive(section)
       SECTION_IMPORTS[section]()
-    } else {
-      setActive("__dashboard__")
     }
   }, [])
 

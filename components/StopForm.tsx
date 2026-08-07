@@ -61,6 +61,7 @@ export default function StopForm({ tripId, loadedQuantity: initialLoaded = 0, of
 
     // If data provided as props, use it
     if (initialLoaded > 0) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setLoadedQuantity(initialLoaded);
       setOffloadedSoFar(initialOffloaded);
       return; // Don't fetch

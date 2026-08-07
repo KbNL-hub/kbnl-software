@@ -38,6 +38,7 @@ export function useSupabaseQuery<T = Record<string, unknown>>({
 
   useEffect(() => {
     if (!enabled) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setLoading(false)
       return
     }

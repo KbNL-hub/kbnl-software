@@ -70,12 +70,10 @@ export default function BrokerDashboard() {
   const [discount, setDiscount] = useState("")
   const [salePrice, setSalePrice] = useState("")
   const [activeFilter, setActiveFilter] = useState<"pending" | "confirmed" | "disputed">("pending")
-  const [allStops, setAllStops] = useState<Stop[]>([])
   const [page, setPage] = useState(1)
   const PAGE_SIZE = 50
   const [stopsFilter, setStopsFilter] = useState<{ broker_id: string } | null>(null)
   const { data: stopsFromHook, refetch: refetchStops } = useStops(stopsFilter ?? undefined)
-  useEffect(() => { setAllStops(stopsFromHook as Stop[]) }, [stopsFromHook])
 
   const [showPictureModal, setShowPictureModal] = useState(false)
   const [showReportModal, setShowReportModal] = useState(false)
@@ -116,6 +114,7 @@ export default function BrokerDashboard() {
     setLoading(false)
   }
 
+  // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { initBroker() }, [])
 
   function openConfirmModal(stop: Stop) {
@@ -228,9 +227,9 @@ export default function BrokerDashboard() {
     </div>
   )
 
-  const pendingStops = allStops.filter(s => !s.confirmed && !s.disputed)
-  const confirmedStops = allStops.filter(s => s.confirmed)
-  const disputedStops = allStops.filter(s => s.disputed)
+  const pendingStops = (stopsFromHook as Stop[]).filter(s => !s.confirmed && !s.disputed)
+  const confirmedStops = (stopsFromHook as Stop[]).filter(s => s.confirmed)
+  const disputedStops = (stopsFromHook as Stop[]).filter(s => s.disputed)
 
   const visibleStopsUnpaginated =
     activeFilter === "pending" ? pendingStops :
@@ -376,7 +375,7 @@ export default function BrokerDashboard() {
             background: isMobile ? "#f8fafc" : "transparent",
           }}>
             {[
-              { key: "broker", label: "My Stops", icon: "mdi:truck-delivery", count: allStops.length },
+              { key: "broker", label: "My Stops", icon: "mdi:truck-delivery", count: (stopsFromHook as Stop[]).length },
               { key: "payments", label: "Payments", icon: "mdi:cash-register" },
             ].map(tab => {
               const isActive = activeView === tab.key

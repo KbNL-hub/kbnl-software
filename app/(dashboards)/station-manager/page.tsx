@@ -75,10 +75,8 @@ export default function StationManagerDashboard() {
   const [companyName, setCompanyName] = useState("")
   const [currentBalance, setCurrentBalance] = useState<number | null>(null)
   const [lowThreshold, setLowThreshold] = useState<number>(0)
-  const [atfs, setAtfs] = useState<ATF[]>([])
   const [atfFilter, setAtfFilter] = useState<{ company_id: string } | null>(null)
   const { data: atfsFromHook, refetch: refetchATFs } = useATFs(atfFilter ?? undefined)
-  useEffect(() => { setAtfs(atfsFromHook as ATF[]); setLastUpdated(new Date()) }, [atfsFromHook])
   const [deposits, setDeposits] = useState<FuelDeposit[]>([])
   const [filter, setFilter] = useState("All")
   const [loading, setLoading] = useState(true)
@@ -147,6 +145,7 @@ export default function StationManagerDashboard() {
   async function fetchCompanyData(cId: string) {
     const { data } = await supabase.from("fuel_companies").select("company_name, current_balance, low_balance_threshold").eq("company_id", cId).single()
     if (data) { setCompanyName(data.company_name); setCurrentBalance(data.current_balance); setLowThreshold(data.low_balance_threshold) }
+    setLastUpdated(new Date())
   }
 
   async function fetchDeposits(cId: string) {
@@ -257,7 +256,7 @@ export default function StationManagerDashboard() {
   const balanceMap = useMemo(() => {
     const map: Record<string, number> = {}
     const records: { id: string; amount: number; created_at: string }[] = [
-      ...atfs.filter(a => a.atf_status === "Dispensed" || a.atf_status === "Confirmed").map(a => ({
+      ...(atfsFromHook as ATF[]).filter(a => a.atf_status === "Dispensed" || a.atf_status === "Confirmed").map(a => ({
         id: a.request_id, amount: a.total_amount ?? 0, created_at: a.requested_at
       })),
       ...deposits.filter(d => d.status === "Confirmed").map(d => ({
@@ -271,9 +270,9 @@ export default function StationManagerDashboard() {
       running += rec.amount
     }
     return map
-  }, [atfs, deposits, currentBalance])
+  }, [atfsFromHook, deposits, currentBalance])
 
-  const filteredATFs = filter === "All" ? atfs : atfs.filter(a => a.atf_status === filter)
+  const filteredATFs = filter === "All" ? (atfsFromHook as ATF[]) : (atfsFromHook as ATF[]).filter(a => a.atf_status === filter)
   const isLow = currentBalance !== null && currentBalance < lowThreshold
 
   const labelStyle: React.CSSProperties = {

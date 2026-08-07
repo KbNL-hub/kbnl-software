@@ -33,6 +33,7 @@ export default function ReportModal({ isOpen, onClose, userId, userRole }: Repor
 
   useEffect(() => {
     if (isOpen) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setMode("list")
       fetchReports()
     }

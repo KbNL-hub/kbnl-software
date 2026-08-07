@@ -24,6 +24,7 @@ export default function TripOfflineIndicator() {
 
   useEffect(() => {
     // Check initial status
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setIsOnline(navigator.onLine);
     updatePendingCount();
 

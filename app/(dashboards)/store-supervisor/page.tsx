@@ -1,7 +1,7 @@
 "use client"
 
 import Image from "next/image"
-import { useEffect, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { useRouter } from "next/navigation"
 import { supabase } from "@/lib/supabase"
 import { apiMutate } from "@/lib/api-mutation"
@@ -110,9 +110,9 @@ export default function StoreSupervisorDashboard() {
   const PAGE_SIZE = 50
 
   // Stops (supplies) - read-only
-  const [stopsFilter, setStopsFilter] = useState<{ store_name: string; pending: boolean } | null>(null)
+  const stopsFilter = useMemo(() => selectedStore ? { store_name: selectedStore, pending: false } : null, [selectedStore])
   const { data: stopsFromHook, refetch: refetchStops } = useStops(stopsFilter ?? undefined)
-  const [confirmedStops, setConfirmedStops] = useState<any[]>([])
+  const confirmedStops = useMemo(() => (stopsFromHook as any[]).filter((s: any) => s.confirmed && !s.disputed) || [], [stopsFromHook])
   const [stopsPage, setStopsPage] = useState(1)
 
   // Profile picture
@@ -159,7 +159,7 @@ export default function StoreSupervisorDashboard() {
     fetchStock(selectedStore)
     fetchSales(selectedStore)
     fetchPastVerifications(selectedStore)
-    setStopsFilter({ store_name: selectedStore, pending: false })
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setExpandedGroups(new Set())
     setLastUpdated(new Date())
   }, [selectedStore])
@@ -172,17 +172,10 @@ export default function StoreSupervisorDashboard() {
     setLastUpdated(new Date())
   }, 120000, !!selectedStore)
 
-  // Confirmed stops
-  useEffect(() => {
-    if (stopsFromHook) {
-      const confirmed = (stopsFromHook as any[]).filter((s: any) => s.confirmed && !s.disputed)
-      setConfirmedStops(confirmed)
-    }
-  }, [stopsFromHook])
-
   // Initialize verification rows when stock loads
   useEffect(() => {
     if (stock.length > 0 && verificationRows.length === 0) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setVerificationRows(stock.map(s => ({
         product: s.product,
         system_balance: s.balance,

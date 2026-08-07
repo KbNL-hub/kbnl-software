@@ -180,6 +180,7 @@ export function usePushNotifications() {
     const hasNotification = typeof Notification !== 'undefined'
 
     if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       if (hasNotification) setPermission(Notification.permission)
       setIsSubscribed(false)
       setLoading(false)

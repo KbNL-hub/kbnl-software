@@ -1,7 +1,7 @@
 "use client"
 
 import Image from "next/image"
-import { useState, useEffect, useRef } from "react"
+import { useState, useEffect, useRef, useMemo } from "react"
 
 import { Icon } from "@iconify/react"
 import { supabase } from "@/lib/supabase"
@@ -128,16 +128,10 @@ export default function DriverDashboard() {
 
   // ATF
   const [loadMoreEntries, setLoadMoreEntries] = useState<LoadMoreEntry[]>([])
-  const [atfs, setAtfs] = useState<ATF[]>([])
-  const [activeATF, setActiveATF] = useState<ATF | null>(null)
   const [confirmingATF, setConfirmingATF] = useState(false)
   const [atfFilter, setAtfFilter] = useState<{ driver_id: string } | null>(null)
   const { data: atfsFromHook, refetch: refetchATFs } = useATFs(atfFilter ?? undefined)
-  useEffect(() => {
-    setAtfs(atfsFromHook as ATF[])
-    const active = atfsFromHook.find(a => a.atf_status === "Authorised" || a.atf_status === "Dispensed")
-    setActiveATF((active as ATF) ?? null)
-  }, [atfsFromHook])
+  const activeATF = useMemo(() => (atfsFromHook as ATF[]).find(a => a.atf_status === "Authorised" || a.atf_status === "Dispensed") ?? null, [atfsFromHook])
 
   // Modals
   const [showEndConfirm, setShowEndConfirm] = useState(false)
@@ -222,6 +216,7 @@ export default function DriverDashboard() {
     const params = new URLSearchParams(window.location.search)
     const viewParam = params.get('view') as ViewType | null
     if (viewParam && ["dashboard", "start-trip", "active-trip", "log-stop", "fuel", "side-trips"].includes(viewParam)) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setView(viewParam)
     }
   }, [])
@@ -980,11 +975,11 @@ export default function DriverDashboard() {
             })()}
 
             {/* History */}
-            {atfs.filter(a => a.atf_status === "Confirmed" || a.atf_status === "Invalidated").length > 0 && (
+            {(atfsFromHook as ATF[]).filter(a => a.atf_status === "Confirmed" || a.atf_status === "Invalidated").length > 0 && (
               <div>
                 <p style={{ fontWeight: 700, fontSize: FONT_SIZE.base, color: "#0f172a", marginBottom: 12 }}>Recent History</p>
                 <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                  {atfs
+                  {(atfsFromHook as ATF[])
                     .filter(a => a.atf_status === "Confirmed" || a.atf_status === "Invalidated")
                     .map(atf => {
                       const cfg = ATF_STATUS_CONFIG[atf.atf_status]
@@ -1026,7 +1021,7 @@ export default function DriverDashboard() {
               </div>
             )}
 
-            {!activeATF && atfs.length === 0 && (
+            {!activeATF && (atfsFromHook as ATF[]).length === 0 && (
               <div style={{ display: "flex", flexDirection: "column", alignItems: "center", padding: "48px 24px" }}>
                 <Icon icon="mdi:gas-station-off" width={48} color="#cbd5e1" style={{ marginBottom: 12 }} />
                 <p style={{ marginBottom: 0, fontSize: FONT_SIZE.base, fontWeight: 600, color: "#0f172a" }}>No fuel requests yet</p>

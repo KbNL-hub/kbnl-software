@@ -77,22 +77,6 @@ type Trip = {
   created_at: string
 }
 
-type ATF = {
-  request_id: string
-  atf_code: string | null
-  plate_number: string
-  driver_name: string
-  officer_name: string
-  company_name: string
-  litres: number
-  atf_status: string
-  requested_at: string
-  rate_per_litre: number | null
-  total_amount: number | null
-  fuel_balance: number | null
-  engine_type: string | null
-}
-
 type FuelEstimate = {
   id: string
   location: string
@@ -149,10 +133,8 @@ export default function TruckOfficerDashboard() {
   const [, setProcurements] = useState<BulkProcurement[]>([])
   const [, setDeposits] = useState<MaintenanceDeposit[]>([])
   const [fuelExpenses, setFuelExpenses] = useState<FuelExpense[]>([])
-  const [atfs, setAtfs] = useState<ATF[]>([])
   const [atfFilter, setAtfFilter] = useState<{ initiated_by: string } | null>(null)
   const { data: atfsFromHook, refetch: refetchATFs } = useATFs(atfFilter ?? undefined)
-  useEffect(() => { setAtfs(atfsFromHook) }, [atfsFromHook])
   const [loading, setLoading] = useState(true)
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null)
   const [tab, setTab] = useState<"reports" | "fuel" | "atf" | "monitor">("reports")
@@ -825,9 +807,9 @@ export default function TruckOfficerDashboard() {
               </button>
             </div>
 
-            {atfs.length === 0 && <p style={{ color: "#64748b", fontSize: FONT_SIZE.base }}>No ATFs initiated yet.</p>}
+            {atfsFromHook.length === 0 && <p style={{ color: "#64748b", fontSize: FONT_SIZE.base }}>No ATFs initiated yet.</p>}
             <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-              {atfs.map(atf => {
+              {atfsFromHook.map(atf => {
                 const { bg, color, border } = atfStatusColor(atf.atf_status)
                 return (
                   <div key={atf.request_id} className="card-hover" style={{ background: "white", border: `1px solid ${border}`, borderRadius: 12, padding: 16, boxShadow: "0 1px 3px rgba(0,0,0,0.05)", transition: "all 0.2s" }}>

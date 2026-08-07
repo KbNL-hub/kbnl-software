@@ -67,7 +67,13 @@ export default function BrokerPanel({ userProfile }: Props) {
   const router = useRouter()
   const fileInputRef = useRef<HTMLInputElement>(null)
 
-  const [active, setActive] = useState("")
+  const [active, setActive] = useState<SectionKey | "__dashboard__">(() => {
+    const params = new URLSearchParams(window.location.search)
+    const section = params.get('section')
+    return section && ["__dashboard__", "trips", "stops", "payments", "credits", "store-sales", "prices", "expenses", "monitor-trucks"].includes(section)
+      ? section as SectionKey
+      : "__dashboard__"
+  })
   const [sidebarOpen, setSidebarOpen] = useState(true)
   const [drawerOpen, setDrawerOpen] = useState(false)
   const bannerRef = useRef<HTMLDivElement>(null)
@@ -170,7 +176,7 @@ export default function BrokerPanel({ userProfile }: Props) {
   }
 
   function navigate(key: string) {
-    setActive(key)
+    setActive(key as SectionKey | "__dashboard__")
     if (key !== "__dashboard__") SECTION_IMPORTS[key as SectionKey]?.()
     if (isNarrow) setDrawerOpen(false)
     const url = key === "__dashboard__"
@@ -200,12 +206,8 @@ export default function BrokerPanel({ userProfile }: Props) {
     const section = params.get('section')
     const validKeys = NAV_ITEMS.map(n => n.key)
     if (section && validKeys.includes(section)) {
-      setActive(section)
       SECTION_IMPORTS[section as SectionKey]?.()
-    } else {
-      setActive("__dashboard__")
     }
-     
   }, [NAV_ITEMS])
 
   // Handle browser back/forward between sections
@@ -214,14 +216,14 @@ export default function BrokerPanel({ userProfile }: Props) {
       const params = new URLSearchParams(window.location.search)
       const section = params.get('section')
       const validKeys = NAV_ITEMS.map(n => n.key)
-      setActive(section && validKeys.includes(section) ? section : "__dashboard__")
+      setActive(section && validKeys.includes(section) ? section as SectionKey : "__dashboard__")
     }
     window.addEventListener('popstate', handlePopState)
     return () => window.removeEventListener('popstate', handlePopState)
   }, [NAV_ITEMS])
 
   function renderContent() {
-    if (active === "__dashboard__" || active === "") {
+    if (active === "__dashboard__") {
       return <BrokerDashboard userId={userProfile.user_id} fullName={userProfile.full_name} />
     }
 

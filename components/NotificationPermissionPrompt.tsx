@@ -25,6 +25,7 @@ export default function NotificationPermissionPrompt() {
   useEffect(() => {
     if (loading || !isSupported) return
     if (permission === 'granted' || isSubscribed) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setVisible(false)
       setShowDeniedHint(false)
       return

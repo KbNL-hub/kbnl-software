@@ -18,6 +18,7 @@ export default function BrokerDropdown({ onSelect }: Props) {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setIsOnline(navigator.onLine)
     window.addEventListener('online', () => setIsOnline(true))
     window.addEventListener('offline', () => setIsOnline(false))

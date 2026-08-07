@@ -14,6 +14,7 @@ export default function NotificationBanner() {
   useEffect(() => {
     if (loading || !isSupported) return
     if (permission !== 'default' || isSubscribed) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setVisible(false)
       return
     }

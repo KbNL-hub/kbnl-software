@@ -97,6 +97,7 @@ export default function ManageStationManagers() {
 
    
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     fetchAll()
   }, [fetchAll])
 

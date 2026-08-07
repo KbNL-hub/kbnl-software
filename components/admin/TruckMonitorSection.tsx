@@ -111,6 +111,7 @@ export default function TruckMonitorSection({ plates }: Props) {
 
    
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     fetchActiveTrucks()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [platesKey])

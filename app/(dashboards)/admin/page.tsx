@@ -29,6 +29,7 @@ export default function AdminDashboard() {
   const searchParams = useSearchParams()
   const urlRole = searchParams.get("role")
 
+  // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { setMounted(true) }, [])
 
   useEffect(() => {
@@ -98,6 +99,7 @@ export default function AdminDashboard() {
 
   useEffect(() => {
     if (urlRole) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setUserProfile(prev => prev && prev.role !== urlRole ? { ...prev, role: urlRole } : prev)
     }
   }, [urlRole])

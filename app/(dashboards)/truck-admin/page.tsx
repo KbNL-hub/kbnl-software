@@ -1,7 +1,7 @@
 "use client"
 
 import Image from "next/image"
-import { useEffect, useState, useRef } from "react"
+import { useEffect, useMemo, useState, useRef } from "react"
 import { useRouter } from "next/navigation"
 import { supabase } from "@/lib/supabase"
 import { apiMutate } from "@/lib/api-mutation"
@@ -110,11 +110,8 @@ export default function TruckAdminDashboard() {
   const [reports, setReports] = useState<MaintenanceReport[]>([])
   const [procurements, setProcurements] = useState<BulkProcurement[]>([])
   const [deposits, setDeposits] = useState<MaintenanceDeposit[]>([])
-  const [balanceMap, setBalanceMap] = useState<Record<string, number>>({})
   const [maintenanceBalance, setMaintenanceBalance] = useState<number | null>(null)
-  const [atfs, setAtfs] = useState<ATF[]>([])
   const { data: atfsFromHook, refetch: refetchATFs } = useATFs({ all: true })
-  useEffect(() => { setAtfs(atfsFromHook) }, [atfsFromHook])
   const [loading, setLoading] = useState(true)
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null)
   const [active, setActive] = useState<SectionKey>("maintenance")
@@ -202,6 +199,7 @@ export default function TruckAdminDashboard() {
   }
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     if (active === "side-trips" && sideTrips.length === 0) fetchSideTrips()
   }, [active, sideTrips.length])
 
@@ -433,7 +431,7 @@ export default function TruckAdminDashboard() {
     navigate("maintenance"); setFilter("Bulk Procurement")
   }
 
-  useEffect(() => {
+  const balanceMap = useMemo(() => {
     const map: Record<string, number> = {}
     const records: { id: string; amount: number; created_at: string }[] = [
       ...reports.filter(r => r.status === "Validated").map(r => ({
@@ -453,7 +451,7 @@ export default function TruckAdminDashboard() {
       map[rec.id] = running
       running += rec.amount
     }
-    setBalanceMap(map)
+    return map
   }, [reports, procurements, deposits, maintenanceBalance])
 
   const feedItems: FeedItem[] = [
@@ -468,7 +466,7 @@ export default function TruckAdminDashboard() {
   const safeFeedPage = Math.min(feedPage, feedTotalPages)
   const filteredFeed = filteredFeedAll.slice(0, safeFeedPage * PAGE_SIZE)
 
-  const filteredATFsAll = atfFilter === "All" ? atfs : atfs.filter(a => a.atf_status === atfFilter)
+  const filteredATFsAll = atfFilter === "All" ? atfsFromHook : atfsFromHook.filter(a => a.atf_status === atfFilter)
   const atfTotalPages = Math.ceil(filteredATFsAll.length / PAGE_SIZE) || 1
   const safeAtfPage = Math.min(atfPage, atfTotalPages)
   const filteredATFs = filteredATFsAll.slice(0, safeAtfPage * PAGE_SIZE)
@@ -791,7 +789,7 @@ export default function TruckAdminDashboard() {
 
             {active === "atf" && (
               <ATFSection
-                atfs={atfs}
+                atfs={atfsFromHook}
                 atfFilter={atfFilter}
                 setAtfFilter={setAtfFilter}
                 filteredATFs={filteredATFs}

@@ -93,6 +93,7 @@ export default function BrokerCredits() {
     setLoading(false)
   }, [])
 
+  // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { fetchBrokerTotals() }, [fetchBrokerTotals])
 
   usePolling(() => {
