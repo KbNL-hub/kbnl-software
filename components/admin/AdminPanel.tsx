@@ -1,5 +1,6 @@
 "use client"
 
+import Image from "next/image"
 import { useState, useEffect, useRef } from "react"
 import { useRouter } from "next/navigation"
 import { Icon } from "@iconify/react"
@@ -474,7 +475,7 @@ function AdminPanelContent({ userProfile }: Props) {
                 onMouseLeave={e => { e.currentTarget.style.borderColor = "rgba(255,255,255,0.2)"; e.currentTarget.style.transform = "scale(1)" }}
               >
                 {profilePicUrl ? (
-                  <img src={profilePicUrl} alt={userProfile.full_name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                  <Image src={profilePicUrl} alt={userProfile.full_name} width={48} height={48} unoptimized style={{ width: "100%", height: "100%", objectFit: "cover" }} />
                 ) : (
                   <span style={{ fontSize: isMobile ? 18 : 20, fontWeight: 700, color: "#fff" }}>
                     {userProfile.full_name.charAt(0).toUpperCase()}
@@ -818,7 +819,7 @@ function AdminPanelContent({ userProfile }: Props) {
             {picturePreview ? (
               <div style={{ marginBottom: 20 }}>
                 <p style={{ margin: "0 0 8px 0", fontSize: 13, fontWeight: 600, color: "#0f172a" }}>Preview</p>
-                <img src={picturePreview} alt="Preview" style={{ width: "100%", height: 200, objectFit: "cover", borderRadius: 12, border: "2px solid #e2e8f0" }} />
+                <Image src={picturePreview} alt="Preview" width={400} height={200} unoptimized style={{ width: "100%", height: 200, objectFit: "cover", borderRadius: 12, border: "2px solid #e2e8f0" }} />
               </div>
             ) : (
               <div onClick={() => fileInputRef.current?.click()} style={{ border: "2px dashed #0070f3", borderRadius: 12, padding: "32px 16px", cursor: "pointer", background: "#f0f7ff", transition: "all 0.2s", marginBottom: 20, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center" }} onMouseEnter={e => { e.currentTarget.style.background = "#e0efff"; e.currentTarget.style.borderColor = "#0055d4" }} onMouseLeave={e => { e.currentTarget.style.background = "#f0f7ff"; e.currentTarget.style.borderColor = "#0070f3" }}>

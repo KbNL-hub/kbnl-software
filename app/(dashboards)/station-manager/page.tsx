@@ -1,5 +1,6 @@
 "use client"
 
+import Image from "next/image"
 import { useEffect, useState, useMemo } from "react"
 import { useRouter } from "next/navigation"
 import { supabase } from "@/lib/supabase"
@@ -355,7 +356,7 @@ export default function StationManagerDashboard() {
                 }}
               >
                 {manager?.profile_picture_url ? (
-                  <img src={manager.profile_picture_url} alt={companyName} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                  <Image src={manager.profile_picture_url} alt={companyName} width={48} height={48} unoptimized style={{ width: "100%", height: "100%", objectFit: "cover" }} />
                 ) : (
                   <span style={{ fontSize: isMobile ? 20 : 24, fontWeight: 700, color: "#0070f3" }}>
                     {companyName.charAt(0).toUpperCase()}

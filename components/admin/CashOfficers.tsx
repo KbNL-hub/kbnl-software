@@ -1,5 +1,6 @@
 "use client"
 
+import Image from "next/image"
 import { FONT_SIZE } from "@/lib/constants"
 
 import { useState, useEffect, useRef } from "react"
@@ -484,7 +485,7 @@ export default function CashOfficers() {
                           overflow: "hidden",
                         }}>
                           {clerk.profile_picture_url ? (
-                            <img src={clerk.profile_picture_url} alt={clerk.full_name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                            <Image src={clerk.profile_picture_url} alt={clerk.full_name} width={48} height={48} unoptimized style={{ width: "100%", height: "100%", objectFit: "cover" }} />
                           ) : (
                             clerk.full_name.charAt(0).toUpperCase()
                           )}
@@ -623,7 +624,7 @@ export default function CashOfficers() {
                               }}
                             >
                               {clerk.profile_picture_url ? (
-                                <img src={clerk.profile_picture_url} alt={clerk.full_name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                                <Image src={clerk.profile_picture_url} alt={clerk.full_name} width={48} height={48} unoptimized style={{ width: "100%", height: "100%", objectFit: "cover" }} />
                               ) : (
                                 clerk.full_name.charAt(0).toUpperCase()
                               )}

@@ -1,5 +1,6 @@
 "use client"
 
+import Image from "next/image"
 import { useState, useEffect, useRef } from "react"
 
 import { Icon } from "@iconify/react"
@@ -771,7 +772,7 @@ export default function DriverDashboard() {
                 }}
               >
                 {driver?.profile_picture_url ? (
-                  <img src={driver.profile_picture_url} alt={driver.full_name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                  <Image src={driver.profile_picture_url} alt={driver.full_name} width={48} height={48} unoptimized style={{ width: "100%", height: "100%", objectFit: "cover" }} />
                 ) : (
                   <span style={{ fontSize: isMobile ? 20 : 24, fontWeight: 700, color: "#0070f3" }}>
                     {driver?.full_name.charAt(0).toUpperCase()}

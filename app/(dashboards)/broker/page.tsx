@@ -1,5 +1,6 @@
 "use client"
 
+import Image from "next/image"
 import { useState, useEffect } from "react"
 import { Icon } from "@iconify/react"
 import { supabase } from "@/lib/supabase"
@@ -320,9 +321,12 @@ export default function BrokerDashboard() {
                 }}
               >
                 {broker?.profile_picture_url ? (
-                  <img
+                  <Image
                     src={broker.profile_picture_url}
                     alt={broker.full_name}
+                    width={48}
+                    height={48}
+                    unoptimized
                     style={{ width: "100%", height: "100%", objectFit: "cover" }}
                   />
                 ) : (

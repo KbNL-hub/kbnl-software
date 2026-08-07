@@ -1,5 +1,6 @@
 "use client"
 
+import Image from "next/image"
 import ModernInput from "@/components/ModernInput";
 import SplashScreen from "@/components/SplashScreen";
 import { useState, useRef, useEffect } from "react"
@@ -347,9 +348,12 @@ export default function LoginPage() {
             marginBottom: 20,
             border: "1px solid rgba(0, 112, 243, 0.15)",
           }}>
-            <img
+            <Image
               src="/logo.png"
               alt="KbNL Logo"
+              width={80}
+              height={80}
+              unoptimized
               style={{
                 width: "60%",
                 height: "60%",

@@ -1,5 +1,6 @@
 "use client"
 
+import Image from "next/image"
 import { FONT_SIZE } from "@/lib/constants"
 import { toISOString } from "@/lib/date-utils"
 import { useState, useEffect, useMemo } from "react"
@@ -673,7 +674,7 @@ export default function CashExpenses() {
                         <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
                           <div style={{ width: 20, height: 20, borderRadius: "50%", background: clerkPic ? "transparent" : "#e2e8f0", color: "#64748b", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, fontWeight: 700, overflow: "hidden" }}>
                             {clerkPic ? (
-                              <img src={clerkPic} alt={clerkName} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                              <Image src={clerkPic} alt={clerkName} width={48} height={48} unoptimized style={{ width: "100%", height: "100%", objectFit: "cover" }} />
                             ) : (
                               clerkName.charAt(0)
                             )}

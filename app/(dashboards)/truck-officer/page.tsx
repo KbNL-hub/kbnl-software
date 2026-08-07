@@ -1,5 +1,6 @@
 "use client"
 
+import Image from "next/image"
 import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import { supabase } from "@/lib/supabase"
@@ -551,9 +552,12 @@ export default function TruckOfficerDashboard() {
                 }}
               >
                 {officer?.profile_picture_url ? (
-                  <img
+                  <Image
                     src={officer.profile_picture_url}
                     alt={officer.full_name}
+                    width={48}
+                    height={48}
+                    unoptimized
                     style={{ width: "100%", height: "100%", objectFit: "cover" }}
                   />
                 ) : (

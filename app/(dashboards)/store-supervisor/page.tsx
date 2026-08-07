@@ -1,5 +1,6 @@
 "use client"
 
+import Image from "next/image"
 import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import { supabase } from "@/lib/supabase"
@@ -364,7 +365,7 @@ export default function StoreSupervisorDashboard() {
                 flexShrink: 0, overflow: "hidden",
               }}>
                 {profilePicUrl ? (
-                  <img src={profilePicUrl} alt={supervisor?.full_name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                  <Image src={profilePicUrl} alt={supervisor?.full_name || ""} width={48} height={48} unoptimized style={{ width: "100%", height: "100%", objectFit: "cover" }} />
                 ) : (
                   <span style={{ fontSize: isMobile ? 18 : 20, fontWeight: 700, color: "#fff" }}>{supervisor?.full_name.charAt(0).toUpperCase()}</span>
                 )}
@@ -441,7 +442,7 @@ export default function StoreSupervisorDashboard() {
               flexShrink: 0, overflow: "hidden", cursor: "pointer",
             }} onClick={() => setShowPictureModal(true)}>
               {profilePicUrl ? (
-                <img src={profilePicUrl} alt={supervisor?.full_name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                <Image src={profilePicUrl} alt={supervisor?.full_name || ""} width={48} height={48} unoptimized style={{ width: "100%", height: "100%", objectFit: "cover" }} />
               ) : (
                 <span style={{ fontSize: isMobile ? 18 : 20, fontWeight: 700, color: "#fff" }}>{supervisor?.full_name.charAt(0).toUpperCase()}</span>
               )}

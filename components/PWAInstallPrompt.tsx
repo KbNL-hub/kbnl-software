@@ -1,5 +1,6 @@
 'use client';
 
+import Image from 'next/image';
 import { useEffect, useRef, useState } from 'react';
 import { usePWAInstall } from '@/app/hooks/usePWAInstall';
 
@@ -106,10 +107,12 @@ export default function PWAInstallPrompt() {
           }}
         >
           <div>
-            <img
+            <Image
             src="/logo-192.png"
             alt="KbNL Logo"
-            style={{ width: 48, height: 48 }}
+            width={48}
+            height={48}
+            unoptimized
             />
           </div>
           <div>

@@ -1,5 +1,6 @@
 "use client"
 
+import Image from "next/image"
 import { useState, useRef } from "react"
 import { Icon } from "@iconify/react"
 import { supabase } from "@/lib/supabase"
@@ -145,9 +146,12 @@ export default function ProfilePictureUpload({
         {preview ? (
           <div style={{ marginBottom: 20 }}>
             <p style={{ margin: "0 0 8px 0", fontSize: FONT_SIZE.sm, fontWeight: 600, color: "#0f172a" }}>Preview</p>
-            <img
+            <Image
               src={preview}
               alt="Preview"
+              width={400}
+              height={200}
+              unoptimized
               style={{
                 width: "100%", height: 200, objectFit: "cover",
                 borderRadius: 12, border: "2px solid #e2e8f0",

@@ -1,5 +1,6 @@
 "use client"
 
+import Image from "next/image"
 import { useEffect, useState } from "react"
 
 interface SplashScreenProps {
@@ -110,9 +111,12 @@ export default function SplashScreen({ onComplete, logoSrc = "/logo.png", compan
         background: "rgba(0, 112, 243, 0.08)",
         padding: 12,
       }}>
-        <img
+        <Image
           src={logoSrc}
           alt={companyName}
+          width={120}
+          height={120}
+          unoptimized
           style={{
             width: "100%",
             height: "100%",
