@@ -138,7 +138,7 @@ export default function MonitorTrucks({ viewOnly = false }: { viewOnly?: boolean
   const [ddEndConfirmTrip, setDdEndConfirmTrip] = useState<DDTrip | null>(null)
 
   async function fetchActiveTrucks() {
-    const { data: trips, error } = await supabase.rpc("get_active_mdd_trucks")
+    const { data: trips, error } = await supabase.rpc("get_active_mdd_trucks_remaining")
     if (error) {
       console.error("MDD fetch error:", error)
       setLoading(false)
@@ -152,12 +152,12 @@ export default function MonitorTrucks({ viewOnly = false }: { viewOnly?: boolean
       return
     }
 
-    const enriched = trips.map((trip: { trip_id: string; plate_number: string; kbnl_truck_no: string | null; loaded_quantity: number; driver_name: string | null; driver_phone: string | null; trip_status: string; route_points: unknown[] }) => ({
+    const enriched = trips.map((trip: { trip_id: string; plate_number: string; kbnl_truck_no: string | null; loaded_quantity: number; remaining: number; driver_name: string | null; driver_phone: string | null; trip_status: string; route_points: unknown[] }) => ({
       trip_id: trip.trip_id,
       plate_number: trip.plate_number,
       kbnl_truck_no: trip.kbnl_truck_no ?? null,
       loaded_quantity: trip.loaded_quantity,
-      remaining: trip.loaded_quantity,
+      remaining: trip.remaining,
       driver_name: trip.driver_name ?? "Unknown",
       driver_phone: trip.driver_phone ?? "—",
       trip_status: trip.trip_status,
@@ -299,20 +299,24 @@ export default function MonitorTrucks({ viewOnly = false }: { viewOnly?: boolean
 
   async function updateDdTripStatus(tripId: string, status: string) {
     const { error } = await apiMutate("trips", {
-      action: "update",
-      table: "dd_trips",
-      data: { trip_status: status },
-      filters: { dd_trip_id: tripId },
+      action: "transaction",
+      sub_actions: [
+        {
+          action: "update",
+          table: "dd_trips",
+          data: { trip_status: status },
+          filters: { dd_trip_id: tripId },
+        },
+        {
+          action: "update",
+          table: "Trips",
+          data: { trip_status: status },
+          filters: { trip_id: tripId },
+        },
+      ],
     })
 
     if (error) { alert(`Failed to update status: ${error}`); return }
-
-    await apiMutate("trips", {
-      action: "update",
-      table: "Trips",
-      data: { trip_status: status },
-      filters: { trip_id: tripId },
-    })
 
     ddLastSaveTimeRef.current = Date.now()
     setDdTrips(prev => prev.map(t => t.dd_trip_id === tripId ? { ...t, trip_status: status } : t))

@@ -61,7 +61,7 @@ function applyFilters(query: any, filters: Record<string, unknown>) {
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json()
-    const { action, table, data, filters, conflict, function: fnName, params } = body as {
+    const { action, table, data, filters, conflict, function: fnName, params, sub_actions } = body as {
       action: string
       table?: string
       data?: Record<string, unknown>
@@ -69,6 +69,13 @@ export async function POST(req: NextRequest) {
       conflict?: string
       function?: string
       params?: Record<string, unknown>
+      sub_actions?: Array<{
+        action: string
+        table: string
+        data?: Record<string, unknown>
+        filters?: Record<string, unknown>
+        conflict?: string
+      }>
     }
 
     if (action === "rpc") {
@@ -86,6 +93,148 @@ export async function POST(req: NextRequest) {
         return buildError(result.error.message || "RPC failed", 500)
       }
       return NextResponse.json({ data: result.data })
+    }
+
+    if (action === "transaction") {
+      if (!sub_actions || !Array.isArray(sub_actions) || sub_actions.length === 0) {
+        return buildError("sub_actions array is required for transaction", 400)
+      }
+      for (const sa of sub_actions) {
+        if (!["insert", "update", "delete", "upsert"].includes(sa.action)) {
+          return buildError(`Invalid sub-action "${sa.action}"`, 400)
+        }
+        if (!includes(ALLOWED_TABLES, sa.table)) {
+          return buildError(`Table "${sa.table}" is not supported by this endpoint`, 400)
+        }
+      }
+
+      const completed: Array<{
+        action: string
+        table: string
+        filters?: Record<string, unknown>
+        result: unknown
+        originalData?: Record<string, unknown>[]
+      }> = []
+      const results: unknown[] = []
+
+      try {
+        for (const sa of sub_actions) {
+          let originalData: Record<string, unknown>[] | undefined
+          if ((sa.action === "update" || sa.action === "delete") && sa.filters && Object.keys(sa.filters).length > 0) {
+            let q = supabaseAdmin.from(sa.table).select("*")
+            for (const [k, v] of Object.entries(sa.filters)) {
+              q = q.eq(k, v)
+            }
+            const { data: prev } = await q
+            if (prev && prev.length > 0) originalData = prev
+          }
+
+          let execResult: unknown
+          switch (sa.action) {
+            case "insert": {
+              if (!sa.data) throw new Error("data is required for insert")
+              const { data: r, error } = await supabaseAdmin.from(sa.table).insert([sa.data]).select()
+              if (error) {
+                console.error("Sub-action failed", error)
+                throw new Error(error.message || "Sub-action failed")
+              }
+              execResult = r
+              break
+            }
+            case "update": {
+              if (!sa.data) throw new Error("data is required for update")
+              if (!sa.filters || Object.keys(sa.filters).length === 0) {
+                throw new Error("filters are required for update")
+              }
+              let q = supabaseAdmin.from(sa.table).update(sa.data)
+              for (const [k, v] of Object.entries(sa.filters)) {
+                q = q.eq(k, v)
+              }
+              const { data: r, error } = await q.select()
+              if (error) {
+                console.error("Sub-action failed", error)
+                throw new Error(error.message || "Sub-action failed")
+              }
+              execResult = r
+              break
+            }
+            case "delete": {
+              if (!sa.filters || Object.keys(sa.filters).length === 0) {
+                throw new Error("filters are required for delete")
+              }
+              let q = supabaseAdmin.from(sa.table).delete()
+              for (const [k, v] of Object.entries(sa.filters)) {
+                q = q.eq(k, v)
+              }
+              const { data: r, error } = await q.select()
+              if (error) {
+                console.error("Sub-action failed", error)
+                throw new Error(error.message || "Sub-action failed")
+              }
+              execResult = r
+              break
+            }
+            case "upsert": {
+              if (!sa.data) throw new Error("data is required for upsert")
+              const opts = sa.conflict ? { onConflict: sa.conflict } : {}
+              const { data: r, error } = await supabaseAdmin.from(sa.table).upsert([sa.data], opts).select()
+              if (error) {
+                console.error("Sub-action failed", error)
+                throw new Error(error.message || "Sub-action failed")
+              }
+              execResult = r
+              break
+            }
+          }
+
+          completed.push({ action: sa.action, table: sa.table, filters: sa.filters, result: execResult, originalData })
+          results.push(execResult)
+        }
+
+        return NextResponse.json({ data: results })
+      } catch (err) {
+        for (let i = completed.length - 1; i >= 0; i--) {
+          const c = completed[i]
+          try {
+            switch (c.action) {
+              case "insert": {
+                const arr = c.result as Record<string, unknown>[] | null
+                if (arr && arr.length > 0) {
+                  const pk = Object.keys(arr[0]).find(k => k.endsWith("_id") || k === "id") || Object.keys(arr[0])[0]
+                  if (arr[0][pk] != null) {
+                    await supabaseAdmin.from(c.table).delete().eq(pk, arr[0][pk])
+                  }
+                }
+                break
+              }
+              case "update":
+              case "upsert": {
+                if (c.originalData && c.originalData.length > 0) {
+                  let q = supabaseAdmin.from(c.table).update(c.originalData[0])
+                  if (c.filters) {
+                    for (const [k, v] of Object.entries(c.filters)) {
+                      q = q.eq(k, v)
+                    }
+                  }
+                  await q
+                }
+                break
+              }
+              case "delete": {
+                if (c.originalData && c.originalData.length > 0) {
+                  await supabaseAdmin.from(c.table).insert(c.originalData)
+                }
+                break
+              }
+            }
+          } catch (rbErr) {
+            console.error("Rollback failed:", c.table, rbErr)
+          }
+        }
+
+        console.error("Transaction failed", err)
+        return buildError("Transaction failed", 500)
+      }
     }
 
     if (!table || !includes(ALLOWED_TABLES, table)) {

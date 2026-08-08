@@ -8,6 +8,7 @@ import { formatAmount, parseAmount } from "@/lib/formatAmount"
 import { useBreakpoint } from "@/app/hooks/useBreakpoint"
 import CustomerSelector, { Customer } from "./CustomerSelector"
 import { BANKS } from "@/lib/constants"
+import { generateCustomerId } from "@/lib/customerUtils"
 
 type Payment = {
   payment_id: string
@@ -94,19 +95,52 @@ export default function CustomerPayments({ brokerId }: { brokerId: string }) {
     if (isNaN(parsedAmount) || parsedAmount <= 0) return setMessage("Valid amount is required")
 
     setSubmitting(true); setMessage("")
-    const payload = {
-      broker_id: brokerId, bank_name: bankName, payment_date: paymentDate,
-      depositor_name: depositorName.trim(), amount: parsedAmount,
-      customer_id: selectedCustomer?.customer_id || null,
-      customer_name: selectedCustomer.full_name,
-    }
 
     if (editingPayment) {
+      const payload = {
+        broker_id: brokerId, bank_name: bankName, payment_date: paymentDate,
+        depositor_name: depositorName.trim(), amount: parsedAmount,
+        customer_id: selectedCustomer?.customer_id || null,
+        customer_name: selectedCustomer.full_name,
+      }
       const { data, error } = await apiMutate<unknown[]>("finance", { action: "update", table: "customer_payments", data: payload, filters: { payment_id: editingPayment.payment_id, status: "Pending" } })
       if (error) setMessage("Failed to update: " + error)
       else if (data && data.length === 0) setMessage("This payment has already been posted and can no longer be edited.")
       else { setShowModal(false); fetchPayments() }
+    } else if (selectedCustomer.isNew || selectedCustomer.is_new) {
+      const customerId = await generateCustomerId()
+      const { data, error } = await apiMutate<unknown[][]>("finance", {
+        action: "transaction",
+        sub_actions: [
+          {
+            action: "insert",
+            table: "Customers",
+            data: { customer_id: customerId, full_name: selectedCustomer.full_name, phone_number: selectedCustomer.phone_number || null, is_new: true },
+          },
+          {
+            action: "insert",
+            table: "customer_payments",
+            data: {
+              broker_id: brokerId, bank_name: bankName, payment_date: paymentDate,
+              depositor_name: depositorName.trim(), amount: parsedAmount,
+              customer_id: customerId, customer_name: selectedCustomer.full_name,
+            },
+          },
+        ],
+      })
+      if (error) {
+        setMessage("Failed to log payment: " + error)
+      } else {
+        setShowModal(false)
+        fetchPayments()
+      }
     } else {
+      const payload = {
+        broker_id: brokerId, bank_name: bankName, payment_date: paymentDate,
+        depositor_name: depositorName.trim(), amount: parsedAmount,
+        customer_id: selectedCustomer?.customer_id || null,
+        customer_name: selectedCustomer.full_name,
+      }
       const { error } = await apiMutate("finance", { action: "insert", table: "customer_payments", data: payload })
       if (error) setMessage("Failed to log: " + error)
       else { setShowModal(false); fetchPayments() }
@@ -312,7 +346,7 @@ export default function CustomerPayments({ brokerId }: { brokerId: string }) {
 
             <div style={{ marginBottom: 24 }}>
               <label style={{ display: "block", fontWeight: 600, marginBottom: 6, fontSize: fontSize.sm, color: "#475569" }}>Customer *</label>
-              <CustomerSelector onSelect={(c: Customer) => { setSelectedCustomer(c); setMessage("") }} initialValue={selectedCustomer?.full_name || ""} />
+              <CustomerSelector onSelect={(c: Customer) => { setSelectedCustomer(c); setMessage("") }} initialValue={selectedCustomer?.full_name || ""} allowUnsavedNew />
             </div>
 
             {message && (
