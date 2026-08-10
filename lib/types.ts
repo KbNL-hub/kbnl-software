@@ -55,6 +55,7 @@ export interface Trip {
   child_order_no?: string
   driver_id?: string
   status?: string
+  posted?: boolean
 }
 
 export interface Stop {
