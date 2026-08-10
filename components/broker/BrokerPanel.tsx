@@ -7,7 +7,9 @@ import { Icon } from "@iconify/react"
 import dynamic from "next/dynamic"
 import { supabase } from "@/lib/supabase"
 import { apiMutate } from "@/lib/api-mutation"
+import { usePolling } from "@/lib/hooks/usePolling"
 import RoleSwitcher from "@/components/RoleSwitcher"
+import NavBadge from "@/components/NavBadge"
 import { useBreakpoint } from "@/app/hooks/useBreakpoint"
 import { Role } from "@/lib/roles"
 import ReportModal from "@/components/ReportModal"
@@ -104,6 +106,12 @@ export default function BrokerPanel({ userProfile }: Props) {
   const [pictureLoading, setPictureLoading] = useState(false)
   const [pictureError, setPictureError] = useState("")
 
+  // Badge counts for pending actions
+  const [pendingStops, setPendingStops] = useState(0)
+  const [disputedStops, setDisputedStops] = useState(0)
+  const [pendingPayments, setPendingPayments] = useState(0)
+  const [pendingSales, setPendingSales] = useState(0)
+
    
   useEffect(() => {
     ;(async () => {
@@ -116,6 +124,46 @@ export default function BrokerPanel({ userProfile }: Props) {
       }
     })()
   }, [userProfile.user_id])
+
+  // Fetch badge counts for pending actions
+  useEffect(() => {
+    async function fetchBadges() {
+      try {
+        const bId = userProfile.user_id
+        const [stopsResult, disputedResult, paymentsResult, salesResult] = await Promise.all([
+          supabase.from("Stops").select("*", { count: "exact", head: true }).eq("broker_id", bId).eq("confirmed", false).eq("disputed", false),
+          supabase.from("Stops").select("*", { count: "exact", head: true }).eq("broker_id", bId).eq("disputed", true),
+          supabase.from("customer_payments").select("*", { count: "exact", head: true }).eq("broker_id", bId).eq("status", "Pending"),
+          supabase.from("store_sales").select("*", { count: "exact", head: true }).eq("broker_id", bId).eq("status", "Pending"),
+        ])
+        setPendingStops(stopsResult.count || 0)
+        setDisputedStops(disputedResult.count || 0)
+        setPendingPayments(paymentsResult.count || 0)
+        setPendingSales(salesResult.count || 0)
+      } catch (err) {
+        console.error("Error fetching badge counts:", err)
+      }
+    }
+    fetchBadges()
+  }, [userProfile.user_id])
+
+  usePolling(async () => {
+    try {
+      const bId = userProfile.user_id
+      const [stopsResult, disputedResult, paymentsResult, salesResult] = await Promise.all([
+        supabase.from("Stops").select("*", { count: "exact", head: true }).eq("broker_id", bId).eq("confirmed", false).eq("disputed", false),
+        supabase.from("Stops").select("*", { count: "exact", head: true }).eq("broker_id", bId).eq("disputed", true),
+        supabase.from("customer_payments").select("*", { count: "exact", head: true }).eq("broker_id", bId).eq("status", "Pending"),
+        supabase.from("store_sales").select("*", { count: "exact", head: true }).eq("broker_id", bId).eq("status", "Pending"),
+      ])
+      setPendingStops(stopsResult.count || 0)
+      setDisputedStops(disputedResult.count || 0)
+      setPendingPayments(paymentsResult.count || 0)
+      setPendingSales(salesResult.count || 0)
+    } catch (err) {
+      console.error("Error fetching badge counts:", err)
+    }
+  }, 120000)
 
   function handleAvatarClick() {
     setPictureError("")
@@ -242,6 +290,12 @@ export default function BrokerPanel({ userProfile }: Props) {
 
   function NavItem({ item, showLabel }: { item: typeof NAV_ITEMS[0]; showLabel: boolean }) {
     const isActive = active === item.key
+    const badge =
+      item.key === "trips" && disputedStops > 0 ? { count: disputedStops, color: "#ef4444" } :
+      item.key === "stops" && pendingStops > 0 ? { count: pendingStops, color: "#f5a623" } :
+      item.key === "payments" && pendingPayments > 0 ? { count: pendingPayments, color: "#f5a623" } :
+      item.key === "store-sales" && pendingSales > 0 ? { count: pendingSales, color: "#f5a623" } :
+      null
 
     return (
       <button
@@ -280,10 +334,16 @@ export default function BrokerPanel({ userProfile }: Props) {
       >
         <span style={{ position: "relative", flexShrink: 0, display: "flex", alignItems: "center" }}>
           <Icon icon={item.icon} width={18} height={18} />
+          {!showLabel && <NavBadge count={badge?.count ?? 0} color={badge?.color} showLabel={false} />}
         </span>
 
         {showLabel && (
-          <span style={{ flex: 1, fontSize: 14, fontWeight: isActive ? 600 : 500 }}>{item.label}</span>
+          <>
+            <span style={{ flex: 1, fontSize: 14, fontWeight: isActive ? 600 : 500 }}>{item.label}</span>
+            {badge && (
+              <NavBadge count={badge.count} color={badge.color} showLabel={true} />
+            )}
+          </>
         )}
       </button>
     )

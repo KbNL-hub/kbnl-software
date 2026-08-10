@@ -12,6 +12,7 @@ import { apiMutate } from "@/lib/api-mutation"
 import RoleSwitcher from "@/components/RoleSwitcher"
 import { useBreakpoint } from "@/app/hooks/useBreakpoint"
 import NoClearance from "@/components/admin/NoClearance"
+import NavBadge from "@/components/NavBadge"
 import { PermissionProvider, usePermissions } from "@/lib/PermissionContext"
 import { ROLES } from "@/lib/permissions"
 import { Role } from "@/lib/roles"
@@ -154,6 +155,10 @@ function AdminPanelContent({ userProfile }: Props) {
 
   const [disputedCount, setDisputedCount] = useState(0)
   const [unresolvedComplaints, setUnresolvedComplaints] = useState(0)
+  const [pendingStoreSales, setPendingStoreSales] = useState(0)
+  const [pendingPayments, setPendingPayments] = useState(0)
+  const [unauthorizedExpenses, setUnauthorizedExpenses] = useState(0)
+  const [unpostedExpenses, setUnpostedExpenses] = useState(0)
   const [lowBalanceCompanies, setLowBalanceCompanies] = useState<LowBalanceCompany[]>([])
   const [dismissedAlerts, setDismissedAlerts] = useState<Set<string>>(() => {
     const stored = sessionStorage.getItem("dismissedFuelAlerts")
@@ -166,6 +171,10 @@ function AdminPanelContent({ userProfile }: Props) {
     const canViewTrips = getAccess("monitor-trips").canView
     const canViewComplaints = getAccess("complaints").canView
     const canViewFuel = getAccess("diesel-manager").canView
+    const canViewStoreSales = getAccess("store-sales").canView
+    const canViewPayments = getAccess("customer-payments").canView
+    const canViewCashExpenses = getAccess("cash-expenses").canView
+    const canViewDeskExpenses = getAccess("desk-expenses").canView
 
     async function checkAlerts() {
       try {
@@ -181,6 +190,30 @@ function AdminPanelContent({ userProfile }: Props) {
           const { count: userReports } = await supabase
             .from("reports").select("*", { count: "exact", head: true }).eq("resolved", false)
           setUnresolvedComplaints((driverComplaints || 0) + (userReports || 0))
+        }
+
+        if (canViewStoreSales) {
+          const { count } = await supabase
+            .from("store_sales").select("*", { count: "exact", head: true }).eq("status", "Pending")
+          setPendingStoreSales(count || 0)
+        }
+
+        if (canViewPayments) {
+          const { count } = await supabase
+            .from("customer_payments").select("*", { count: "exact", head: true }).eq("status", "Pending")
+          setPendingPayments(count || 0)
+        }
+
+        if (canViewCashExpenses) {
+          const { count } = await supabase
+            .from("cash_expenses").select("*", { count: "exact", head: true }).eq("status", "Pending")
+          setUnauthorizedExpenses(count || 0)
+        }
+
+        if (canViewDeskExpenses) {
+          const { count } = await supabase
+            .from("cash_expenses").select("*", { count: "exact", head: true }).eq("status", "Authorised")
+          setUnpostedExpenses(count || 0)
         }
 
         if (canViewFuel) {
@@ -200,6 +233,10 @@ function AdminPanelContent({ userProfile }: Props) {
     const canViewTrips = getAccess("monitor-trips").canView
     const canViewComplaints = getAccess("complaints").canView
     const canViewFuel = getAccess("diesel-manager").canView
+    const canViewStoreSales = getAccess("store-sales").canView
+    const canViewPayments = getAccess("customer-payments").canView
+    const canViewCashExpenses = getAccess("cash-expenses").canView
+    const canViewDeskExpenses = getAccess("desk-expenses").canView
     async function checkAlerts() {
       try {
         if (canViewTrips) {
@@ -213,6 +250,26 @@ function AdminPanelContent({ userProfile }: Props) {
           const { count: userReports } = await supabase
             .from("reports").select("*", { count: "exact", head: true }).eq("resolved", false)
           setUnresolvedComplaints((driverComplaints || 0) + (userReports || 0))
+        }
+        if (canViewStoreSales) {
+          const { count } = await supabase
+            .from("store_sales").select("*", { count: "exact", head: true }).eq("status", "Pending")
+          setPendingStoreSales(count || 0)
+        }
+        if (canViewPayments) {
+          const { count } = await supabase
+            .from("customer_payments").select("*", { count: "exact", head: true }).eq("status", "Pending")
+          setPendingPayments(count || 0)
+        }
+        if (canViewCashExpenses) {
+          const { count } = await supabase
+            .from("cash_expenses").select("*", { count: "exact", head: true }).eq("status", "Pending")
+          setUnauthorizedExpenses(count || 0)
+        }
+        if (canViewDeskExpenses) {
+          const { count } = await supabase
+            .from("cash_expenses").select("*", { count: "exact", head: true }).eq("status", "Authorised")
+          setUnpostedExpenses(count || 0)
         }
         if (canViewFuel) {
           const { data } = await supabase
@@ -358,8 +415,12 @@ function AdminPanelContent({ userProfile }: Props) {
   function NavItem({ item, showLabel }: { item: typeof NAV_ITEMS[0]; showLabel: boolean }) {
     const isActive = active === item.key
     const badge =
-      item.key === "monitor-trips" && disputedCount > 0 ? disputedCount :
-      item.key === "complaints" && unresolvedComplaints > 0 ? unresolvedComplaints :
+      item.key === "monitor-trips" && disputedCount > 0 ? { count: disputedCount, color: "#ef4444" } :
+      item.key === "complaints" && unresolvedComplaints > 0 ? { count: unresolvedComplaints, color: "#f5a623" } :
+      item.key === "store-sales" && pendingStoreSales > 0 ? { count: pendingStoreSales, color: "#f5a623" } :
+      item.key === "customer-payments" && pendingPayments > 0 ? { count: pendingPayments, color: "#f5a623" } :
+      item.key === "cash-expenses" && unauthorizedExpenses > 0 ? { count: unauthorizedExpenses, color: "#ef4444" } :
+      item.key === "desk-expenses" && unpostedExpenses > 0 ? { count: unpostedExpenses, color: "#f5a623" } :
       null
 
     return (
@@ -399,33 +460,14 @@ function AdminPanelContent({ userProfile }: Props) {
       >
         <span style={{ position: "relative", flexShrink: 0, display: "flex", alignItems: "center" }}>
           <Icon icon={item.icon} width={18} height={18} />
-          {!showLabel && badge && (
-            <span style={{
-              position: "absolute", top: -6, right: -6,
-              width: 18, height: 18, borderRadius: "50%",
-              background: item.key === "complaints" ? "#f5a623" : "#ff5555",
-              color: "white",
-              fontSize: 10,
-              fontWeight: "bold",
-              display: "flex", alignItems: "center", justifyContent: "center",
-              border: "2px solid #0f0f1e",
-            }} />
-          )}
+          {!showLabel && <NavBadge count={badge?.count ?? 0} color={badge?.color} showLabel={false} />}
         </span>
 
         {showLabel && (
           <>
             <span style={{ flex: 1, fontSize: 14, fontWeight: isActive ? 600 : 500 }}>{item.label}</span>
             {badge && (
-              <span style={{
-                background: item.key === "complaints" ? "#f5a623" : "#ff5555",
-                color: "white", borderRadius: 12,
-                minWidth: 22, height: 22, fontSize: 11, fontWeight: "700",
-                display: "flex", alignItems: "center", justifyContent: "center",
-                padding: "0 6px", flexShrink: 0,
-              }}>
-                {badge}
-              </span>
+              <NavBadge count={badge.count} color={badge.color} showLabel={true} />
             )}
           </>
         )}
