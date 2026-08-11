@@ -122,6 +122,12 @@ type CashOfficeExpenseSummary = {
   total_amount: number
 }
 
+type TransactionSummary = {
+  to_account: string
+  transactions_count: number
+  total_amount: number
+}
+
 type SideTripSummary = {
   driver_id: string
   driver_name: string
@@ -146,6 +152,7 @@ type ReportType =
   | "cash-expenses"
   | "truck-health"
   | "side-trips"
+  | "transactions"
 
 // ── Constants ──────────────────────────────────────────────────────────────
 const PRODUCT_MANUFACTURER: Record<string, string> = {
@@ -164,6 +171,7 @@ const REPORT_OPTIONS: { group: string; value: ReportType; label: string }[] = [
   { group: "Operations", value: "side-trips", label: "Side Trips by Driver" },
   { group: "Finance", value: "cash-expenses", label: "Cash Office Expenses" },
   { group: "Finance", value: "truck-health", label: "Truck Health / Expenses" },
+  { group: "Finance", value: "transactions", label: "Transactions (Top Ups)" },
 ]
 
 
@@ -236,6 +244,7 @@ export default function Reports() {
   const [productVolumeSummaries, setProductVolumeSummaries] = useState<ProductVolumeSummary[]>([])
   const [factoryLoadingSummaries, setFactoryLoadingSummaries] = useState<FactoryLoadingSummary[]>([])
   const [cashOfficeExpenseSummaries, setCashOfficeExpenseSummaries] = useState<CashOfficeExpenseSummary[]>([])
+  const [transactionSummaries, setTransactionSummaries] = useState<TransactionSummary[]>([])
   const [sideTripSummaries, setSideTripSummaries] = useState<SideTripSummary[]>([])
   const [drillDown, setDrillDown] = useState<DrillDown | null>(null)
   const [drillLoading, setDrillLoading] = useState(false)
@@ -300,6 +309,7 @@ export default function Reports() {
         case "cash-expenses": await fetchCashExpenseReports(); break
         case "truck-health": await fetchTruckReports(); break
         case "side-trips": await fetchSideTripReports(); break
+        case "transactions": await fetchTransactionReports(); break
       }
       setHasLoaded(true)
     } catch (err) {
@@ -825,6 +835,33 @@ export default function Reports() {
     setCashOfficeExpenseSummaries(summaries)
   }
 
+  // ── Transactions (top ups) (#10) ─────────────────────────────────────────
+  async function fetchTransactionReports() {
+    const { from, to } = getRange()
+
+    const { data: transactions, error: transactionsErr } = await supabase
+      .from("transactions")
+      .select("to_account, amount")
+      .gte("created_at", from)
+      .lte("created_at", to)
+
+    if (transactionsErr) throw new Error(`Failed to fetch transactions: ${transactionsErr.message}`)
+
+    const destMap: Record<string, { transactions_count: number; total_amount: number }> = {}
+    for (const t of transactions || []) {
+      const dest = t.to_account || "Unknown"
+      if (!destMap[dest]) destMap[dest] = { transactions_count: 0, total_amount: 0 }
+      destMap[dest].transactions_count++
+      destMap[dest].total_amount += t.amount || 0
+    }
+
+    const summaries: TransactionSummary[] = Object.entries(destMap)
+      .map(([to_account, v]) => ({ to_account, ...v }))
+      .sort((a, b) => b.total_amount - a.total_amount)
+
+    setTransactionSummaries(summaries)
+  }
+
   // ── Side trips by driver (#9) ────────────────────────────────────────────
   async function fetchSideTripReports() {
     const { from, to } = getRange()
@@ -1035,6 +1072,16 @@ export default function Reports() {
     }))
     if (format === "csv") downloadCSV("cash_office_expenses.csv", rows)
     else downloadXLSX("cash_office_expenses.xlsx", rows, "Cash Office Expenses")
+  }
+
+  function exportTransactions(format: "csv" | "xlsx") {
+    const rows = transactionSummaries.map((t) => ({
+      "To Account": t.to_account,
+      "Transactions Count": t.transactions_count,
+      "Total Amount (₦)": t.total_amount,
+    }))
+    if (format === "csv") downloadCSV("transactions.csv", rows)
+    else downloadXLSX("transactions.xlsx", rows, "Transactions")
   }
 
   function exportSideTrips(format: "csv" | "xlsx") {
@@ -2071,6 +2118,34 @@ borderRadius: 6,
                 ]}
                 rows={cashOfficeExpenseSummaries}
                 rowKey={(row) => row.office_name}
+              />
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Transactions (Top Ups) */}
+      {!loading && hasLoaded && reportType === "transactions" && (
+        <div>
+          {transactionSummaries.length === 0 ? (
+            <EmptyState icon="💸" title="No data available" description="No transfers found in this period." />
+          ) : (
+            <div>
+              <div style={{ display: "flex", flexDirection: isMobile ? "column" : "row", justifyContent: "space-between", alignItems: isMobile ? "flex-start" : "center", gap: 12, marginBottom: 16 }}>
+                <div>
+                  <h2 style={{ margin: 0, color: "#0f172a", fontSize: FONT_SIZE.lg, fontWeight: 600 }}>Transactions (Top Ups)</h2>
+                  <p style={{ margin: "4px 0 0", color: "#64748b", fontSize: FONT_SIZE.sm }}>{transactionSummaries.length} destinations</p>
+                </div>
+                <ExportActions onExportCSV={() => exportTransactions("csv")} onExportXLSX={() => exportTransactions("xlsx")} />
+              </div>
+              <DataTable
+                columns={[
+                  { key: "to_account", label: "To Account" },
+                  { key: "transactions_count", label: "Transfers Count" },
+                  { key: "total_amount", label: "Total Amount", render: (value) => `₦${(value as number).toLocaleString()}` },
+                ]}
+                rows={transactionSummaries}
+                rowKey={(row) => row.to_account}
               />
             </div>
           )}

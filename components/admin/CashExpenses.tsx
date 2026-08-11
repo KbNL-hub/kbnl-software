@@ -8,8 +8,6 @@ import { useState, useEffect, useMemo } from "react"
 import { supabase } from "@/lib/supabase"
 import type { User } from "@supabase/supabase-js"
 import { apiMutate } from "@/lib/api-mutation"
-import { formatAmount, parseAmount } from "@/lib/formatAmount"
-import ModernInput from "@/components/ModernInput"
 import { usePermissions } from "@/lib/PermissionContext"
 
 type CashDeposit = {
@@ -68,7 +66,7 @@ function useBreakpoint() {
 
 export default function CashExpenses() {
   const { getAccess } = usePermissions()
-  const { canEdit, canAuthorize } = getAccess("cash-expenses")
+  const { canAuthorize } = getAccess("cash-expenses")
   const { isMobile } = useBreakpoint()
   const [selectedOffice, setSelectedOffice] = useState<string>("Calabar")
   const [assignedOffice, setAssignedOffice] = useState<string | null>(null)
@@ -84,10 +82,6 @@ export default function CashExpenses() {
 
   // Filter state
   const [filter, setFilter] = useState<"All" | "Pending" | "Authorised" | "Rejected">("All")
-
-  const [showDepositModal, setShowDepositModal] = useState(false)
-  const [depositAmount, setDepositAmount] = useState("")
-  const [depositNote, setDepositNote] = useState("")
 
   const [showRejectModal, setShowRejectModal] = useState(false)
   const [rejectId, setRejectId] = useState<string | null>(null)
@@ -169,6 +163,15 @@ export default function CashExpenses() {
   }
 
   async function fetchOfficeBalance() {
+    if (selectedOffice === "Haulage") {
+      const { data } = await supabase
+        .from("maintenance_balance")
+        .select("current_balance")
+        .eq("id", 1)
+        .single()
+      setOfficeBalance(data?.current_balance ?? 0)
+      return
+    }
     const { data } = await supabase
       .from("cash_offices")
       .select("current_balance")
@@ -226,56 +229,6 @@ export default function CashExpenses() {
       .eq("expense_id", expenseId)
     if (data) {
       setExpenseItems(prev => ({ ...prev, [expenseId]: data }))
-    }
-  }
-
-  async function handleDeposit() {
-    if (!canDeposit) { setErrorMsg("You do not have permission to deposit cash"); return }
-    const parsed = parseAmount(depositAmount)
-    if (isNaN(parsed) || parsed <= 0) {
-      setErrorMsg("Please enter a valid amount")
-      return
-    }
-    if (!adminUser) return
-
-    setSubmitting(true)
-    setErrorMsg("")
-
-    try {
-      // Atomic: insert deposit record + increment office balance
-      const { data, error } = await apiMutate("finance", {
-        action: "rpc",
-        function: "add_cash_deposit",
-        params: {
-          p_office_name: selectedOffice,
-          p_amount: parsed,
-          p_note: depositNote || null,
-          p_deposited_by: adminUser.id,
-        },
-      })
-
-      if (error) { setErrorMsg("Failed to log deposit: " + error); return }
-
-      const result = data as { success?: boolean; error?: string; new_balance?: number } | null
-      if (result && result.success === false) {
-        setErrorMsg(result.error || "Failed to log deposit")
-        return
-      }
-      if (result && typeof result.new_balance === "number") {
-        setOfficeBalance(result.new_balance)
-      }
-
-      setDepositAmount("")
-      setDepositNote("")
-      setShowDepositModal(false)
-      setMessage("₦" + parsed.toLocaleString() + " deposited successfully!")
-      fetchOfficeBalance()
-      fetchDeposits()
-      setTimeout(() => setMessage(""), 3000)
-    } catch {
-      setErrorMsg("Network error, please try again")
-    } finally {
-      setSubmitting(false)
     }
   }
 
@@ -351,8 +304,6 @@ export default function CashExpenses() {
     }
   }
   const isAssigned = isCashAuthorizer ? Boolean(assignedOffice && selectedOffice === assignedOffice) : true
-
-  const canDeposit = isCashAuthorizer ? isAssigned : canEdit
 
   const filteredExpenses = expenses.filter(e => {
     if (filter === "All") return true
@@ -483,7 +434,7 @@ export default function CashExpenses() {
         <div style={{ position: "relative", zIndex: 1 }}>
           <span style={{ display: "flex", alignItems: "center", gap: 8, fontSize: FONT_SIZE.xs, color: "#64748b", textTransform: "uppercase", fontWeight: 700, letterSpacing: 0.5, marginBottom: 8 }}>
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="12" cy="12" r="2"/><path d="M6 12h.01M18 12h.01"/></svg>
-            {selectedOffice} Office Cash Balance
+            {selectedOffice === "Haulage" ? "Haulage Maintenance Fund Balance" : `${selectedOffice} Office Cash Balance`}
           </span>
           <h1 style={{ margin: "0 0 12px", fontSize: isMobile ? 32 : 48, color: "#0f172a", fontWeight: 800, display: "flex", alignItems: "baseline", gap: 6, letterSpacing: "-1px" }}>
             <span style={{ fontSize: isMobile ? 24 : 32, color: "#94a3b8", fontWeight: 600 }}>₦</span>
@@ -496,37 +447,6 @@ export default function CashExpenses() {
             </span>
           </div>
         </div>
-
-        {isAssigned && (
-          <button
-            onClick={() => { if (!canDeposit) return; setShowDepositModal(true); setErrorMsg(""); setDepositAmount(""); setDepositNote("") }}
-            disabled={!canDeposit}
-            style={{
-              padding: "14px 28px",
-              background: !canDeposit ? "#94a3b8" : "#0070f3",
-              color: "white",
-              border: "none",
-              borderRadius: 12,
-              cursor: !canDeposit ? "not-allowed" : "pointer",
-              fontWeight: 600,
-              fontSize: FONT_SIZE.md,
-              boxShadow: !canDeposit ? "none" : "0 4px 14px 0 rgba(0,112,243,0.39)",
-              transition: "transform 0.2s, box-shadow 0.2s",
-              display: "flex",
-              alignItems: "center",
-              gap: 8,
-              width: isMobile ? "100%" : "auto",
-              justifyContent: "center",
-              position: "relative",
-              zIndex: 1
-            }}
-            onMouseEnter={e => { if (!canDeposit) return; e.currentTarget.style.transform = "translateY(-2px)"; e.currentTarget.style.boxShadow = "0 6px 20px rgba(0,112,243,0.4)" }}
-            onMouseLeave={e => { if (!canDeposit) return; e.currentTarget.style.transform = "translateY(0)"; e.currentTarget.style.boxShadow = "0 4px 14px 0 rgba(0,112,243,0.39)" }}
-          >
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-            Deposit Cash
-          </button>
-        )}
       </div>
 
       {/* Filters & Expenses List */}
@@ -817,61 +737,7 @@ export default function CashExpenses() {
       </div>
 
       {/* MODALS */}
-      {/* 1. Deposit Cash Modal */}
-      {showDepositModal && (
-        <div onClick={() => setShowDepositModal(false)} style={{ position: "fixed", inset: 0, background: "rgba(15, 23, 42, 0.6)", backdropFilter: "blur(4px)", display: "flex", alignItems: isMobile ? "flex-end" : "center", justifyContent: "center", zIndex: 100, padding: isMobile ? 0 : 24, animation: "fadeIn 0.2s ease-out" }}>
-          <div onClick={(e) => e.stopPropagation()} style={{ background: "white", borderRadius: isMobile ? "20px 20px 0 0" : 16, padding: isMobile ? "28px 24px" : 32, width: "100%", maxWidth: 440, boxShadow: "0 25px 50px -12px rgba(0, 0, 0, 0.25)", animation: "slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1)" }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24 }}>
-              <h3 style={{ margin: 0, color: "#0f172a", fontSize: FONT_SIZE.xl, fontWeight: 700 }}>Deposit Cash</h3>
-              <div style={{ background: "#f1f5f9", padding: "4px 10px", borderRadius: 16, fontSize: FONT_SIZE.xs, fontWeight: 600, color: "#475569" }}>{selectedOffice} Office</div>
-            </div>
-            
-            <div style={{ marginBottom: 20 }}>
-              <label style={{ display: "block", fontWeight: 600, color: "#334155", marginBottom: 8, fontSize: FONT_SIZE.sm }}>Amount (₦) *</label>
-              <ModernInput
-                type="text"
-                placeholder="e.g. 50,000"
-                value={depositAmount}
-                onChange={(e: React.ChangeEvent<HTMLInputElement>) => { setDepositAmount(formatAmount(e.target.value)); setErrorMsg("") }}
-                style={{ ...inputStyle, fontSize: FONT_SIZE.lg, fontWeight: 600, height: 56 }}
-                autoFocus
-              />
-            </div>
-
-            <div style={{ marginBottom: 24 }}>
-              <label style={{ display: "block", fontWeight: 600, color: "#334155", marginBottom: 8, fontSize: FONT_SIZE.sm }}>Notes / Description</label>
-              <textarea
-                placeholder="Add a note about this cash injection..."
-                value={depositNote}
-                onChange={(e) => setDepositNote(e.target.value)}
-                style={textareaStyle}
-              />
-            </div>
-
-            {errorMsg && <div style={{ padding: 12, background: "#fef2f2", borderLeft: "4px solid #ef4444", borderRadius: 4, marginBottom: 20, color: "#b91c1c", fontSize: FONT_SIZE.sm }}>{errorMsg}</div>}
-            
-            <div style={{ display: "flex", gap: 12 }}>
-              <button 
-                onClick={() => setShowDepositModal(false)} 
-                style={{ flex: 1, padding: "12px", background: "white", border: "1px solid #cbd5e1", color: "#475569", borderRadius: 8, fontWeight: 600, cursor: "pointer", fontSize: FONT_SIZE.md, transition: "background 0.2s" }}
-                onMouseEnter={e => e.currentTarget.style.background = "#f8fafc"}
-                onMouseLeave={e => e.currentTarget.style.background = "white"}
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleDeposit}
-                disabled={submitting || !canDeposit}
-                style={{ flex: 1, padding: "12px", background: submitting || !canDeposit ? "#94a3b8" : "#0070f3", border: "none", color: "white", borderRadius: 8, fontWeight: 600, cursor: submitting || !canDeposit ? "not-allowed" : "pointer", fontSize: FONT_SIZE.md, opacity: submitting || !canDeposit ? 0.7 : 1, transition: "opacity 0.2s" }}
-              >
-                {submitting ? "Processing..." : "Complete Deposit"}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* 3. Rejection Reason Modal */}
+      {/* 1. Rejection Reason Modal */}
       {showRejectModal && (
         <div onClick={() => setShowRejectModal(false)} style={{ position: "fixed", inset: 0, background: "rgba(15, 23, 42, 0.6)", backdropFilter: "blur(4px)", display: "flex", alignItems: isMobile ? "flex-end" : "center", justifyContent: "center", zIndex: 100, padding: isMobile ? 0 : 24, animation: "fadeIn 0.2s ease-out" }}>
           <div onClick={(e) => e.stopPropagation()} style={{ background: "white", borderRadius: isMobile ? "20px 20px 0 0" : 16, padding: isMobile ? "28px 24px" : 32, width: "100%", maxWidth: 440, boxShadow: "0 25px 50px -12px rgba(0, 0, 0, 0.25)", animation: "slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1)" }}>

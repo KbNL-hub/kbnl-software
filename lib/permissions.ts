@@ -21,6 +21,7 @@ export const ALL_SECTIONS = [
   'customer-payments',
   'credit',
   'cash-expenses',
+  'transactions',
   'desk-expenses',
   'complaints',
   'reports',

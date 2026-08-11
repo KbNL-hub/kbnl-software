@@ -20,7 +20,6 @@ import MaintenanceSection from "@/components/truck-admin/MaintenanceSection"
 import MonitorTrucksSection from "@/components/truck-admin/MonitorTrucksSection"
 import ATFSection from "@/components/truck-admin/ATFSection"
 import ProcurementSection from "@/components/truck-admin/ProcurementSection"
-import BalanceSection from "@/components/truck-admin/BalanceSection"
 import SideTripsSection from "@/components/truck-admin/SideTripsSection"
 import DieselConsumptionSection from "@/components/truck-admin/DieselConsumptionSection"
 
@@ -92,7 +91,6 @@ const SECTION_LABELS = {
   "monitor": { label: "Monitor Trucks", icon: "mdi:truck-check" },
   "atf": { label: "ATF", icon: "mdi:gas-station" },
   "procurement": { label: "Procurement", icon: "mdi:package" },
-  "balance": { label: "Top Up", icon: "mdi:plus-circle" },
   "side-trips": { label: "Side Trips", icon: "mdi:road-variant" },
   "diesel": { label: "Diesel Consumption", icon: "mdi:fuel" },
 } satisfies Record<string, { label: string; icon: string }>
@@ -148,11 +146,6 @@ export default function TruckAdminDashboard() {
   const [procNotes, setProcNotes] = useState("")
   const [procError, setProcError] = useState("")
   const [procLoading, setProcLoading] = useState(false)
-
-  const [depositAmount, setDepositAmount] = useState("")
-  const [depositNote, setDepositNote] = useState("")
-  const [depositError, setDepositError] = useState("")
-  const [depositLoading, setDepositLoading] = useState(false)
 
   const [sidebarOpen, setSidebarOpen] = useState(true)
   const [drawerOpen, setDrawerOpen] = useState(false)
@@ -381,26 +374,6 @@ export default function TruckAdminDashboard() {
     setInvalidateReason("")
     setInvalidateError("")
     refetchATFs()
-  }
-
-  async function handleDeposit() {
-    const amount = parseAmount(depositAmount)
-    if (!depositAmount || amount <= 0) return setDepositError("Enter a valid amount")
-    setDepositLoading(true)
-
-    const { data, error } = await apiMutate("maintenance", {
-      action: "rpc",
-      function: "add_maintenance_deposit",
-      params: { p_amount: amount, p_note: depositNote.trim() || null },
-    })
-    if (error) { setDepositError(error); setDepositLoading(false); return }
-
-    if (data && typeof data === "object" && "new_balance" in (data as Record<string, unknown>)) {
-      setMaintenanceBalance((data as { new_balance: number }).new_balance)
-    } else {
-      setMaintenanceBalance((prev) => (prev ?? 0) + amount)
-    }
-    setDepositLoading(false); setDepositAmount(""); setDepositNote(""); setDepositError("")
   }
 
   async function handleLogProcurement() {
@@ -816,19 +789,6 @@ export default function TruckAdminDashboard() {
                 procError={procError}
                 procLoading={procLoading}
                 onLogProcurement={handleLogProcurement}
-              />
-            )}
-
-            {active === "balance" && (
-              <BalanceSection
-                maintenanceBalance={maintenanceBalance}
-                depositAmount={depositAmount}
-                setDepositAmount={setDepositAmount}
-                depositNote={depositNote}
-                setDepositNote={setDepositNote}
-                depositError={depositError}
-                depositLoading={depositLoading}
-                onDeposit={handleDeposit}
               />
             )}
 
