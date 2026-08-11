@@ -100,8 +100,8 @@ const COMPLAINT_TYPES = [
 ]
 
 const ATF_STATUS_CONFIG = {
-  Authorised: { color: "#f5a623", bg: "#fff8e1", icon: "mdi:clock-outline", label: "Awaiting Dispensing" },
-  Dispensed: { color: "#0070f3", bg: "#f0f7ff", icon: "mdi:gas-station-outline", label: "Dispensed — Confirm Receipt" },
+  Authorised: { color: "#0070f3", bg: "#f0f7ff", icon: "mdi:check-circle", label: "Authorised — Confirm Receipt" },
+  Dispensed: { color: "#0070f3", bg: "#f0f7ff", icon: "mdi:gas-station-outline", label: "Dispensed" },
   Confirmed: { color: "#16a34a", bg: "#f0fff4", icon: "mdi:check-circle", label: "Confirmed" },
   Invalidated: { color: "#ef4444", bg: "#fef2f2", icon: "mdi:close-circle", label: "Invalidated" },
   Pending: { color: "#94a3b8", bg: "#f8fafc", icon: "mdi:clock-outline", label: "Pending Authorisation" },
@@ -129,9 +129,12 @@ export default function DriverDashboard() {
   // ATF
   const [loadMoreEntries, setLoadMoreEntries] = useState<LoadMoreEntry[]>([])
   const [confirmingATF, setConfirmingATF] = useState(false)
+  const [showRateModal, setShowRateModal] = useState(false)
+  const [ratePerLitre, setRatePerLitre] = useState("")
+  const [rateError, setRateError] = useState("")
   const [atfFilter, setAtfFilter] = useState<{ driver_id: string } | null>(null)
   const { data: atfsFromHook, refetch: refetchATFs } = useATFs(atfFilter ?? undefined)
-  const activeATF = useMemo(() => (atfsFromHook as ATF[]).find(a => a.atf_status === "Authorised" || a.atf_status === "Dispensed") ?? null, [atfsFromHook])
+  const activeATF = useMemo(() => (atfsFromHook as ATF[]).find(a => a.atf_status === "Authorised") ?? null, [atfsFromHook])
 
   // Modals
   const [showEndConfirm, setShowEndConfirm] = useState(false)
@@ -404,6 +407,18 @@ export default function DriverDashboard() {
 
   async function handleConfirmReceipt() {
     if (!activeATF || !driver) return
+    setRatePerLitre("")
+    setRateError("")
+    setShowRateModal(true)
+  }
+
+  async function submitConfirmReceipt() {
+    if (!activeATF || !driver) return
+    const rate = parseFloat(ratePerLitre)
+    if (!ratePerLitre || isNaN(rate) || rate <= 0) {
+      setRateError("Enter a valid rate per litre")
+      return
+    }
     setConfirmingATF(true)
     await apiMutate("fuel", {
       action: "rpc",
@@ -411,9 +426,13 @@ export default function DriverDashboard() {
       params: {
         p_request_id: activeATF.request_id,
         p_driver_id: driver.driver_id,
+        p_rate: rate,
       },
     })
     setConfirmingATF(false)
+    setShowRateModal(false)
+    setRatePerLitre("")
+    setRateError("")
     refetchATFs()
   }
 
@@ -925,7 +944,7 @@ export default function DriverDashboard() {
                       {activeATF.atf_code ?? "—"}
                     </p>
                     <p style={{ margin: 0, fontSize: FONT_SIZE.xs, color: "#94a3b8" }}>
-                      {activeATF.atf_code ? "Show this to the station manager" : "Awaiting Truck Admin authorisation"}
+                      {activeATF.atf_code ? "Confirm receipt once the fuel has been received" : "Awaiting Truck Admin authorisation"}
                     </p>
                   </div>
 
@@ -952,13 +971,13 @@ export default function DriverDashboard() {
                   </div>
 
                   {/* Status */}
-                  <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "10px 14px", background: "white", borderRadius: 8, marginBottom: activeATF.atf_status === "Dispensed" ? 16 : 0, border: "1px solid #e2e8f0" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "10px 14px", background: "white", borderRadius: 8, marginBottom: activeATF.atf_status === "Authorised" ? 16 : 0, border: "1px solid #e2e8f0" }}>
                     <Icon icon={cfg.icon} width={16} color={cfg.color} />
                     <p style={{ margin: 0, fontSize: FONT_SIZE.sm, color: cfg.color, fontWeight: 700 }}>{cfg.label}</p>
                   </div>
 
                   {/* Confirm Button */}
-                  {activeATF.atf_status === "Dispensed" && (
+                  {activeATF.atf_status === "Authorised" && (
                     <button
                       onClick={handleConfirmReceipt}
                       disabled={confirmingATF}
@@ -1679,6 +1698,52 @@ export default function DriverDashboard() {
               <button onClick={() => { setShowLoadMoreModal(false); setLoadMoreQty(""); setLoadMoreCategory(""); setLoadMoreLocationName(""); setLoadMoreProduct(""); setLoadMoreProductOptions([]); setLoadMoreError("") }} style={{ padding: "12px 16px", background: "white", border: "1px solid #cbd5e1", color: "#475569", borderRadius: 8, cursor: "pointer", fontSize: FONT_SIZE.md, minHeight: 44, fontWeight: 700 }}>Cancel</button>
               <button onClick={handleLoadMore} disabled={loadMoreSubmitting} style={{ padding: "12px 16px", background: "#0070f3", color: "white", border: "none", borderRadius: 8, cursor: loadMoreSubmitting ? "not-allowed" : "pointer", fontWeight: 700, fontSize: FONT_SIZE.md, minHeight: 44, opacity: loadMoreSubmitting ? 0.7 : 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
                 {loadMoreSubmitting ? <><Icon icon="mdi:loading" width={16} style={{ animation: "spin 1s linear infinite" }} /> Saving…</> : "Confirm"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Rate Per Litre */}
+      {showRateModal && activeATF && (
+        <div onClick={() => { setShowRateModal(false); setRatePerLitre(""); setRateError("") }} style={modalOverlay}>
+          <div onClick={e => e.stopPropagation()} style={modalBox}>
+            <h3 style={{ marginBottom: 4, color: "#0f172a", fontSize: FONT_SIZE.xl, fontWeight: 700 }}>Confirm Fuel Receipt</h3>
+            <p style={{ color: "#64748b", fontSize: FONT_SIZE.sm, marginBottom: 20 }}>Enter the rate per litre charged at {activeATF.company_name}.</p>
+
+            <div style={{ display: "flex", gap: 8, marginBottom: 20 }}>
+              <div style={{ flex: 1, background: "#f8fafc", borderRadius: 8, padding: "10px 12px", border: "1px solid #e2e8f0" }}>
+                <p style={{ margin: 0, fontSize: FONT_SIZE.xs, color: "#94a3b8" }}>Litres</p>
+                <p style={{ margin: "2px 0 0", fontWeight: 700, fontSize: FONT_SIZE.md, color: "#0f172a" }}>{activeATF.litres}L</p>
+              </div>
+              <div style={{ flex: 1, background: "#f8fafc", borderRadius: 8, padding: "10px 12px", border: "1px solid #e2e8f0" }}>
+                <p style={{ margin: 0, fontSize: FONT_SIZE.xs, color: "#94a3b8" }}>Total</p>
+                <p style={{ margin: "2px 0 0", fontWeight: 700, fontSize: FONT_SIZE.md, color: "#16a34a" }}>
+                  ₦{((parseFloat(ratePerLitre) || 0) * activeATF.litres).toLocaleString()}
+                </p>
+              </div>
+            </div>
+
+            <div style={{ marginBottom: 16 }}>
+              <label style={labelStyle}>Rate per litre (₦) *</label>
+              <ModernInput
+                type="number"
+                inputMode="decimal"
+                placeholder="e.g. 1200"
+                value={ratePerLitre}
+                onChange={e => { setRatePerLitre(e.target.value); setRateError("") }}
+                onKeyDown={e => { if (e.key === "Enter") submitConfirmReceipt() }}
+                style={inputStyle}
+                min={1}
+              />
+            </div>
+
+            {rateError && <div style={{ padding: 12, background: "#fef2f2", borderLeft: "4px solid #ef4444", borderRadius: 4, marginBottom: 16, color: "#b91c1c", fontSize: FONT_SIZE.sm, fontWeight: 600 }}>{rateError}</div>}
+
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+              <button onClick={() => { setShowRateModal(false); setRatePerLitre(""); setRateError("") }} style={{ padding: "12px 16px", background: "white", border: "1px solid #cbd5e1", color: "#475569", borderRadius: 8, cursor: "pointer", fontSize: FONT_SIZE.md, minHeight: 44, fontWeight: 700 }}>Cancel</button>
+              <button onClick={submitConfirmReceipt} disabled={confirmingATF} style={{ padding: "12px 16px", background: confirmingATF ? "#94a3b8" : "#16a34a", color: "white", border: "none", borderRadius: 8, cursor: confirmingATF ? "not-allowed" : "pointer", fontWeight: 700, fontSize: FONT_SIZE.md, minHeight: 44, opacity: confirmingATF ? 0.7 : 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
+                {confirmingATF ? <><Icon icon="mdi:loading" width={16} style={{ animation: "spin 1s linear infinite" }} /> Confirming…</> : "Confirm Receipt"}
               </button>
             </div>
           </div>

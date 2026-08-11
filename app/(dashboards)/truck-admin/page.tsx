@@ -11,6 +11,7 @@ import { Icon } from "@iconify/react"
 import { useBreakpoint } from "@/app/hooks/useBreakpoint"
 import ReportModal from "@/components/ReportModal"
 import ProfilePictureUpload from "@/components/ProfilePictureUpload"
+import NavBadge from "@/components/NavBadge"
 import { FONT_SIZE } from "@/lib/constants"
 import { usePolling } from "@/lib/hooks/usePolling"
 import { requireDashboardRole } from "@/lib/auth-helpers"
@@ -360,6 +361,7 @@ export default function TruckAdminDashboard() {
       params: {
         p_request_id: invalidatingATF.request_id,
         p_reason: invalidateReason.trim(),
+        p_status_filter: invalidatingATF.atf_status,
       },
     })
 
@@ -443,6 +445,9 @@ export default function TruckAdminDashboard() {
   const atfTotalPages = Math.ceil(filteredATFsAll.length / PAGE_SIZE) || 1
   const safeAtfPage = Math.min(atfPage, atfTotalPages)
   const filteredATFs = filteredATFsAll.slice(0, safeAtfPage * PAGE_SIZE)
+
+  const pendingReportCount = useMemo(() => reports.filter(r => r.status === "Pending").length, [reports])
+  const pendingATFCount = useMemo(() => atfsFromHook.filter(a => a.atf_status === "Pending").length, [atfsFromHook])
 
   const labelStyle: React.CSSProperties = {
     fontWeight: 600, display: "block",
@@ -599,6 +604,10 @@ export default function TruckAdminDashboard() {
                 {sectionKeys.map(key => {
                   const isActive = active === key
                   const item = SECTION_LABELS[key]
+                  const badge =
+                    key === "maintenance" && pendingReportCount > 0 ? { count: pendingReportCount, color: "#f5a623" } :
+                    key === "atf" && pendingATFCount > 0 ? { count: pendingATFCount, color: "#f5a623" } :
+                    null
                   return (
                     <button
                       key={key}
@@ -624,10 +633,19 @@ export default function TruckAdminDashboard() {
                         marginLeft: sidebarOpen ? "8px" : "0px",
                         marginRight: sidebarOpen ? "8px" : "0px",
                         justifyContent: sidebarOpen ? "flex-start" : "center",
+                        position: "relative",
                       }}
                     >
-                      <Icon icon={item.icon} width={18} height={18} />
-                      {sidebarOpen && <span style={{ flex: 1, fontSize: 14, fontWeight: isActive ? 600 : 500 }}>{item.label}</span>}
+                      <span style={{ position: "relative", flexShrink: 0, display: "flex", alignItems: "center" }}>
+                        <Icon icon={item.icon} width={18} height={18} />
+                        {!sidebarOpen && <NavBadge count={badge?.count ?? 0} color={badge?.color} showLabel={false} />}
+                      </span>
+                      {sidebarOpen && (
+                        <>
+                          <span style={{ flex: 1, fontSize: 14, fontWeight: isActive ? 600 : 500 }}>{item.label}</span>
+                          {badge && <NavBadge count={badge.count} color={badge.color} showLabel={true} />}
+                        </>
+                      )}
                     </button>
                   )
                 })}
@@ -678,6 +696,10 @@ export default function TruckAdminDashboard() {
                   {sectionKeys.map(key => {
                     const isActive = active === key
                     const item = SECTION_LABELS[key]
+                    const badge =
+                      key === "maintenance" && pendingReportCount > 0 ? { count: pendingReportCount, color: "#f5a623" } :
+                      key === "atf" && pendingATFCount > 0 ? { count: pendingATFCount, color: "#f5a623" } :
+                      null
                     return (
                       <button
                         key={key}
@@ -702,10 +724,12 @@ export default function TruckAdminDashboard() {
                           marginLeft: "8px",
                           marginRight: "8px",
                           justifyContent: "flex-start",
+                          position: "relative",
                         }}
                       >
                         <Icon icon={item.icon} width={18} height={18} />
                         <span style={{ flex: 1, fontSize: 14, fontWeight: isActive ? 600 : 500 }}>{item.label}</span>
+                        {badge && <NavBadge count={badge.count} color={badge.color} showLabel={true} />}
                       </button>
                     )
                   })}
@@ -821,7 +845,7 @@ export default function TruckAdminDashboard() {
         <div style={modalOverlay}>
           <div onClick={e => e.stopPropagation()} style={modalBox}>
             <h3 style={{ marginBottom: 12, color: "#0f172a", fontSize: FONT_SIZE.xl, fontWeight: 700 }}>Authorise ATF?</h3>
-            <p style={{ color: "#64748b", fontSize: FONT_SIZE.sm, marginBottom: 20 }}>A unique ATF code will be generated and sent to the driver and station manager.</p>
+            <p style={{ color: "#64748b", fontSize: FONT_SIZE.sm, marginBottom: 20 }}>A unique ATF code will be generated and shown to the driver for confirmation.</p>
             <div style={{ background: "#f8fafc", borderRadius: 8, padding: 16, marginBottom: 24, border: "1px solid #e2e8f0" }}>
               <p style={{ margin: "0 0 6px" }}><strong>Truck:</strong> {authorisingATF.plate_number}</p>
               <p style={{ margin: "0 0 6px" }}><strong>Driver:</strong> {authorisingATF.driver_name}</p>

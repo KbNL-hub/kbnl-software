@@ -35,7 +35,7 @@ type Props = {
   PAGE_SIZE: number
 }
 
-const atfFilters = ["All", "Pending", "Authorised", "Dispensed", "Confirmed", "Invalidated"]
+const atfFilters = ["All", "Pending", "Authorised", "Confirmed", "Invalidated"]
 
 const atfStatusColor = (status: string) => {
   switch (status) {

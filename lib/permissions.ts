@@ -29,6 +29,7 @@ export const ALL_SECTIONS = [
   'store-sales',
   'side-trips',
   'our-stores',
+  'trips',
 ] as const
 
 export type SectionKey = (typeof ALL_SECTIONS)[number]
@@ -85,7 +86,7 @@ export const ROLES: { [key: string]: RoleConfig | undefined } & Partial<Record<R
     sections: [
       'customer-payments', 'credit',
       'reports', 'complaints', 'store-sales', 'our-stores',
-      'desk-expenses',
+      'desk-expenses', 'trips',
     ],
     access: 'write',
     label: 'Desk Officer',
@@ -145,7 +146,9 @@ export const ROLE_DASHBOARDS: Record<Role, string> = {
   [Role.ATCOfficer]: '/admin',
   [Role.Admin]: '/admin',
   [Role.Driver]: '/driver',
-  [Role.StationManager]: '/station-manager',
+  // DORMANT: Station manager role removed from the fuel flow. The dashboard
+  // script is kept in the codebase but is no longer routed to.
+  [Role.StationManager]: '/login',
   [Role.TruckOfficer]: '/truck-officer',
   [Role.StoreOfficer]: '/store-officer',
   [Role.CashOfficer]: '/cash-officer',

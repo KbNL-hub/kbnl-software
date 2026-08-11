@@ -354,9 +354,12 @@ export async function POST(req: NextRequest) {
         if (table === "store_sales" && row) {
           const status = (row.status as string) || (data.status as string)
           const brokerId = (row.broker_id as string) || (data.broker_id as string)
+          const saleType = (row.sale_type as string) || (data.sale_type as string)
           const saleId = row.sale_id as string
 
-          if (status === "Pending" && brokerId) {
+          if (saleType === "truck_load_out") {
+            // Load-outs are dispatch records, not sales — skip notifications
+          } else if (status === "Pending" && brokerId) {
             const storeName = (row.store_name as string) || (data.store_name as string) || "Store"
             const brokerName = (row.broker_name as string) || (data.broker_name as string) || "Broker"
             notifyBrokerPendingStoreSale(brokerId, storeName).catch(console.error)

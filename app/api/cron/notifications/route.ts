@@ -6,7 +6,6 @@ import {
   notifyBrokerCreditExceeded15Days,
   notifyAdminCreditDaysExceeded,
   notifyAdminLowDieselBalance,
-  notifyStationManagerLowFuel,
   notifyDriverStopReminder,
 } from '@/lib/notifications'
 
@@ -47,10 +46,6 @@ export async function POST(req: NextRequest) {
 
       case 'low-fuel-admin':
         await notifyAdminLowDieselBalance(body.stationName, body.balance)
-        break
-
-      case 'low-fuel-station':
-        await notifyStationManagerLowFuel(body.balance)
         break
 
       case 'driver-stop-reminder':

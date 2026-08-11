@@ -434,6 +434,7 @@ export default function AdminDashboard({ effectiveRole, fullName }: Props) {
         .from("store_sales")
         .select("quantity, total_amount")
         .eq("status", "Confirmed")
+        .neq("sale_type", "truck_load_out")
         .gte("sold_at", from)
         .lte("sold_at", to),
       supabase
@@ -548,7 +549,7 @@ export default function AdminDashboard({ effectiveRole, fullName }: Props) {
   }
 
   async function fetchDeskStats() {
-    const [storeSalesResult, paymentsResult, complaintsResult, reportsResult, cashExpensesResult] = await Promise.all([
+    const [storeSalesResult, paymentsResult, complaintsResult, reportsResult, cashExpensesResult, tripsResult] = await Promise.all([
       supabase
         .from("store_sales")
         .select("sale_id", { count: "exact", head: true })
@@ -569,6 +570,11 @@ export default function AdminDashboard({ effectiveRole, fullName }: Props) {
         .from("cash_expenses")
         .select("expense_id", { count: "exact", head: true })
         .eq("status", "Authorised"),
+      supabase
+        .from("Trips")
+        .select("trip_id", { count: "exact", head: true })
+        .eq("recorded", true)
+        .eq("posted", false),
     ])
 
     setStats([
@@ -576,6 +582,7 @@ export default function AdminDashboard({ effectiveRole, fullName }: Props) {
       { key: "payments", icon: "mdi:cash-register", label: "Pending Payments", value: paymentsResult.count || 0, color: "#8b5cf6" },
       { key: "complaints", icon: "mdi:alert-circle", label: "Pending Complaints", value: (complaintsResult.count || 0) + (reportsResult.count || 0), color: "#f59e0b" },
       { key: "cash-expenses", icon: "mdi:cash-multiple", label: "Pending Cash Expenses", value: cashExpensesResult.count || 0, color: "#ef4444" },
+      { key: "trips", icon: "mdi:map-marker-path", label: "Pending Trips", value: tripsResult.count || 0, color: "#10b981" },
     ])
   }
 

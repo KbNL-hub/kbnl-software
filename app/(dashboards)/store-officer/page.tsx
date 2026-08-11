@@ -11,6 +11,7 @@ import { formatAmount, parseAmount } from "@/lib/formatAmount"
 import { Icon } from "@iconify/react"
 import CustomerSelector, { Customer } from "@/components/CustomerSelector"
 import ReportModal from "@/components/ReportModal"
+import StoreOfficerLoadOutNotice from "@/components/StoreOfficerLoadOutNotice"
 import ModernInput from "@/components/ModernInput"
 import ProfilePictureUpload from "@/components/ProfilePictureUpload"
 import { FONT_SIZE, BANKS } from "@/lib/constants"
@@ -54,6 +55,7 @@ type Sale = {
   created_at: string
   broker_id: string | null
   broker_name?: string | null
+  sale_type: string
   status: string
   bank_name: string | null
   depositor_name: string | null
@@ -70,6 +72,7 @@ type GroupedSale = {
   sold_at: string
   broker_id: string | null
   broker_name?: string | null
+  sale_type: string
   status: string
   rejection_reason: string | null
   lines: Sale[]
@@ -80,7 +83,7 @@ type Broker = { broker_id: string; broker_name: string }
 type SupplyLine = { product: string; quantity: string }
 type SaleLine = { product: string; quantity: string; price_per_bag: string }
 
-const PAYMENT_MODES = ["Transfer", "POS", "Broker"]
+const PAYMENT_MODES = ["Transfer", "POS", "Broker", "Load Out"]
 
 function getCurrentMonthRange() {
   const from = dayjs().startOf("month").toISOString()
@@ -142,7 +145,7 @@ export default function StoreOfficerDashboard() {
   const [saleBroker, setSaleBroker] = useState<Broker | null>(null)
   const [brokerSearch, setBrokerSearch] = useState("")
   const [brokerDropOpen, setBrokerDropOpen] = useState(false)
-  const [isBrokerLinked, setIsBrokerLinked] = useState(false)
+  const [saleType, setSaleType] = useState<"direct" | "truck_load_out" | "broker">("direct")
   const [saleDate, setSaleDate] = useState(dayjs().format("YYYY-MM-DD"))
 
   const [updatedStockProducts, setUpdatedStockProducts] = useState<string[]>([])
@@ -223,6 +226,7 @@ export default function StoreOfficerDashboard() {
       .select("quantity, total_amount")
       .eq("store_name", storeName)
       .eq("status", "Confirmed")
+      .neq("sale_type", "truck_load_out")
       .gte("sold_at", from)
       .lte("sold_at", to)
 
@@ -252,7 +256,7 @@ export default function StoreOfficerDashboard() {
   async function fetchSales(storeName: string) {
     const { data } = await supabase
       .from("store_sales")
-      .select("sale_id, product, quantity, price_per_bag, total_amount, customer_name, payment_mode, delivery_mode, tricycle_id, truck_plate, sold_at, created_at, broker_id, status, bank_name, depositor_name, rejection_reason")
+      .select("sale_id, product, quantity, price_per_bag, total_amount, customer_name, payment_mode, delivery_mode, tricycle_id, truck_plate, sold_at, created_at, broker_id, status, bank_name, depositor_name, rejection_reason, sale_type")
       .eq("store_name", storeName)
       .order("sold_at", { ascending: false })
 
@@ -448,19 +452,27 @@ export default function StoreOfficerDashboard() {
     const saleProducts = saleLines.map(l => l.product)
     if (new Set(saleProducts).size !== saleProducts.length) return setSaleError("Duplicate products — merge them")
 
-    if (!salePayment) return setSaleError("Select a payment mode")
-    if (salePayment === "Transfer") {
-      if (!saleBank) return setSaleError("Select a bank for Transfer payments")
-      if (!saleDepositor?.trim()) return setSaleError("Enter depositor name for Transfer payments")
-    }
-    if (deliveryMode === "tricycle" && !saleTricycleId) return setSaleError("Select a tricycle")
-    if (deliveryMode === "truck" && !saleTruckPlate) return setSaleError("Select a truck")
     if (!saleDate) return setSaleError("Select a sale date")
 
-    if (isBrokerLinked) {
+    if (saleType === "truck_load_out") {
+      if (!saleTruckPlate) return setSaleError("Select the truck being loaded")
+    } else if (saleType === "broker") {
       if (!saleBroker) return setSaleError("Select a broker")
-    }
-    if (!isBrokerLinked) {
+      if (!salePayment) return setSaleError("Select a payment mode")
+      if (salePayment === "Transfer") {
+        if (!saleBank) return setSaleError("Select a bank for Transfer payments")
+        if (!saleDepositor?.trim()) return setSaleError("Enter depositor name for Transfer payments")
+      }
+      if (deliveryMode === "tricycle" && !saleTricycleId) return setSaleError("Select a tricycle")
+      if (deliveryMode === "truck" && !saleTruckPlate) return setSaleError("Select a truck")
+    } else {
+      if (!salePayment) return setSaleError("Select a payment mode")
+      if (salePayment === "Transfer") {
+        if (!saleBank) return setSaleError("Select a bank for Transfer payments")
+        if (!saleDepositor?.trim()) return setSaleError("Enter depositor name for Transfer payments")
+      }
+      if (deliveryMode === "tricycle" && !saleTricycleId) return setSaleError("Select a tricycle")
+      if (deliveryMode === "truck" && !saleTruckPlate) return setSaleError("Select a truck")
       if (saleLines.some(l => !l.price_per_bag)) return setSaleError("Enter a price per bag for each line")
       if (saleLines.some(l => parseAmount(l.price_per_bag) <= 0)) return setSaleError("Enter valid prices")
     }
@@ -484,17 +496,18 @@ export default function StoreOfficerDashboard() {
         store_name: officer.store_name,
         product: line.product,
         quantity: parseInt(line.quantity),
-        price_per_bag: isBrokerLinked ? null : parseAmount(line.price_per_bag),
-        customer_name: saleCustomer?.full_name.trim() || null,
-        payment_mode: salePayment,
-        delivery_mode: deliveryMode,
-        tricycle_id: deliveryMode === "tricycle" ? saleTricycleId : null,
-        truck_plate: deliveryMode === "truck" ? saleTruckPlate : null,
-        broker_id: isBrokerLinked ? saleBroker?.broker_id : null,
-        status: isBrokerLinked ? "Pending" : "Confirmed",
+        price_per_bag: saleType === "broker" ? null : saleType === "truck_load_out" ? 0 : parseAmount(line.price_per_bag),
+        customer_name: saleType === "truck_load_out" ? null : saleCustomer?.full_name.trim() || null,
+        payment_mode: saleType === "truck_load_out" ? "Load Out" : salePayment,
+        delivery_mode: saleType === "truck_load_out" ? "truck" : deliveryMode,
+        tricycle_id: deliveryMode === "tricycle" && saleType !== "truck_load_out" ? saleTricycleId : null,
+        truck_plate: (saleType === "truck_load_out" || deliveryMode === "truck") ? saleTruckPlate : null,
+        broker_id: saleType === "broker" ? saleBroker?.broker_id : null,
+        status: saleType === "broker" ? "Pending" : "Confirmed",
+        sale_type: saleType === "truck_load_out" ? "truck_load_out" : saleType === "broker" ? "broker" : "direct",
         sold_at: saleDateWithTime(saleDate),
-        bank_name: salePayment === "Transfer" ? saleBank : null,
-        depositor_name: salePayment === "Transfer" ? saleDepositor.trim() : null,
+        bank_name: salePayment === "Transfer" && saleType !== "truck_load_out" ? saleBank : null,
+        depositor_name: salePayment === "Transfer" && saleType !== "truck_load_out" ? saleDepositor.trim() : null,
       }))
 
       let saleErr: string | null = null
@@ -537,7 +550,7 @@ export default function StoreOfficerDashboard() {
       setTricycleSearch("")
       setSaleTruckPlate("")
       setTruckSearch("")
-      setIsBrokerLinked(false)
+      setSaleType("direct")
       setSaleBroker(null)
       setBrokerSearch("")
       setSaleDate(new Date().toISOString().split("T")[0])
@@ -561,6 +574,7 @@ export default function StoreOfficerDashboard() {
       sale.delivery_mode,
       sale.tricycle_number ?? "",
       sale.broker_id ?? "",
+      sale.sale_type ?? "direct",
       sale.status,
     ].join("|")
     const existing = groups.find(group => group.group_id === groupId)
@@ -580,6 +594,7 @@ export default function StoreOfficerDashboard() {
       sold_at: sale.sold_at,
       broker_id: sale.broker_id,
       broker_name: sale.broker_name,
+      sale_type: sale.sale_type ?? "direct",
       status: sale.status,
       rejection_reason: sale.rejection_reason,
       lines: [sale],
@@ -866,6 +881,9 @@ export default function StoreOfficerDashboard() {
           ))}
         </div>
 
+        {/* Load-out notice (shown once per device) */}
+        <StoreOfficerLoadOutNotice userId={officer?.officer_id || ""} />
+
         {/* Supply Tab */}
         {tab === "supply" && (
           <div>
@@ -963,7 +981,7 @@ export default function StoreOfficerDashboard() {
                 ))}
               </div>
               <button
-                onClick={() => { setShowSaleModal(true); setSaleError(""); setIsBrokerLinked(false); setSaleBroker(null) }}
+                onClick={() => { setShowSaleModal(true); setSaleError(""); setSaleType("direct"); setSaleBroker(null) }}
                 style={{ padding: "8px 16px", background: "#0070f3", color: "white", border: "none", borderRadius: 8, cursor: "pointer", fontWeight: 600, fontSize: FONT_SIZE.md, minHeight: 40, whiteSpace: "nowrap" }}
               >
                 + Log Sale
@@ -987,6 +1005,7 @@ export default function StoreOfficerDashboard() {
             <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
               {filteredSales.slice(0, salesPage * PAGE_SIZE).map(sale => {
                 const totalAmount = sale.lines.reduce((sum, line) => sum + (line.total_amount ?? 0), 0)
+                const isLoadOut = sale.sale_type === "truck_load_out"
                 const hasBrokerPricing = sale.lines.some(line => line.price_per_bag === null)
 
                 return (
@@ -1001,7 +1020,12 @@ export default function StoreOfficerDashboard() {
                       <p style={{ margin: "4px 0 0", fontSize: FONT_SIZE.xs, color: "#94a3b8" }}>{formatDateTime(sale.sold_at)}</p>
                     </div>
                     <div style={{ textAlign: "right" }}>
-                      {!hasBrokerPricing ? (
+                      {isLoadOut ? (
+                        <>
+                          <span style={{ fontSize: FONT_SIZE.xs, padding: "3px 8px", borderRadius: 6, background: "#fff7ed", color: "#ea580c", fontWeight: 600, display: "inline-block" }}>Truck Load Out</span>
+                          <p style={{ margin: "4px 0 0", fontSize: FONT_SIZE.sm, color: "#94a3b8" }}>Dispatch record</p>
+                        </>
+                      ) : !hasBrokerPricing ? (
                         <>
                           <p style={{ margin: 0, fontWeight: 700, fontSize: FONT_SIZE.lg, color: "#16a34a" }}>₦{totalAmount.toLocaleString()}</p>
                           <span style={{ fontSize: FONT_SIZE.xs, padding: "3px 8px", borderRadius: 6, background: "#f0f7ff", color: "#0070f3", fontWeight: 600, display: "inline-block", marginTop: 4 }}>{sale.payment_mode}</span>
@@ -1216,28 +1240,74 @@ export default function StoreOfficerDashboard() {
           setTricycleSearch("")
           setSaleTruckPlate("")
           setTruckSearch("")
-          setIsBrokerLinked(false)
+          setSaleType("direct")
           setSaleBroker(null)
           setBrokerSearch("")
           setSaleDate(new Date().toISOString().split("T")[0])
         }} style={{ position: "fixed", inset: 0, background: "rgba(15, 23, 42, 0.6)", backdropFilter: "blur(4px)", display: "flex", alignItems: isMobile ? "flex-end" : "center", justifyContent: "center", zIndex: 100, padding: isMobile ? 0 : 24 }}>
           <div onClick={e => e.stopPropagation()} style={{ background: "white", borderRadius: isMobile ? "20px 20px 0 0" : 12, padding: isMobile ? "28px 20px" : 32, width: "100%", maxWidth: 600, maxHeight: "90vh", overflowY: "auto", boxShadow: "0 25px 50px -12px rgba(0, 0, 0, 0.25)" }}>
-            <h3 style={{ margin: "0 0 20px 0", fontSize: FONT_SIZE.xl, fontWeight: 700, color: "#0f172a" }}>Log Sales</h3>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
+              <h3 style={{ margin: 0, fontSize: FONT_SIZE.xl, fontWeight: 700, color: "#0f172a" }}>Log Sales</h3>
+              <button onClick={() => {
+                setShowSaleModal(false)
+                setSaleLines([{ product: "", quantity: "", price_per_bag: "" }])
+                setSaleCustomer(null)
+                setSalePayment("")
+                setSaleError("")
+                setDeliveryMode("self")
+                setSaleTricycleId("")
+                setTricycleSearch("")
+                setSaleTruckPlate("")
+                setTruckSearch("")
+                setSaleType("direct")
+                setSaleBroker(null)
+                setBrokerSearch("")
+              }} style={{ background: "none", border: "none", cursor: "pointer", color: "#94a3b8", padding: 4, display: "flex" }}>
+                <Icon icon="mdi:close" width={22} />
+              </button>
+            </div>
 
-            {/* Broker Linked Toggle */}
-            <div style={{ marginBottom: 20, padding: "12px", background: "#f0f7ff", borderRadius: 8, border: "1px solid #bfdbfe" }}>
-              <label style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer" }}>
-                <input
-                  type="checkbox"
-                  checked={isBrokerLinked}
-                  onChange={e => { setIsBrokerLinked(e.target.checked); setSaleBroker(null); setSaleError(""); if (!e.target.checked && salePayment === "Broker") setSalePayment("") }}
-                  style={{ width: 18, height: 18, cursor: "pointer" }}
-                />
-                <span style={{ margin: "4px 0 0", fontWeight: 600, color: "#0070f3", fontSize: FONT_SIZE.sm }}>Broker-linked sales</span>
-              </label>
-              <p style={{ margin: "6px 0 0", fontSize: FONT_SIZE.xs, color: "#64748b" }}>
-                {isBrokerLinked ? "Broker will provide the prices" : ""}
-              </p>
+            {/* Sale Type Segmented Control */}
+            <div style={{ marginBottom: 20 }}>
+              <label style={{ display: "block", fontWeight: 600, fontSize: FONT_SIZE.sm, color: "#475569", marginBottom: 8 }}>Sale Type *</label>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 6 }}>
+                {([
+                  { value: "direct" as const, label: "Direct Sale", icon: "mdi:account-cash", color: "#10b981" },
+                  { value: "truck_load_out" as const, label: "Truck Load Out", icon: "mdi:truck-fast-outline", color: "#0070f3" },
+                  { value: "broker" as const, label: "Broker-Linked", icon: "mdi:handshake", color: "#f59e0b" },
+                ]).map(t => (
+                  <button
+                    key={t.value}
+                    type="button"
+                    onClick={() => { setSaleType(t.value); setSaleError(""); if (t.value !== "broker" && salePayment === "Broker") setSalePayment("") }}
+                    style={{
+                      padding: isMobile ? "10px 8px" : "10px 12px", borderRadius: 8, cursor: "pointer",
+                      border: `2px solid ${saleType === t.value ? t.color : "#e2e8f0"}`,
+                      background: saleType === t.value ? `${t.color}15` : "white",
+                      color: saleType === t.value ? t.color : "#64748b",
+                      fontWeight: saleType === t.value ? 700 : 500, fontSize: FONT_SIZE.xs,
+                      display: "flex", flexDirection: "column", alignItems: "center", gap: 4, minHeight: 52,
+                      transition: "all 0.2s",
+                    }}
+                  >
+                    <Icon icon={t.icon} width={18} />
+                    {t.label}
+                  </button>
+                ))}
+              </div>
+              {saleType === "truck_load_out" && (
+                <p style={{ margin: "8px 0 0", fontSize: FONT_SIZE.xs, color: "#0070f3", lineHeight: 1.4 }}>
+                  Dispatch record — no price, no broker, goods loaded onto a KBNL truck for a trip. Not counted as store revenue.
+                </p>
+              )}
+              {saleType === "broker" && deliveryMode === "truck" && (
+                <div style={{ marginTop: 8, padding: "8px 12px", background: "#fffbeb", borderRadius: 6, border: "1px solid #fde68a", display: "flex", alignItems: "flex-start", gap: 8 }}>
+                  <Icon icon="mdi:information-outline" width={16} color="#d97706" style={{ flexShrink: 0, marginTop: 1 }} />
+                  <p style={{ margin: 0, fontSize: FONT_SIZE.xs, color: "#92400e", lineHeight: 1.5 }}>
+                    If goods are going to a specific customer via this broker, Broker-linked is correct. If loading onto a truck for a trip/dispatch with no specific customer, use <strong>Truck Load Out</strong> instead.
+                  </p>
+                </div>
+              )}
             </div>
 
             {/* Products Section */}
@@ -1249,7 +1319,7 @@ export default function StoreOfficerDashboard() {
 
               <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 12 }}>
                 {saleLines.map((line, i) => (
-                  <div key={i} style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr 1fr" : "2fr 1fr " + (isBrokerLinked ? "0fr" : "1fr") + " auto", gap: 8, alignItems: "center" }}>
+                  <div key={i} style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr 1fr" : "2fr 1fr " + (saleType !== "direct" ? "0fr" : "1fr") + " auto", gap: 8, alignItems: "center" }}>
                     <ModernInput
                       as="select"
                       value={line.product}
@@ -1270,7 +1340,7 @@ export default function StoreOfficerDashboard() {
                       style={{ padding: "10px 12px", borderRadius: 6, border: "1px solid #e0e0e0", fontSize: FONT_SIZE.sm, boxSizing: "border-box", minHeight: 44 }}
                     />
 
-                    {!isBrokerLinked && (
+                    {saleType === "direct" && (
                       <ModernInput
                         type="text"
                         inputMode="numeric"
@@ -1294,7 +1364,7 @@ export default function StoreOfficerDashboard() {
             </div>
 
             {/* Broker Selection */}
-            {isBrokerLinked && (
+            {saleType === "broker" && (
               <div style={{ marginBottom: 16, position: "relative" }}>
                 <label style={{ display: "block", fontWeight: 600, marginBottom: 6, fontSize: FONT_SIZE.sm, color: "#475569" }}>Broker *</label>
                 {brokers.length === 0
@@ -1337,84 +1407,26 @@ export default function StoreOfficerDashboard() {
             )}
 
             {/* Customer Name */}
-            <div style={{ marginBottom: 16 }}>
-              <label style={{ display: "block", fontWeight: 600, marginBottom: 6, fontSize: FONT_SIZE.sm, color: "#475569" }}>Customer Name <span style={{ fontWeight: 400, color: "#94a3b8" }}>(optional)</span></label>
-              <CustomerSelector 
-                onSelect={(c: Customer) => { setSaleCustomer(c); setSaleError("") }} 
-                allowUnsavedNew={true}
-                initialValue={saleCustomer?.full_name || ""}
-              />
-              {saleCustomer && (
-                <div style={{ marginTop: 8, padding: "8px 12px", background: "#eff6ff", borderRadius: 6, fontSize: FONT_SIZE.sm, color: "#0070f3", fontWeight: 500 }}>
-                  Selected: {saleCustomer.full_name}
-                </div>
-              )}
-            </div>
-
-            {/* Delivery Mode */}
-            <div style={{ marginBottom: 16 }}>
-              <label style={{ display: "block", fontWeight: 600, marginBottom: 6, fontSize: FONT_SIZE.sm, color: "#475569" }}>Delivery Mode</label>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8 }}>
-                {(["self", "tricycle", "truck"] as const).map(type => (
-                  <button
-                    key={type}
-                    onClick={() => { setDeliveryMode(type); setSaleTricycleId(""); setSaleTruckPlate(""); setTruckSearch(""); setSaleError("") }}
-                    style={{
-                      padding: "10px 12px", borderRadius: 8, cursor: "pointer",
-                      border: `1.5px solid ${deliveryMode === type ? "#0070f3" : "#e2e8f0"}`,
-                      background: deliveryMode === type ? "#0070f3" : "white",
-                      color: deliveryMode === type ? "white" : "#64748b",
-                      fontWeight: deliveryMode === type ? 600 : 500, fontSize: FONT_SIZE.sm, minHeight: 44,
-                    }}
-                  >
-                    {type === "self" ? "Self" : type === "truck" ? "Truck" : "Tricycle"}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* Tricycle Selection */}
-            {deliveryMode === "tricycle" && (
-              <div style={{ marginBottom: 16, position: "relative" }}>
-                <label style={{ display: "block", fontWeight: 600, marginBottom: 6, fontSize: FONT_SIZE.sm, color: "#475569" }}>Tricycle *</label>
-                {tricycles.length === 0
-                  ? <p style={{ fontSize: FONT_SIZE.sm, color: "#94a3b8", margin: 0 }}>No tricycles available.</p>
-                  : (
-                    <div style={{ position: "relative" }}>
-                      <ModernInput
-                        type="text"
-                        placeholder="Search tricycle…"
-                        value={tricycleSearch}
-                        onChange={e => { setTricycleSearch(e.target.value); setTricycleDropOpen(true) }}
-                        onFocus={() => setTricycleDropOpen(true)}
-                        onBlur={() => setTimeout(() => setTricycleDropOpen(false), 150)}
-                        style={{ width: "100%", padding: "10px 12px", borderRadius: 6, border: "1px solid #e0e0e0", fontSize: FONT_SIZE.base, boxSizing: "border-box", minHeight: 44 }}
-                      />
-                      {tricycleDropOpen && (
-                        <ul style={{ position: "absolute", top: "calc(100% + 4px)", left: 0, right: 0, background: "white", border: "1px solid #e2e8f0", borderRadius: 8, listStyle: "none", margin: 0, padding: 4, maxHeight: 200, overflowY: "auto", zIndex: 50, boxShadow: "0 4px 12px rgba(0,0,0,0.1)" }}>
-                          {tricycles
-                            .filter(t => t.tricycle_number.toLowerCase().includes(tricycleSearch.toLowerCase()))
-                            .map(t => (
-                              <li
-                                key={t.tricycle_id}
-                                onMouseDown={() => { setSaleTricycleId(t.tricycle_id); setTricycleSearch(t.tricycle_number); setTricycleDropOpen(false); setSaleError("") }}
-                                style={{ padding: "10px 12px", cursor: "pointer", fontSize: FONT_SIZE.base, background: saleTricycleId === t.tricycle_id ? "#eff6ff" : "white", borderRadius: 6 }}
-                              >
-                                {t.tricycle_number}
-                              </li>
-                            ))}
-                        </ul>
-                      )}
-                    </div>
-                  )
-                }
+            {saleType !== "truck_load_out" && (
+              <div style={{ marginBottom: 16 }}>
+                <label style={{ display: "block", fontWeight: 600, marginBottom: 6, fontSize: FONT_SIZE.sm, color: "#475569" }}>Customer Name <span style={{ fontWeight: 400, color: "#94a3b8" }}>(optional)</span></label>
+                <CustomerSelector 
+                  onSelect={(c: Customer) => { setSaleCustomer(c); setSaleError("") }} 
+                  allowUnsavedNew={true}
+                  initialValue={saleCustomer?.full_name || ""}
+                />
+                {saleCustomer && (
+                  <div style={{ marginTop: 8, padding: "8px 12px", background: "#eff6ff", borderRadius: 6, fontSize: FONT_SIZE.sm, color: "#0070f3", fontWeight: 500 }}>
+                    Selected: {saleCustomer.full_name}
+                  </div>
+                )}
               </div>
             )}
 
-            {/* Truck Selection */}
-            {deliveryMode === "truck" && (
-              <div style={{ marginBottom: 16, position: "relative" }}>
-                <label style={{ display: "block", fontWeight: 600, marginBottom: 6, fontSize: FONT_SIZE.sm, color: "#475569" }}>Truck *</label>
+            {/* Delivery Mode / Truck Selection */}
+            {saleType === "truck_load_out" ? (
+              <div style={{ marginBottom: 16 }}>
+                <label style={{ display: "block", fontWeight: 600, marginBottom: 6, fontSize: FONT_SIZE.sm, color: "#475569" }}>Truck Being Loaded *</label>
                 {trucks.length === 0
                   ? <p style={{ fontSize: FONT_SIZE.sm, color: "#94a3b8", margin: 0 }}>No trucks available.</p>
                   : (
@@ -1446,12 +1458,111 @@ export default function StoreOfficerDashboard() {
                     </div>
                   )
                 }
-                {saleTruckPlate && (
-                  <div style={{ marginTop: 8, padding: "8px 12px", background: "#fefce8", borderRadius: 6, fontSize: FONT_SIZE.sm, color: "#ca8a04", fontWeight: 500, border: "1px solid #fde68a" }}>
-                    Selected: {saleTruckPlate}
+              </div>
+            ) : (
+              <>
+                <div style={{ marginBottom: 16 }}>
+                  <label style={{ display: "block", fontWeight: 600, marginBottom: 6, fontSize: FONT_SIZE.sm, color: "#475569" }}>Delivery Mode</label>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8 }}>
+                    {(["self", "tricycle", "truck"] as const).map(type => (
+                      <button
+                        key={type}
+                        onClick={() => { setDeliveryMode(type); setSaleTricycleId(""); setSaleTruckPlate(""); setTruckSearch(""); setSaleError("") }}
+                        style={{
+                          padding: "10px 12px", borderRadius: 8, cursor: "pointer",
+                          border: `1.5px solid ${deliveryMode === type ? "#0070f3" : "#e2e8f0"}`,
+                          background: deliveryMode === type ? "#0070f3" : "white",
+                          color: deliveryMode === type ? "white" : "#64748b",
+                          fontWeight: deliveryMode === type ? 600 : 500, fontSize: FONT_SIZE.sm, minHeight: 44,
+                        }}
+                      >
+                        {type === "self" ? "Self" : type === "truck" ? "Truck" : "Tricycle"}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Tricycle Selection */}
+                {deliveryMode === "tricycle" && (
+                  <div style={{ marginBottom: 16, position: "relative" }}>
+                    <label style={{ display: "block", fontWeight: 600, marginBottom: 6, fontSize: FONT_SIZE.sm, color: "#475569" }}>Tricycle *</label>
+                    {tricycles.length === 0
+                      ? <p style={{ fontSize: FONT_SIZE.sm, color: "#94a3b8", margin: 0 }}>No tricycles available.</p>
+                      : (
+                        <div style={{ position: "relative" }}>
+                          <ModernInput
+                            type="text"
+                            placeholder="Search tricycle…"
+                            value={tricycleSearch}
+                            onChange={e => { setTricycleSearch(e.target.value); setTricycleDropOpen(true) }}
+                            onFocus={() => setTricycleDropOpen(true)}
+                            onBlur={() => setTimeout(() => setTricycleDropOpen(false), 150)}
+                            style={{ width: "100%", padding: "10px 12px", borderRadius: 6, border: "1px solid #e0e0e0", fontSize: FONT_SIZE.base, boxSizing: "border-box", minHeight: 44 }}
+                          />
+                          {tricycleDropOpen && (
+                            <ul style={{ position: "absolute", top: "calc(100% + 4px)", left: 0, right: 0, background: "white", border: "1px solid #e2e8f0", borderRadius: 8, listStyle: "none", margin: 0, padding: 4, maxHeight: 200, overflowY: "auto", zIndex: 50, boxShadow: "0 4px 12px rgba(0,0,0,0.1)" }}>
+                              {tricycles
+                                .filter(t => t.tricycle_number.toLowerCase().includes(tricycleSearch.toLowerCase()))
+                                .map(t => (
+                                  <li
+                                    key={t.tricycle_id}
+                                    onMouseDown={() => { setSaleTricycleId(t.tricycle_id); setTricycleSearch(t.tricycle_number); setTricycleDropOpen(false); setSaleError("") }}
+                                    style={{ padding: "10px 12px", cursor: "pointer", fontSize: FONT_SIZE.base, background: saleTricycleId === t.tricycle_id ? "#eff6ff" : "white", borderRadius: 6 }}
+                                  >
+                                    {t.tricycle_number}
+                                  </li>
+                                ))}
+                            </ul>
+                          )}
+                        </div>
+                      )
+                    }
                   </div>
                 )}
-              </div>
+
+                {/* Truck Selection (direct or broker with truck delivery) */}
+                {deliveryMode === "truck" && (
+                  <div style={{ marginBottom: 16, position: "relative" }}>
+                    <label style={{ display: "block", fontWeight: 600, marginBottom: 6, fontSize: FONT_SIZE.sm, color: "#475569" }}>Truck *</label>
+                    {trucks.length === 0
+                      ? <p style={{ fontSize: FONT_SIZE.sm, color: "#94a3b8", margin: 0 }}>No trucks available.</p>
+                      : (
+                        <div style={{ position: "relative" }}>
+                          <ModernInput
+                            type="text"
+                            placeholder="Search truck…"
+                            value={truckSearch}
+                            onChange={e => { setTruckSearch(e.target.value); setTruckDropOpen(true) }}
+                            onFocus={() => setTruckDropOpen(true)}
+                            onBlur={() => setTimeout(() => setTruckDropOpen(false), 150)}
+                            style={{ width: "100%", padding: "10px 12px", borderRadius: 6, border: "1px solid #e0e0e0", fontSize: FONT_SIZE.base, boxSizing: "border-box", minHeight: 44 }}
+                          />
+                          {truckDropOpen && (
+                            <ul style={{ position: "absolute", top: "calc(100% + 4px)", left: 0, right: 0, background: "white", border: "1px solid #e2e8f0", borderRadius: 8, listStyle: "none", margin: 0, padding: 4, maxHeight: 200, overflowY: "auto", zIndex: 50, boxShadow: "0 4px 12px rgba(0,0,0,0.1)" }}>
+                              {trucks
+                                .filter(t => t.plate_number.toLowerCase().includes(truckSearch.toLowerCase()) || (t.kbnl_truck_no || "").toLowerCase().includes(truckSearch.toLowerCase()))
+                                .map(t => (
+                                  <li
+                                    key={t.plate_number}
+                                    onMouseDown={() => { setSaleTruckPlate(t.plate_number); setTruckSearch(`${t.plate_number}${t.kbnl_truck_no ? ` · #${t.kbnl_truck_no}` : ""}`); setTruckDropOpen(false); setSaleError("") }}
+                                    style={{ padding: "10px 12px", cursor: "pointer", fontSize: FONT_SIZE.base, background: saleTruckPlate === t.plate_number ? "#eff6ff" : "white", borderRadius: 6 }}
+                                  >
+                                    {t.plate_number}{t.kbnl_truck_no ? ` · #${t.kbnl_truck_no}` : ""}
+                                  </li>
+                                ))}
+                            </ul>
+                          )}
+                        </div>
+                      )
+                    }
+                    {saleTruckPlate && (
+                      <div style={{ marginTop: 8, padding: "8px 12px", background: "#fefce8", borderRadius: 6, fontSize: FONT_SIZE.sm, color: "#ca8a04", fontWeight: 500, border: "1px solid #fde68a" }}>
+                        Selected: {saleTruckPlate}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </>
             )}
 
             {/* Sale Date */}
@@ -1466,18 +1577,20 @@ export default function StoreOfficerDashboard() {
             </div>
 
             {/* Payment Mode */}
-            <div style={{ marginBottom: 24 }}>
-              <label style={{ display: "block", fontWeight: 600, marginBottom: 6, fontSize: FONT_SIZE.sm, color: "#475569" }}>Payment Mode *</label>
-              <ModernInput
-                as="select"
-                value={salePayment}
-                onChange={e => { setSalePayment(e.target.value); setSaleError("") }}
-                style={{ width: "100%", padding: "10px 12px", borderRadius: 6, border: "1px solid #e0e0e0", fontSize: FONT_SIZE.base, boxSizing: "border-box", minHeight: 44 }}
-              >
-                <option value="">Select payment mode</option>
-                {PAYMENT_MODES.filter(m => isBrokerLinked || m !== "Broker").map(m => (<option key={m} value={m}>{m}</option>))}
-              </ModernInput>
-            </div>
+            {saleType !== "truck_load_out" && (
+              <div style={{ marginBottom: 24 }}>
+                <label style={{ display: "block", fontWeight: 600, marginBottom: 6, fontSize: FONT_SIZE.sm, color: "#475569" }}>Payment Mode *</label>
+                <ModernInput
+                  as="select"
+                  value={salePayment}
+                  onChange={e => { setSalePayment(e.target.value); setSaleError("") }}
+                  style={{ width: "100%", padding: "10px 12px", borderRadius: 6, border: "1px solid #e0e0e0", fontSize: FONT_SIZE.base, boxSizing: "border-box", minHeight: 44 }}
+                >
+                  <option value="">Select payment mode</option>
+                  {PAYMENT_MODES.filter(m => saleType === "broker" || m !== "Broker").map(m => (<option key={m} value={m}>{m}</option>))}
+                </ModernInput>
+              </div>
+            )}
 
             {salePayment === "Transfer" && (
               <>
@@ -1521,7 +1634,7 @@ export default function StoreOfficerDashboard() {
                 setTricycleSearch("")
                 setSaleTruckPlate("")
                 setTruckSearch("")
-                setIsBrokerLinked(false)
+                setSaleType("direct")
                 setSaleBroker(null)
                 setBrokerSearch("")
                 setSaleDate(dayjs().format("YYYY-MM-DD"))

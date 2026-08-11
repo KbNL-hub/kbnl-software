@@ -28,6 +28,7 @@ type StoreSale = {
   bank_name: string | null
   depositor_name: string | null
   rejection_reason: string | null
+  sale_type: string | null
 }
 
 type GroupedSale = {
@@ -106,7 +107,7 @@ export default function StoreSales() {
   async function fetchSales() {
     const { data, error } = await supabase
       .from("store_sales")
-      .select("sale_id, store_name, product, quantity, price_per_bag, total_amount, customer_name, payment_mode, delivery_mode, tricycle_id, truck_plate, broker_id, sold_at, created_at, status, bank_name, depositor_name, rejection_reason")
+      .select("sale_id, store_name, product, quantity, price_per_bag, total_amount, customer_name, payment_mode, delivery_mode, tricycle_id, truck_plate, broker_id, sold_at, created_at, status, bank_name, depositor_name, rejection_reason, sale_type")
       .order("sold_at", { ascending: false })
 
     if (error) throw error
@@ -527,6 +528,9 @@ export default function StoreSales() {
                           <div>
                             <h3 style={{ margin: 0, color: "#0f172a", fontSize: FONT_SIZE.lg, fontWeight: 700 }}>{sale.store_name}</h3>
                             <p style={{ margin: "4px 0 0", color: "#64748b", fontSize: FONT_SIZE.sm }}>{sale.product}</p>
+                            {sale.sale_type === "truck_load_out" && (
+                              <span style={{ marginTop: 4, padding: "2px 8px", borderRadius: 6, background: "#fff7ed", color: "#ea580c", fontWeight: 600, fontSize: FONT_SIZE.xs, display: "inline-block" }}>Truck Load Out</span>
+                            )}
                           </div>
                           <span style={{ padding: "6px 12px", borderRadius: 16, fontSize: FONT_SIZE.xs, fontWeight: 600, background: sale.status === "Confirmed" ? "#ecfdf5" : sale.status === "Pending" ? "#fffbeb" : sale.status === "Rejected" ? "#fef2f2" : "#f1f5f9", color: sale.status === "Confirmed" ? "#10b981" : sale.status === "Pending" ? "#f5a623" : sale.status === "Rejected" ? "#ef4444" : "#475569", border: `1.5px solid ${sale.status === "Confirmed" ? "#10b981" : sale.status === "Pending" ? "#f5a623" : sale.status === "Rejected" ? "#ef4444" : "#cbd5e1"}`, whiteSpace: "nowrap" }}>
                             {sale.status}
@@ -548,8 +552,12 @@ export default function StoreSales() {
 
                         <div style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 16, paddingBottom: 16, borderBottom: "1px solid #f1f5f9" }}>
                           <p style={{ margin: 0, fontSize: FONT_SIZE.sm, color: "#475569" }}><span style={{ color: "#94a3b8", width: 90, display: "inline-block" }}>Qty:</span> <span style={{ fontWeight: 500 }}>{sale.quantity} bags</span></p>
-                          <p style={{ margin: 0, fontSize: FONT_SIZE.sm, color: "#475569" }}><span style={{ color: "#94a3b8", width: 90, display: "inline-block" }}>Price/bag:</span> <span style={{ fontWeight: 500 }}>{sale.price_per_bag ? formatAmount(sale.price_per_bag) : "—"}</span></p>
-                          <p style={{ margin: 0, fontSize: FONT_SIZE.sm, color: "#475569" }}><span style={{ color: "#94a3b8", width: 90, display: "inline-block" }}>Total:</span> <span style={{ fontWeight: 600, color: "#10b981" }}>{sale.total_amount ? formatAmount(sale.total_amount) : "—"}</span></p>
+                          {sale.sale_type !== "truck_load_out" && (
+                            <>
+                              <p style={{ margin: 0, fontSize: FONT_SIZE.sm, color: "#475569" }}><span style={{ color: "#94a3b8", width: 90, display: "inline-block" }}>Price/bag:</span> <span style={{ fontWeight: 500 }}>{sale.price_per_bag ? formatAmount(sale.price_per_bag) : "—"}</span></p>
+                              <p style={{ margin: 0, fontSize: FONT_SIZE.sm, color: "#475569" }}><span style={{ color: "#94a3b8", width: 90, display: "inline-block" }}>Total:</span> <span style={{ fontWeight: 600, color: "#10b981" }}>{sale.total_amount ? formatAmount(sale.total_amount) : "—"}</span></p>
+                            </>
+                          )}
                           <p style={{ margin: 0, fontSize: FONT_SIZE.sm, color: "#475569" }}><span style={{ color: "#94a3b8", width: 90, display: "inline-block" }}>Payment:</span> {sale.payment_mode}</p>
                           <p style={{ margin: 0, fontSize: FONT_SIZE.sm, color: "#475569" }}><span style={{ color: "#94a3b8", width: 90, display: "inline-block" }}>Delivery:</span> {sale.delivery_mode}{sale.truck_plate ? ` (${sale.truck_plate})` : ""}</p>
                           {sale.customer_name && (
@@ -607,11 +615,14 @@ export default function StoreSales() {
                       </tr>
                       {group.sales.map((sale) => (
                         <tr key={sale.sale_id} style={{ borderBottom: "1px solid #e2e8f0", transition: "background 0.2s ease" }} onMouseEnter={e => e.currentTarget.style.background = "#f8fafc"} onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
-                          <td style={{ padding: "12px 16px", color: "#0f172a", fontSize: FONT_SIZE.base, fontWeight: 600 }}>{sale.store_name}</td>
+                          <td style={{ padding: "12px 16px", color: "#0f172a", fontSize: FONT_SIZE.base, fontWeight: 600 }}>
+                            {sale.store_name}
+                            {sale.sale_type === "truck_load_out" && <span style={{ marginLeft: 6, padding: "2px 6px", borderRadius: 6, background: "#fff7ed", color: "#ea580c", fontWeight: 600, fontSize: 10 }}>Load Out</span>}
+                          </td>
                           <td style={{ padding: "12px 16px", color: "#0f172a", fontSize: FONT_SIZE.base }}>{sale.product}</td>
                           <td style={{ padding: "12px 16px", color: "#0f172a", fontSize: FONT_SIZE.base, fontWeight: 500 }}>{sale.quantity}</td>
-                          <td style={{ padding: "12px 16px", color: "#64748b", fontSize: FONT_SIZE.sm }}>{formatAmount(sale.price_per_bag)}</td>
-                          <td style={{ padding: "12px 16px", color: "#10b981", fontSize: FONT_SIZE.base, fontWeight: 600 }}>{formatAmount(sale.total_amount)}</td>
+                          <td style={{ padding: "12px 16px", color: "#64748b", fontSize: FONT_SIZE.sm }}>{sale.sale_type === "truck_load_out" ? "—" : formatAmount(sale.price_per_bag)}</td>
+                          <td style={{ padding: "12px 16px", color: "#10b981", fontSize: FONT_SIZE.base, fontWeight: 600 }}>{sale.sale_type === "truck_load_out" ? "—" : formatAmount(sale.total_amount)}</td>
                           <td style={{ padding: "12px 16px", color: "#64748b", fontSize: FONT_SIZE.sm }}>{sale.customer_name || "—"}</td>
                           <td style={{ padding: "12px 16px", color: "#64748b", fontSize: FONT_SIZE.sm }}>{sale.payment_mode}</td>
                           <td style={{ padding: "12px 16px", color: "#64748b", fontSize: FONT_SIZE.sm }}>{sale.delivery_mode}{sale.truck_plate ? ` (${sale.truck_plate})` : ""}</td>

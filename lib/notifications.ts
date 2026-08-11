@@ -31,6 +31,24 @@ export function notifyDriverStopReminder() {
   })
 }
 
+export function notifyDriverATFAuthorised(driverId: string, plateNumber: string) {
+  return sendToUser(driverId, {
+    title: 'ATF Authorised',
+    body: `Your fuel request for ${plateNumber} has been authorised. Tap to confirm receipt.`,
+    url: '/driver',
+    tag: `atf-authorised-${driverId}`,
+  })
+}
+
+export function notifyDriverATFInvalidated(driverId: string, plateNumber: string, reason: string) {
+  return sendToUser(driverId, {
+    title: 'ATF Invalidated',
+    body: `Your fuel request for ${plateNumber} was invalidated — ${reason}. Tap to view.`,
+    url: '/driver',
+    tag: `atf-invalidated-${driverId}`,
+  })
+}
+
 // ─── Broker ──────────────────────────────────────────────
 
 export function notifyBrokerNewTripStarted(tripId: string, materialCentre: string) {
@@ -203,6 +221,15 @@ export function notifyTruckAdminDieselAlert(plateNumber: string) {
     body: `Diesel consumption report flagged for ${plateNumber}. Tap to review.`,
     url: '/truck-admin',
     tag: `diesel-${plateNumber}`,
+  })
+}
+
+export function notifyTruckAdminFuelTopUp(companyName: string, amount: number) {
+  return notify(['TruckAdmin'], {
+    title: 'Fuel Balance Top-Up',
+    body: `₦${amount.toLocaleString()} top-up added to ${companyName}. Tap to view.`,
+    url: '/admin?section=diesel-manager',
+    tag: `fuel-topup-${companyName}`,
   })
 }
 

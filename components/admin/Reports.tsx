@@ -590,6 +590,7 @@ export default function Reports() {
         .select("quantity, total_amount")
         .eq("broker_id", b.broker_id)
         .eq("status", "Confirmed")
+        .neq("sale_type", "truck_load_out")
         .gte("sold_at", from)
         .lte("sold_at", to)
 
@@ -724,6 +725,7 @@ export default function Reports() {
       .from("store_sales")
       .select("store_name, quantity, total_amount")
       .eq("status", "Confirmed")
+      .neq("sale_type", "truck_load_out")
       .gte("sold_at", from)
       .lte("sold_at", to)
 

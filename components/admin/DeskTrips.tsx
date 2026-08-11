@@ -50,7 +50,6 @@ type Trip = {
   driver_id: string
   driver_name: string
   driver_phone: string
-  driver_status: string
   product: string
   material_centre: string
   loaded_quantity: number
@@ -66,7 +65,6 @@ type Trip = {
   amount_charged: number | null
   payment_mode: string | null
   created_at: string
-  completed_at: string | null
   isDD?: boolean
   recorded: boolean
   posted: boolean
@@ -74,55 +72,28 @@ type Trip = {
 
 type ViewMode = "card" | "table"
 
-function useBreakpoint() {
-  const [isDesktop, setIsDesktop] = useState(false)
-  const [isMobile, setIsMobile] = useState(true)
-
-  useEffect(() => {
-    const handleResize = () => {
-      setIsMobile(window.innerWidth < 640)
-      setIsDesktop(window.innerWidth >= 640)
-    }
-
-    handleResize()
-    window.addEventListener("resize", handleResize)
-    return () => window.removeEventListener("resize", handleResize)
-  }, [])
-
-  return { isMobile, isDesktop }
-}
-
-
-
 const getPillStyle = (filter: string, isActive: boolean) => {
   if (!isActive) {
     return { bg: "white", textColor: "#64748b", borderColor: "#e2e8f0" }
   }
-  
   if (filter === "All") {
     return { bg: "#171717", textColor: "white", borderColor: "#171717" }
-  } else if (filter === "Active") {
-    return { bg: "#eff6ff", textColor: "#0070f3", borderColor: "#0070f3" }
   } else if (filter === "Pending") {
     return { bg: "#fffbeb", textColor: "#f5a623", borderColor: "#f5a623" }
   } else if (filter === "Posted") {
     return { bg: "#f0fdf4", textColor: "#16a34a", borderColor: "#16a34a" }
-  } else if (filter === "Disputed") {
-    return { bg: "#fef2f2", textColor: "#ef4444", borderColor: "#ef4444" }
   }
-  
   return { bg: "white", textColor: "#64748b", borderColor: "#e2e8f0" }
 }
 
-const filterOptions = ["All", "Active", "Pending", "Posted", "Disputed"]
+const filterOptions = ["All", "Pending", "Posted"]
 
-export default function MonitorTrips() {
-  const { isMobile } = useBreakpoint()
+export default function DeskTrips() {
   const { getAccess } = usePermissions()
-  const canEdit = getAccess("monitor-trips").canEdit
+  const canEdit = getAccess("trips").canEdit
   const [trips, setTrips] = useState<Trip[]>([])
   const [loading, setLoading] = useState(true)
-  const [filterStatus, setFilterStatus] = useState("Active")
+  const [filterStatus, setFilterStatus] = useState("Pending")
   const [plateSearch, setPlateSearch] = useState("")
   const [plateDropOpen, setPlateDropOpen] = useState(false)
   const [dateDropOpen, setDateDropOpen] = useState(false)
@@ -132,31 +103,25 @@ export default function MonitorTrips() {
   const hasActiveFilters = !!plateSearch || !!filterDateFrom || !!filterDateTo
   const uniquePlates = [...new Set(trips.map(t => t.plate_number))].sort()
   const matchedPlates = plateSearch ? uniquePlates.filter(p => p.toLowerCase().includes(plateSearch.trim().toLowerCase())) : []
-  const [viewMode, setViewMode] = useState<ViewMode>(isMobile ? "card" : "table")
-  const [selectedDriver, setSelectedDriver] = useState<Pick<Trip, "driver_name" | "driver_phone" | "driver_status"> | null>(null)
+  const [selectedDriver, setSelectedDriver] = useState<Pick<Trip, "driver_name" | "driver_phone"> | null>(null)
   const [selectedStops, setSelectedStops] = useState<Stop[] | null>(null)
   const [selectedDiscrepancies, setSelectedDiscrepancies] = useState<Discrepancy[]>([])
   const [selectedLoadMore, setSelectedLoadMore] = useState<LoadMoreEntry[]>([])
   const [selectedPlate, setSelectedPlate] = useState("")
-  const [selectedTrip, setSelectedTrip] = useState<Pick<Trip, "trip_id" | "plate_number" | "atc" | "order_no" | "child_order_no" | "amount_charged" | "payment_mode" | "trip_status" | "recorded" | "posted" | "isDD"> | null>(null)
+  const [selectedTrip, setSelectedTrip] = useState<Pick<Trip, "trip_id" | "plate_number" | "atc" | "order_no" | "child_order_no" | "trip_status" | "recorded" | "posted" | "isDD"> | null>(null)
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null)
   const [postingTrip, setPostingTrip] = useState<string | null>(null)
   const [postLoading, setPostLoading] = useState(false)
-  const [editingQuantity, setEditingQuantity] = useState<{ stopId: string; value: number } | null>(null)
-  const [quantitySaving, setQuantitySaving] = useState(false)
-  const [quantityMessage, setQuantityMessage] = useState<{ stopId: string; text: string; type: "success" | "error" } | null>(null)
-  const [resolvingStop, setResolvingStop] = useState<Stop | null>(null)
-  const [resolveBags, setResolveBags] = useState("")
-  const [resolveLocation, setResolveLocation] = useState("")
-  const [resolveBrokerId, setResolveBrokerId] = useState("")
-  const [resolveSubmitting, setResolveSubmitting] = useState(false)
-  const [resolveMessage, setResolveMessage] = useState("")
-  const [allBrokers, setAllBrokers] = useState<{ broker_id: string; broker_name: string }[]>([])
+  const [viewMode, setViewMode] = useState<ViewMode>("card")
 
-  async function fetchTrips() {
+  const isMobile = typeof window !== "undefined" && window.innerWidth < 640
+
+  async function fetchRecordedTrips() {
     const { data: tripsData, error } = await supabase
       .from("Trips")
-      .select("trip_id, plate_number, driver_id, product, material_centre, loaded_quantity, trip_status, ATC, order_no, child_order_no, amount_charged, payment_mode, created_at, updated_at, recorded, posted")
+      .select("trip_id, plate_number, driver_id, product, material_centre, loaded_quantity, trip_status, ATC, order_no, child_order_no, amount_charged, payment_mode, created_at, recorded, posted")
+      .eq("recorded", true)
+      .eq("posted", false)
       .order("created_at", { ascending: false })
 
     if (error || !tripsData) return []
@@ -164,11 +129,11 @@ export default function MonitorTrips() {
     const tripIds = tripsData.map(t => t.trip_id)
 
     const driverIds = tripsData.map(t => t.driver_id).filter(Boolean)
-    const driverMap = new Map<string, { full_name: string; phone_number: string; status: string }>()
+    const driverMap = new Map<string, { full_name: string; phone_number: string }>()
     if (driverIds.length > 0) {
       const { data: driversData } = await supabase
         .from("Drivers")
-        .select("driver_id, full_name, phone_number, status")
+        .select("driver_id, full_name, phone_number")
         .in("driver_id", driverIds)
       for (const d of driversData || []) driverMap.set(d.driver_id, d)
     }
@@ -292,7 +257,6 @@ export default function MonitorTrips() {
         driver_id: trip.driver_id,
         driver_name: driver?.full_name ?? "Unknown",
         driver_phone: driver?.phone_number ?? "—",
-        driver_status: driver?.status ?? "—",
         product: trip.product,
         material_centre: trip.material_centre,
         loaded_quantity: trip.loaded_quantity,
@@ -308,7 +272,6 @@ export default function MonitorTrips() {
         amount_charged: trip.amount_charged ?? null,
         payment_mode: trip.payment_mode ?? null,
         created_at: trip.created_at,
-        completed_at: trip.trip_status === "Completed" ? trip.updated_at ?? null : null,
         recorded: trip.recorded ?? false,
         posted: trip.posted ?? false,
       }
@@ -317,10 +280,12 @@ export default function MonitorTrips() {
     return enriched
   }
 
-  async function fetchDdTrips() {
+  async function fetchRecordedDdTrips() {
     const { data: ddTripsData, error } = await supabase
       .from("dd_trips")
-      .select("dd_trip_id, plate_number, driver_name, driver_phone, product, loading_point, loaded_quantity, trip_status, atc, order_no, child_order_no, created_at, recorded, posted, posted_at")
+      .select("dd_trip_id, plate_number, driver_name, driver_phone, product, loading_point, loaded_quantity, trip_status, atc, order_no, child_order_no, created_at, recorded, posted")
+      .eq("recorded", true)
+      .eq("posted", false)
       .order("created_at", { ascending: false })
 
     if (error || !ddTripsData) return []
@@ -433,7 +398,6 @@ export default function MonitorTrips() {
       })
 
       const load_more_entries: LoadMoreEntry[] = loadMoreByTrip.get(ddTrip.dd_trip_id) || []
-
       const discrepancies: Discrepancy[] = ddDiscByTrip.get(ddTrip.dd_trip_id) || []
 
       const totalOffloaded = stops.reduce((sum, s) => sum + s.quantity_offloaded, 0)
@@ -446,7 +410,6 @@ export default function MonitorTrips() {
         driver_id: "",
         driver_name: ddTrip.driver_name ?? "DD Driver",
         driver_phone: ddTrip.driver_phone ?? "—",
-        driver_status: "Active",
         product: ddTrip.product,
         material_centre: ddTrip.loading_point,
         loaded_quantity: ddTrip.loaded_quantity,
@@ -462,7 +425,6 @@ export default function MonitorTrips() {
         amount_charged: null,
         payment_mode: null,
         created_at: ddTrip.created_at,
-        completed_at: ddTrip.trip_status === "Completed" ? ddTrip.posted_at ?? null : null,
         isDD: true,
         recorded: ddTrip.recorded ?? false,
         posted: ddTrip.posted ?? false,
@@ -474,8 +436,8 @@ export default function MonitorTrips() {
 
   const loadAll = useCallback(async () => {
     const [normal, dd] = await Promise.all([
-      fetchTrips().catch(() => []),
-      fetchDdTrips().catch(() => [])
+      fetchRecordedTrips().catch(() => []),
+      fetchRecordedDdTrips().catch(() => [])
     ])
     const ddTripIds = new Set(dd.map(t => t.trip_id))
     const allTrips = [...normal.filter(t => !ddTripIds.has(t.trip_id)), ...dd]
@@ -484,112 +446,19 @@ export default function MonitorTrips() {
     setLoading(false)
   }, [])
 
-   
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     loadAll()
   }, [loadAll])
 
   usePolling(loadAll, 120000)
 
-  function handlePostTripClick() {
-    if (!selectedStops || !selectedTrip) return
-    const allConfirmed = selectedStops.every((s) => s.confirmed) && !selectedStops.some((s) => s.disputed)
-    if (!allConfirmed) return
-    setPostingTrip(selectedTrip.trip_id)
-  }
-
-  async function handleSaveQuantity() {
-    if (!editingQuantity) return
-    setQuantitySaving(true)
-    setQuantityMessage(null)
-
-    const { error } = await apiMutate("trips", {
-      action: "update",
-      table: "Stops",
-      data: { quantity_offloaded: editingQuantity.value },
-      filters: { stop_id: editingQuantity.stopId },
-    })
-
-    if (error) {
-      setQuantityMessage({ stopId: editingQuantity.stopId, text: "Failed to update quantity", type: "error" })
-    } else {
-      setQuantityMessage({ stopId: editingQuantity.stopId, text: "Updated", type: "success" })
-      setSelectedStops((prev) => prev ? prev.map((s) => s.stop_id === editingQuantity.stopId ? { ...s, quantity_offloaded: editingQuantity.value } : s) : prev)
-      setTimeout(() => setQuantityMessage(null), 2000)
-      loadAll()
-    }
-    setEditingQuantity(null)
-    setQuantitySaving(false)
-  }
-
-  async function openResolveModal(stop: Stop) {
-    setResolvingStop(stop)
-    setResolveBags(String(stop.quantity_offloaded))
-    setResolveLocation(stop.stop_location)
-    setResolveBrokerId(stop.broker_id ?? "")
-    setResolveMessage("")
-
-    if (allBrokers.length === 0) {
-      const { data } = await supabase.from("Brokers").select("broker_id, broker_name").order("broker_name")
-      setAllBrokers(data || [])
-    }
-  }
-
-  function closeResolveModal() {
-    setResolvingStop(null)
-    setResolveBags("")
-    setResolveLocation("")
-    setResolveBrokerId("")
-    setResolveMessage("")
-  }
-
-  async function handleResolveStop() {
-    if (!resolvingStop) return
-    setResolveSubmitting(true)
-    setResolveMessage("")
-
-    try {
-      const parsedBags = parseInt(resolveBags)
-      const safeBags = Number.isNaN(parsedBags) || parsedBags < 0 ? resolvingStop.quantity_offloaded : parsedBags
-
-      const { error } = await apiMutate("trips", {
-        action: "update",
-        table: "Stops",
-        data: {
-          disputed: false,
-          dispute_reason: null,
-          disputed_by: null,
-          confirmed: false,
-          quantity_offloaded: safeBags,
-          stop_location: resolveLocation || resolvingStop.stop_location,
-          broker_id: resolveBrokerId || resolvingStop.broker_id,
-        },
-        filters: { stop_id: resolvingStop.stop_id },
-      })
-
-      if (error) {
-        setResolveMessage("Failed to resolve dispute")
-        return
-      }
-
-      closeResolveModal()
-      loadAll()
-    } catch {
-      setResolveMessage("Network error, please try again")
-    } finally {
-      setResolveSubmitting(false)
-    }
-  }
-
-  async function confirmPostTrip() {
+  async function handlePostTrip() {
     if (!postingTrip || !selectedTrip) return
     setPostLoading(true)
 
     try {
       const { data: { user }, error: authError } = await supabase.auth.getUser()
       if (authError || !user) {
-        console.error("Auth error:", authError)
         setPostLoading(false)
         return
       }
@@ -602,17 +471,15 @@ export default function MonitorTrips() {
         action: "update",
         table,
         data: {
-          recorded: true,
-          recorded_by: user.id,
-          recorded_at: new Date().toISOString(),
+          posted: true,
+          posted_by: user.id,
+          posted_at: new Date().toISOString(),
         },
         filters: { [filterKey]: postingTrip },
       })
 
       if (r1.error) {
         console.error("PostTrip update failed:", r1.error)
-      } else {
-        console.log("PostTrip success:", r1.data)
       }
     } catch (err) {
       console.error("PostTrip exception:", err)
@@ -625,20 +492,13 @@ export default function MonitorTrips() {
     }
   }
 
-  const disputedTripCount = trips.filter((t) => t.stops.some((s) => s.disputed)).length
-  const pendingRecordCount = trips.filter((t) => !t.recorded).length
+  const pendingCount = trips.filter(t => !t.posted).length
 
   const filteredTrips = (filterStatus === "All"
     ? trips
-    : filterStatus === "Active"
-    ? trips.filter((t) => t.trip_status === "In transit" || t.trip_status === "On hold")
     : filterStatus === "Pending"
-    ? trips.filter((t) => !t.recorded)
-    : filterStatus === "Posted"
-    ? trips.filter((t) => t.recorded)
-    : filterStatus === "Disputed"
-    ? trips.filter((t) => t.stops.some((s) => s.disputed))
-    : trips
+    ? trips.filter(t => !t.posted)
+    : trips.filter(t => t.posted)
   ).filter((t) => !plateSearch || t.plate_number.toLowerCase().includes(plateSearch.trim().toLowerCase()))
   .filter((t) => {
     const tripDate = t.created_at.slice(0, 10)
@@ -659,14 +519,14 @@ export default function MonitorTrips() {
       <div style={{ display: "flex", flexDirection: isMobile ? "column" : "row", justifyContent: "space-between", alignItems: isMobile ? "flex-start" : "center", gap: 16, marginBottom: 24 }}>
         <div>
           <h1 style={{ margin: 0, color: "#0f172a", fontSize: isMobile ? FONT_SIZE["2xl"] : FONT_SIZE["3xl"], fontWeight: 700, letterSpacing: "-0.5px" }}>
-            Monitor Trips
+            Trips
           </h1>
           <p style={{ margin: "8px 0 0", color: "#64748b", fontSize: FONT_SIZE.base }}>
-            Track active trips and manage stops.
+            Post recorded trips from the ATC officer.
           </p>
         </div>
 
-        <div style={{ display: "flex", alignItems: "center", gap: 12, width: isMobile ? "100%" : "auto" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
           {trips.length > 0 && (
             <div style={{ display: "flex", background: "white", border: "1px solid #e2e8f0", borderRadius: 8, padding: 4, gap: 0 }}>
               <button
@@ -772,20 +632,12 @@ export default function MonitorTrips() {
               onMouseLeave={e => { if (!isActive) { e.currentTarget.style.background = "white"; e.currentTarget.style.borderColor = "#e2e8f0" } }}
             >
               {option}
-              {option === "Pending" && !isActive && pendingRecordCount > 0 && (
+              {option === "Pending" && !isActive && pendingCount > 0 && (
                 <span style={{ display: "inline-flex", marginLeft: 6, width: 8, height: 8, borderRadius: "50%", background: "#f5a623" }} />
               )}
-              {option === "Pending" && isActive && pendingRecordCount > 0 && (
+              {option === "Pending" && isActive && pendingCount > 0 && (
                 <span style={{ display: "inline-flex", marginLeft: 6, background: "#fffbeb", color: "#f5a623", borderRadius: 10, padding: "0 6px", fontSize: 11, fontWeight: 700, lineHeight: "18px", minWidth: 18, justifyContent: "center" }}>
-                  {pendingRecordCount}
-                </span>
-              )}
-              {option === "Disputed" && !isActive && disputedTripCount > 0 && (
-                <span style={{ display: "inline-flex", marginLeft: 6, width: 8, height: 8, borderRadius: "50%", background: "#ef4444" }} />
-              )}
-              {option === "Disputed" && isActive && disputedTripCount > 0 && (
-                <span style={{ display: "inline-flex", marginLeft: 6, background: "#fef2f2", color: "#ef4444", borderRadius: 10, padding: "0 6px", fontSize: 11, fontWeight: 700, lineHeight: "18px", minWidth: 18, justifyContent: "center" }}>
-                  {disputedTripCount}
+                  {pendingCount}
                 </span>
               )}
             </button>
@@ -950,11 +802,11 @@ export default function MonitorTrips() {
       ) : filteredTrips.length === 0 ? (
         <div style={{ textAlign: "center", padding: "64px 24px", background: "white", borderRadius: 12, border: "1px solid #e2e8f0", boxShadow: "0 1px 3px rgba(0, 0, 0, 0.05)" }}>
           <div style={{ width: 64, height: 64, background: "#f1f5f9", borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 16px" }}>
-            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2"/></svg>
+            <Icon icon="mdi:road-variant" width={32} color="#94a3b8" />
           </div>
           <h3 style={{ margin: "0 0 8px", color: "#0f172a", fontSize: FONT_SIZE.xl, fontWeight: 600 }}>No trips found</h3>
           <p style={{ color: "#64748b", fontSize: FONT_SIZE.base, margin: 0 }}>
-            {hasActiveFilters ? "No trips match your filters." : filterStatus === "All" ? "No trips in the system." : `No trips with status "${filterStatus}".`}
+            {hasActiveFilters ? "No trips match your filters." : filterStatus === "Pending" ? "All recorded trips have been posted." : "No recorded trips available."}
           </p>
         </div>
       ) : (
@@ -971,20 +823,20 @@ export default function MonitorTrips() {
                   <div key={trip.trip_id} style={{ background: "white", borderRadius: 12, padding: 20, border: "1px solid #e2e8f0", boxShadow: "0 1px 3px rgba(0, 0, 0, 0.05)", transition: "all 0.2s ease" }} onMouseEnter={e => !isMobile && (e.currentTarget.style.boxShadow = "0 4px 12px rgba(0, 0, 0, 0.08)", e.currentTarget.style.borderColor = "#cbd5e1")} onMouseLeave={e => !isMobile && (e.currentTarget.style.boxShadow = "0 1px 3px rgba(0, 0, 0, 0.05)", e.currentTarget.style.borderColor = "#e2e8f0")}>
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 10 }}>
                       <div>
-                          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
-                            <h3 style={{ margin: 0, color: "#0f172a", fontSize: FONT_SIZE.lg, fontWeight: 700 }}>{trip.plate_number}</h3>
-                            {trip.isDD ? (
-                              <span style={{ fontSize: 10, padding: "2px 8px", borderRadius: 12, background: "#f3e5f5", color: "#7c3aed", fontWeight: 700, border: "1px solid #d8b4fe" }}>DD</span>
-                            ) : (
-                              <span style={{ fontSize: 10, padding: "2px 8px", borderRadius: 12, background: "#e0f2fe", color: "#0369a1", fontWeight: 700, border: "1px solid #7dd3fc" }}>SC/MDD</span>
-                            )}
-                          </div>
-                        <p style={{ margin: 0, color: "#0070f3", fontSize: FONT_SIZE.sm, cursor: "pointer", textDecoration: "underline", fontWeight: 500 }} onClick={() => setSelectedDriver({ driver_name: trip.driver_name, driver_phone: trip.driver_phone, driver_status: trip.driver_status })}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+                          <h3 style={{ margin: 0, color: "#0f172a", fontSize: FONT_SIZE.lg, fontWeight: 700 }}>{trip.plate_number}</h3>
+                          {trip.isDD ? (
+                            <span style={{ fontSize: 10, padding: "2px 8px", borderRadius: 12, background: "#f3e5f5", color: "#7c3aed", fontWeight: 700, border: "1px solid #d8b4fe" }}>DD</span>
+                          ) : (
+                            <span style={{ fontSize: 10, padding: "2px 8px", borderRadius: 12, background: "#e0f2fe", color: "#0369a1", fontWeight: 700, border: "1px solid #7dd3fc" }}>SC/MDD</span>
+                          )}
+                        </div>
+                        <p style={{ margin: 0, color: "#0070f3", fontSize: FONT_SIZE.sm, cursor: "pointer", textDecoration: "underline", fontWeight: 500 }} onClick={() => setSelectedDriver({ driver_name: trip.driver_name, driver_phone: trip.driver_phone })}>
                           {trip.driver_name}
                         </p>
                       </div>
-                      <span style={{ padding: "6px 12px", borderRadius: 16, fontSize: FONT_SIZE.xs, fontWeight: 600, background: trip.recorded ? "#f0fdf4" : "#fffbeb", color: trip.recorded ? "#16a34a" : "#f5a623", border: `1.5px solid ${trip.recorded ? "#16a34a" : "#f5a623"}`, whiteSpace: "nowrap" }}>
-                        {trip.recorded ? "Recorded" : "Pending"}
+                      <span style={{ padding: "6px 12px", borderRadius: 16, fontSize: FONT_SIZE.xs, fontWeight: 600, background: trip.posted ? "#f0fdf4" : "#fffbeb", color: trip.posted ? "#16a34a" : "#f5a623", border: `1.5px solid ${trip.posted ? "#16a34a" : "#f5a623"}`, whiteSpace: "nowrap" }}>
+                        {trip.posted ? "Posted" : "Pending"}
                       </span>
                     </div>
 
@@ -1006,8 +858,6 @@ export default function MonitorTrips() {
                       ) : (
                         <p style={{ margin: 0, fontSize: FONT_SIZE.sm, color: "#475569" }}><span style={{ color: "#94a3b8", width: 70, display: "inline-block" }}>ATC:</span> {trip.atc || "N/A"}</p>
                       )}
-                      {trip.amount_charged && <p style={{ margin: 0, fontSize: FONT_SIZE.sm, color: "#475569" }}><span style={{ color: "#94a3b8", width: 70, display: "inline-block" }}>Charged:</span> ₦{trip.amount_charged.toLocaleString()}</p>}
-                      {trip.payment_mode && <p style={{ margin: 0, fontSize: FONT_SIZE.sm, color: "#475569" }}><span style={{ color: "#94a3b8", width: 70, display: "inline-block" }}>Payment:</span> {trip.payment_mode}</p>}
                     </div>
 
                     <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 16 }}>
@@ -1039,15 +889,28 @@ export default function MonitorTrips() {
                         {pending > 0 && <span style={{ width: 8, height: 8, borderRadius: "50%", background: "#f5a623" }} title={`${pending} pending`} />}
                         {disputed > 0 && <span style={{ width: 8, height: 8, borderRadius: "50%", background: "#ef4444" }} title={`${disputed} disputed`} />}
                       </div>
-                      
-                      <button
-                        onClick={() => { setSelectedStops(trip.stops); setSelectedDiscrepancies(trip.discrepancies); setSelectedLoadMore(trip.load_more_entries); setSelectedPlate(trip.plate_number); setSelectedTrip({ trip_id: trip.trip_id, plate_number: trip.plate_number, atc: trip.atc, order_no: trip.order_no, child_order_no: trip.child_order_no, amount_charged: trip.amount_charged, payment_mode: trip.payment_mode, trip_status: trip.trip_status, recorded: trip.recorded, posted: trip.posted, isDD: trip.isDD }); }}
-                        style={{ padding: "8px 16px", background: "#f0f7ff", color: "#0070f3", border: "1px solid #bfdbfe", borderRadius: 8, cursor: "pointer", fontWeight: 600, fontSize: FONT_SIZE.sm, transition: "all 0.2s" }}
-                        onMouseEnter={e => { e.currentTarget.style.background = "#e0efff" }}
-                        onMouseLeave={e => { e.currentTarget.style.background = "#f0f7ff" }}
-                      >
-                        Details
-                      </button>
+
+                      <div style={{ display: "flex", gap: 8 }}>
+                        <button
+                          onClick={() => { setSelectedStops(trip.stops); setSelectedDiscrepancies(trip.discrepancies); setSelectedLoadMore(trip.load_more_entries); setSelectedPlate(trip.plate_number); setSelectedTrip({ trip_id: trip.trip_id, plate_number: trip.plate_number, atc: trip.atc, order_no: trip.order_no, child_order_no: trip.child_order_no, trip_status: trip.trip_status, recorded: trip.recorded, posted: trip.posted, isDD: trip.isDD }); }}
+                          style={{ padding: "8px 16px", background: "#f0f7ff", color: "#0070f3", border: "1px solid #bfdbfe", borderRadius: 8, cursor: "pointer", fontWeight: 600, fontSize: FONT_SIZE.sm, transition: "all 0.2s" }}
+                          onMouseEnter={e => { e.currentTarget.style.background = "#e0efff" }}
+                          onMouseLeave={e => { e.currentTarget.style.background = "#f0f7ff" }}
+                        >
+                          Details
+                        </button>
+                        {!trip.posted && (
+                          <button
+                            onClick={() => { setSelectedTrip({ trip_id: trip.trip_id, plate_number: trip.plate_number, atc: trip.atc, order_no: trip.order_no, child_order_no: trip.child_order_no, trip_status: trip.trip_status, recorded: trip.recorded, posted: trip.posted, isDD: trip.isDD }); setPostingTrip(trip.trip_id) }}
+                            disabled={!canEdit}
+                            style={{ padding: "8px 16px", background: canEdit ? "#f0fdf4" : "#f1f5f9", color: canEdit ? "#16a34a" : "#94a3b8", border: `1px solid ${canEdit ? "#bbf7d0" : "#e2e8f0"}`, borderRadius: 8, cursor: canEdit ? "pointer" : "not-allowed", fontWeight: 600, fontSize: FONT_SIZE.sm, transition: "all 0.2s" }}
+                            onMouseEnter={e => { if (canEdit) e.currentTarget.style.background = "#dcfce7" }}
+                            onMouseLeave={e => { if (canEdit) e.currentTarget.style.background = "#f0fdf4" }}
+                          >
+                            Post
+                          </button>
+                        )}
+                      </div>
                     </div>
                   </div>
                 )
@@ -1066,14 +929,12 @@ export default function MonitorTrips() {
                     <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: FONT_SIZE.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px" }}>Product</th>
                     <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: FONT_SIZE.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px" }}>Centre</th>
                     <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: FONT_SIZE.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px" }}>ATC / Order</th>
-                    <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: FONT_SIZE.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px" }}>Charged</th>
-                    <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: FONT_SIZE.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px" }}>Payment</th>
                     <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: FONT_SIZE.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px" }}>Loaded</th>
                     <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: FONT_SIZE.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px" }}>Remaining</th>
                     <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: FONT_SIZE.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px" }}>Stops</th>
                     <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: FONT_SIZE.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px" }}>Status</th>
                     <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: FONT_SIZE.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px" }}>Posting</th>
-                    <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: FONT_SIZE.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px" }}>Started</th>
+                    <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: FONT_SIZE.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px" }}>Actions</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -1092,23 +953,20 @@ export default function MonitorTrips() {
                             <span style={{ marginLeft: 8, fontSize: 10, padding: "2px 8px", borderRadius: 12, background: "#e0f2fe", color: "#0369a1", fontWeight: 700, border: "1px solid #7dd3fc" }}>SC/MDD</span>
                           )}
                         </td>
-                        <td style={{ padding: "12px 16px", color: "#0070f3", fontSize: FONT_SIZE.base, cursor: "pointer", textDecoration: "underline" }} onClick={() => setSelectedDriver({ driver_name: trip.driver_name, driver_phone: trip.driver_phone, driver_status: trip.driver_status })}>
+                        <td style={{ padding: "12px 16px", color: "#0070f3", fontSize: FONT_SIZE.base, cursor: "pointer", textDecoration: "underline" }} onClick={() => setSelectedDriver({ driver_name: trip.driver_name, driver_phone: trip.driver_phone })}>
                           {trip.driver_name}
                         </td>
                         <td style={{ padding: "12px 16px", color: "#0f172a", fontSize: FONT_SIZE.base }}>{trip.product}</td>
                         <td style={{ padding: "12px 16px", color: "#64748b", fontSize: FONT_SIZE.sm }}>{trip.material_centre}</td>
                         <td style={{ padding: "12px 16px", color: "#64748b", fontSize: FONT_SIZE.sm }}>{trip.order_no ? `${trip.order_no}${trip.child_order_no ? ` / ${trip.child_order_no}` : ""}` : trip.atc || "N/A"}</td>
-                        <td style={{ padding: "12px 16px", color: "#059669", fontSize: FONT_SIZE.base, fontWeight: 500 }}>{trip.amount_charged ? `₦${trip.amount_charged.toLocaleString()}` : "—"}</td>
-                        <td style={{ padding: "12px 16px", color: "#64748b", fontSize: FONT_SIZE.sm }}>{trip.payment_mode || "—"}</td>
                         <td style={{ padding: "12px 16px", color: "#0f172a", fontSize: FONT_SIZE.base, fontWeight: 500 }}>{trip.loaded_quantity}</td>
                         <td style={{ padding: "12px 16px", color: trip.remaining === 0 ? "#ef4444" : trip.remaining < trip.loaded_quantity * 0.2 ? "#f5a623" : "#16a34a", fontSize: FONT_SIZE.base, fontWeight: 600 }}>{trip.remaining}</td>
-                        <td style={{ padding: "12px 16px", cursor: "pointer" }} onClick={() => { setSelectedStops(trip.stops); setSelectedDiscrepancies(trip.discrepancies); setSelectedLoadMore(trip.load_more_entries); setSelectedPlate(trip.plate_number); setSelectedTrip({ trip_id: trip.trip_id, plate_number: trip.plate_number, atc: trip.atc, order_no: trip.order_no, child_order_no: trip.child_order_no, amount_charged: trip.amount_charged, payment_mode: trip.payment_mode, trip_status: trip.trip_status, recorded: trip.recorded, posted: trip.posted, isDD: trip.isDD }); }}>
+                        <td style={{ padding: "12px 16px", cursor: "pointer" }} onClick={() => { setSelectedStops(trip.stops); setSelectedDiscrepancies(trip.discrepancies); setSelectedLoadMore(trip.load_more_entries); setSelectedPlate(trip.plate_number); setSelectedTrip({ trip_id: trip.trip_id, plate_number: trip.plate_number, atc: trip.atc, order_no: trip.order_no, child_order_no: trip.child_order_no, trip_status: trip.trip_status, recorded: trip.recorded, posted: trip.posted, isDD: trip.isDD }); }}>
                           <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
                             <span style={{ color: "#0070f3", fontSize: FONT_SIZE.sm, fontWeight: 500, textDecoration: "underline" }}>{trip.stop_count} {trip.stop_count === 1 ? "stop" : "stops"}</span>
                             {confirmed > 0 && <div style={{ display: "flex", alignItems: "center", gap: 2, padding: "2px 6px", background: "#f0fdf4", borderRadius: 12 }}><Icon icon="mdi:check-circle" width="12" height="12" style={{ color: "#16a34a" }} /><span style={{ fontSize: 10, color: "#16a34a", fontWeight: "bold" }}>{confirmed}</span></div>}
                             {pending > 0 && <div style={{ display: "flex", alignItems: "center", gap: 2, padding: "2px 6px", background: "#fffbeb", borderRadius: 12 }}><Icon icon="mdi:clock-outline" width="12" height="12" style={{ color: "#f5a623" }} /><span style={{ fontSize: 10, color: "#f5a623", fontWeight: "bold" }}>{pending}</span></div>}
                             {disputed > 0 && <div style={{ display: "flex", alignItems: "center", gap: 2, padding: "2px 6px", background: "#fef2f2", borderRadius: 12 }}><Icon icon="mdi:alert-circle" width="12" height="12" style={{ color: "#ef4444" }} /><span style={{ fontSize: 10, color: "#ef4444", fontWeight: "bold" }}>{disputed}</span></div>}
-                            {trip.load_more_entries.length > 0 && <div style={{ display: "flex", alignItems: "center", gap: 2, padding: "2px 6px", background: "#fffbeb", borderRadius: 12 }}><Icon icon="mdi:package-variant-closed" width="12" height="12" style={{ color: "#f59e0b" }} /><span style={{ fontSize: 10, color: "#f59e0b", fontWeight: "bold" }}>+{trip.load_more_entries.reduce((s, e) => s + e.quantity, 0)}</span></div>}
                           </div>
                         </td>
                         <td style={{ padding: "12px 16px" }}>
@@ -1117,11 +975,29 @@ export default function MonitorTrips() {
                           </span>
                         </td>
                         <td style={{ padding: "12px 16px" }}>
-                          <span style={{ padding: "6px 10px", borderRadius: 14, fontSize: FONT_SIZE.xs, fontWeight: 600, background: trip.recorded ? "#f0fdf4" : "#fffbeb", color: trip.recorded ? "#16a34a" : "#f5a623", border: `1.5px solid ${trip.recorded ? "#16a34a" : "#f5a623"}` }}>
-                            {trip.recorded ? "Recorded" : "Pending"}
+                          <span style={{ padding: "6px 10px", borderRadius: 14, fontSize: FONT_SIZE.xs, fontWeight: 600, background: trip.posted ? "#f0fdf4" : "#fffbeb", color: trip.posted ? "#16a34a" : "#f5a623", border: `1.5px solid ${trip.posted ? "#16a34a" : "#f5a623"}` }}>
+                            {trip.posted ? "Posted" : "Pending"}
                           </span>
                         </td>
-                        <td style={{ padding: "12px 16px", color: "#94a3b8", fontSize: FONT_SIZE.xs }}>{new Date(trip.created_at).toLocaleString()}</td>
+                        <td style={{ padding: "12px 16px" }}>
+                          <div style={{ display: "flex", gap: 6 }}>
+                            <button
+                              onClick={() => { setSelectedStops(trip.stops); setSelectedDiscrepancies(trip.discrepancies); setSelectedLoadMore(trip.load_more_entries); setSelectedPlate(trip.plate_number); setSelectedTrip({ trip_id: trip.trip_id, plate_number: trip.plate_number, atc: trip.atc, order_no: trip.order_no, child_order_no: trip.child_order_no, trip_status: trip.trip_status, recorded: trip.recorded, posted: trip.posted, isDD: trip.isDD }); }}
+                              style={{ padding: "6px 12px", background: "#f0f7ff", color: "#0070f3", border: "1px solid #bfdbfe", borderRadius: 6, cursor: "pointer", fontWeight: 600, fontSize: FONT_SIZE.xs }}
+                            >
+                              Details
+                            </button>
+                            {!trip.posted && (
+                              <button
+                                onClick={() => { setSelectedTrip({ trip_id: trip.trip_id, plate_number: trip.plate_number, atc: trip.atc, order_no: trip.order_no, child_order_no: trip.child_order_no, trip_status: trip.trip_status, recorded: trip.recorded, posted: trip.posted, isDD: trip.isDD }); setPostingTrip(trip.trip_id) }}
+                                disabled={!canEdit}
+                                style={{ padding: "6px 12px", background: canEdit ? "#f0fdf4" : "#f1f5f9", color: canEdit ? "#16a34a" : "#94a3b8", border: `1px solid ${canEdit ? "#bbf7d0" : "#e2e8f0"}`, borderRadius: 6, cursor: canEdit ? "pointer" : "not-allowed", fontWeight: 600, fontSize: FONT_SIZE.xs }}
+                              >
+                                Post
+                              </button>
+                            )}
+                          </div>
+                        </td>
                       </tr>
                     )
                   })}
@@ -1153,10 +1029,6 @@ export default function MonitorTrips() {
                     <p style={{ margin: "0 0 4px 0", color: "#94a3b8", fontSize: FONT_SIZE.xs }}>Phone</p>
                     <p style={{ margin: 0, color: "#0f172a", fontSize: FONT_SIZE.base, fontWeight: 500 }}>{selectedDriver.driver_phone}</p>
                   </div>
-                  <div>
-                    <p style={{ margin: "0 0 4px 0", color: "#94a3b8", fontSize: FONT_SIZE.xs }}>Status</p>
-                    <p style={{ margin: 0, color: "#0f172a", fontSize: FONT_SIZE.base, fontWeight: 500 }}>{selectedDriver.driver_status}</p>
-                  </div>
                 </div>
 
                 <button onClick={closeModals} style={{ width: "100%", padding: "12px 16px", background: "#0070f3", color: "white", border: "none", borderRadius: 8, cursor: "pointer", fontWeight: 600, fontSize: FONT_SIZE.md, minHeight: 44 }}>
@@ -1185,13 +1057,6 @@ export default function MonitorTrips() {
                     <p style={{ margin: 0, fontSize: FONT_SIZE.sm, color: "#0f172a" }}><strong>ATC:</strong> {selectedTrip.atc}</p>
                   </div>
                 ) : null}
-
-                {selectedTrip?.amount_charged && (
-                  <div style={{ background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: 8, padding: "12px 14px", marginBottom: 16, display: "flex", gap: 24 }}>
-                    <p style={{ margin: 0, fontSize: FONT_SIZE.sm, color: "#0f172a" }}><strong>Amount Charged:</strong> ₦{selectedTrip.amount_charged.toLocaleString()}</p>
-                    <p style={{ margin: 0, fontSize: FONT_SIZE.sm, color: "#0f172a" }}><strong>Payment Mode:</strong> {selectedTrip.payment_mode}</p>
-                  </div>
-                )}
 
                 {selectedStops.length === 0 && selectedDiscrepancies.length === 0 ? (
                   <p style={{ color: "#94a3b8", fontSize: FONT_SIZE.base }}>No stops logged yet.</p>
@@ -1228,57 +1093,7 @@ export default function MonitorTrips() {
                         {stop.disputed && stop.dispute_reason && (
                           <div style={{ marginTop: 10, padding: 12, background: "#fff5f5", borderRadius: 6, border: "1px solid #fecaca" }}>
                             <p style={{ margin: "0 0 6px 0", fontSize: FONT_SIZE.xs, color: "#ef4444", fontWeight: 600 }}>Dispute Reason:</p>
-                            <p style={{ margin: "0 0 10px 0", fontSize: FONT_SIZE.sm, color: "#7f1d1d" }}>{stop.dispute_reason}</p>
-
-                            <div style={{ marginBottom: 10 }}>
-                              <p style={{ margin: "0 0 6px 0", fontSize: FONT_SIZE.xs, fontWeight: 600, color: "#0f172a" }}>Bags Offloaded:</p>
-                              {editingQuantity?.stopId === stop.stop_id ? (
-                                <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
-                                  <input
-                                    type="number"
-                                    min={0}
-                                    value={editingQuantity.value}
-                                    onChange={(e) => setEditingQuantity({ ...editingQuantity, value: parseInt(e.target.value) || 0 })}
-                                    style={{ width: 80, padding: "6px 8px", border: "1px solid #fecaca", borderRadius: 4, fontSize: FONT_SIZE.sm }}
-                                    autoFocus
-                                  />
-                                  <button onClick={handleSaveQuantity} disabled={quantitySaving} style={{ padding: "6px 12px", background: "#16a34a", color: "white", border: "none", borderRadius: 4, fontSize: FONT_SIZE.xs, cursor: quantitySaving ? "not-allowed" : "pointer", opacity: quantitySaving ? 0.7 : 1 }}>
-                                    {quantitySaving ? "..." : "Save"}
-                                  </button>
-                                  <button onClick={() => setEditingQuantity(null)} disabled={quantitySaving} style={{ padding: "6px 12px", background: "white", color: "#64748b", border: "1px solid #e2e8f0", borderRadius: 4, fontSize: FONT_SIZE.xs, cursor: "pointer" }}>
-                                    Cancel
-                                  </button>
-                                </div>
-                              ) : (
-                                <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                                  <span style={{ fontSize: FONT_SIZE.sm, color: "#0f172a" }}>{stop.quantity_offloaded} bags</span>
-                                  {canEdit && (
-                                    <button onClick={() => setEditingQuantity({ stopId: stop.stop_id, value: stop.quantity_offloaded })} style={{ padding: "4px 10px", background: "white", color: "#0070f3", border: "1px solid #0070f3", borderRadius: 4, fontSize: FONT_SIZE.xs, cursor: "pointer" }}>
-                                      Edit
-                                    </button>
-                                  )}
-                                </div>
-                              )}
-                              {quantityMessage?.stopId === stop.stop_id && (
-                                <p style={{ margin: "4px 0 0", fontSize: FONT_SIZE.xs, color: quantityMessage.type === "success" ? "#16a34a" : "#ef4444" }}>{quantityMessage.text}</p>
-                              )}
-                            </div>
-
-                            <button
-                              onClick={() => openResolveModal(stop)}
-                              disabled={!canEdit}
-                              style={{
-                                width: "100%", padding: "8px 0", marginTop: 10,
-                                background: canEdit ? "#0070f3" : "#94a3b8",
-                                color: "white", border: "none", borderRadius: 6,
-                                cursor: canEdit ? "pointer" : "not-allowed",
-                                fontSize: FONT_SIZE.sm, fontWeight: 600,
-                                display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
-                              }}
-                            >
-                              <Icon icon="mdi:check-circle" width={16} />
-                              Resolve Dispute
-                            </button>
+                            <p style={{ margin: 0, fontSize: FONT_SIZE.sm, color: "#7f1d1d" }}>{stop.dispute_reason}</p>
                           </div>
                         )}
 
@@ -1321,37 +1136,33 @@ export default function MonitorTrips() {
                 )}
 
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-                  {selectedTrip && !selectedTrip.recorded && (() => {
-                    const allConfirmed = selectedStops && selectedStops.every((s) => s.confirmed) && !selectedStops.some((s) => s.disputed)
-                    return (
-                      <button
-                        onClick={handlePostTripClick}
-                        disabled={!canEdit || !allConfirmed}
-                        style={{
-                          padding: "12px 16px",
-                          background: !canEdit || !allConfirmed ? "#f1f5f9" : "#f0fdf4",
-                          color: !canEdit || !allConfirmed ? "#94a3b8" : "#16a34a",
-                          border: "1px solid",
-                          borderColor: !canEdit || !allConfirmed ? "#e2e8f0" : "#bbf7d0",
-                          borderRadius: 8,
-                          cursor: !canEdit || !allConfirmed ? "not-allowed" : "pointer",
-                          fontWeight: 600,
-                          fontSize: FONT_SIZE.md,
-                          minHeight: 44,
-                          transition: "background 0.2s"
-                        }}
-                        onMouseEnter={e => { if (canEdit && allConfirmed) e.currentTarget.style.background = "#dcfce7" }}
-                        onMouseLeave={e => { if (canEdit && allConfirmed) e.currentTarget.style.background = "#f0fdf4" }}
-                        title={!allConfirmed ? "Resolve all disputed and confirm all stops before recording" : ""}
-                      >
-                        Record Trip
-                      </button>
-                    )
-                  })()}
-                  {selectedTrip && selectedTrip.recorded && (
+                  {selectedTrip && !selectedTrip.posted && (
+                    <button
+                      onClick={() => { setPostingTrip(selectedTrip.trip_id) }}
+                      disabled={!canEdit}
+                      style={{
+                        padding: "12px 16px",
+                        background: canEdit ? "#f0fdf4" : "#f1f5f9",
+                        color: canEdit ? "#16a34a" : "#94a3b8",
+                        border: "1px solid",
+                        borderColor: canEdit ? "#bbf7d0" : "#e2e8f0",
+                        borderRadius: 8,
+                        cursor: canEdit ? "pointer" : "not-allowed",
+                        fontWeight: 600,
+                        fontSize: FONT_SIZE.md,
+                        minHeight: 44,
+                        transition: "background 0.2s"
+                      }}
+                      onMouseEnter={e => { if (canEdit) e.currentTarget.style.background = "#dcfce7" }}
+                      onMouseLeave={e => { if (canEdit) e.currentTarget.style.background = "#f0fdf4" }}
+                    >
+                      Post Trip
+                    </button>
+                  )}
+                  {selectedTrip && selectedTrip.posted && (
                     <div style={{ padding: "12px 16px", background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
                       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#16a34a" strokeWidth="2"><path d="M20 6L9 17l-5-5"/></svg>
-                      <span style={{ color: "#16a34a", fontWeight: 600, fontSize: FONT_SIZE.md }}>Recorded</span>
+                      <span style={{ color: "#16a34a", fontWeight: 600, fontSize: FONT_SIZE.md }}>Posted</span>
                     </div>
                   )}
                   <button onClick={closeModals} style={{ padding: "12px 16px", background: "#0070f3", color: "white", border: "none", borderRadius: 8, cursor: "pointer", fontWeight: 600, fontSize: FONT_SIZE.md, minHeight: 44, transition: "opacity 0.2s" }} onMouseEnter={e => e.currentTarget.style.opacity = "0.9"} onMouseLeave={e => e.currentTarget.style.opacity = "1"}>
@@ -1367,90 +1178,17 @@ export default function MonitorTrips() {
       {postingTrip && (
         <div style={{ position: "fixed", inset: 0, background: "rgba(15, 23, 42, 0.6)", backdropFilter: "blur(4px)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 200, padding: 24, animation: "fadeIn 0.2s ease-out" }}>
           <div style={{ background: "white", borderRadius: 12, padding: 32, width: "100%", maxWidth: 420, boxShadow: "0 25px 50px -12px rgba(0, 0, 0, 0.25)", animation: "slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1)" }}>
-            <h3 style={{ margin: "0 0 12px 0", color: "#0f172a", fontSize: FONT_SIZE.xl, fontWeight: 700 }}>Record Trip?</h3>
+            <h3 style={{ margin: "0 0 12px 0", color: "#0f172a", fontSize: FONT_SIZE.xl, fontWeight: 700 }}>Post Trip?</h3>
             <p style={{ margin: "0 0 24px 0", color: "#64748b", fontSize: FONT_SIZE.base, lineHeight: 1.5 }}>
-              This will mark the trip as <strong>Recorded</strong>. Only trips with all stops confirmed can be recorded.
+              This will mark the trip as <strong>Posted</strong>.
             </p>
 
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
               <button onClick={() => setPostingTrip(null)} disabled={postLoading} style={{ padding: "12px 16px", background: "white", color: "#475569", border: "1px solid #cbd5e1", borderRadius: 8, cursor: "pointer", fontWeight: 600, fontSize: FONT_SIZE.md, minHeight: 44, transition: "background 0.2s" }} onMouseEnter={e => e.currentTarget.style.background = "#f8fafc"} onMouseLeave={e => e.currentTarget.style.background = "white"}>
                 Cancel
               </button>
-              <button onClick={confirmPostTrip} disabled={postLoading || !canEdit} style={{ padding: "12px 16px", background: postLoading || !canEdit ? "#94a3b8" : "#16a34a", color: "white", border: "none", borderRadius: 8, cursor: postLoading || !canEdit ? "not-allowed" : "pointer", fontWeight: 600, fontSize: FONT_SIZE.md, opacity: postLoading || !canEdit ? 0.7 : 1, minHeight: 44, transition: "background 0.2s" }} onMouseEnter={e => !postLoading && canEdit && (e.currentTarget.style.background = "#15803d")} onMouseLeave={e => !postLoading && canEdit && (e.currentTarget.style.background = "#16a34a")}>
-                {postLoading ? "Recording..." : "Yes, Record Trip"}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {resolvingStop && (
-        <div onClick={closeResolveModal} style={{ position: "fixed", inset: 0, background: "rgba(15, 23, 42, 0.6)", backdropFilter: "blur(4px)", display: "flex", alignItems: isMobile ? "flex-end" : "center", justifyContent: "center", zIndex: 200, padding: isMobile ? 0 : 24, animation: "fadeIn 0.2s ease-out" }}>
-          <div onClick={e => e.stopPropagation()} style={{ background: "white", borderRadius: isMobile ? "20px 20px 0 0" : 12, padding: isMobile ? "28px 20px" : 32, width: "100%", maxWidth: 480, maxHeight: isMobile ? "90vh" : "85vh", overflowY: "auto", boxShadow: "0 25px 50px -12px rgba(0, 0, 0, 0.25)", animation: "slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1)" }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
-              <div>
-                <h3 style={{ margin: "0 0 4px 0", color: "#0f172a", fontSize: FONT_SIZE.xl, fontWeight: 700 }}>Resolve Dispute</h3>
-                <p style={{ margin: 0, color: "#94a3b8", fontSize: FONT_SIZE.sm }}>{resolvingStop.stop_location}</p>
-              </div>
-              <button onClick={closeResolveModal} style={{ background: "none", border: "none", color: "#94a3b8", cursor: "pointer", padding: 0, width: 32, height: 32, display: "flex", alignItems: "center", justifyContent: "center" }}>
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-              </button>
-            </div>
-
-            {resolvingStop.dispute_reason && (
-              <div style={{ padding: "10px 14px", background: "#fef2f2", border: "1px solid #fecaca", borderRadius: 8, marginBottom: 20 }}>
-                <p style={{ margin: "0 0 4px 0", fontSize: FONT_SIZE.xs, color: "#ef4444", fontWeight: 600 }}>Dispute Reason</p>
-                <p style={{ margin: 0, fontSize: FONT_SIZE.sm, color: "#7f1d1d" }}>{resolvingStop.dispute_reason}</p>
-              </div>
-            )}
-
-            <div style={{ marginBottom: 16 }}>
-              <label style={{ display: "block", fontWeight: 600, fontSize: FONT_SIZE.sm, color: "#475569", marginBottom: 6 }}>Bags Offloaded</label>
-              <input
-                type="number"
-                min={0}
-                value={resolveBags}
-                onChange={e => setResolveBags(e.target.value)}
-                style={{ width: "100%", padding: "10px 12px", border: "1.5px solid #e2e8f0", borderRadius: 8, fontSize: FONT_SIZE.base, boxSizing: "border-box" }}
-              />
-            </div>
-
-            <div style={{ marginBottom: 16 }}>
-              <label style={{ display: "block", fontWeight: 600, fontSize: FONT_SIZE.sm, color: "#475569", marginBottom: 6 }}>Stop Location</label>
-              <input
-                type="text"
-                value={resolveLocation}
-                onChange={e => setResolveLocation(e.target.value)}
-                style={{ width: "100%", padding: "10px 12px", border: "1.5px solid #e2e8f0", borderRadius: 8, fontSize: FONT_SIZE.base, boxSizing: "border-box" }}
-              />
-            </div>
-
-            <div style={{ marginBottom: 20 }}>
-              <label style={{ display: "block", fontWeight: 600, fontSize: FONT_SIZE.sm, color: "#475569", marginBottom: 6 }}>Broker</label>
-              <select
-                value={resolveBrokerId}
-                onChange={e => setResolveBrokerId(e.target.value)}
-                style={{ width: "100%", padding: "10px 12px", border: "1.5px solid #e2e8f0", borderRadius: 8, fontSize: FONT_SIZE.base, boxSizing: "border-box", background: "white" }}
-              >
-                {allBrokers.map(b => (
-                  <option key={b.broker_id} value={b.broker_id}>{b.broker_name}</option>
-                ))}
-              </select>
-            </div>
-
-            {resolveMessage && (
-              <div style={{ display: "flex", alignItems: "center", gap: 6, color: "#ef4444", marginBottom: 14, fontSize: FONT_SIZE.sm }}>
-                <Icon icon="mdi:alert-circle" width={16} />
-                {resolveMessage}
-              </div>
-            )}
-
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-              <button onClick={closeResolveModal} disabled={resolveSubmitting} style={{ padding: "12px 16px", background: "white", color: "#475569", border: "1px solid #cbd5e1", borderRadius: 8, cursor: "pointer", fontWeight: 600, fontSize: FONT_SIZE.md, minHeight: 44 }}>
-                Cancel
-              </button>
-              <button onClick={handleResolveStop} disabled={resolveSubmitting} style={{ padding: "12px 16px", background: resolveSubmitting ? "#94a3b8" : "#0070f3", color: "white", border: "none", borderRadius: 8, cursor: resolveSubmitting ? "not-allowed" : "pointer", fontWeight: 600, fontSize: FONT_SIZE.md, minHeight: 44, display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
-                {resolveSubmitting ? "Resolving..." : "Resolve & Send Back"}
+              <button onClick={handlePostTrip} disabled={postLoading || !canEdit} style={{ padding: "12px 16px", background: postLoading || !canEdit ? "#94a3b8" : "#16a34a", color: "white", border: "none", borderRadius: 8, cursor: postLoading || !canEdit ? "not-allowed" : "pointer", fontWeight: 600, fontSize: FONT_SIZE.md, opacity: postLoading || !canEdit ? 0.7 : 1, minHeight: 44, transition: "background 0.2s" }} onMouseEnter={e => !postLoading && canEdit && (e.currentTarget.style.background = "#15803d")} onMouseLeave={e => !postLoading && canEdit && (e.currentTarget.style.background = "#16a34a")}>
+                {postLoading ? "Posting..." : "Yes, Post Trip"}
               </button>
             </div>
           </div>

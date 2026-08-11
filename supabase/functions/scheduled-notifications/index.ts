@@ -137,9 +137,6 @@ serve(async (req) => {
             stationName: company.company_name,
             balance: company.current_balance,
           });
-          await callNotificationApi("low-fuel-station", {
-            balance: company.current_balance,
-          });
           results.low_fuel++;
         }
       }

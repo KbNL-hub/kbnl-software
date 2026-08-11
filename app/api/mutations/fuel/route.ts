@@ -2,6 +2,14 @@ import { createClient } from "@supabase/supabase-js"
 import { NextRequest, NextResponse } from "next/server"
 import { requireRole, handleApiError } from "@/lib/auth-middleware"
 import { includes } from "@/lib/type-utils"
+import {
+  notifyTruckAdminNewATFRequest,
+  notifyTruckOfficerATFActioned,
+  notifyDriverATFAuthorised,
+  notifyDriverATFInvalidated,
+  notifyTruckAdminATFRequestActioned,
+  notifyTruckAdminFuelTopUp,
+} from "@/lib/notifications"
 
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -9,29 +17,25 @@ const supabaseAdmin = createClient(
 )
 
 const ALLOWED_TABLES = ["fuel_requests", "fuel_companies", "fuel_deposits", "truck_fuel_expenses"] as const
-const ALLOWED_RPCS = ["confirm_fuel_receipt", "confirm_fuel_deposit", "invalidate_atf", "decline_fuel_deposit", "dispense_fuel"] as const
+const ALLOWED_RPCS = ["confirm_fuel_receipt", "add_fuel_deposit", "invalidate_atf"] as const
 
 const TABLE_ROLES: Record<string, string[]> = {
-  fuel_requests: ["TruckOfficer", "TruckAdmin", "StationManager", "Admin", "SuperAdmin"],
-  fuel_companies: ["StationManager", "TruckAdmin", "Admin", "SuperAdmin"],
-  fuel_deposits: ["StationManager", "Admin", "SuperAdmin"],
+  fuel_requests: ["TruckOfficer", "TruckAdmin", "Admin", "SuperAdmin"],
+  fuel_companies: ["TruckAdmin", "Admin", "SuperAdmin"],
+  fuel_deposits: ["Admin", "SuperAdmin"],
   truck_fuel_expenses: ["TruckOfficer", "Admin", "SuperAdmin"],
 }
 
 const RPC_ROLES: Record<string, string[]> = {
   confirm_fuel_receipt: ["Driver", "Admin", "SuperAdmin"],
-  confirm_fuel_deposit: ["StationManager", "Admin", "SuperAdmin"],
-  decline_fuel_deposit: ["StationManager", "Admin", "SuperAdmin"],
-  invalidate_atf: ["TruckAdmin", "StationManager", "Admin", "SuperAdmin"],
-  dispense_fuel: ["StationManager", "Admin", "SuperAdmin"],
+  add_fuel_deposit: ["Admin", "SuperAdmin"],
+  invalidate_atf: ["TruckAdmin", "Admin", "SuperAdmin"],
 }
 
 const RPC_PARAM_SCHEMAS: Record<string, string[]> = {
-  confirm_fuel_receipt: ["p_request_id", "p_driver_id"],
-  confirm_fuel_deposit: ["p_deposit_id"],
-  decline_fuel_deposit: ["p_deposit_id"],
+  confirm_fuel_receipt: ["p_request_id", "p_driver_id", "p_rate"],
+  add_fuel_deposit: ["p_company_id", "p_amount", "p_note"],
   invalidate_atf: ["p_request_id", "p_reason", "p_status_filter"],
-  dispense_fuel: ["p_request_id", "p_rate", "p_total", "p_plate_number"],
 }
 
 function buildError(msg: string, status: number) {
@@ -61,6 +65,68 @@ export async function POST(req: NextRequest) {
       const safeParams = Object.fromEntries(
         Object.entries(params || {}).filter(([k]) => allowedKeys.includes(k))
       )
+
+      if (fnName === "confirm_fuel_receipt") {
+        const requestId = safeParams.p_request_id as string
+        const { data: request } = await supabaseAdmin
+          .from("fuel_requests")
+          .select("plate_number, initiated_by")
+          .eq("request_id", requestId)
+          .single()
+
+        const result = await supabaseAdmin.rpc(fnName, safeParams)
+        if (result.error) {
+          return buildError(result.error.message || "RPC failed", 500)
+        }
+        if (result.data?.success && request) {
+          const plate = request.plate_number
+          notifyTruckAdminATFRequestActioned(requestId, plate, "Confirmed").catch(console.error)
+          notifyTruckOfficerATFActioned(requestId, plate, "Confirmed").catch(console.error)
+        }
+        return NextResponse.json({ data: result.data })
+      }
+
+      if (fnName === "invalidate_atf") {
+        const requestId = safeParams.p_request_id as string
+        const { data: request } = await supabaseAdmin
+          .from("fuel_requests")
+          .select("driver_id, plate_number")
+          .eq("request_id", requestId)
+          .single()
+
+        const result = await supabaseAdmin.rpc(fnName, safeParams)
+        if (result.error) {
+          return buildError(result.error.message || "RPC failed", 500)
+        }
+        if (result.data?.success && request) {
+          const plate = request.plate_number
+          notifyTruckOfficerATFActioned(requestId, plate, "Invalidated").catch(console.error)
+          if (request.driver_id) {
+            notifyDriverATFInvalidated(request.driver_id, plate, safeParams.p_reason as string || "No reason provided").catch(console.error)
+          }
+        }
+        return NextResponse.json({ data: result.data })
+      }
+
+      if (fnName === "add_fuel_deposit") {
+        const companyId = safeParams.p_company_id as string
+        const amount = safeParams.p_amount as number
+        const { data: company } = await supabaseAdmin
+          .from("fuel_companies")
+          .select("company_name")
+          .eq("company_id", companyId)
+          .single()
+
+        const result = await supabaseAdmin.rpc(fnName, safeParams)
+        if (result.error) {
+          return buildError(result.error.message || "RPC failed", 500)
+        }
+        if (result.data?.success && company) {
+          notifyTruckAdminFuelTopUp(company.company_name, amount).catch(console.error)
+        }
+        return NextResponse.json({ data: result.data })
+      }
+
       const result = await supabaseAdmin.rpc(fnName, safeParams)
       if (result.error) {
         return buildError(result.error.message || "RPC failed", 500)
@@ -86,6 +152,12 @@ export async function POST(req: NextRequest) {
         if (error) {
           console.error("Mutation failed", error)
           return buildError("Action failed, try again. If the issue persists, kindly contact admin or submit a complaint.", 500)
+        }
+        if (table === "fuel_requests" && result?.[0]) {
+          const row = result[0]
+          if (row.atf_status === "Pending") {
+            notifyTruckAdminNewATFRequest(row.request_id, row.plate_number).catch(console.error)
+          }
         }
         return NextResponse.json({ data: result })
       }
@@ -114,6 +186,15 @@ export async function POST(req: NextRequest) {
         if (error) {
           console.error("Mutation failed", error)
           return buildError("Action failed, try again. If the issue persists, kindly contact admin or submit a complaint.", 500)
+        }
+        if (table === "fuel_requests" && data.atf_status === "Authorised" && result?.[0]) {
+          const row = result[0]
+          const requestId = row.request_id
+          const plate = row.plate_number
+          notifyTruckOfficerATFActioned(requestId, plate, "Authorised").catch(console.error)
+          if (row.driver_id) {
+            notifyDriverATFAuthorised(row.driver_id, plate).catch(console.error)
+          }
         }
         return NextResponse.json({ data: result })
       }

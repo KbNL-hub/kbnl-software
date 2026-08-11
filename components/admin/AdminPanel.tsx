@@ -45,6 +45,7 @@ const SECTION_IMPORTS = {
   "company-prices": () => import("@/components/admin/CompanyPrices"),
   "side-trips": () => import("@/components/admin/SideTrips"),
   "our-stores": () => import("@/components/admin/OurStores"),
+  "trips": () => import("@/components/admin/DeskTrips"),
 } as const
 
 type SectionKey = keyof typeof SECTION_IMPORTS
@@ -82,6 +83,7 @@ const NAV_ITEMS: NavItemConfig[] = [
   { label: "Tricycles",         key: "tricycles",           icon: "mdi:rickshaw" },
   { label: "Monitor Trucks",    key: "monitor-trucks",      icon: "mdi:dump-truck" },
   { label: "Monitor Trips",     key: "monitor-trips",       icon: "streamline-ultimate:trip-road-bold" },
+  { label: "Trips",              key: "trips",               icon: "mdi:map-marker-path" },
   { label: "Side Trips",        key: "side-trips",           icon: "mdi:road-variant" },
   { label: "Diesel Manager",    key: "diesel-manager",      icon: "mdi:gas-station" },
   { label: "Store Sales",       key: "store-sales",         icon: "mdi:storefront-outline" },
@@ -161,9 +163,10 @@ function AdminPanelContent({ userProfile }: Props) {
   const [pendingPayments, setPendingPayments] = useState(0)
   const [unauthorizedExpenses, setUnauthorizedExpenses] = useState(0)
   const [unpostedExpenses, setUnpostedExpenses] = useState(0)
+  const [pendingDeskTrips, setPendingDeskTrips] = useState(0)
   const [lowBalanceCompanies, setLowBalanceCompanies] = useState<LowBalanceCompany[]>([])
   const [dismissedAlerts, setDismissedAlerts] = useState<Set<string>>(() => {
-    const stored = sessionStorage.getItem("dismissedFuelAlerts")
+    const stored = localStorage.getItem("dismissedFuelAlerts")
     return stored ? new Set(JSON.parse(stored)) : new Set()
   })
 
@@ -177,6 +180,7 @@ function AdminPanelContent({ userProfile }: Props) {
     const canViewPayments = getAccess("customer-payments").canView
     const canViewCashExpenses = getAccess("cash-expenses").canView
     const canViewDeskExpenses = getAccess("desk-expenses").canView
+    const canViewDeskTrips = getAccess("trips").canView
 
     async function checkAlerts() {
       try {
@@ -214,6 +218,15 @@ function AdminPanelContent({ userProfile }: Props) {
           const { count } = await supabase
             .from("cash_expenses").select("*", { count: "exact", head: true }).eq("status", "Authorised")
           setUnpostedExpenses(count || 0)
+        }
+
+        if (canViewDeskTrips) {
+          const { count } = await supabase
+            .from("Trips")
+            .select("*", { count: "exact", head: true })
+            .eq("recorded", true)
+            .eq("posted", false)
+          setPendingDeskTrips(count || 0)
         }
 
         if (canViewFuel) {
@@ -237,6 +250,7 @@ function AdminPanelContent({ userProfile }: Props) {
     const canViewPayments = getAccess("customer-payments").canView
     const canViewCashExpenses = getAccess("cash-expenses").canView
     const canViewDeskExpenses = getAccess("desk-expenses").canView
+    const canViewDeskTrips = getAccess("trips").canView
     async function checkAlerts() {
       try {
         if (canViewTrips) {
@@ -269,6 +283,14 @@ function AdminPanelContent({ userProfile }: Props) {
             .from("cash_expenses").select("*", { count: "exact", head: true }).eq("status", "Authorised")
           setUnpostedExpenses(count || 0)
         }
+        if (canViewDeskTrips) {
+          const { count } = await supabase
+            .from("Trips")
+            .select("*", { count: "exact", head: true })
+            .eq("recorded", true)
+            .eq("posted", false)
+          setPendingDeskTrips(count || 0)
+        }
         if (canViewFuel) {
           const { data } = await supabase
             .from("fuel_companies").select("company_id, company_name, current_balance, low_balance_threshold")
@@ -289,7 +311,7 @@ function AdminPanelContent({ userProfile }: Props) {
   function dismissAlert(company_id: string) {
     const updated = new Set(dismissedAlerts).add(company_id)
     setDismissedAlerts(updated)
-    sessionStorage.setItem("dismissedFuelAlerts", JSON.stringify([...updated]))
+    localStorage.setItem("dismissedFuelAlerts", JSON.stringify([...updated]))
   }
 
   const visibleAlerts = lowBalanceCompanies.filter(c => !dismissedAlerts.has(c.company_id))
@@ -443,6 +465,7 @@ function AdminPanelContent({ userProfile }: Props) {
       item.key === "customer-payments" && pendingPayments > 0 ? { count: pendingPayments, color: "#f5a623" } :
       item.key === "cash-expenses" && unauthorizedExpenses > 0 ? { count: unauthorizedExpenses, color: "#f5a623" } :
       item.key === "desk-expenses" && unpostedExpenses > 0 ? { count: unpostedExpenses, color: "#f5a623" } :
+      item.key === "trips" && pendingDeskTrips > 0 ? { count: pendingDeskTrips, color: "#f5a623" } :
       null
 
     return (
@@ -793,8 +816,8 @@ function AdminPanelContent({ userProfile }: Props) {
               </div>
             )}
 
-            {/* Alert banners */}
-            {visibleAlerts.length > 0 && (
+            {/* Alert banners — only shown in Diesel Manager section */}
+            {active === "diesel-manager" && visibleAlerts.length > 0 && (
               <div style={{
                 padding: isNarrow ? "12px 16px 0" : "20px 48px 0",
                 display: "flex",

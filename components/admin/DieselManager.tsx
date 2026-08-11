@@ -202,13 +202,12 @@ export default function DieselManager() {
 
     try {
       const { error } = await apiMutate("fuel", {
-        action: "insert",
-        table: "fuel_deposits",
-        data: {
-          company_id: depositCompanyId,
-          amount,
-          note: depositNote.trim() || null,
-          status: "Pending",
+        action: "rpc",
+        function: "add_fuel_deposit",
+        params: {
+          p_company_id: depositCompanyId,
+          p_amount: amount,
+          p_note: depositNote.trim() || null,
         },
       })
 
