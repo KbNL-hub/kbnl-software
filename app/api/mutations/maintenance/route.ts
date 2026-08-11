@@ -2,6 +2,12 @@ import { createClient } from "@supabase/supabase-js"
 import { NextRequest, NextResponse } from "next/server"
 import { requireRole, handleApiError } from "@/lib/auth-middleware"
 import { includes } from "@/lib/type-utils"
+import {
+  notifyTruckAdminNewMaintenanceReport,
+  notifyTruckOfficerReportActioned,
+  notifyTruckAdminMaintenanceReportActioned,
+  notifyTruckAdminDepositMade,
+} from "@/lib/notifications"
 
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -55,6 +61,27 @@ export async function POST(req: NextRequest) {
       if (result.error) {
         return buildError(result.error.message || "RPC failed", 500)
       }
+      // Maintenance Report Validated
+      if (fnName === "validate_maintenance_report" && params) {
+        const reportId = params.p_report_id as string
+        if (reportId) {
+          const { data: report } = await supabaseAdmin
+            .from("maintenance_reports")
+            .select("plate_number")
+            .eq("report_id", reportId)
+            .single()
+          const plate = (report as Record<string, unknown>)?.plate_number as string || "Unknown"
+          notifyTruckAdminMaintenanceReportActioned(reportId, plate, "Validated").catch(console.error)
+          notifyTruckOfficerReportActioned(reportId, plate, "Validated").catch(console.error)
+        }
+      }
+      // Maintenance Deposit Made
+      if (fnName === "add_maintenance_deposit" && params) {
+        const amount = params.p_amount as number || 0
+        if (amount > 0) {
+          notifyTruckAdminDepositMade(amount).catch(console.error)
+        }
+      }
       return NextResponse.json({ data: result.data })
     }
 
@@ -77,6 +104,26 @@ export async function POST(req: NextRequest) {
           console.error("Mutation failed", error)
           return buildError("Action failed, try again. If the issue persists, kindly contact admin or submit a complaint.", 500)
         }
+        const row = result?.[0] as Record<string, unknown> | undefined
+
+        // Maintenance Report Created
+        if (table === "maintenance_reports" && row) {
+          const reportId = row.report_id as string
+          const plate = (row.plate_number as string) || (data.plate_number as string) || "Unknown"
+          const maintType = (row.maintenance_type as string) || (data.maintenance_type as string) || "Maintenance"
+          if (reportId) {
+            notifyTruckAdminNewMaintenanceReport(reportId, plate, maintType).catch(console.error)
+          }
+        }
+
+        // Maintenance Deposit Created
+        if (table === "maintenance_deposits" && row) {
+          const amount = (row.amount as number) || (data.amount as number) || 0
+          if (amount > 0) {
+            notifyTruckAdminDepositMade(amount).catch(console.error)
+          }
+        }
+
         return NextResponse.json({ data: result })
       }
 
@@ -105,6 +152,18 @@ export async function POST(req: NextRequest) {
           console.error("Mutation failed", error)
           return buildError("Action failed, try again. If the issue persists, kindly contact admin or submit a complaint.", 500)
         }
+        const row = result?.[0] as Record<string, unknown> | undefined
+
+        // Maintenance Report Rejected
+        if (table === "maintenance_reports" && data.status === "Rejected" && row) {
+          const reportId = (filters.report_id ?? row.report_id) as string
+          const plate = row.plate_number as string || "Unknown"
+          if (reportId) {
+            notifyTruckAdminMaintenanceReportActioned(reportId, plate, "Rejected").catch(console.error)
+            notifyTruckOfficerReportActioned(reportId, plate, "Rejected").catch(console.error)
+          }
+        }
+
         return NextResponse.json({ data: result })
       }
 

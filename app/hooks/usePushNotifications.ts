@@ -298,6 +298,18 @@ export function usePushNotifications() {
         console.error('[Push] Re-subscribe rejected by server')
       } else {
         setIsSubscribed(true)
+        // Clean up stale subscriptions from old sessions
+        const { data: { session } } = await supabase.auth.getSession()
+        if (session?.access_token) {
+          fetch('/api/push/cleanup', {
+            method: 'POST',
+            headers: { Authorization: `Bearer ${session.access_token}` },
+          }).then(res => res.json()).then(data => {
+            if (data.cleaned > 0) {
+              console.log(`[Push] Cleaned up ${data.cleaned} stale subscription(s), ${data.remaining} remaining`)
+            }
+          }).catch(() => {})
+        }
       }
     } catch (err) {
       const name = (err as DOMException)?.name

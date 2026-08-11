@@ -2,6 +2,20 @@ import { createClient } from "@supabase/supabase-js"
 import { NextRequest, NextResponse } from "next/server"
 import { requireRole, handleApiError } from "@/lib/auth-middleware"
 import { includes } from "@/lib/type-utils"
+import {
+  notifyDeskOfficerNewPayment,
+  notifyBrokerPaymentPosted,
+  notifyCashAuthorizerNewExpense,
+  notifyCashOfficerExpenseActioned,
+  notifyBrokerCreditUpdated,
+  notifyDeskOfficerCreditAlert,
+  notifyBrokerPendingStoreSale,
+  notifyStoreOfficerPendingBrokerSale,
+  notifyStoreSupervisorPendingBrokerSale,
+  notifyAdminPendingStoreSale,
+  notifyDeskOfficerStoreSaleNeedsAttention,
+  notifyStoreOfficerSaleConfirmed,
+} from "@/lib/notifications"
 
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -93,6 +107,23 @@ export async function POST(req: NextRequest) {
       const result = await supabaseAdmin.rpc(fnName, safeParams)
       if (result.error) {
         return buildError(result.error.message || "RPC failed", 500)
+      }
+      // Cash Expense Authorised
+      if (fnName === "authorise_cash_expense" && params) {
+        const expenseId = params.p_expense_id as string
+        if (expenseId) {
+          // Look up expense details for the notification
+          const { data: expense } = await supabaseAdmin
+            .from("cash_expenses")
+            .select("title, amount, officer_id")
+            .eq("expense_id", expenseId)
+            .single()
+          if (expense) {
+            const title = (expense as Record<string, unknown>).title as string || "Expense"
+            const amount = (expense as Record<string, unknown>).amount as number || 0
+            notifyCashOfficerExpenseActioned(expenseId, "Authorised", title, amount).catch(console.error)
+          }
+        }
       }
       return NextResponse.json({ data: result.data })
     }
@@ -193,6 +224,34 @@ export async function POST(req: NextRequest) {
           results.push(execResult)
         }
 
+        // Fire notifications from completed transaction sub_actions
+        for (const c of completed) {
+          const rows = c.result as Record<string, unknown>[] | null
+          if (!rows || rows.length === 0) continue
+          const row = rows[0]
+
+          // Customer Payment Logged (in transaction)
+          if (c.table === "customer_payments" && c.action === "insert") {
+            const customerName = row.customer_name as string || "Customer"
+            const amount = row.amount as number || 0
+            const brokerId = row.broker_id as string
+            notifyDeskOfficerNewPayment(customerName, amount).catch(console.error)
+            if (brokerId) {
+              notifyBrokerPaymentPosted(brokerId, customerName, amount).catch(console.error)
+            }
+          }
+
+          // Customer Payment Posted (in transaction)
+          if (c.table === "customer_payments" && c.action === "update" && row.status === "Posted") {
+            const brokerId = row.broker_id as string
+            const customerName = row.customer_name as string || "Customer"
+            const amount = row.amount as number || 0
+            if (brokerId) {
+              notifyBrokerPaymentPosted(brokerId, customerName, amount).catch(console.error)
+            }
+          }
+        }
+
         return NextResponse.json({ data: results })
       } catch (err) {
         for (let i = completed.length - 1; i >= 0; i--) {
@@ -258,6 +317,58 @@ export async function POST(req: NextRequest) {
           console.error("Mutation failed", error)
           return buildError("Action failed, try again. If the issue persists, kindly contact admin or submit a complaint.", 500)
         }
+        const row = result?.[0] as Record<string, unknown> | undefined
+
+        // Customer Payment Logged
+        if (table === "customer_payments" && row) {
+          const customerName = (row.customer_name as string) || (data.customer_name as string) || "Customer"
+          const amount = (row.amount as number) || (data.amount as number) || 0
+          const brokerId = (row.broker_id as string) || (data.broker_id as string)
+          notifyDeskOfficerNewPayment(customerName, amount).catch(console.error)
+          if (brokerId) {
+            notifyBrokerPaymentPosted(brokerId, customerName, amount).catch(console.error)
+          }
+        }
+
+        // Cash Expense Created
+        if (table === "cash_expenses" && row) {
+          const expenseId = row.expense_id as string
+          const title = (row.title as string) || (data.title as string) || "Expense"
+          const amount = (row.amount as number) || (data.amount as number) || 0
+          if (expenseId) {
+            notifyCashAuthorizerNewExpense(expenseId, "Cash Officer", title, amount).catch(console.error)
+          }
+        }
+
+        // Broker Credit Created/Updated
+        if (table === "broker_credits" && row) {
+          const brokerId = (row.broker_id as string) || (data.broker_id as string)
+          const customerName = (row.customer_name as string) || (data.customer_name as string) || "Customer"
+          if (brokerId) {
+            notifyBrokerCreditUpdated(brokerId, customerName).catch(console.error)
+          }
+          notifyDeskOfficerCreditAlert(customerName).catch(console.error)
+        }
+
+        // Store Sale Created
+        if (table === "store_sales" && row) {
+          const status = (row.status as string) || (data.status as string)
+          const brokerId = (row.broker_id as string) || (data.broker_id as string)
+          const saleId = row.sale_id as string
+
+          if (status === "Pending" && brokerId) {
+            const storeName = (row.store_name as string) || (data.store_name as string) || "Store"
+            const brokerName = (row.broker_name as string) || (data.broker_name as string) || "Broker"
+            notifyBrokerPendingStoreSale(brokerId, storeName).catch(console.error)
+            notifyStoreOfficerPendingBrokerSale(storeName).catch(console.error)
+            notifyStoreSupervisorPendingBrokerSale(storeName, brokerName).catch(console.error)
+            notifyAdminPendingStoreSale(brokerName, storeName, 0).catch(console.error)
+            notifyDeskOfficerStoreSaleNeedsAttention(saleId).catch(console.error)
+          } else if (status === "Confirmed" && saleId) {
+            notifyStoreOfficerSaleConfirmed(saleId).catch(console.error)
+          }
+        }
+
         return NextResponse.json({ data: result })
       }
 
@@ -284,6 +395,37 @@ export async function POST(req: NextRequest) {
           console.error("Mutation failed", error)
           return buildError("Action failed, try again. If the issue persists, kindly contact admin or submit a complaint.", 500)
         }
+        const row = result?.[0] as Record<string, unknown> | undefined
+
+        // Customer Payment Posted
+        if (table === "customer_payments" && data.status === "Posted" && row) {
+          const brokerId = row.broker_id as string
+          const customerName = row.customer_name as string || "Customer"
+          const amount = row.amount as number || 0
+          if (brokerId) {
+            notifyBrokerPaymentPosted(brokerId, customerName, amount).catch(console.error)
+          }
+        }
+
+        // Cash Expense Rejected
+        if (table === "cash_expenses" && data.status === "Rejected" && row) {
+          const expenseId = (filters.expense_id ?? row.expense_id) as string
+          const title = row.title as string || "Expense"
+          const amount = row.amount as number || 0
+          if (expenseId) {
+            notifyCashOfficerExpenseActioned(expenseId, "Rejected", title, amount).catch(console.error)
+          }
+        }
+
+        // Broker Credit Updated
+        if (table === "broker_credits" && row) {
+          const brokerId = row.broker_id as string
+          const customerName = row.customer_name as string || "Customer"
+          if (brokerId) {
+            notifyBrokerCreditUpdated(brokerId, customerName).catch(console.error)
+          }
+        }
+
         return NextResponse.json({ data: result })
       }
 

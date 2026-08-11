@@ -2,6 +2,20 @@ import { createClient } from "@supabase/supabase-js"
 import { NextRequest, NextResponse } from "next/server"
 import { requireRole, handleApiError } from "@/lib/auth-middleware"
 import { includes } from "@/lib/type-utils"
+import {
+  notifyBrokerNewTripStarted,
+  notifyATCNewTripStarted,
+  notifyAdminTripStarted,
+  notifyAdminTripCompleted,
+  notifyATCTripStatusChanged,
+  notifyTruckOfficerTruckStatusChange,
+  notifyATCDisputedStop,
+  notifyAdminStopDisputed,
+  notifyBrokerStopResolved,
+  notifyBrokerRouteSet,
+  notifyATCRouteSet,
+  notifyAdminTruckRouteSet,
+} from "@/lib/notifications"
 
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -63,6 +77,18 @@ export async function POST(req: NextRequest) {
           console.error("Mutation failed", error)
           return buildError(error.message || "Action failed", 500)
         }
+        // Trip Started
+        if (table === "Trips" && result?.[0]) {
+          const row = result[0] as Record<string, unknown>
+          if (row.trip_status === "In transit" && row.material_centre) {
+            const tripId = row.trip_id as string
+            const plate = row.plate_number as string
+            const mc = row.material_centre as string
+            notifyBrokerNewTripStarted(tripId, mc).catch(console.error)
+            notifyATCNewTripStarted(tripId, plate, mc).catch(console.error)
+            notifyAdminTripStarted(tripId, plate, mc).catch(console.error)
+          }
+        }
         return NextResponse.json({ data: result })
       }
 
@@ -91,6 +117,57 @@ export async function POST(req: NextRequest) {
           console.error("Mutation failed", error)
           return buildError(error.message || "Action failed", 500)
         }
+        const row = result?.[0] as Record<string, unknown> | undefined
+
+        // Trip Completed
+        if (table === "Trips" && data.trip_status === "Completed" && row) {
+          const tripId = (filters.trip_id ?? row.trip_id) as string
+          const plate = row.plate_number as string
+          notifyAdminTripCompleted(tripId, plate).catch(console.error)
+          notifyATCTripStatusChanged(tripId, plate, "Completed").catch(console.error)
+        }
+
+        // Trip Status Changed (hold/resume)
+        if (table === "Trips" && data.trip_status && data.trip_status !== "Completed" && row) {
+          const tripId = (filters.trip_id ?? row.trip_id) as string
+          const plate = row.plate_number as string
+          notifyATCTripStatusChanged(tripId, plate, data.trip_status as string).catch(console.error)
+        }
+
+        // Truck Status Changed
+        if (table === "Trucks" && data.status && row) {
+          const plate = (filters.plate_number ?? row.plate_number) as string
+          notifyTruckOfficerTruckStatusChange(plate, data.status as string).catch(console.error)
+        }
+
+        // Stop Disputed
+        if (table === "Stops" && data.disputed === true && row) {
+          const plate = row.plate_number as string
+          const brokerName = (data.disputed_by as string) || "Broker"
+          notifyATCDisputedStop(plate, brokerName).catch(console.error)
+          notifyAdminStopDisputed(plate, brokerName).catch(console.error)
+        }
+
+        // Stop Resolved (dispute removed)
+        if (table === "Stops" && data.disputed === false && row) {
+          const plate = row.plate_number as string
+          const brokerId = row.broker_id as string
+          if (brokerId) {
+            notifyBrokerStopResolved(brokerId, plate).catch(console.error)
+          }
+        }
+
+        // Route Set (dd_trips)
+        if (table === "dd_trips" && data.route_points && row) {
+          const tripId = (filters.dd_trip_id ?? row.dd_trip_id) as string
+          const plate = row.plate_number as string
+          if (plate) {
+            notifyBrokerRouteSet(tripId, plate).catch(console.error)
+            notifyATCRouteSet(tripId, plate).catch(console.error)
+            notifyAdminTruckRouteSet(tripId, plate).catch(console.error)
+          }
+        }
+
         return NextResponse.json({ data: result })
       }
 

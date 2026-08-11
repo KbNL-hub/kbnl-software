@@ -2,8 +2,8 @@
 // Service Worker with "Stale While Revalidate" strategy for API calls
 // and "Cache First" for static assets
 
-const CACHE_NAME = 'kbnl-v1';
-const API_CACHE_NAME = 'kbnl-api-v1';
+const CACHE_NAME = 'kbnl-v2';
+const API_CACHE_NAME = 'kbnl-api-v2';
 const ASSETS_TO_CACHE = [
   '/',
   '/login',
@@ -27,6 +27,7 @@ function urlBase64ToUint8Array(base64String) {
 
 // Install: Cache essential assets
 self.addEventListener('install', (event) => {
+  console.log('[SW] Installing...');
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => {
       console.log('[SW] Caching essential assets...');
@@ -40,6 +41,7 @@ self.addEventListener('install', (event) => {
 
 // Activate: Clean old caches
 self.addEventListener('activate', (event) => {
+  console.log('[SW] Activating...');
   event.waitUntil(
     caches.keys().then((cacheNames) => {
       return Promise.all(
@@ -53,6 +55,7 @@ self.addEventListener('activate', (event) => {
     })
   );
   self.clients.claim();
+  console.log('[SW] Activated and claimed clients');
 });
 
 // Fetch: Different strategies based on request type
@@ -69,6 +72,11 @@ self.addEventListener('fetch', (event) => {
   // NEVER cache Supabase API calls — always fetch fresh
   if (url.hostname.includes('supabase.co')) {
     event.respondWith(fetch(request));
+    return;
+  }
+
+  // In development: never cache anything, always go to network
+  if (url.hostname === 'localhost' || url.hostname === '127.0.0.1') {
     return;
   }
 
@@ -167,6 +175,8 @@ function createOfflineResponse() {
 
 // === Message Handler ===
 self.addEventListener('message', (event) => {
+  console.log('[SW] Message received:', event.data?.type)
+
   if (event.data && event.data.type === 'SKIP_WAITING') {
     self.skipWaiting();
   }
@@ -185,16 +195,29 @@ self.addEventListener('message', (event) => {
   if (event.data && event.data.type === 'SET_CLIENT_CONTEXT') {
     if (event.data.vapidKey) CLIENT_VAPID_KEY = event.data.vapidKey;
   }
+
+  if (event.data && event.data.type === 'PING') {
+    if (event.source) {
+      event.source.postMessage({ type: 'PONG', scope: self.registration.scope });
+    }
+  }
 });
 
 // === Push Notification Handler ===
 self.addEventListener('push', (event) => {
-  if (!event.data) return
+  console.log('[SW] Push event received', event.data ? 'with data' : 'no data')
+
+  if (!event.data) {
+    console.warn('[SW] Push event has no data')
+    return
+  }
 
   let payload
   try {
     payload = event.data.json()
-  } catch {
+    console.log('[SW] Push payload:', payload)
+  } catch (e) {
+    console.warn('[SW] Push data is not JSON, treating as text:', e)
     payload = {
       title: 'KbNL',
       body: event.data.text(),
@@ -216,11 +239,14 @@ self.addEventListener('push', (event) => {
 
   event.waitUntil(
     self.registration.showNotification(payload.title || 'KbNL', options)
+      .then(() => console.log('[SW] Notification shown:', payload.title))
+      .catch(err => console.error('[SW] showNotification failed:', err))
   )
 })
 
 // === Notification Click Handler ===
 self.addEventListener('notificationclick', (event) => {
+  console.log('[SW] Notification clicked:', event.notification.tag)
   event.notification.close()
 
   const url = event.notification.data?.url || '/'

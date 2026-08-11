@@ -122,6 +122,15 @@ export default function MonitorTrips() {
   const [trips, setTrips] = useState<Trip[]>([])
   const [loading, setLoading] = useState(true)
   const [filterStatus, setFilterStatus] = useState("Active")
+  const [plateSearch, setPlateSearch] = useState("")
+  const [plateDropOpen, setPlateDropOpen] = useState(false)
+  const [dateDropOpen, setDateDropOpen] = useState(false)
+  const [dateMode, setDateMode] = useState<"single" | "range">("single")
+  const [filterDateFrom, setFilterDateFrom] = useState("")
+  const [filterDateTo, setFilterDateTo] = useState("")
+  const hasActiveFilters = !!plateSearch || !!filterDateFrom || !!filterDateTo
+  const uniquePlates = [...new Set(trips.map(t => t.plate_number))].sort()
+  const matchedPlates = plateSearch ? uniquePlates.filter(p => p.toLowerCase().includes(plateSearch.trim().toLowerCase())) : []
   const [viewMode, setViewMode] = useState<ViewMode>(isMobile ? "card" : "table")
   const [selectedDriver, setSelectedDriver] = useState<Pick<Trip, "driver_name" | "driver_phone" | "driver_status"> | null>(null)
   const [selectedStops, setSelectedStops] = useState<Stop[] | null>(null)
@@ -616,7 +625,7 @@ export default function MonitorTrips() {
   const disputedTripCount = trips.filter((t) => t.stops.some((s) => s.disputed)).length
   const pendingPostCount = trips.filter((t) => !t.posted).length
 
-  const filteredTrips = filterStatus === "All"
+  const filteredTrips = (filterStatus === "All"
     ? trips
     : filterStatus === "Active"
     ? trips.filter((t) => t.trip_status === "In transit" || t.trip_status === "On hold")
@@ -627,6 +636,12 @@ export default function MonitorTrips() {
     : filterStatus === "Disputed"
     ? trips.filter((t) => t.stops.some((s) => s.disputed))
     : trips
+  ).filter((t) => !plateSearch || t.plate_number.toLowerCase().includes(plateSearch.trim().toLowerCase()))
+  .filter((t) => {
+    const tripDate = t.created_at.slice(0, 10)
+    if (dateMode === "single") return !filterDateFrom || tripDate === filterDateFrom
+    return (!filterDateFrom || tripDate >= filterDateFrom) && (!filterDateTo || tripDate <= filterDateTo)
+  })
 
   function closeModals() {
     setSelectedDriver(null)
@@ -775,6 +790,155 @@ export default function MonitorTrips() {
         })}
       </div>
 
+      <div style={{ display: "flex", gap: 12, marginBottom: 24, flexWrap: "wrap" }}>
+        <div style={{ position: "relative", flex: isMobile ? "1 1 100%" : "1 1 180px" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, background: "white", border: `1.5px solid ${plateSearch ? "#0070f3" : "#e2e8f0"}`, borderRadius: 8, padding: 0 }}>
+            <Icon icon="mdi:truck-outline" style={{ color: plateSearch ? "#0070f3" : "#888", flexShrink: 0, marginLeft: 12 }} />
+            <input
+              type="text"
+              placeholder="Search truck number…"
+              value={plateSearch}
+              onChange={e => { setPlateSearch(e.target.value); setPlateDropOpen(true) }}
+              onFocus={() => setPlateDropOpen(true)}
+              onBlur={() => setTimeout(() => setPlateDropOpen(false), 150)}
+              style={{ border: "none", outline: "none", fontSize: FONT_SIZE.sm, width: "100%", color: "#333", background: "transparent", padding: "10px 12px" }}
+            />
+            {plateSearch && (
+              <button onClick={() => { setPlateSearch(""); setPlateDropOpen(false) }} style={{ border: "none", background: "none", cursor: "pointer", color: "#aaa", padding: 0, lineHeight: 1, marginRight: 12, flexShrink: 0 }}>✕</button>
+            )}
+          </div>
+          {plateDropOpen && matchedPlates.length > 0 && (
+            <ul style={{ position: "absolute", top: "calc(100% + 4px)", left: 0, right: 0, background: "white", border: "1px solid #e2e8f0", borderRadius: 8, listStyle: "none", margin: 0, padding: 4, maxHeight: 200, overflowY: "auto", zIndex: 50, boxShadow: "0 4px 16px rgba(0,0,0,0.1)" }}>
+              {matchedPlates.map(p => (
+                <li
+                  key={p}
+                  onMouseDown={() => { setPlateSearch(p); setPlateDropOpen(false) }}
+                  style={{ padding: "8px 12px", cursor: "pointer", fontSize: FONT_SIZE.sm, color: "#333", borderRadius: 6 }}
+                  onMouseEnter={e => (e.currentTarget.style.background = "#f5f5f5")}
+                  onMouseLeave={e => (e.currentTarget.style.background = "transparent")}
+                >
+                  {p}
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+
+        <div style={{ position: "relative", flex: isMobile ? "1 1 100%" : "1 1 200px" }}>
+          <div
+            onClick={() => setDateDropOpen(o => !o)}
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 8,
+              background: "white",
+              border: `1.5px solid ${filterDateFrom ? "#0070f3" : "#e2e8f0"}`,
+              borderRadius: 8,
+              padding: "8px 12px",
+              cursor: "pointer",
+              userSelect: "none",
+              minHeight: 40,
+              boxSizing: "border-box",
+            }}
+          >
+            <Icon icon="mdi:calendar-outline" style={{ color: filterDateFrom ? "#0070f3" : "#888", flexShrink: 0 }} />
+            <span style={{ fontSize: FONT_SIZE.sm, color: filterDateFrom ? "#333" : "#aaa", flex: 1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+              {filterDateFrom ? (dateMode === "range" && filterDateTo ? `${filterDateFrom} → ${filterDateTo}` : filterDateFrom) : "Filter by date…"}
+            </span>
+            {filterDateFrom ? (
+              <button
+                onClick={e => { e.stopPropagation(); setFilterDateFrom(""); setFilterDateTo(""); setDateMode("single"); setDateDropOpen(false) }}
+                style={{ border: "none", background: "none", cursor: "pointer", color: "#aaa", padding: 0, lineHeight: 1, flexShrink: 0 }}
+              >
+                ✕
+              </button>
+            ) : (
+              <Icon icon="mdi:chevron-down" style={{ color: "#aaa", fontSize: 16, transition: "transform 0.15s", transform: dateDropOpen ? "rotate(180deg)" : "rotate(0deg)", flexShrink: 0 }} />
+            )}
+          </div>
+
+          {dateDropOpen && (
+            <div style={{
+              position: "absolute",
+              top: "calc(100% + 4px)",
+              left: 0,
+              right: 0,
+              background: "white",
+              border: "1px solid #e2e8f0",
+              borderRadius: 10,
+              padding: 16,
+              zIndex: 50,
+              boxShadow: "0 4px 20px rgba(0,0,0,0.12)",
+              minWidth: isMobile ? "auto" : 260,
+            }}>
+              <div style={{ display: "flex", gap: 6, marginBottom: 14 }}>
+                {(["single", "range"] as const).map(m => (
+                  <button
+                    key={m}
+                    onClick={() => { setDateMode(m); setFilterDateFrom(""); setFilterDateTo("") }}
+                    style={{
+                      flex: 1,
+                      padding: "5px 0",
+                      border: "none",
+                      borderRadius: 6,
+                      cursor: "pointer",
+                      fontSize: FONT_SIZE.xs,
+                      fontWeight: "bold",
+                      background: dateMode === m ? "#0070f3" : "#f0f0f0",
+                      color: dateMode === m ? "white" : "#666",
+                      transition: "all 0.15s"
+                    }}
+                  >
+                    {m === "single" ? "Single day" : "Date range"}
+                  </button>
+                ))}
+              </div>
+
+              {dateMode === "single" ? (
+                <div>
+                  <label style={{ display: "block", fontSize: FONT_SIZE.xs, color: "#888", marginBottom: 4 }}>Select date</label>
+                  <input
+                    type="date"
+                    value={filterDateFrom}
+                    onChange={e => { setFilterDateFrom(e.target.value); setDateDropOpen(false) }}
+                    style={{ width: "100%", padding: "8px 10px", border: "1px solid #e2e8f0", borderRadius: 6, fontSize: FONT_SIZE.sm, color: "#333", boxSizing: "border-box" }}
+                    autoFocus
+                  />
+                </div>
+              ) : (
+                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                  <div>
+                    <label style={{ display: "block", fontSize: FONT_SIZE.xs, color: "#888", marginBottom: 4 }}>From</label>
+                    <input type="date" value={filterDateFrom} onChange={e => setFilterDateFrom(e.target.value)} style={{ width: "100%", padding: "8px 10px", border: "1px solid #e2e8f0", borderRadius: 6, fontSize: FONT_SIZE.sm, color: "#333", boxSizing: "border-box" }} autoFocus />
+                  </div>
+                  <div>
+                    <label style={{ display: "block", fontSize: FONT_SIZE.xs, color: "#888", marginBottom: 4 }}>To</label>
+                    <input type="date" value={filterDateTo} min={filterDateFrom || undefined} onChange={e => setFilterDateTo(e.target.value)} style={{ width: "100%", padding: "8px 10px", border: "1px solid #e2e8f0", borderRadius: 6, fontSize: FONT_SIZE.sm, color: "#333", boxSizing: "border-box" }} />
+                  </div>
+                  {filterDateFrom && filterDateTo && (
+                    <button onClick={() => setDateDropOpen(false)} style={{ padding: "8px 0", background: "#0070f3", color: "white", border: "none", borderRadius: 6, cursor: "pointer", fontSize: FONT_SIZE.sm, fontWeight: "bold" }}>
+                      Apply Range
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
+        {hasActiveFilters && (
+          <button
+            onClick={() => { setPlateSearch(""); setFilterDateFrom(""); setFilterDateTo(""); setDateMode("single") }}
+            style={{ padding: "8px 14px", borderRadius: 8, border: "1px solid #e2e8f0", background: "white", color: "#64748b", fontSize: FONT_SIZE.sm, cursor: "pointer", display: "flex", alignItems: "center", gap: 6, whiteSpace: "nowrap", minHeight: 40, transition: "all 0.2s" }}
+            onMouseEnter={e => { e.currentTarget.style.background = "#f8fafc"; e.currentTarget.style.borderColor = "#cbd5e1" }}
+            onMouseLeave={e => { e.currentTarget.style.background = "white"; e.currentTarget.style.borderColor = "#e2e8f0" }}
+          >
+            <Icon icon="mdi:filter-remove-outline" style={{ fontSize: 16 }} />
+            Clear filters
+          </button>
+        )}
+      </div>
+
       {loading ? (
         <div style={{ display: "flex", justifyContent: "center", padding: "64px 0" }}>
           <div style={{ width: 40, height: 40, borderRadius: "50%", border: "3px solid #e2e8f0", borderTopColor: "#0070f3", animation: "spin 1s linear infinite" }} />
@@ -787,7 +951,7 @@ export default function MonitorTrips() {
           </div>
           <h3 style={{ margin: "0 0 8px", color: "#0f172a", fontSize: FONT_SIZE.xl, fontWeight: 600 }}>No trips found</h3>
           <p style={{ color: "#64748b", fontSize: FONT_SIZE.base, margin: 0 }}>
-            {filterStatus === "All" ? "No trips in the system." : `No trips with status "${filterStatus}".`}
+            {hasActiveFilters ? "No trips match your filters." : filterStatus === "All" ? "No trips in the system." : `No trips with status "${filterStatus}".`}
           </p>
         </div>
       ) : (

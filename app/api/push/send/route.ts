@@ -33,9 +33,10 @@ export async function POST(req: NextRequest) {
       { status: 400 }
     )
   } catch (err) {
-    console.error('[Push Send] Error:', err)
+    const message = err instanceof Error ? err.message : 'Failed to send notification'
+    console.error('[Push Send] Error:', message)
     return NextResponse.json(
-      { error: 'Failed to send notification' },
+      { error: message },
       { status: 500 }
     )
   }

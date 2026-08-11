@@ -2,6 +2,14 @@ import { createClient } from "@supabase/supabase-js"
 import { NextRequest, NextResponse } from "next/server"
 import { requireRole, handleApiError } from "@/lib/auth-middleware"
 import { includes } from "@/lib/type-utils"
+import {
+  notifyTruckAdminNewSideTrip,
+  notifyATCSideTripSubmitted,
+  notifyComplaintResolved,
+  notifyBrokerPricesUpdated,
+  notifyATCPricesUpdated,
+  notifyAdminPricesUpdated,
+} from "@/lib/notifications"
 
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -66,6 +74,16 @@ export async function POST(req: NextRequest) {
           console.error("Mutation failed", error)
           return buildError("Action failed, try again. If the issue persists, kindly contact admin or submit a complaint.", 500)
         }
+        // Side Trip Submitted
+        if (table === "side_trips" && result?.[0]) {
+          const row = result[0] as Record<string, unknown>
+          const driverName = (row.driver_name as string) || (data.driver_name as string) || "Driver"
+          const plate = (row.plate_number as string) || (data.plate_number as string)
+          if (plate) {
+            notifyTruckAdminNewSideTrip(driverName, plate).catch(console.error)
+            notifyATCSideTripSubmitted(driverName, plate).catch(console.error)
+          }
+        }
         return NextResponse.json({ data: result })
       }
 
@@ -76,6 +94,12 @@ export async function POST(req: NextRequest) {
         if (error) {
           console.error("Mutation failed", error)
           return buildError("Action failed, try again. If the issue persists, kindly contact admin or submit a complaint.", 500)
+        }
+        // Company Prices Updated
+        if (table === "company_prices") {
+          notifyBrokerPricesUpdated().catch(console.error)
+          notifyATCPricesUpdated().catch(console.error)
+          notifyAdminPricesUpdated().catch(console.error)
         }
         return NextResponse.json({ data: result })
       }
@@ -94,6 +118,26 @@ export async function POST(req: NextRequest) {
           console.error("Mutation failed", error)
           return buildError("Action failed, try again. If the issue persists, kindly contact admin or submit a complaint.", 500)
         }
+        const row = result?.[0] as Record<string, unknown> | undefined
+
+        // Complaint Resolved
+        if (table === "driver_complaints" && data.resolved === true && row) {
+          const driverId = row.driver_id as string
+          const complaintId = (filters.complaint_id ?? row.complaint_id ?? row.id) as string
+          if (driverId && complaintId) {
+            notifyComplaintResolved(driverId, complaintId).catch(console.error)
+          }
+        }
+
+        // Report Resolved
+        if (table === "reports" && data.resolved === true && row) {
+          const userId = row.user_id as string
+          const reportId = (filters.id ?? row.id) as string
+          if (userId && reportId) {
+            notifyComplaintResolved(userId, reportId).catch(console.error)
+          }
+        }
+
         return NextResponse.json({ data: result })
       }
 

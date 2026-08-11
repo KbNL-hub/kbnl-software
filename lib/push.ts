@@ -95,6 +95,10 @@ export async function sendNotification(
     tag: payload.tag || 'kbnl-notification',
   })
 
+  const endpointShort = subscription.endpoint.length > 50
+    ? subscription.endpoint.substring(0, 25) + '...' + subscription.endpoint.substring(subscription.endpoint.length - 20)
+    : subscription.endpoint
+
   try {
     ensureVapid()
     await webPush.sendNotification(
@@ -102,13 +106,17 @@ export async function sendNotification(
       message,
       { TTL: 60 * 60 } // 1 hour TTL
     )
+    console.log(`[Push] Delivered to ${endpointShort}`)
     return true
   } catch (err: unknown) {
     const statusCode = (err as { statusCode?: number }).statusCode
+    const body = (err as { body?: string }).body
     if (statusCode === 404 || statusCode === 410) {
       await removeSubscription(subscription.endpoint)
+      console.warn(`[Push] Subscription expired (HTTP ${statusCode}), removed: ${endpointShort}`)
+    } else {
+      console.error(`[Push] Send failed (HTTP ${statusCode}) to ${endpointShort}:`, body || err)
     }
-    console.error('[Push] Send failed:', statusCode || err)
     return false
   }
 }

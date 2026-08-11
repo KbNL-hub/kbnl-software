@@ -207,9 +207,7 @@ function AdminPanelContent({ userProfile }: Props) {
         }
 
         if (canViewCashExpenses) {
-          const { count } = await supabase
-            .from("cash_expenses").select("*", { count: "exact", head: true }).eq("status", "Pending")
-          setUnauthorizedExpenses(count || 0)
+          await fetchUnauthorizedExpenses()
         }
 
         if (canViewDeskExpenses) {
@@ -264,9 +262,7 @@ function AdminPanelContent({ userProfile }: Props) {
           setPendingPayments(count || 0)
         }
         if (canViewCashExpenses) {
-          const { count } = await supabase
-            .from("cash_expenses").select("*", { count: "exact", head: true }).eq("status", "Pending")
-          setUnauthorizedExpenses(count || 0)
+          await fetchUnauthorizedExpenses()
         }
         if (canViewDeskExpenses) {
           const { count } = await supabase
@@ -297,6 +293,30 @@ function AdminPanelContent({ userProfile }: Props) {
   }
 
   const visibleAlerts = lowBalanceCompanies.filter(c => !dismissedAlerts.has(c.company_id))
+
+  async function fetchUnauthorizedExpenses() {
+    try {
+      const { data: authorizer } = await supabase
+        .from("cash_authorizers")
+        .select("assigned_office")
+        .eq("authorizer_id", userProfile.user_id)
+        .maybeSingle()
+
+      if (authorizer?.assigned_office) {
+        const { count } = await supabase
+          .from("cash_expenses")
+          .select("*", { count: "exact", head: true })
+          .eq("status", "Pending")
+          .eq("office_name", authorizer.assigned_office)
+        setUnauthorizedExpenses(count || 0)
+      } else {
+        setUnauthorizedExpenses(0)
+      }
+    } catch (err) {
+      console.error("Error checking cash expenses:", err)
+      setUnauthorizedExpenses(0)
+    }
+  }
 
   // Preload chunk for initial URL section
   useEffect(() => {
@@ -421,7 +441,7 @@ function AdminPanelContent({ userProfile }: Props) {
       item.key === "complaints" && unresolvedComplaints > 0 ? { count: unresolvedComplaints, color: "#f5a623" } :
       item.key === "store-sales" && pendingStoreSales > 0 ? { count: pendingStoreSales, color: "#f5a623" } :
       item.key === "customer-payments" && pendingPayments > 0 ? { count: pendingPayments, color: "#f5a623" } :
-      item.key === "cash-expenses" && unauthorizedExpenses > 0 ? { count: unauthorizedExpenses, color: "#ef4444" } :
+      item.key === "cash-expenses" && unauthorizedExpenses > 0 ? { count: unauthorizedExpenses, color: "#f5a623" } :
       item.key === "desk-expenses" && unpostedExpenses > 0 ? { count: unpostedExpenses, color: "#f5a623" } :
       null
 

@@ -1,6 +1,7 @@
 import { createClient } from "@supabase/supabase-js"
 import { NextRequest, NextResponse } from "next/server"
 import { requireAuth, handleApiError } from "@/lib/auth-middleware"
+import { notifyDeskOfficerNewComplaint } from "@/lib/notifications"
 
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -26,6 +27,13 @@ export async function POST(req: NextRequest) {
     if (error) {
       console.error("Mutation failed", error)
       return buildError("Action failed, try again. If the issue persists, kindly contact admin or submit a complaint.", 500)
+    }
+    // Report Submitted
+    if (result?.[0]) {
+      const reportId = result[0].id as string
+      if (reportId) {
+        notifyDeskOfficerNewComplaint(reportId).catch(console.error)
+      }
     }
     return NextResponse.json({ data: result })
   } catch (err) {

@@ -125,10 +125,27 @@ export default function RootLayout({
               if ('serviceWorker' in navigator && (window.location.protocol === 'https:' || window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')) {
                 navigator.serviceWorker.register('/sw.js').then(function(reg) {
                   var vapidKey = '${process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY || ''}';
+
+                  function postContext(sw) {
+                    if (sw) sw.postMessage({ type: 'SET_CLIENT_CONTEXT', vapidKey: vapidKey });
+                  }
+
+                  // If there's a waiting SW, force it to activate
+                  if (reg.waiting) {
+                    reg.waiting.postMessage({ type: 'SKIP_WAITING' });
+                  }
+
                   if (reg.active) {
-                    reg.active.postMessage({ type: 'SET_CLIENT_CONTEXT', vapidKey: vapidKey });
+                    postContext(reg.active);
+                    if (!navigator.serviceWorker.controller) {
+                      reg.active.postMessage({ type: 'SKIP_WAITING' });
+                    }
                   }
                 }).catch(function(e) { console.log('SW registration failed:', e); });
+
+                navigator.serviceWorker.addEventListener('controllerchange', function() {
+                  console.log('[App] SW now controls the page');
+                });
               }
             `,
           }}
