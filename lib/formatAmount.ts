@@ -4,6 +4,6 @@ export function formatAmount(value: string): string {
   return Number(digits).toLocaleString("en-NG")
 }
 
-export function parseAmount(value: string): number {
-  return Number(value.replace(/[^\d]/g, ""))
+export function parseAmount(value: string | undefined | null): number {
+  return Number((value ?? "").replace(/[^\d]/g, ""))
 }

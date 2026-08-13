@@ -1,5 +1,6 @@
 "use client"
 
+import { apiMutate } from "@/lib/api-mutation"
 import { FONT_SIZE } from "@/lib/constants"
 import { usePolling } from "@/lib/hooks/usePolling"
 
@@ -7,6 +8,7 @@ import { useState, useEffect, useCallback, Fragment } from "react"
 import { Icon } from "@iconify/react"
 import { supabase } from "@/lib/supabase"
 import { fetchStores } from "@/lib/stores"
+import ModernInput from "@/components/ModernInput"
 
 type StoreSale = {
   sale_id: string
@@ -85,6 +87,13 @@ export default function StoreSales() {
   const [filterStatus, setFilterStatus] = useState("All")
   const [viewMode, setViewMode] = useState<ViewMode>(isMobile ? "card" : "table")
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null)
+
+  const [showRejectModal, setShowRejectModal] = useState(false)
+  const [rejectingSale, setRejectingSale] = useState<StoreSale | null>(null)
+  const [rejectReason, setRejectReason] = useState("")
+  const [isRejecting, setIsRejecting] = useState(false)
+  const [isResubmitting, setIsResubmitting] = useState(false)
+  const [message, setMessage] = useState("")
 
   const [allProducts, setAllProducts] = useState<string[]>([])
   const [filterProduct, setFilterProduct] = useState("")
@@ -183,6 +192,71 @@ export default function StoreSales() {
     setFilterDateFrom("")
     setFilterDateTo("")
     setDateMode("single")
+  }
+
+  function openRejectModal(sale: StoreSale) {
+    setRejectingSale(sale)
+    setRejectReason(sale.rejection_reason || "")
+    setMessage("")
+    setShowRejectModal(true)
+  }
+
+  function closeRejectModal() {
+    setShowRejectModal(false)
+    setRejectingSale(null)
+    setRejectReason("")
+    setMessage("")
+  }
+
+  async function handleReject() {
+    if (!rejectingSale) return
+    if (!rejectReason.trim()) {
+      setMessage("Please provide a reason for rejection")
+      return
+    }
+    setIsRejecting(true)
+    try {
+      const { data, error } = await apiMutate("finance", {
+        action: "update",
+        table: "store_sales",
+        data: { status: "Rejected", rejection_reason: rejectReason.trim() },
+        filters: { sale_id: rejectingSale.sale_id },
+      })
+      if (error || (Array.isArray(data) && data.length === 0)) {
+        setMessage("Failed to reject sale")
+        setIsRejecting(false)
+        return
+      }
+      closeRejectModal()
+      loadAll()
+    } catch (err) {
+      console.error("Error rejecting sale:", err)
+      setMessage("Failed to reject sale. Please try again.")
+      setIsRejecting(false)
+    }
+  }
+
+  async function handleResubmit(sale: StoreSale) {
+    setIsResubmitting(true)
+    try {
+      const { data, error } = await apiMutate("finance", {
+        action: "update",
+        table: "store_sales",
+        data: { status: "Pending", rejection_reason: null },
+        filters: { sale_id: sale.sale_id },
+      })
+      if (error || (Array.isArray(data) && data.length === 0)) {
+        setMessage("Failed to resubmit sale")
+        setIsResubmitting(false)
+        return
+      }
+      closeRejectModal()
+      loadAll()
+    } catch (err) {
+      console.error("Error resubmitting sale:", err)
+      setMessage("Failed to resubmit sale. Please try again.")
+      setIsResubmitting(false)
+    }
   }
 
   const dateLabel = filterDateFrom
@@ -572,6 +646,60 @@ export default function StoreSales() {
                           <span style={{ color: "#94a3b8", fontSize: FONT_SIZE.xs }}>
                             {new Date(sale.sold_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
                           </span>
+                          {(sale.status === "Confirmed" || sale.status === "Rejected") && (
+                            <div style={{ display: "flex", gap: 8 }}>
+                              {sale.status === "Rejected" && (
+                                <button
+                                  onClick={() => handleResubmit(sale)}
+                                  disabled={isResubmitting}
+                                  style={{
+                                    padding: "6px 12px",
+                                    background: "#0070f3",
+                                    color: "white",
+                                    border: "none",
+                                    borderRadius: 6,
+                                    cursor: isResubmitting ? "not-allowed" : "pointer",
+                                    fontSize: FONT_SIZE.xs,
+                                    fontWeight: 600,
+                                    minHeight: 32,
+                                    display: "flex",
+                                    alignItems: "center",
+                                    gap: 4,
+                                    transition: "all 0.2s",
+                                    opacity: isResubmitting ? 0.6 : 1
+                                  }}
+                                  onMouseEnter={e => { if (!isResubmitting) e.currentTarget.style.background = "#0056d4" }}
+                                  onMouseLeave={e => { e.currentTarget.style.background = "#0070f3" }}
+                                >
+                                  <Icon icon="mdi:rotate-3d-variant" width={14} />
+                                  {isResubmitting ? "Resubmitting…" : "Resubmit"}
+                                </button>
+                              )}
+                              <button
+                                onClick={() => openRejectModal(sale)}
+                                style={{
+                                  padding: "6px 12px",
+                                  background: "white",
+                                  color: "#ef4444",
+                                  border: "1.5px solid #ef4444",
+                                  borderRadius: 6,
+                                  cursor: "pointer",
+                                  fontSize: FONT_SIZE.xs,
+                                  fontWeight: 600,
+                                  minHeight: 32,
+                                  display: "flex",
+                                  alignItems: "center",
+                                  gap: 4,
+                                  transition: "all 0.2s"
+                                }}
+                                onMouseEnter={e => { e.currentTarget.style.background = "#fef2f2"; e.currentTarget.style.borderColor = "#dc2626" }}
+                                onMouseLeave={e => { e.currentTarget.style.background = "white"; e.currentTarget.style.borderColor = "#ef4444" }}
+                              >
+                                <Icon icon="mdi:close-circle" width={14} />
+                                {sale.status === "Rejected" ? "Re-reject" : "Reject"}
+                              </button>
+                            </div>
+                          )}
                         </div>
                       </div>
                     ))}
@@ -636,6 +764,60 @@ export default function StoreSales() {
                                 &ldquo;{sale.rejection_reason}&rdquo;
                               </div>
                             )}
+                            {(sale.status === "Confirmed" || sale.status === "Rejected") && (
+                              <div style={{ display: "flex", gap: 6, marginTop: 8, flexWrap: "wrap" }}>
+                                {sale.status === "Rejected" && (
+                                  <button
+                                    onClick={() => handleResubmit(sale)}
+                                    disabled={isResubmitting}
+                                    style={{
+                                      padding: "5px 10px",
+                                      background: "#0070f3",
+                                      color: "white",
+                                      border: "none",
+                                      borderRadius: 5,
+                                      cursor: isResubmitting ? "not-allowed" : "pointer",
+                                      fontSize: FONT_SIZE.xs,
+                                      fontWeight: 600,
+                                      minHeight: 28,
+                                      display: "flex",
+                                      alignItems: "center",
+                                      gap: 4,
+                                      transition: "all 0.2s",
+                                      opacity: isResubmitting ? 0.6 : 1
+                                    }}
+                                    onMouseEnter={e => { if (!isResubmitting) e.currentTarget.style.background = "#0056d4" }}
+                                    onMouseLeave={e => { e.currentTarget.style.background = "#0070f3" }}
+                                  >
+                                    <Icon icon="mdi:rotate-3d-variant" width={13} />
+                                    Resubmit
+                                  </button>
+                                )}
+                                <button
+                                  onClick={() => openRejectModal(sale)}
+                                  style={{
+                                    padding: "5px 10px",
+                                    background: "white",
+                                    color: "#ef4444",
+                                    border: "1.5px solid #ef4444",
+                                    borderRadius: 5,
+                                    cursor: "pointer",
+                                    fontSize: FONT_SIZE.xs,
+                                    fontWeight: 600,
+                                    minHeight: 28,
+                                    display: "flex",
+                                    alignItems: "center",
+                                    gap: 4,
+                                    transition: "all 0.2s"
+                                  }}
+                                  onMouseEnter={e => { e.currentTarget.style.background = "#fef2f2"; e.currentTarget.style.borderColor = "#dc2626" }}
+                                  onMouseLeave={e => { e.currentTarget.style.background = "white"; e.currentTarget.style.borderColor = "#ef4444" }}
+                                >
+                                  <Icon icon="mdi:close-circle" width={13} />
+                                  {sale.status === "Rejected" ? "Re-reject" : "Reject"}
+                                </button>
+                              </div>
+                            )}
                           </td>
                           <td style={{ padding: "12px 16px", color: "#94a3b8", fontSize: FONT_SIZE.xs }}>{new Date(sale.sold_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</td>
                         </tr>
@@ -648,6 +830,146 @@ export default function StoreSales() {
           )}
         </>
       )}
+
+      {showRejectModal && rejectingSale && (
+        <div
+          onClick={closeRejectModal}
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(15, 23, 42, 0.6)",
+            backdropFilter: "blur(4px)",
+            display: "flex",
+            alignItems: isMobile ? "flex-end" : "center",
+            justifyContent: "center",
+            zIndex: 100,
+            padding: isMobile ? 0 : 24,
+            animation: "fadeIn 0.2s ease-out",
+          }}
+        >
+          <style>{`
+            @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+            @keyframes slideUp { from { transform: translateY(20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+          `}</style>
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              background: "white",
+              borderRadius: isMobile ? "20px 20px 0 0" : 12,
+              padding: isMobile ? "28px 20px" : 32,
+              width: "100%",
+              maxWidth: 480,
+              maxHeight: "90vh",
+              overflowY: "auto",
+              boxShadow: "0 25px 50px -12px rgba(0, 0, 0, 0.25)",
+              animation: "slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1)",
+            }}
+          >
+            {isMobile && <div style={{ width: 40, height: 4, background: "#e0e0e0", borderRadius: 2, margin: "0 auto 20px" }} />}
+
+            <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 4 }}>
+              <div style={{ width: 38, height: 38, borderRadius: 10, background: "#fef2f2", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                <Icon icon="mdi:close-circle" width={20} color="#ef4444" />
+              </div>
+              <h3 style={{ margin: 0, color: "#0f172a", fontSize: isMobile ? 18 : 16, fontWeight: 700 }}>
+                {rejectingSale.status === "Rejected" ? "Update Rejection Reason" : "Reject Sale"}
+              </h3>
+            </div>
+
+            <div style={{ padding: "12px 14px", background: "#f8fafc", borderRadius: 10, margin: "16px 0", border: "1px solid #e2e8f0" }}>
+              <p style={{ margin: 0, fontSize: FONT_SIZE.sm, color: "#0f172a", fontWeight: 600 }}>{rejectingSale.store_name}</p>
+              <p style={{ margin: "4px 0 0", fontSize: FONT_SIZE.sm, color: "#64748b" }}>
+                {rejectingSale.product} × {rejectingSale.quantity} bags · {formatAmount(rejectingSale.total_amount)}
+              </p>
+              {rejectingSale.broker_name && (
+                <p style={{ margin: "4px 0 0", fontSize: FONT_SIZE.sm, color: "#64748b" }}>
+                  Broker: {rejectingSale.broker_name}
+                </p>
+              )}
+            </div>
+
+            <div style={{ marginBottom: 16 }}>
+              <label style={{ display: "block", marginBottom: 6, color: "#475569", fontSize: FONT_SIZE.sm, fontWeight: 600 }}>
+                Reason for Rejection *
+              </label>
+              <ModernInput
+                as="textarea"
+                placeholder="e.g. Wrong quantity recorded, incorrect price, wrong customer…"
+                value={rejectReason}
+                onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => { setRejectReason(e.target.value); setMessage("") }}
+                rows={4}
+                style={{ resize: "none", minHeight: 110, width: "100%" }}
+              />
+            </div>
+
+            {rejectingSale.status === "Rejected" && rejectingSale.rejection_reason && (
+              <div style={{ padding: "8px 12px", background: "#fef2f2", borderRadius: 6, border: "1px solid #fecaca", marginBottom: 16, fontSize: FONT_SIZE.xs, color: "#7f1d1d" }}>
+                Current reason: &ldquo;{rejectingSale.rejection_reason}&rdquo;
+              </div>
+            )}
+
+            {message && (
+              <div style={{ display: "flex", alignItems: "center", gap: 6, color: "#ef4444", marginBottom: 14, fontSize: 13 }}>
+                <Icon icon="mdi:alert-circle" width={15} />{message}
+              </div>
+            )}
+
+            <div style={{ display: "flex", gap: 8 }}>
+              <button
+                onClick={closeRejectModal}
+                style={{
+                  flex: 1,
+                  padding: "13px 0",
+                  background: "white",
+                  border: "1.5px solid #e5e5e5",
+                  borderRadius: 10,
+                  cursor: "pointer",
+                  fontSize: 15,
+                  minHeight: 50,
+                  fontWeight: "bold",
+                  color: "#475569",
+                  transition: "all 0.2s",
+                }}
+                onMouseEnter={e => { e.currentTarget.style.background = "#f8fafc" }}
+                onMouseLeave={e => { e.currentTarget.style.background = "white" }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleReject}
+                disabled={isRejecting}
+                style={{
+                  flex: 1,
+                  padding: "13px 0",
+                  background: isRejecting ? "#ccc" : "#ef4444",
+                  color: "white",
+                  border: "none",
+                  borderRadius: 10,
+                  cursor: isRejecting ? "not-allowed" : "pointer",
+                  fontSize: 15,
+                  minHeight: 50,
+                  fontWeight: "bold",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: 6,
+                  transition: "all 0.2s",
+                  opacity: isRejecting ? 0.7 : 1,
+                }}
+                onMouseEnter={e => { if (!isRejecting) e.currentTarget.style.background = "#dc2626" }}
+                onMouseLeave={e => { e.currentTarget.style.background = isRejecting ? "#ccc" : "#ef4444" }}
+              >
+                {isRejecting
+                  ? <><Icon icon="mdi:loading" width={16} style={{ animation: "spin 1s linear infinite" }} />Rejecting…</>
+                  : <><Icon icon="mdi:close-circle" width={16} />{rejectingSale.status === "Rejected" ? "Update Reason" : "Reject Sale"}</>
+                }
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
     </div>
   )
 }

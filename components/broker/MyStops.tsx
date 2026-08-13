@@ -4,16 +4,11 @@ import { useState, useEffect, useCallback } from "react"
 import { Icon } from "@iconify/react"
 import { supabase } from "@/lib/supabase"
 import { apiMutate } from "@/lib/api-mutation"
-import { formatAmount, parseAmount } from "@/lib/formatAmount"
 import ModernInput from "@/components/ModernInput"
-import CustomerSelector from "@/components/CustomerSelector"
+import BrokerConfirmModal from "@/components/broker/BrokerConfirmModal"
 import { useBreakpoint } from "@/app/hooks/useBreakpoint"
 
-type Customer = {
-  customer_id: string
-  full_name: string
-  phone_number: string
-}
+const AREAS = ["Calabar to Obubra", "Ikom to Obudu", "Akwa-Ibom", "East"]
 
 type Stop = {
   stop_id: string
@@ -44,24 +39,23 @@ export default function MyStops() {
   const [viewMode, setViewMode] = useState<"card" | "table">("card")
 
   const [selectedStop, setSelectedStop] = useState<Stop | null>(null)
-  const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null)
-  const [pricePerBag, setPricePerBag] = useState("")
   const [disputingStop, setDisputingStop] = useState<Stop | null>(null)
   const [disputeReason, setDisputeReason] = useState("")
   const [message, setMessage] = useState("")
   const [submitting, setSubmitting] = useState(false)
-  const [companyPriceMap, setCompanyPriceMap] = useState<Record<string, number>>({})
-  const [soldAtDifferentPrice, setSoldAtDifferentPrice] = useState(false)
-  const [discount, setDiscount] = useState("")
-  const [salePrice, setSalePrice] = useState("")
+  const [companyPriceMap, setCompanyPriceMap] = useState<Record<string, Record<string, number>>>({})
 
   const initBroker = useCallback(async () => {
     const { data: { session } } = await supabase.auth.getSession()
     if (!session) { window.location.href = "/login"; return }
     setBrokerId(session.user.id)
     const { data: priceData } = await supabase.from("company_prices").select("*")
-    const priceMap: Record<string, number> = {}
-    for (const p of (priceData || [])) priceMap[p.product] = p.price
+    const priceMap: Record<string, Record<string, number>> = {}
+    for (const area of AREAS) priceMap[area] = {}
+    for (const p of (priceData || [])) {
+      if (!priceMap[p.area]) priceMap[p.area] = {}
+      priceMap[p.area][p.product] = p.price
+    }
     setCompanyPriceMap(priceMap)
     await fetchStops(session.user.id)
     setLoading(false)
@@ -106,56 +100,13 @@ export default function MyStops() {
   }
 
   function openConfirmModal(stop: Stop) {
-    const cp = companyPriceMap[stop.product]
     setSelectedStop(stop)
-    setSelectedCustomer(null)
-    setPricePerBag(cp ? formatAmount(cp.toString()) : "")
-    setSoldAtDifferentPrice(false)
-    setDiscount("")
-    setSalePrice("")
     setMessage("")
   }
 
   function closeModal() {
-    setSelectedStop(null); setSelectedCustomer(null); setPricePerBag(""); setMessage(""); setSoldAtDifferentPrice(false); setDiscount(""); setSalePrice("")
-  }
-
-  function handleDiscountChange(raw: string) {
-    const digits = raw.replace(/[^0-9]/g, "")
-    if (digits === "") { setDiscount(""); setSalePrice(""); setPricePerBag(""); return }
-    const discountVal = parseInt(digits)
-    const cp = selectedStop ? companyPriceMap[selectedStop.product] ?? 0 : 0
-    const saleAmount = Math.max(0, cp - discountVal)
-    setDiscount(formatAmount(discountVal.toString()))
-    setSalePrice(formatAmount(saleAmount.toString()))
-    setPricePerBag(formatAmount(saleAmount.toString()))
+    setSelectedStop(null)
     setMessage("")
-  }
-
-  function handleSalePriceChange(raw: string) {
-    const digits = raw.replace(/[^0-9]/g, "")
-    if (digits === "") { setSalePrice(""); setDiscount(""); setPricePerBag(""); return }
-    const saleVal = parseInt(digits)
-    const cp = selectedStop ? companyPriceMap[selectedStop.product] ?? 0 : 0
-    const discountAmount = Math.max(0, cp - saleVal)
-    setSalePrice(formatAmount(saleVal.toString()))
-    setDiscount(formatAmount(discountAmount.toString()))
-    setPricePerBag(formatAmount(saleVal.toString()))
-    setMessage("")
-  }
-
-  function handleToggleDifferentPrice(checked: boolean) {
-    setSoldAtDifferentPrice(checked)
-    if (!checked) {
-      const cp = selectedStop ? companyPriceMap[selectedStop.product] ?? 0 : 0
-      setDiscount("")
-      setSalePrice("")
-      setPricePerBag(cp ? formatAmount(cp.toString()) : "")
-    } else {
-      const cp = selectedStop ? companyPriceMap[selectedStop.product] ?? 0 : 0
-      setDiscount("0")
-      setSalePrice(cp ? formatAmount(cp.toString()) : "")
-    }
   }
 
   async function handleDispute() {
@@ -174,40 +125,6 @@ export default function MyStops() {
       setDisputingStop(null); setDisputeReason(""); if (brokerId) fetchStops(brokerId)
     } catch {
       setMessage("Failed to dispute stop")
-    } finally {
-      setSubmitting(false)
-    }
-  }
-
-  async function handleConfirm() {
-    if (!selectedStop || !pricePerBag) { setMessage("Price per bag required"); return }
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) return
-
-    setSubmitting(true)
-    try {
-      const customerIdToSave = selectedCustomer?.customer_id ?? selectedStop.customer_id
-
-      const { error } = await apiMutate("trips", {
-        action: "transaction",
-        sub_actions: [
-          {
-            action: "update", table: "Stops",
-            data: { confirmed: true, customer_id: customerIdToSave, updated_by: user.id },
-            filters: { stop_id: selectedStop.stop_id },
-          },
-          {
-            action: "insert", table: "Stop_Confirmations",
-            data: { stop_id: selectedStop.stop_id, broker_id: brokerId, customer_id: customerIdToSave, price_per_bag: parseAmount(pricePerBag) },
-          },
-        ],
-      })
-
-      if (error) { setMessage("Failed to confirm stop. Please try again."); return }
-      closeModal()
-      if (brokerId) fetchStops(brokerId)
-    } catch {
-      setMessage("Failed to confirm stop. Please try again.")
     } finally {
       setSubmitting(false)
     }
@@ -399,81 +316,16 @@ export default function MyStops() {
           </div>
       )}
 
-      {selectedStop && (
-        <div onClick={closeModal} style={modalOverlay}>
-          <div onClick={e => e.stopPropagation()} style={modalBox}>
-            {isMobile && <div style={{ width: 40, height: 4, background: "#e0e0e0", borderRadius: 2, margin: "0 auto 20px" }} />}
-            <h3 style={{ margin: "0 0 4px", color: "#171717", fontSize: isMobile ? 18 : 16 }}>Confirm Stop</h3>
-            <p style={{ color: "#888", fontSize: 13, marginBottom: 20 }}>{selectedStop.plate_number} · {selectedStop.stop_location}</p>
-
-            <div style={{ padding: "12px 14px", background: "#f9f9f9", borderRadius: 10, marginBottom: 20 }}>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-                <div><p style={{ margin: 0, fontSize: 11, color: "#aaa" }}>Bags</p><p style={{ margin: "2px 0 0", fontWeight: "bold", fontSize: 16, color: "#171717" }}>{selectedStop.quantity_offloaded}</p></div>
-                <div><p style={{ margin: 0, fontSize: 11, color: "#aaa" }}>Loading Point</p><p style={{ margin: "2px 0 0", fontSize: 13, color: "#171717" }}>{selectedStop.material_centre}</p></div>
-                {selectedStop.order_no ? (
-                  <>
-                    <div><p style={{ margin: 0, fontSize: 11, color: "#aaa" }}>Order No</p><p style={{ margin: "2px 0 0", fontSize: 13, color: "#171717" }}>{selectedStop.order_no}</p></div>
-                    {selectedStop.child_order_no && <div><p style={{ margin: 0, fontSize: 11, color: "#aaa" }}>Child Order</p><p style={{ margin: "2px 0 0", fontSize: 13, color: "#171717" }}>{selectedStop.child_order_no}</p></div>}
-                  </>
-                ) : selectedStop.atc ? (
-                  <div><p style={{ margin: 0, fontSize: 11, color: "#aaa" }}>ATC</p><p style={{ margin: "2px 0 0", fontSize: 13, color: "#171717" }}>{selectedStop.atc}</p></div>
-                ) : null}
-                <div><p style={{ margin: 0, fontSize: 11, color: "#aaa" }}>Driver&apos;s Customer</p><p style={{ margin: "2px 0 0", fontSize: 13, color: "#171717" }}>{selectedStop.customer_name}</p></div>
-              </div>
-            </div>
-
-            <div style={{ marginBottom: 16 }}>
-              <label style={labelStyle}>Correct Customer (if not provided)</label>
-              <CustomerSelector onSelect={(c) => setSelectedCustomer(c)} />
-            </div>
-
-            {companyPriceMap[selectedStop.product] !== undefined && (
-              <div style={{ marginBottom: 12, padding: "8px 12px", background: "#ecfdf5", borderRadius: 8, border: "1px solid #10b981", display: "flex", alignItems: "center", gap: 8 }}>
-                <Icon icon="mdi:information" width={16} color="#10b981" />
-                <span style={{ fontSize: 13, color: "#10b981" }}>Company price: <strong>₦{companyPriceMap[selectedStop.product].toLocaleString()}</strong>/bag</span>
-              </div>
-            )}
-
-            <div style={{ marginBottom: 12 }}>
-              <label style={labelStyle}>Price Per Bag (₦) *</label>
-              <ModernInput type="text" inputMode="numeric" placeholder="e.g. 10,500" value={pricePerBag} onChange={(e) => { setPricePerBag(formatAmount(e.target.value)); setMessage("") }} style={inputStyle} />
-            </div>
-
-            {companyPriceMap[selectedStop.product] !== undefined && (
-              <>
-                <div style={{ marginBottom: 16 }}>
-                  <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", fontWeight: 500, fontSize: 13, color: "#444" }}>
-                    <input type="checkbox" checked={soldAtDifferentPrice} onChange={e => handleToggleDifferentPrice(e.target.checked)} style={{ width: 16, height: 16, cursor: "pointer" }} />
-                    Sold at a different price?
-                  </label>
-                </div>
-
-                {soldAtDifferentPrice && (
-                  <div style={{ display: "flex", gap: 10, marginBottom: 16 }}>
-                    <div style={{ flex: 1 }}>
-                      <label style={labelStyle}>Discount (₦)</label>
-                      <ModernInput type="text" inputMode="numeric" placeholder="0" value={discount} onChange={e => handleDiscountChange(e.target.value)} style={inputStyle} />
-                    </div>
-                    <div style={{ flex: 1 }}>
-                      <label style={labelStyle}>Sale Price (₦)</label>
-                      <ModernInput type="text" inputMode="numeric" placeholder="Sale price" value={salePrice} onChange={e => handleSalePriceChange(e.target.value)} style={inputStyle} />
-                    </div>
-                  </div>
-                )}
-              </>
-            )}
-
-            {message && <div style={{ display: "flex", alignItems: "center", gap: 6, color: "#ff4444", marginBottom: 14, fontSize: 13 }}><Icon icon="mdi:alert-circle" width={15} />{message}</div>}
-
-            <div style={{ display: "flex", gap: 8 }}>
-              <button onClick={closeModal} style={{ flex: 1, padding: "13px 0", background: "white", border: "1.5px solid #e5e5e5", borderRadius: 10, cursor: "pointer", fontSize: 15, minHeight: 50, fontWeight: "bold" }}>Cancel</button>
-              <button onClick={handleConfirm} disabled={submitting} style={{ flex: 1, padding: "13px 0", background: submitting ? "#ccc" : "#0070f3", color: "white", border: "none", borderRadius: 10, cursor: submitting ? "not-allowed" : "pointer", fontSize: 15, minHeight: 50, fontWeight: "bold", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
-                {submitting ? <><Icon icon="mdi:loading" width={16} style={{ animation: "spin 1s linear infinite" }} />Confirming…</> : <><Icon icon="mdi:check-circle" width={16} />Confirm Stop</>}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <BrokerConfirmModal
+        isOpen={!!selectedStop}
+        onClose={closeModal}
+        brokerId={brokerId || ""}
+        isMobile={isMobile}
+        companyPriceMap={companyPriceMap}
+        onConfirmed={() => { if (brokerId) fetchStops(brokerId) }}
+        mode="stop"
+        stop={selectedStop!}
+      />
 
       {disputingStop && (
         <div onClick={() => setDisputingStop(null)} style={modalOverlay}>

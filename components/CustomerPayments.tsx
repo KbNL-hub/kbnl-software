@@ -109,7 +109,7 @@ export default function CustomerPayments({ brokerId }: { brokerId: string }) {
       else { setShowModal(false); fetchPayments() }
     } else if (selectedCustomer.isNew || selectedCustomer.is_new) {
       const customerId = await generateCustomerId()
-      const { data, error } = await apiMutate<unknown[][]>("finance", {
+      const { error } = await apiMutate("finance", {
         action: "transaction",
         sub_actions: [
           {

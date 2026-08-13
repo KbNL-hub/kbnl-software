@@ -7,10 +7,11 @@ import { apiMutate } from "@/lib/api-mutation"
 import { usePermissions } from "@/lib/PermissionContext"
 
 const PRODUCTS = ["BUA cement", "Falcon", "3X", "Supaset", "Supafix", "Classic"]
+const AREAS = ["Calabar to Obubra", "Ikom to Obudu", "Akwa-Ibom", "East"]
 
-type PriceRow = { product: string; price: number; updated_at: string; updated_by: string | null }
+type PriceRow = { area: string; product: string; price: number; updated_at: string; updated_by: string | null }
 type HistoryRow = {
-  id: string; product: string; old_price: number; new_price: number;
+  id: string; area: string; product: string; old_price: number; new_price: number;
   changed_by: string | null; changed_at: string; change_group_id: string
 }
 
@@ -37,7 +38,7 @@ export default function CompanyPrices() {
   const bp = useBreakpoint()
   const isMobile = bp.isMobile
 
-  const [prices, setPrices] = useState<Record<string, number>>({})
+  const [prices, setPrices] = useState<Record<string, Record<string, number>>>({})
   const [changedPrices, setChangedPrices] = useState<Record<string, string>>({})
   const [history, setHistory] = useState<HistoryRow[]>([])
   const [profiles, setProfiles] = useState<Record<string, string>>({})
@@ -46,6 +47,7 @@ export default function CompanyPrices() {
   const [message, setMessage] = useState("")
   const [historyExpanded, setHistoryExpanded] = useState(false)
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set())
+  const [expandedAreas, setExpandedAreas] = useState<Set<string>>(new Set([AREAS[0]]))
 
   useEffect(() => { fetchData() }, [])
 
@@ -55,8 +57,12 @@ export default function CompanyPrices() {
       supabase.from("company_prices").select("*"),
       supabase.from("company_price_history").select("*").order("changed_at", { ascending: false }),
     ])
-    const priceMap: Record<string, number> = {}
-    for (const p of (priceRes.data || []) as PriceRow[]) priceMap[p.product] = p.price
+    const priceMap: Record<string, Record<string, number>> = {}
+    for (const area of AREAS) priceMap[area] = {}
+    for (const p of (priceRes.data || []) as PriceRow[]) {
+      if (!priceMap[p.area]) priceMap[p.area] = {}
+      priceMap[p.area][p.product] = p.price
+    }
     setPrices(priceMap)
 
     const historyRows = (historyRes.data || []) as HistoryRow[]
@@ -74,16 +80,24 @@ export default function CompanyPrices() {
     setLoading(false)
   }
 
-  function handleChangePrice(product: string, value: string) {
+  function handleChangePrice(area: string, product: string, value: string) {
+    const key = `${area}|${product}`
     const digits = value.replace(/[^0-9]/g, "")
     if (digits === "") {
       const next = { ...changedPrices }
-      delete next[product]
+      delete next[key]
       setChangedPrices(next)
     } else {
-      setChangedPrices(prev => ({ ...prev, [product]: digits }))
+      setChangedPrices(prev => ({ ...prev, [key]: digits }))
     }
     setMessage("")
+  }
+
+  function toggleArea(area: string) {
+    const next = new Set(expandedAreas)
+    if (next.has(area)) next.delete(area)
+    else next.add(area)
+    setExpandedAreas(next)
   }
 
   function hasChanges() { return Object.keys(changedPrices).length > 0 }
@@ -97,24 +111,25 @@ export default function CompanyPrices() {
     setMessage("")
     const changeGroupId = crypto.randomUUID()
 
-    for (const [product, newPriceStr] of Object.entries(changedPrices)) {
+    for (const [key, newPriceStr] of Object.entries(changedPrices)) {
+      const [area, product] = key.split("|")
       const newPrice = parseInt(newPriceStr)
-      if (isNaN(newPrice) || newPrice < 0) { setMessage(`Invalid price for ${product}`); setSaving(false); return }
+      if (isNaN(newPrice) || newPrice < 0) { setMessage(`Invalid price for ${product} in ${area}`); setSaving(false); return }
 
-      const oldPrice = prices[product] ?? 0
+      const oldPrice = prices[area]?.[product] ?? 0
 
       const { error: upsertError } = await apiMutate("admin", {
         action: "upsert", table: "company_prices",
-        data: { product, price: newPrice, updated_by: user.id },
-        conflict: "product",
+        data: { area, product, price: newPrice, updated_by: user.id },
+        conflict: "area,product",
       })
-      if (upsertError) { setMessage(`Failed to update ${product}: ${upsertError}`); setSaving(false); return }
+      if (upsertError) { setMessage(`Failed to update ${product} (${area}): ${upsertError}`); setSaving(false); return }
 
       const { error: histError } = await apiMutate("admin", {
         action: "insert", table: "company_price_history",
-        data: { product, old_price: oldPrice, new_price: newPrice, changed_by: user.id, change_group_id: changeGroupId },
+        data: { area, product, old_price: oldPrice, new_price: newPrice, changed_by: user.id, change_group_id: changeGroupId },
       })
-      if (histError) { setMessage(`History failed for ${product}: ${histError}`); setSaving(false); return }
+      if (histError) { setMessage(`History failed for ${product} (${area}): ${histError}`); setSaving(false); return }
     }
 
     setChangedPrices({})
@@ -143,7 +158,7 @@ export default function CompanyPrices() {
       <div style={{ display: "flex", flexDirection: isMobile ? "column" : "row", justifyContent: "space-between", alignItems: isMobile ? "flex-start" : "center", gap: 12, marginBottom: 24 }}>
         <div>
           <h1 style={{ margin: 0, color: "#0f172a", fontSize: isMobile ? fz["2xl"] : fz["3xl"], fontWeight: 700, letterSpacing: "-0.5px" }}>Company Prices</h1>
-          <p style={{ margin: "6px 0 0", color: "#64748b", fontSize: fz.base }}>Manage cement product prices per bag.</p>
+          <p style={{ margin: "6px 0 0", color: "#64748b", fontSize: fz.base }}>Manage cement product prices per bag, grouped by area.</p>
         </div>
       </div>
 
@@ -151,48 +166,107 @@ export default function CompanyPrices() {
         <div style={{ padding: 12, background: "#fef2f2", borderLeft: "4px solid #ef4444", borderRadius: 4, marginBottom: 20, color: "#b91c1c", fontSize: fz.sm }}>{message}</div>
       )}
 
-      {/* Product Price Grid */}
-      <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(auto-fill, minmax(300px, 1fr))", gap: 12, marginBottom: 24 }}>
-        {PRODUCTS.map(product => {
-          const currentPrice = prices[product] ?? 0
-          const pendingNewPrice = changedPrices[product]
-          const isChanged = pendingNewPrice !== undefined
+      {/* ── Area Accordion Cards ── */}
+      <div style={{ display: "flex", flexDirection: "column", gap: 12, marginBottom: 24 }}>
+        {AREAS.map(area => {
+          const isAreaExpanded = expandedAreas.has(area)
+          const areaPrices = prices[area] || {}
 
           return (
-            <div key={product} style={{
-              background: "white", borderRadius: 12, padding: 20, border: `1px solid ${isChanged ? "#0070f3" : "#e2e8f0"}`,
-              boxShadow: isChanged ? "0 0 0 2px rgba(0,112,243,0.15)" : "0 1px 3px rgba(0,0,0,0.05)",
-              transition: "all 0.2s",
+            <div key={area} style={{
+              background: "white", borderRadius: 12, border: "1px solid #e2e8f0",
+              boxShadow: isAreaExpanded ? "0 4px 12px rgba(0,0,0,0.08)" : "0 1px 3px rgba(0,0,0,0.05)",
+              overflow: "hidden", transition: "box-shadow 0.2s",
             }}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 12 }}>
-                <h3 style={{ margin: 0, color: "#0f172a", fontSize: fz.lg, fontWeight: 600 }}>{product}</h3>
-                {isChanged && <span style={{ padding: "3px 8px", background: "#eff6ff", color: "#0070f3", borderRadius: 6, fontSize: fz.xs, fontWeight: 600 }}>Changed</span>}
-              </div>
-              <p style={{ margin: "0 0 4px", fontSize: fz.xs, color: "#94a3b8" }}>Current Price</p>
-              <p style={{ margin: 0, fontSize: fz["2xl"], fontWeight: 700, color: "#0f172a" }}>₦{currentPrice.toLocaleString()}</p>
-
-              {canEdit && (
-                <div style={{ marginTop: 16, paddingTop: 16, borderTop: "1px solid #f1f5f9" }}>
-                  <label style={{ display: "block", marginBottom: 6, color: "#475569", fontSize: fz.sm, fontWeight: 500 }}>
-                    {isChanged ? `Old Price: ₦${currentPrice.toLocaleString()}` : "New Price"}
-                  </label>
-                  <div style={{ display: "flex", gap: 8 }}>
-                    <input
-                      type="text" inputMode="numeric"
-                      placeholder="Enter new price"
-                      value={pendingNewPrice !== undefined ? parseInt(pendingNewPrice).toLocaleString() : ""}
-                      onChange={e => handleChangePrice(product, e.target.value)}
-                      style={inputStyle}
+              {/* Area header */}
+              <button
+                onClick={() => toggleArea(area)}
+                style={{
+                  width: "100%", padding: isMobile ? "16px" : "18px 20px",
+                  background: isAreaExpanded ? "#f0f7ff" : "white",
+                  border: "none", display: "flex", alignItems: "center", justifyContent: "space-between",
+                  cursor: "pointer", textAlign: "left", transition: "background 0.2s",
+                }}
+              >
+                <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                  <div style={{
+                    width: 40, height: 40, borderRadius: 10,
+                    background: isAreaExpanded ? "#0070f3" : "#f1f5f9",
+                    display: "flex", alignItems: "center", justifyContent: "center",
+                    transition: "background 0.2s",
+                  }}>
+                    <Icon
+                      icon="mdi:map-marker-radius"
+                      width={20}
+                      color={isAreaExpanded ? "white" : "#64748b"}
                     />
-                    {isChanged && (
-                      <button
-                        onClick={() => handleChangePrice(product, "")}
-                        style={{ padding: "8px 12px", background: "transparent", border: "1px solid #e2e8f0", borderRadius: 8, cursor: "pointer", color: "#94a3b8", flexShrink: 0 }}
-                        title="Cancel change"
-                      >
-                        <Icon icon="mdi:close" width={18} />
-                      </button>
-                    )}
+                  </div>
+                  <div>
+                    <p style={{ margin: 0, color: "#0f172a", fontSize: isMobile ? fz.base : fz.lg, fontWeight: 600 }}>{area}</p>
+                    <p style={{ margin: "2px 0 0", color: "#94a3b8", fontSize: fz.xs }}>
+                      {PRODUCTS.length} products · {PRODUCTS.filter(p => areaPrices[p] && areaPrices[p] > 0).length} priced
+                    </p>
+                  </div>
+                </div>
+                <Icon icon={isAreaExpanded ? "mdi:chevron-up" : "mdi:chevron-down"} width={22} color="#64748b" />
+              </button>
+
+              {/* Drill-down: Product grid */}
+              {isAreaExpanded && (
+                <div style={{ padding: isMobile ? "0 16px 16px" : "0 20px 20px", borderTop: "1px solid #f1f5f9" }}>
+                  <div style={{
+                    display: "grid",
+                    gridTemplateColumns: isMobile ? "1fr" : "repeat(auto-fill, minmax(280px, 1fr))",
+                    gap: 12, marginTop: 16,
+                  }}>
+                    {PRODUCTS.map(product => {
+                      const currentPrice = areaPrices[product] ?? 0
+                      const key = `${area}|${product}`
+                      const pendingNewPrice = changedPrices[key]
+                      const isChanged = pendingNewPrice !== undefined
+
+                      return (
+                        <div key={product} style={{
+                          background: "white", borderRadius: 10, padding: 16,
+                          border: `1px solid ${isChanged ? "#0070f3" : "#e2e8f0"}`,
+                          boxShadow: isChanged ? "0 0 0 2px rgba(0,112,243,0.15)" : "0 1px 3px rgba(0,0,0,0.05)",
+                          transition: "all 0.2s",
+                        }}>
+                          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 10 }}>
+                            <h4 style={{ margin: 0, color: "#0f172a", fontSize: fz.base, fontWeight: 600 }}>{product}</h4>
+                            {isChanged && <span style={{ padding: "2px 6px", background: "#eff6ff", color: "#0070f3", borderRadius: 5, fontSize: fz.xs - 1, fontWeight: 600 }}>Changed</span>}
+                          </div>
+                          <p style={{ margin: "0 0 4px", fontSize: fz.xs, color: "#94a3b8" }}>Current Price</p>
+                          <p style={{ margin: 0, fontSize: fz.xl, fontWeight: 700, color: "#0f172a" }}>₦{currentPrice.toLocaleString()}</p>
+
+                          {canEdit && (
+                            <div style={{ marginTop: 12, paddingTop: 12, borderTop: "1px solid #f1f5f9" }}>
+                              <label style={{ display: "block", marginBottom: 5, color: "#475569", fontSize: fz.xs, fontWeight: 500 }}>
+                                {isChanged ? `Old: ₦${currentPrice.toLocaleString()}` : "New Price"}
+                              </label>
+                              <div style={{ display: "flex", gap: 6 }}>
+                                <input
+                                  type="text" inputMode="numeric"
+                                  placeholder="Enter new price"
+                                  value={pendingNewPrice !== undefined ? parseInt(pendingNewPrice).toLocaleString() : ""}
+                                  onChange={e => handleChangePrice(area, product, e.target.value)}
+                                  style={{ ...inputStyle, minHeight: 38, fontSize: fz.sm }}
+                                />
+                                {isChanged && (
+                                  <button
+                                    onClick={() => handleChangePrice(area, product, "")}
+                                    style={{ padding: "6px 10px", background: "transparent", border: "1px solid #e2e8f0", borderRadius: 6, cursor: "pointer", color: "#94a3b8", flexShrink: 0 }}
+                                    title="Cancel change"
+                                  >
+                                    <Icon icon="mdi:close" width={16} />
+                                  </button>
+                                )}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      )
+                    })}
                   </div>
                 </div>
               )}
@@ -265,8 +339,11 @@ export default function CompanyPrices() {
                       <div style={{ marginTop: 8, display: "flex", flexDirection: "column", gap: 6 }}>
                         {group.items.map(item => (
                           <div key={item.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 12px", background: "#f8fafc", borderRadius: 8 }}>
-                            <span style={{ color: "#0f172a", fontSize: fz.sm, fontWeight: 500 }}>{item.product}</span>
-                            <span style={{ color: "#64748b", fontSize: fz.sm }}>
+                            <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
+                              <span style={{ color: "#0f172a", fontSize: fz.sm, fontWeight: 500, whiteSpace: "nowrap" }}>{item.product}</span>
+                              {item.area && <span style={{ color: "#94a3b8", fontSize: fz.xs, whiteSpace: "nowrap" }}>· {item.area}</span>}
+                            </div>
+                            <span style={{ color: "#64748b", fontSize: fz.sm, whiteSpace: "nowrap" }}>
                               ₦{item.old_price.toLocaleString()} → <strong style={{ color: "#0f172a" }}>₦{item.new_price.toLocaleString()}</strong>
                             </span>
                           </div>

@@ -5,7 +5,7 @@ import React from "react"
 import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import { supabase } from "@/lib/supabase"
-import { apiMutate } from "@/lib/api-mutation"
+import { apiMutate, SubAction } from "@/lib/api-mutation"
 import RoleSwitcher from "@/components/RoleSwitcher"
 import { formatAmount, parseAmount } from "@/lib/formatAmount"
 import { Icon } from "@iconify/react"
@@ -147,6 +147,22 @@ export default function StoreOfficerDashboard() {
   const [brokerDropOpen, setBrokerDropOpen] = useState(false)
   const [saleType, setSaleType] = useState<"direct" | "truck_load_out" | "broker">("direct")
   const [saleDate, setSaleDate] = useState(dayjs().format("YYYY-MM-DD"))
+
+  const [editingGroup, setEditingGroup] = useState<GroupedSale | null>(null)
+  const [editLines, setEditLines] = useState<{ sale_id: string; product: string; quantity: string; price_per_bag: string }[]>([])
+  const [editCustomer, setEditCustomer] = useState<{ full_name: string } | null>(null)
+  const [editPayment, setEditPayment] = useState("")
+  const [editBank, setEditBank] = useState("")
+  const [editDepositor, setEditDepositor] = useState("")
+  const [editDeliveryMode, setEditDeliveryMode] = useState<"self" | "tricycle" | "truck">("self")
+  const [editTricycleId, setEditTricycleId] = useState("")
+  const [editTricycleSearch, setEditTricycleSearch] = useState("")
+  const [editTricycleDropOpen, setEditTricycleDropOpen] = useState(false)
+  const [editTruckPlate, setEditTruckPlate] = useState("")
+  const [editTruckSearch, setEditTruckSearch] = useState("")
+  const [editTruckDropOpen, setEditTruckDropOpen] = useState(false)
+  const [editError, setEditError] = useState("")
+  const [editLoading, setEditLoading] = useState(false)
 
   const [updatedStockProducts, setUpdatedStockProducts] = useState<string[]>([])
   const [salesFilter, setSalesFilter] = useState("All")
@@ -564,6 +580,180 @@ export default function StoreOfficerDashboard() {
       setSaleError("An error occurred")
       setSaleLoading(false)
     }
+  }
+
+  function openEditModal(group: GroupedSale) {
+    const lines = group.lines.map(line => ({
+      sale_id: line.sale_id,
+      product: line.product,
+      quantity: String(line.quantity),
+      price_per_bag: line.price_per_bag != null ? formatAmount(String(line.price_per_bag)) : "",
+    }))
+    const tricycleMatch = tricycles.find(t => t.tricycle_number === group.tricycle_number)
+    setEditingGroup(group)
+    setEditLines(lines)
+    setEditCustomer(group.customer_name ? { full_name: group.customer_name } : null)
+    setEditPayment(group.payment_mode === "Load Out" ? "" : group.payment_mode)
+    setEditBank(group.lines[0]?.bank_name || "")
+    setEditDepositor(group.lines[0]?.depositor_name || "")
+    setEditDeliveryMode(group.delivery_mode === "tricycle" || group.delivery_mode === "truck" ? group.delivery_mode : "self")
+    setEditTricycleId(tricycleMatch?.tricycle_id || "")
+    setEditTricycleSearch(group.tricycle_number || "")
+    setEditTruckPlate(group.truck_plate || "")
+    setEditTruckSearch(group.truck_plate || "")
+    setEditError("")
+  }
+
+  function closeEditModal() {
+    setEditingGroup(null)
+    setEditLines([])
+    setEditCustomer(null)
+    setEditPayment("")
+    setEditBank("")
+    setEditDepositor("")
+    setEditDeliveryMode("self")
+    setEditTricycleId("")
+    setEditTricycleSearch("")
+    setEditTricycleDropOpen(false)
+    setEditTruckPlate("")
+    setEditTruckSearch("")
+    setEditTruckDropOpen(false)
+    setEditError("")
+    setEditLoading(false)
+  }
+
+  function updateEditLine(index: number, field: "product" | "quantity" | "price_per_bag", value: string) {
+    setEditLines(editLines.map((l, i) => i === index ? { ...l, [field]: value } : l))
+    setEditError("")
+  }
+
+  async function handleEditSubmit() {
+    if (!editingGroup || !officer) return
+    const saleType = editingGroup.sale_type
+
+    if (editLines.some(l => !l.product)) return setEditError("Select a product for each line")
+    if (editLines.some(l => !l.quantity || parseInt(l.quantity) <= 0)) return setEditError("Enter a valid quantity for each line")
+
+    const editProducts = editLines.map(l => l.product)
+    if (new Set(editProducts).size !== editProducts.length) return setEditError("Duplicate products — merge them")
+
+    if (saleType === "truck_load_out") {
+      if (!editTruckPlate) return setEditError("Select the truck being loaded")
+    } else if (saleType === "broker") {
+      if (!editPayment) return setEditError("Select a payment mode")
+      if (editPayment === "Transfer") {
+        if (!editBank) return setEditError("Select a bank for Transfer payments")
+        if (!editDepositor?.trim()) return setEditError("Enter depositor name for Transfer payments")
+      }
+      if (editDeliveryMode === "tricycle" && !editTricycleId) return setEditError("Select a tricycle")
+      if (editDeliveryMode === "truck" && !editTruckPlate) return setEditError("Select a truck")
+    } else {
+      if (!editPayment) return setEditError("Select a payment mode")
+      if (editPayment === "Transfer") {
+        if (!editBank) return setEditError("Select a bank for Transfer payments")
+        if (!editDepositor?.trim()) return setEditError("Enter depositor name for Transfer payments")
+      }
+      if (editDeliveryMode === "tricycle" && !editTricycleId) return setEditError("Select a tricycle")
+      if (editDeliveryMode === "truck" && !editTruckPlate) return setEditError("Select a truck")
+      if (editLines.some(l => !l.price_per_bag)) return setEditError("Enter a price per bag for each line")
+      if (editLines.some(l => parseAmount(l.price_per_bag) <= 0)) return setEditError("Enter valid prices")
+    }
+
+    const stockDeltas = new Map<string, number>()
+    for (const line of editLines) {
+      const qty = parseInt(line.quantity)
+      const original = editingGroup.lines.find(l => l.sale_id === line.sale_id)
+      if (!original) {
+        stockDeltas.set(line.product, (stockDeltas.get(line.product) || 0) - qty)
+      } else if (original.product === line.product) {
+        const delta = original.quantity - qty
+        if (delta !== 0) stockDeltas.set(line.product, (stockDeltas.get(line.product) || 0) + delta)
+      } else {
+        stockDeltas.set(original.product, (stockDeltas.get(original.product) || 0) + original.quantity)
+        stockDeltas.set(line.product, (stockDeltas.get(line.product) || 0) - qty)
+      }
+    }
+    const stockAdjustments = [...stockDeltas.entries()]
+      .filter(([, delta]) => delta !== 0)
+      .map(([product, delta]) => ({ product, delta }))
+
+    setEditLoading(true)
+    setEditError("")
+
+    try {
+      const sub_actions: SubAction[] = []
+      for (const line of editLines) {
+        const qty = parseInt(line.quantity)
+        const price = saleType === "broker" ? null : saleType === "truck_load_out" ? 0 : parseAmount(line.price_per_bag)
+        const total = price != null ? qty * price : null
+
+        sub_actions.push({
+          action: "update", table: "store_sales",
+          data: {
+            product: line.product,
+            quantity: qty,
+            price_per_bag: price,
+            customer_name: saleType === "truck_load_out" ? null : (editCustomer?.full_name || "").trim() || null,
+            payment_mode: saleType === "truck_load_out" ? "Load Out" : editPayment,
+            delivery_mode: saleType === "truck_load_out" ? "truck" : editDeliveryMode,
+            tricycle_id: editDeliveryMode === "tricycle" && saleType !== "truck_load_out" ? editTricycleId : null,
+            truck_plate: (saleType === "truck_load_out" || editDeliveryMode === "truck") ? editTruckPlate : null,
+            bank_name: editPayment === "Transfer" && saleType !== "truck_load_out" ? editBank : null,
+            depositor_name: editPayment === "Transfer" && saleType !== "truck_load_out" ? editDepositor.trim() : null,
+            sold_at: editingGroup.sold_at,
+            status: saleType === "broker" ? "Pending" : "Confirmed",
+            rejection_reason: null,
+          },
+          filters: { sale_id: line.sale_id },
+        })
+      }
+
+      for (const adj of stockAdjustments) {
+        const { data: stockRow } = await supabase
+          .from("store_stock")
+          .select("balance")
+          .eq("store_name", officer.store_name)
+          .eq("product", adj.product)
+          .single()
+        const available = stockRow?.balance ?? 0
+        if (adj.delta < 0 && available < -adj.delta) {
+          setEditLoading(false)
+          return setEditError(`Insufficient ${adj.product} — only ${available} bags available`)
+        }
+        if (stockRow) {
+          sub_actions.push({
+            action: "update", table: "store_stock",
+            data: { balance: available + adj.delta, updated_at: new Date().toISOString() },
+            filters: { store_name: officer.store_name, product: adj.product },
+          })
+        } else {
+          sub_actions.push({
+            action: "insert", table: "store_stock",
+            data: { store_name: officer.store_name, product: adj.product, balance: available + adj.delta },
+          })
+        }
+      }
+
+      console.log("[Resubmit] sub_actions:", JSON.stringify(sub_actions, null, 2))
+      const { error } = await apiMutate("finance", { action: "transaction", sub_actions })
+      if (error) {
+        console.error("[Resubmit] server error:", error)
+        setEditLoading(false)
+        return setEditError(error || "Failed to update sale. Nothing was changed — please retry.")
+      }
+    } catch {
+      setEditLoading(false)
+      return setEditError("An error occurred")
+    }
+
+    setEditLoading(false)
+    closeEditModal()
+
+    await Promise.all([
+      fetchSales(officer.store_name),
+      fetchStock(officer.store_name),
+      fetchMonthlyStats(officer.store_name),
+    ])
   }
 
   const groupedSales = sales.reduce<GroupedSale[]>((groups, sale) => {
@@ -1104,6 +1294,18 @@ export default function StoreOfficerDashboard() {
                       </div>
                     ))}
                   </div>
+
+                  {sale.status === "Rejected" && (
+                    <button
+                      onClick={() => openEditModal(sale)}
+                      style={{ width: "100%", padding: "10px 14px", marginTop: 4, background: "#0070f3", color: "white", border: "none", borderRadius: 8, cursor: "pointer", fontWeight: 600, fontSize: FONT_SIZE.md, minHeight: 44, display: "flex", alignItems: "center", justifyContent: "center", gap: 6, transition: "all 0.2s" }}
+                      onMouseEnter={e => { e.currentTarget.style.background = "#0056d4" }}
+                      onMouseLeave={e => { e.currentTarget.style.background = "#0070f3" }}
+                    >
+                      <Icon icon="mdi:file-edit-outline" width={18} />
+                      Edit &amp; Resubmit
+                    </button>
+                  )}
                 </div>
                 )
               })}
@@ -1641,6 +1843,307 @@ export default function StoreOfficerDashboard() {
               }} style={{ padding: "12px 16px", background: "white", border: "1px solid #cbd5e1", color: "#475569", borderRadius: 8, cursor: "pointer", fontWeight: 600, fontSize: FONT_SIZE.md, minHeight: 44 }}>Cancel</button>
               <button onClick={handleLogSale} disabled={saleLoading} style={{ padding: "12px 16px", background: "#0070f3", color: "white", border: "none", borderRadius: 8, cursor: saleLoading ? "not-allowed" : "pointer", fontWeight: 600, fontSize: FONT_SIZE.md, opacity: saleLoading ? 0.7 : 1, minHeight: 44 }}>
                 {saleLoading ? "Logging..." : `Log ${saleLines.filter(l => l.product).length} Sale(s)`}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Edit & Resubmit Modal */}
+      {editingGroup && (
+        <div onClick={closeEditModal} style={{ position: "fixed", inset: 0, background: "rgba(15, 23, 42, 0.6)", backdropFilter: "blur(4px)", display: "flex", alignItems: isMobile ? "flex-end" : "center", justifyContent: "center", zIndex: 100, padding: isMobile ? 0 : 24 }}>
+          <div onClick={e => e.stopPropagation()} style={{ background: "white", borderRadius: isMobile ? "20px 20px 0 0" : 12, padding: isMobile ? "28px 20px" : 32, width: "100%", maxWidth: 600, maxHeight: "90vh", overflowY: "auto", boxShadow: "0 25px 50px -12px rgba(0, 0, 0, 0.25)" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+              <h3 style={{ margin: 0, fontSize: FONT_SIZE.xl, fontWeight: 700, color: "#0f172a" }}>Edit &amp; Resubmit Sale</h3>
+              <button onClick={closeEditModal} style={{ background: "none", border: "none", cursor: "pointer", color: "#94a3b8", padding: 4, display: "flex" }}>
+                <Icon icon="mdi:close" width={22} />
+              </button>
+            </div>
+
+            {editingGroup.status === "Rejected" && editingGroup.rejection_reason && (
+              <div style={{ display: "flex", gap: 10, alignItems: "flex-start", marginBottom: 16, padding: 12, background: "#fef2f2", borderRadius: 8, border: "1px solid #fecaca" }}>
+                <div style={{ background: "#ef4444", color: "white", padding: 3, borderRadius: "50%", flexShrink: 0, marginTop: 1 }}>
+                  <Icon icon="mdi:close" width={12} height={12} />
+                </div>
+                <div style={{ flex: 1 }}>
+                  <p style={{ margin: "0 0 4px 0", color: "#ef4444", fontSize: FONT_SIZE.xs, fontWeight: 600 }}>Rejected — fix the issues below and resubmit</p>
+                  <div style={{ padding: "8px 10px", background: "white", borderRadius: 6, border: "1px solid #fecaca", color: "#7f1d1d", fontSize: FONT_SIZE.xs, fontStyle: "italic" }}>
+                    &ldquo;{editingGroup.rejection_reason}&rdquo;
+                  </div>
+                </div>
+              </div>
+            )}
+
+            <div style={{ marginBottom: 20 }}>
+              <label style={{ display: "block", fontWeight: 600, fontSize: FONT_SIZE.sm, color: "#475569", marginBottom: 8 }}>Sale Type</label>
+              <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 12px", background: "#f8fafc", borderRadius: 8, border: "1px solid #e2e8f0" }}>
+                <span style={{
+                  padding: "4px 10px", borderRadius: 6, fontSize: FONT_SIZE.xs, fontWeight: 600,
+                  background: editingGroup.sale_type === "truck_load_out" ? "#fff7ed" : editingGroup.sale_type === "broker" ? "#fffbeb" : "#ecfdf5",
+                  color: editingGroup.sale_type === "truck_load_out" ? "#ea580c" : editingGroup.sale_type === "broker" ? "#d97706" : "#16a34a",
+                }}>
+                  {editingGroup.sale_type === "truck_load_out" ? "Truck Load Out" : editingGroup.sale_type === "broker" ? "Broker-Linked" : "Direct Sale"}
+                </span>
+                {editingGroup.broker_name && (
+                  <span style={{ fontSize: FONT_SIZE.sm, color: "#0070f3", fontWeight: 500 }}>Broker: {editingGroup.broker_name}</span>
+                )}
+                <span style={{ marginLeft: "auto", fontSize: FONT_SIZE.xs, color: "#94a3b8" }}>
+                  Resubmitting will set status to {editingGroup.sale_type === "broker" ? "Pending" : "Confirmed"}
+                </span>
+              </div>
+            </div>
+
+            {/* Products Section */}
+            <div style={{ marginBottom: 20 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+                <label style={{ fontWeight: 700, fontSize: FONT_SIZE.base, color: "#0f172a" }}>Products *</label>
+                <p style={{ margin: 0, fontSize: FONT_SIZE.xs, color: "#94a3b8" }}>{editLines.length} product(s)</p>
+              </div>
+
+              <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 12 }}>
+                {editLines.map((line, i) => (
+                  <div key={line.sale_id} style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr 1fr" : "2fr 1fr " + (editingGroup.sale_type !== "direct" ? "0fr" : "1fr"), gap: 8, alignItems: "center" }}>
+                    <ModernInput
+                      as="select"
+                      value={line.product}
+                      onChange={e => updateEditLine(i, "product", e.target.value)}
+                      style={{ padding: "10px 12px", borderRadius: 6, border: "1px solid #e0e0e0", fontSize: FONT_SIZE.sm, boxSizing: "border-box", minHeight: 44 }}
+                    >
+                      <option value="">Select product</option>
+                      {allProducts.map(p => (<option key={p} value={p}>{p}</option>))}
+                    </ModernInput>
+
+                    <ModernInput
+                      type="number"
+                      placeholder="Qty"
+                      value={line.quantity}
+                      onChange={e => updateEditLine(i, "quantity", e.target.value)}
+                      onKeyDown={(e: React.KeyboardEvent<HTMLInputElement>) => { if (e.key === "-" || e.key === "e") e.preventDefault() }}
+                      style={{ padding: "10px 12px", borderRadius: 6, border: "1px solid #e0e0e0", fontSize: FONT_SIZE.sm, boxSizing: "border-box", minHeight: 44 }}
+                    />
+
+                    {editingGroup.sale_type === "direct" && (
+                      <ModernInput
+                        type="text"
+                        inputMode="numeric"
+                        placeholder="Price per bag"
+                        value={line.price_per_bag}
+                        onChange={e => updateEditLine(i, "price_per_bag", formatAmount(e.target.value))}
+                        style={{ padding: "10px 12px", borderRadius: 6, border: "1px solid #e0e0e0", fontSize: FONT_SIZE.sm, boxSizing: "border-box", minHeight: 44 }}
+                      />
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Customer Name */}
+            {editingGroup.sale_type !== "truck_load_out" && (
+              <div style={{ marginBottom: 16 }}>
+                <label style={{ display: "block", fontWeight: 600, marginBottom: 6, fontSize: FONT_SIZE.sm, color: "#475569" }}>Customer Name <span style={{ fontWeight: 400, color: "#94a3b8" }}>(optional)</span></label>
+                <CustomerSelector
+                  onSelect={(c: Customer) => { setEditCustomer(c); setEditError("") }}
+                  allowUnsavedNew={true}
+                  initialValue={editCustomer?.full_name || ""}
+                />
+                {editCustomer && (
+                  <div style={{ marginTop: 8, padding: "8px 12px", background: "#eff6ff", borderRadius: 6, fontSize: FONT_SIZE.sm, color: "#0070f3", fontWeight: 500 }}>
+                    Selected: {editCustomer.full_name}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Delivery Mode / Truck Selection */}
+            {editingGroup.sale_type === "truck_load_out" ? (
+              <div style={{ marginBottom: 16 }}>
+                <label style={{ display: "block", fontWeight: 600, marginBottom: 6, fontSize: FONT_SIZE.sm, color: "#475569" }}>Truck Being Loaded *</label>
+                {trucks.length === 0
+                  ? <p style={{ fontSize: FONT_SIZE.sm, color: "#94a3b8", margin: 0 }}>No trucks available.</p>
+                  : (
+                    <div style={{ position: "relative" }}>
+                      <ModernInput
+                        type="text"
+                        placeholder="Search truck…"
+                        value={editTruckSearch}
+                        onChange={e => { setEditTruckSearch(e.target.value); setEditTruckDropOpen(true) }}
+                        onFocus={() => setEditTruckDropOpen(true)}
+                        onBlur={() => setTimeout(() => setEditTruckDropOpen(false), 150)}
+                        style={{ width: "100%", padding: "10px 12px", borderRadius: 6, border: "1px solid #e0e0e0", fontSize: FONT_SIZE.base, boxSizing: "border-box", minHeight: 44 }}
+                      />
+                      {editTruckDropOpen && (
+                        <ul style={{ position: "absolute", top: "calc(100% + 4px)", left: 0, right: 0, background: "white", border: "1px solid #e2e8f0", borderRadius: 8, listStyle: "none", margin: 0, padding: 4, maxHeight: 200, overflowY: "auto", zIndex: 50, boxShadow: "0 4px 12px rgba(0,0,0,0.1)" }}>
+                          {trucks
+                            .filter(t => t.plate_number.toLowerCase().includes(editTruckSearch.toLowerCase()) || (t.kbnl_truck_no || "").toLowerCase().includes(editTruckSearch.toLowerCase()))
+                            .map(t => (
+                              <li
+                                key={t.plate_number}
+                                onMouseDown={() => { setEditTruckPlate(t.plate_number); setEditTruckSearch(`${t.plate_number}${t.kbnl_truck_no ? ` · #${t.kbnl_truck_no}` : ""}`); setEditTruckDropOpen(false); setEditError("") }}
+                                style={{ padding: "10px 12px", cursor: "pointer", fontSize: FONT_SIZE.base, background: editTruckPlate === t.plate_number ? "#eff6ff" : "white", borderRadius: 6 }}
+                              >
+                                {t.plate_number}{t.kbnl_truck_no ? ` · #${t.kbnl_truck_no}` : ""}
+                              </li>
+                            ))}
+                        </ul>
+                      )}
+                    </div>
+                  )
+                }
+              </div>
+            ) : (
+              <>
+                <div style={{ marginBottom: 16 }}>
+                  <label style={{ display: "block", fontWeight: 600, marginBottom: 6, fontSize: FONT_SIZE.sm, color: "#475569" }}>Delivery Mode</label>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8 }}>
+                    {(["self", "tricycle", "truck"] as const).map(type => (
+                      <button
+                        key={type}
+                        onClick={() => { setEditDeliveryMode(type); setEditTricycleId(""); setEditTricycleSearch(""); setEditTruckPlate(""); setEditTruckSearch(""); setEditError("") }}
+                        style={{
+                          padding: "10px 12px", borderRadius: 8, cursor: "pointer",
+                          border: `1.5px solid ${editDeliveryMode === type ? "#0070f3" : "#e2e8f0"}`,
+                          background: editDeliveryMode === type ? "#0070f3" : "white",
+                          color: editDeliveryMode === type ? "white" : "#64748b",
+                          fontWeight: editDeliveryMode === type ? 600 : 500, fontSize: FONT_SIZE.sm, minHeight: 44,
+                        }}
+                      >
+                        {type === "self" ? "Self" : type === "truck" ? "Truck" : "Tricycle"}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Tricycle Selection */}
+                {editDeliveryMode === "tricycle" && (
+                  <div style={{ marginBottom: 16, position: "relative" }}>
+                    <label style={{ display: "block", fontWeight: 600, marginBottom: 6, fontSize: FONT_SIZE.sm, color: "#475569" }}>Tricycle *</label>
+                    {tricycles.length === 0
+                      ? <p style={{ fontSize: FONT_SIZE.sm, color: "#94a3b8", margin: 0 }}>No tricycles available.</p>
+                      : (
+                        <div style={{ position: "relative" }}>
+                          <ModernInput
+                            type="text"
+                            placeholder="Search tricycle…"
+                            value={editTricycleSearch}
+                            onChange={e => { setEditTricycleSearch(e.target.value); setEditTricycleDropOpen(true) }}
+                            onFocus={() => setEditTricycleDropOpen(true)}
+                            onBlur={() => setTimeout(() => setEditTricycleDropOpen(false), 150)}
+                            style={{ width: "100%", padding: "10px 12px", borderRadius: 6, border: "1px solid #e0e0e0", fontSize: FONT_SIZE.base, boxSizing: "border-box", minHeight: 44 }}
+                          />
+                          {editTricycleDropOpen && (
+                            <ul style={{ position: "absolute", top: "calc(100% + 4px)", left: 0, right: 0, background: "white", border: "1px solid #e2e8f0", borderRadius: 8, listStyle: "none", margin: 0, padding: 4, maxHeight: 200, overflowY: "auto", zIndex: 50, boxShadow: "0 4px 12px rgba(0,0,0,0.1)" }}>
+                              {tricycles
+                                .filter(t => t.tricycle_number.toLowerCase().includes(editTricycleSearch.toLowerCase()))
+                                .map(t => (
+                                  <li
+                                    key={t.tricycle_id}
+                                    onMouseDown={() => { setEditTricycleId(t.tricycle_id); setEditTricycleSearch(t.tricycle_number); setEditTricycleDropOpen(false); setEditError("") }}
+                                    style={{ padding: "10px 12px", cursor: "pointer", fontSize: FONT_SIZE.base, background: editTricycleId === t.tricycle_id ? "#eff6ff" : "white", borderRadius: 6 }}
+                                  >
+                                    {t.tricycle_number}
+                                  </li>
+                                ))}
+                            </ul>
+                          )}
+                        </div>
+                      )
+                    }
+                  </div>
+                )}
+
+                {/* Truck Selection */}
+                {editDeliveryMode === "truck" && (
+                  <div style={{ marginBottom: 16, position: "relative" }}>
+                    <label style={{ display: "block", fontWeight: 600, marginBottom: 6, fontSize: FONT_SIZE.sm, color: "#475569" }}>Truck *</label>
+                    {trucks.length === 0
+                      ? <p style={{ fontSize: FONT_SIZE.sm, color: "#94a3b8", margin: 0 }}>No trucks available.</p>
+                      : (
+                        <div style={{ position: "relative" }}>
+                          <ModernInput
+                            type="text"
+                            placeholder="Search truck…"
+                            value={editTruckSearch}
+                            onChange={e => { setEditTruckSearch(e.target.value); setEditTruckDropOpen(true) }}
+                            onFocus={() => setEditTruckDropOpen(true)}
+                            onBlur={() => setTimeout(() => setEditTruckDropOpen(false), 150)}
+                            style={{ width: "100%", padding: "10px 12px", borderRadius: 6, border: "1px solid #e0e0e0", fontSize: FONT_SIZE.base, boxSizing: "border-box", minHeight: 44 }}
+                          />
+                          {editTruckDropOpen && (
+                            <ul style={{ position: "absolute", top: "calc(100% + 4px)", left: 0, right: 0, background: "white", border: "1px solid #e2e8f0", borderRadius: 8, listStyle: "none", margin: 0, padding: 4, maxHeight: 200, overflowY: "auto", zIndex: 50, boxShadow: "0 4px 12px rgba(0,0,0,0.1)" }}>
+                              {trucks
+                                .filter(t => t.plate_number.toLowerCase().includes(editTruckSearch.toLowerCase()) || (t.kbnl_truck_no || "").toLowerCase().includes(editTruckSearch.toLowerCase()))
+                                .map(t => (
+                                  <li
+                                    key={t.plate_number}
+                                    onMouseDown={() => { setEditTruckPlate(t.plate_number); setEditTruckSearch(`${t.plate_number}${t.kbnl_truck_no ? ` · #${t.kbnl_truck_no}` : ""}`); setEditTruckDropOpen(false); setEditError("") }}
+                                    style={{ padding: "10px 12px", cursor: "pointer", fontSize: FONT_SIZE.base, background: editTruckPlate === t.plate_number ? "#eff6ff" : "white", borderRadius: 6 }}
+                                  >
+                                    {t.plate_number}{t.kbnl_truck_no ? ` · #${t.kbnl_truck_no}` : ""}
+                                  </li>
+                                ))}
+                            </ul>
+                          )}
+                        </div>
+                      )
+                    }
+                    {editTruckPlate && (
+                      <div style={{ marginTop: 8, padding: "8px 12px", background: "#fefce8", borderRadius: 6, fontSize: FONT_SIZE.sm, color: "#ca8a04", fontWeight: 500, border: "1px solid #fde68a" }}>
+                        Selected: {editTruckPlate}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </>
+            )}
+
+            {/* Payment Mode */}
+            {editingGroup.sale_type !== "truck_load_out" && (
+              <div style={{ marginBottom: 24 }}>
+                <label style={{ display: "block", fontWeight: 600, marginBottom: 6, fontSize: FONT_SIZE.sm, color: "#475569" }}>Payment Mode *</label>
+                <ModernInput
+                  as="select"
+                  value={editPayment}
+                  onChange={e => { setEditPayment(e.target.value); setEditError("") }}
+                  style={{ width: "100%", padding: "10px 12px", borderRadius: 6, border: "1px solid #e0e0e0", fontSize: FONT_SIZE.base, boxSizing: "border-box", minHeight: 44 }}
+                >
+                  <option value="">Select payment mode</option>
+                  {["Transfer", "POS", "Broker"].filter(m => editingGroup.sale_type === "broker" || m !== "Broker").map(m => (<option key={m} value={m}>{m}</option>))}
+                </ModernInput>
+              </div>
+            )}
+
+            {editPayment === "Transfer" && (
+              <>
+                <div style={{ marginBottom: 16 }}>
+                  <label style={{ display: "block", fontWeight: 600, marginBottom: 6, fontSize: FONT_SIZE.sm, color: "#475569" }}>Bank *</label>
+                  <ModernInput
+                    as="select"
+                    value={editBank}
+                    onChange={e => { setEditBank(e.target.value); setEditError("") }}
+                    style={{ width: "100%", padding: "10px 12px", borderRadius: 6, border: "1px solid #e0e0e0", fontSize: FONT_SIZE.base, boxSizing: "border-box", minHeight: 44 }}
+                  >
+                    <option value="">Select bank</option>
+                    {BANKS.map(b => (<option key={b} value={b}>{b}</option>))}
+                  </ModernInput>
+                </div>
+                <div style={{ marginBottom: 24 }}>
+                  <label style={{ display: "block", fontWeight: 600, marginBottom: 6, fontSize: FONT_SIZE.sm, color: "#475569" }}>Depositor Name *</label>
+                  <ModernInput
+                    value={editDepositor}
+                    onChange={e => { setEditDepositor(e.target.value); setEditError("") }}
+                    placeholder="Name on bank account"
+                    style={{ width: "100%", padding: "10px 12px", borderRadius: 6, border: "1px solid #e0e0e0", fontSize: FONT_SIZE.base, boxSizing: "border-box", minHeight: 44 }}
+                  />
+                </div>
+              </>
+            )}
+
+            {editError && <div style={{ padding: 12, background: "#fef2f2", borderLeft: "4px solid #ef4444", borderRadius: 4, marginBottom: 16, color: "#b91c1c", fontSize: FONT_SIZE.sm }}>{editError}</div>}
+
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+              <button onClick={closeEditModal} style={{ padding: "12px 16px", background: "white", border: "1px solid #cbd5e1", color: "#475569", borderRadius: 8, cursor: "pointer", fontWeight: 600, fontSize: FONT_SIZE.md, minHeight: 44 }}>Cancel</button>
+              <button onClick={handleEditSubmit} disabled={editLoading} style={{ padding: "12px 16px", background: "#0070f3", color: "white", border: "none", borderRadius: 8, cursor: editLoading ? "not-allowed" : "pointer", fontWeight: 600, fontSize: FONT_SIZE.md, opacity: editLoading ? 0.7 : 1, minHeight: 44 }}>
+                {editLoading ? "Submitting..." : "Edit & Resubmit"}
               </button>
             </div>
           </div>

@@ -2,7 +2,7 @@
 
 import React from "react"
 import Image from "next/image"
-import { useState, useEffect, useRef } from "react"
+import { useState, useEffect, useRef, useCallback } from "react"
 import { useRouter } from "next/navigation"
 import { Icon } from "@iconify/react"
 import { usePolling } from "@/lib/hooks/usePolling"
@@ -170,6 +170,30 @@ function AdminPanelContent({ userProfile }: Props) {
     return stored ? new Set(JSON.parse(stored)) : new Set()
   })
 
+  const fetchUnauthorizedExpenses = useCallback(async () => {
+    try {
+      const { data: authorizer } = await supabase
+        .from("cash_authorizers")
+        .select("assigned_office")
+        .eq("authorizer_id", userProfile.user_id)
+        .maybeSingle()
+
+      if (authorizer?.assigned_office) {
+        const { count } = await supabase
+          .from("cash_expenses")
+          .select("*", { count: "exact", head: true })
+          .eq("status", "Pending")
+          .eq("office_name", authorizer.assigned_office)
+        setUnauthorizedExpenses(count || 0)
+      } else {
+        setUnauthorizedExpenses(0)
+      }
+    } catch (err) {
+      console.error("Error checking cash expenses:", err)
+      setUnauthorizedExpenses(0)
+    }
+  }, [userProfile.user_id])
+
   useEffect(() => {
     if (permLoading) return
 
@@ -239,7 +263,7 @@ function AdminPanelContent({ userProfile }: Props) {
       }
     }
     checkAlerts()
-  }, [permLoading, getAccess])
+  }, [permLoading, getAccess, fetchUnauthorizedExpenses])
 
   usePolling(() => {
     if (permLoading) return
@@ -315,30 +339,6 @@ function AdminPanelContent({ userProfile }: Props) {
   }
 
   const visibleAlerts = lowBalanceCompanies.filter(c => !dismissedAlerts.has(c.company_id))
-
-  async function fetchUnauthorizedExpenses() {
-    try {
-      const { data: authorizer } = await supabase
-        .from("cash_authorizers")
-        .select("assigned_office")
-        .eq("authorizer_id", userProfile.user_id)
-        .maybeSingle()
-
-      if (authorizer?.assigned_office) {
-        const { count } = await supabase
-          .from("cash_expenses")
-          .select("*", { count: "exact", head: true })
-          .eq("status", "Pending")
-          .eq("office_name", authorizer.assigned_office)
-        setUnauthorizedExpenses(count || 0)
-      } else {
-        setUnauthorizedExpenses(0)
-      }
-    } catch (err) {
-      console.error("Error checking cash expenses:", err)
-      setUnauthorizedExpenses(0)
-    }
-  }
 
   // Preload chunk for initial URL section
   useEffect(() => {

@@ -250,6 +250,26 @@ export async function POST(req: NextRequest) {
               notifyBrokerPaymentPosted(brokerId, customerName, amount).catch(console.error)
             }
           }
+
+          // Store Sale Resubmitted / Confirmed (in transaction)
+          if (c.table === "store_sales" && c.action === "update") {
+            const saleId = row.sale_id as string
+            const brokerId = row.broker_id as string
+            const saleType = row.sale_type as string
+            if (saleType !== "truck_load_out") {
+              if (row.status === "Pending" && brokerId) {
+                const storeName = row.store_name as string || "Store"
+                const brokerName = row.broker_name as string || "Broker"
+                notifyBrokerPendingStoreSale(brokerId, storeName).catch(console.error)
+                notifyStoreOfficerPendingBrokerSale(storeName).catch(console.error)
+                notifyStoreSupervisorPendingBrokerSale(storeName, brokerName).catch(console.error)
+                notifyAdminPendingStoreSale(brokerName, storeName, 0).catch(console.error)
+                notifyDeskOfficerStoreSaleNeedsAttention(saleId).catch(console.error)
+              } else if (row.status === "Confirmed" && saleId) {
+                notifyStoreOfficerSaleConfirmed(saleId).catch(console.error)
+              }
+            }
+          }
         }
 
         return NextResponse.json({ data: results })
@@ -293,7 +313,16 @@ export async function POST(req: NextRequest) {
           }
         }
 
-        console.error("Transaction failed", err)
+        const errAny = err as Record<string, unknown>
+        console.error("Transaction failed:", {
+          message: errAny?.message || String(err),
+          code: errAny?.code,
+          details: errAny?.details,
+          hint: errAny?.hint,
+          failedAtSubAction: completed.length,
+          completedTables: completed.map(c => `${c.action}:${c.table}`),
+          subActionTables: sub_actions.map(sa => `${sa.action}:${sa.table}:${JSON.stringify(sa.filters || {})}`),
+        })
         return buildError("Transaction failed", 500)
       }
     }
@@ -426,6 +455,26 @@ export async function POST(req: NextRequest) {
           const customerName = row.customer_name as string || "Customer"
           if (brokerId) {
             notifyBrokerCreditUpdated(brokerId, customerName).catch(console.error)
+          }
+        }
+
+        // Store Sale Resubmitted / Confirmed
+        if (table === "store_sales" && row) {
+          const saleId = row.sale_id as string
+          const brokerId = row.broker_id as string
+          const saleType = row.sale_type as string
+          if (saleType !== "truck_load_out") {
+            if (data.status === "Pending" && brokerId) {
+              const storeName = row.store_name as string || "Store"
+              const brokerName = row.broker_name as string || "Broker"
+              notifyBrokerPendingStoreSale(brokerId, storeName).catch(console.error)
+              notifyStoreOfficerPendingBrokerSale(storeName).catch(console.error)
+              notifyStoreSupervisorPendingBrokerSale(storeName, brokerName).catch(console.error)
+              notifyAdminPendingStoreSale(brokerName, storeName, 0).catch(console.error)
+              notifyDeskOfficerStoreSaleNeedsAttention(saleId).catch(console.error)
+            } else if (data.status === "Confirmed" && saleId) {
+              notifyStoreOfficerSaleConfirmed(saleId).catch(console.error)
+            }
           }
         }
 

@@ -5,10 +5,11 @@ import { Icon } from "@iconify/react"
 import { supabase } from "@/lib/supabase"
 
 const PRODUCTS = ["BUA cement", "Falcon", "3X", "Supaset", "Supafix", "Classic"]
+const AREAS = ["Calabar to Obubra", "Ikom to Obudu", "Akwa-Ibom", "East"]
 
-type PriceRow = { product: string; price: number }
+type PriceRow = { area: string; product: string; price: number }
 type HistoryRow = {
-  id: string; product: string; old_price: number; new_price: number;
+  id: string; area: string; product: string; old_price: number; new_price: number;
   changed_by: string | null; changed_at: string; change_group_id: string
 }
 
@@ -27,9 +28,10 @@ const fz = { xs: 12, sm: 13, base: 14, md: 15, lg: 16, xl: 20, "2xl": 24 }
 
 export default function BrokerPrices() {
   const isMobile = useBreakpoint()
-  const [prices, setPrices] = useState<Record<string, number>>({})
+  const [prices, setPrices] = useState<Record<string, Record<string, number>>>({})
   const [history, setHistory] = useState<HistoryRow[]>([])
   const [profiles, setProfiles] = useState<Record<string, string>>({})
+  const [selectedArea, setSelectedArea] = useState(AREAS[0])
   const [loading, setLoading] = useState(true)
   const [historyExpanded, setHistoryExpanded] = useState(false)
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set())
@@ -39,8 +41,12 @@ export default function BrokerPrices() {
       supabase.from("company_prices").select("*"),
       supabase.from("company_price_history").select("*").order("changed_at", { ascending: false }),
     ])
-    const priceMap: Record<string, number> = {}
-    for (const p of (priceRes.data || []) as PriceRow[]) priceMap[p.product] = p.price
+    const priceMap: Record<string, Record<string, number>> = {}
+    for (const area of AREAS) priceMap[area] = {}
+    for (const p of (priceRes.data || []) as PriceRow[]) {
+      if (!priceMap[p.area]) priceMap[p.area] = {}
+      priceMap[p.area][p.product] = p.price
+    }
     setPrices(priceMap)
 
     const historyRows = (historyRes.data || []) as HistoryRow[]
@@ -71,15 +77,39 @@ export default function BrokerPrices() {
   }
 
   const groupedHistory = groupHistory(history)
+  const areaPrices = prices[selectedArea] || {}
 
   return (
     <div>
       <h2 style={{ margin: "0 0 6px", color: "#0f172a", fontSize: isMobile ? fz.xl : 20, fontWeight: 700 }}>Company Prices</h2>
-      <p style={{ margin: "0 0 20px", color: "#64748b", fontSize: fz.sm }}>Current cement product prices.</p>
+      <p style={{ margin: "0 0 16px", color: "#64748b", fontSize: fz.sm }}>Current cement product prices, grouped by area.</p>
+
+      <div style={{ display: "flex", gap: 8, marginBottom: 20, overflowX: "auto", scrollbarWidth: "none", paddingBottom: 8 }}>
+        {AREAS.map(area => {
+          const isActive = selectedArea === area
+          return (
+            <button
+              key={area}
+              onClick={() => setSelectedArea(area)}
+              style={{
+                padding: isMobile ? "9px 16px" : "7px 14px", borderRadius: 20, fontSize: 13, cursor: "pointer",
+                border: `1.5px solid ${isActive ? "#0070f3" : "#e2e8f0"}`,
+                background: isActive ? "rgba(0,112,243,0.1)" : "white",
+                color: isActive ? "#0070f3" : "#64748b",
+                fontWeight: isActive ? 600 : 500,
+                minHeight: 38, whiteSpace: "nowrap", display: "flex", alignItems: "center", gap: 5, flexShrink: 0,
+                transition: "all 0.2s ease",
+              }}
+            >
+              {area}
+            </button>
+          )
+        })}
+      </div>
 
       <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(auto-fill, minmax(240px, 1fr))", gap: 10, marginBottom: 24 }}>
         {PRODUCTS.map(product => {
-          const currentPrice = prices[product] ?? 0
+          const currentPrice = areaPrices[product] ?? 0
           return (
             <div key={product} style={{ background: "white", borderRadius: 10, padding: 16, border: "1px solid #e2e8f0", boxShadow: "0 1px 3px rgba(0,0,0,0.05)" }}>
               <p style={{ margin: "0 0 4px", fontSize: fz.xs, color: "#94a3b8" }}>{product}</p>
@@ -134,8 +164,8 @@ export default function BrokerPrices() {
                     {isGroupExpanded && (
                       <div style={{ marginTop: 6, display: "flex", flexDirection: "column", gap: 4 }}>
                         {group.items.map(item => (
-                          <div key={item.id} style={{ display: "flex", justifyContent: "space-between", padding: "6px 10px", background: "#f8fafc", borderRadius: 6 }}>
-                            <span style={{ fontSize: fz.sm, color: "#0f172a" }}>{item.product}</span>
+                          <div key={item.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "6px 10px", background: "#f8fafc", borderRadius: 6 }}>
+                            <span style={{ fontSize: fz.sm, color: "#0f172a", whiteSpace: "nowrap" }}>{item.product}<span style={{ color: "#94a3b8", fontSize: fz.xs }}>{item.area ? ` · ${item.area}` : ""}</span></span>
                             <span style={{ fontSize: fz.sm, color: "#64748b" }}>₦{item.old_price.toLocaleString()} → <strong style={{ color: "#0f172a" }}>₦{item.new_price.toLocaleString()}</strong></span>
                           </div>
                         ))}
