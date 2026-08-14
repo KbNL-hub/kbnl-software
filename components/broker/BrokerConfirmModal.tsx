@@ -383,8 +383,8 @@ export default function BrokerConfirmModal({ isOpen, onClose, brokerId, isMobile
           if (customerName) updateData.customer_name = customerName
 
           if (hasPriceDiff) {
-            updateData.status = "Pending"
-            updateData.discount_status = "pending"
+            updateData.status = lineHasDiff ? "Pending" : "Confirmed"
+            if (lineHasDiff) updateData.discount_status = "pending"
           } else {
             updateData.status = "Confirmed"
           }
@@ -400,7 +400,7 @@ export default function BrokerConfirmModal({ isOpen, onClose, brokerId, isMobile
             unconfirmed.push(line.product)
           } else {
             if (hasPriceDiff && lineHasDiff) {
-              await apiMutate("finance", {
+              const { error: upsertErr } = await apiMutate("finance", {
                 action: "upsert",
                 table: "price_adjustments",
                 conflict: "unique_price_adjustment_source",
@@ -417,6 +417,9 @@ export default function BrokerConfirmModal({ isOpen, onClose, brokerId, isMobile
                   group_id: groupId,
                 },
               })
+              if (upsertErr) {
+                console.error("price_adjustments upsert failed:", upsertErr)
+              }
             }
             confirmed.push(line.product)
           }

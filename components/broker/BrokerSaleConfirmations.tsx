@@ -219,18 +219,21 @@ export default function BrokerSaleConfirmations() {
 
   if (loading) return <p style={{ color: "#888" }}>Loading…</p>
 
-  const pendingGroups = allGroups.filter(g => g.status === "Pending" && !g.lines.some(l => l.discount_status === "returned"))
+  const pendingGroups = allGroups.filter(g => g.status === "Pending" && !g.lines.some(l => l.discount_status === "returned") && !g.lines.some(l => l.discount_status === "pending"))
+  const reviewGroups = allGroups.filter(g => g.status === "Pending" && g.lines.some(l => l.discount_status === "pending"))
   const confirmedGroups = allGroups.filter(g => g.status === "Confirmed")
   const rejectedGroups = allGroups.filter(g => g.status === "Rejected")
   const returnedGroups = allGroups.filter(g => g.status === "Pending" && g.lines.some(l => l.discount_status === "returned"))
 
   const visibleGroups = activeFilter === "pending" ? pendingGroups
+    : activeFilter === "review" ? reviewGroups
     : activeFilter === "confirmed" ? confirmedGroups
     : activeFilter === "returned" ? returnedGroups
     : rejectedGroups
 
   const filterOptions = [
     { key: "pending" as const, label: "Pending", count: pendingGroups.length, color: "#f5a623" },
+    { key: "review" as const, label: "In Review", count: reviewGroups.length, color: "#0070f3" },
     { key: "confirmed" as const, label: "Confirmed", count: confirmedGroups.length, color: "#10b981" },
     { key: "returned" as const, label: "Returned", count: returnedGroups.length, color: "#d97706" },
     { key: "rejected" as const, label: "Rejected", count: rejectedGroups.length, color: "#ef4444" },

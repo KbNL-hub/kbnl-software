@@ -220,14 +220,13 @@ export default function CashExpenses() {
       .select("*")
       .eq("to_account", selectedOffice)
       .order("created_at", { ascending: false })
-      .limit(100)
     setTopUps(data || [])
   }
 
   const balanceMap = useMemo(() => {
     const map: Record<string, number> = {}
     const records: { id: string; amount: number; timestamp: string }[] = [
-      ...expenses.filter(e => e.resolved_at !== null).map(e => ({
+      ...expenses.filter(e => e.status === "Authorised" && e.resolved_at !== null).map(e => ({
         id: e.expense_id, amount: e.total_amount, timestamp: e.resolved_at ?? e.created_at
       })),
       ...deposits.map(d => ({

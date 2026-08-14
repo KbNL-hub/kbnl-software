@@ -150,11 +150,11 @@ export function notifyBrokerSaleReturned(brokerId: string, storeName: string, de
   })
 }
 
-export function notifyBrokerStopReturned(brokerId: string, plateNumber: string, denialReason: string) {
+export function notifyBrokerStopReturned(brokerId: string, area: string, denialReason: string) {
   return sendToUser(brokerId, {
     title: 'Stop Confirmation Returned — Edit Price',
-    body: `Your stop confirmation for ${plateNumber} was returned. Reason: ${denialReason}. Tap to edit the price.`,
-    url: '/admin?section=monitor-trips',
+    body: `Your stop confirmation${area ? ` in ${area}` : ''} was returned. Reason: ${denialReason}. Tap to edit the price.`,
+    url: '/admin?section=my-stops',
     tag: `stop-returned-${brokerId}`,
   })
 }

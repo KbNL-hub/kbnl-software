@@ -233,6 +233,12 @@ export default function MyStops() {
               </p>
             </div>
 
+            {stop.discount_status === "returned" && (
+              <div style={{ marginBottom: 10 }}>
+                <span style={{ padding: "4px 10px", borderRadius: 6, fontSize: 11, fontWeight: 600, background: "#fffbeb", color: "#d97706", border: "1px solid #fcd34d" }}>Returned — Edit price to resubmit</span>
+              </div>
+            )}
+
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, padding: "10px 12px", background: "#f9f9f9", borderRadius: 8, marginBottom: 12 }}>
               <div><p style={{ margin: 0, fontSize: 11, color: "#aaa" }}>Bags</p><p style={{ margin: "2px 0 0", fontWeight: "bold", fontSize: 14, color: "#171717" }}>{stop.quantity_offloaded}</p></div>
               <div><p style={{ margin: 0, fontSize: 11, color: "#aaa" }}>Customer</p><p style={{ margin: "2px 0 0", fontSize: 13, color: "#171717", fontWeight: "500" }}>{stop.customer_name}</p></div>

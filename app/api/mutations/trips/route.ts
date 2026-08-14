@@ -32,7 +32,6 @@ const TABLE_ROLES: Record<string, string[]> = {
   trip_load_more: ["Driver", "Admin", "SuperAdmin"],
   trip_discrepancies: ["Driver", "Admin", "SuperAdmin"],
   dd_trips: ["Driver", "Admin", "SuperAdmin", "ATCOfficer"],
-  price_adjustments: ["Broker", "Admin", "SuperAdmin", "DeskOfficer"],
 }
 
 function buildError(msg: string, status: number) {

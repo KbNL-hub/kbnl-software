@@ -44,7 +44,7 @@ const TABLE_ROLES: Record<string, string[]> = {
   store_stock: ["StoreOfficer", "Admin", "SuperAdmin", "Supervisor", "StoreSupervisor"],
   store_officers: ["Admin", "SuperAdmin"],
   stock_verifications: ["StoreSupervisor", "Admin", "SuperAdmin"],
-  price_adjustments: ["Admin", "SuperAdmin", "DeskOfficer"],
+  price_adjustments: ["Broker", "Admin", "SuperAdmin", "DeskOfficer"],
 }
 
 const RPC_ROLES: Record<string, string[]> = {

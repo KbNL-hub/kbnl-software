@@ -191,14 +191,25 @@ export default function OurStores() {
   async function fetchVerificationHistory(storeName: string) {
     setVerificationLoading(true)
     try {
-      const { data } = await supabase
-        .from("stock_verifications")
-        .select("verification_id, verification_session_id, product, system_balance, physical_count, discrepancy, notes, verified_at, supervisor_id")
-        .eq("store_name", storeName)
-        .order("verified_at", { ascending: false })
-        .limit(200)
+      const PAGE_SIZE = 500
+      let offset = 0
+      let allRows: Record<string, unknown>[] = []
 
-      const rows = data || []
+      while (true) {
+        const { data } = await supabase
+          .from("stock_verifications")
+          .select("verification_id, verification_session_id, product, system_balance, physical_count, discrepancy, notes, verified_at, supervisor_id")
+          .eq("store_name", storeName)
+          .order("verified_at", { ascending: false })
+          .range(offset, offset + PAGE_SIZE - 1)
+
+        if (!data || data.length === 0) break
+        allRows = allRows.concat(data)
+        if (data.length < PAGE_SIZE) break
+        offset += PAGE_SIZE
+      }
+
+      const rows = allRows
 
       const supervisorIds = [...new Set(rows.map((r: Record<string, unknown>) => r.supervisor_id as string).filter(Boolean))]
       const supervisorMap: Record<string, string> = {}
@@ -681,7 +692,11 @@ export default function OurStores() {
 
                         {stock && stock.products.length > 0 ? (
                           <div
+                            role="button"
+                            tabIndex={0}
+                            aria-expanded={expandedStore === store.store_name}
                             onClick={() => setExpandedStore(expandedStore === store.store_name ? null : store.store_name)}
+                            onKeyDown={e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setExpandedStore(expandedStore === store.store_name ? null : store.store_name) } }}
                             style={{
                               padding: "8px 12px", borderRadius: 8, cursor: "pointer",
                               background: expandedStore === store.store_name ? "#f0f7ff" : "#f8fafc",
@@ -851,8 +866,12 @@ export default function OurStores() {
                           {officer?.phone_number || "—"}
                         </td>
                         <td
+                          role="button"
+                          tabIndex={0}
+                          aria-expanded={expandedStore === store.store_name}
                           style={{ padding: "12px 16px", fontSize: FONT_SIZE.base, fontWeight: 600, color: "#0f172a", cursor: stock && stock.total_balance > 0 ? "pointer" : "default" }}
                           onClick={() => { if (stock && stock.total_balance > 0) setExpandedStore(expandedStore === store.store_name ? null : store.store_name) }}
+                          onKeyDown={e => { if ((e.key === "Enter" || e.key === " ") && stock && stock.total_balance > 0) { e.preventDefault(); setExpandedStore(expandedStore === store.store_name ? null : store.store_name) } }}
                         >
                           {stock && stock.total_balance > 0 ? (
                             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
