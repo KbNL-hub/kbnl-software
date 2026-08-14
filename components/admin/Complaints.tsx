@@ -140,7 +140,7 @@ export default function Complaints() {
       <div style={{ display: "flex", flexDirection: isMobile ? "column" : "row", justifyContent: "space-between", alignItems: isMobile ? "flex-start" : "center", gap: 16, marginBottom: 32 }}>
         <div>
           <h1 style={{ margin: 0, color: "#0f172a", fontSize: isMobile ? FONT_SIZE["2xl"] : FONT_SIZE["3xl"], fontWeight: 700, letterSpacing: "-0.5px" }}>
-            Driver Complaints
+            Complaints
           </h1>
           <p style={{ margin: "8px 0 0", color: "#64748b", fontSize: FONT_SIZE.base }}>
             {unresolvedCount} unresolved · {resolvedCount} resolved

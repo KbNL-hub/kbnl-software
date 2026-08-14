@@ -141,6 +141,24 @@ export function notifyBrokerStoreSaleReminder(brokerId: string, storeName: strin
   })
 }
 
+export function notifyBrokerSaleReturned(brokerId: string, storeName: string, denialReason: string) {
+  return sendToUser(brokerId, {
+    title: 'Sale Returned — Edit Price',
+    body: `Your sale at ${storeName} was returned. Reason: ${denialReason}. Tap to edit the price.`,
+    url: '/admin?section=store-sales',
+    tag: `sale-returned-${brokerId}`,
+  })
+}
+
+export function notifyBrokerStopReturned(brokerId: string, plateNumber: string, denialReason: string) {
+  return sendToUser(brokerId, {
+    title: 'Stop Confirmation Returned — Edit Price',
+    body: `Your stop confirmation for ${plateNumber} was returned. Reason: ${denialReason}. Tap to edit the price.`,
+    url: '/admin?section=monitor-trips',
+    tag: `stop-returned-${brokerId}`,
+  })
+}
+
 export function notifyBrokerPricesUpdated() {
   return notify(['Broker'], {
     title: 'Company Prices Updated',

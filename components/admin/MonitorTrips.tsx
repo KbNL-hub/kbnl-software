@@ -25,6 +25,7 @@ type Stop = {
   disputed: boolean
   dispute_reason: string | null
   price_per_bag: number | null
+  discount_status: string | null
 }
 
 type Discrepancy = {
@@ -175,7 +176,7 @@ export default function MonitorTrips() {
 
     const { data: allStopsRaw } = await supabase
       .from("Stops")
-      .select("stop_id, trip_id, quantity_offloaded, latitude, longitude, stop_time, stop_location, broker_id, customer_id, confirmed, disputed, dispute_reason, store_name, stop_type")
+      .select("stop_id, trip_id, quantity_offloaded, latitude, longitude, stop_time, stop_location, broker_id, customer_id, confirmed, disputed, dispute_reason, store_name, stop_type, discount_status")
       .in("trip_id", tripIds)
       .order("stop_time", { ascending: true })
 
@@ -276,6 +277,7 @@ export default function MonitorTrips() {
           disputed: stop.disputed,
           dispute_reason: stop.dispute_reason,
           price_per_bag: confirmation?.price_per_bag ?? null,
+          discount_status: stop.discount_status ?? "none",
         }
       })
 
@@ -329,7 +331,7 @@ export default function MonitorTrips() {
 
     const { data: allStopsRaw } = await supabase
       .from("Stops")
-      .select("stop_id, trip_id, quantity_offloaded, latitude, longitude, stop_time, stop_location, broker_id, customer_id, confirmed, disputed, dispute_reason, store_name, stop_type")
+      .select("stop_id, trip_id, quantity_offloaded, latitude, longitude, stop_time, stop_location, broker_id, customer_id, confirmed, disputed, dispute_reason, store_name, stop_type, discount_status")
       .in("trip_id", ddTripIds)
       .order("stop_time", { ascending: true })
 
@@ -429,6 +431,7 @@ export default function MonitorTrips() {
           disputed: stop.disputed,
           dispute_reason: stop.dispute_reason,
           price_per_bag: confirmation?.price_per_bag ?? null,
+          discount_status: stop.discount_status ?? "none",
         }
       })
 
@@ -963,9 +966,11 @@ export default function MonitorTrips() {
           {viewMode === "card" && (
             <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(auto-fill, minmax(340px, 1fr))", gap: 16 }}>
               {filteredTrips.map((trip) => {
-                const confirmed = trip.stops.filter(s => s.confirmed).length
-                const pending = trip.stops.filter(s => !s.confirmed && !s.disputed).length
+                const confirmed = trip.stops.filter(s => s.confirmed && s.discount_status !== "pending" && s.discount_status !== "returned").length
+                const pending = trip.stops.filter(s => !s.confirmed && !s.disputed && s.discount_status !== "pending" && s.discount_status !== "returned").length
                 const disputed = trip.stops.filter(s => s.disputed).length
+                const awaitingReview = trip.stops.filter(s => s.discount_status === "pending").length
+                const returned = trip.stops.filter(s => s.discount_status === "returned").length
 
                 return (
                   <div key={trip.trip_id} style={{ background: "white", borderRadius: 12, padding: 20, border: "1px solid #e2e8f0", boxShadow: "0 1px 3px rgba(0, 0, 0, 0.05)", transition: "all 0.2s ease" }} onMouseEnter={e => !isMobile && (e.currentTarget.style.boxShadow = "0 4px 12px rgba(0, 0, 0, 0.08)", e.currentTarget.style.borderColor = "#cbd5e1")} onMouseLeave={e => !isMobile && (e.currentTarget.style.boxShadow = "0 1px 3px rgba(0, 0, 0, 0.05)", e.currentTarget.style.borderColor = "#e2e8f0")}>
@@ -1038,6 +1043,8 @@ export default function MonitorTrips() {
                         {confirmed > 0 && <span style={{ width: 8, height: 8, borderRadius: "50%", background: "#16a34a" }} title={`${confirmed} confirmed`} />}
                         {pending > 0 && <span style={{ width: 8, height: 8, borderRadius: "50%", background: "#f5a623" }} title={`${pending} pending`} />}
                         {disputed > 0 && <span style={{ width: 8, height: 8, borderRadius: "50%", background: "#ef4444" }} title={`${disputed} disputed`} />}
+                        {awaitingReview > 0 && <span style={{ width: 8, height: 8, borderRadius: "50%", background: "#0070f3" }} title={`${awaitingReview} awaiting review`} />}
+                        {returned > 0 && <span style={{ width: 8, height: 8, borderRadius: "50%", background: "#d97706" }} title={`${returned} returned`} />}
                       </div>
                       
                       <button
@@ -1078,9 +1085,11 @@ export default function MonitorTrips() {
                 </thead>
                 <tbody>
                   {filteredTrips.map((trip) => {
-                    const confirmed = trip.stops.filter(s => s.confirmed).length
-                    const pending = trip.stops.filter(s => !s.confirmed && !s.disputed).length
+                    const confirmed = trip.stops.filter(s => s.confirmed && s.discount_status !== "pending" && s.discount_status !== "returned").length
+                    const pending = trip.stops.filter(s => !s.confirmed && !s.disputed && s.discount_status !== "pending" && s.discount_status !== "returned").length
                     const disputed = trip.stops.filter(s => s.disputed).length
+                    const awaitingReview = trip.stops.filter(s => s.discount_status === "pending").length
+                    const returned = trip.stops.filter(s => s.discount_status === "returned").length
 
                     return (
                       <tr key={trip.trip_id} style={{ borderBottom: "1px solid #e2e8f0", transition: "background 0.2s ease" }} onMouseEnter={e => e.currentTarget.style.background = "#f8fafc"} onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
@@ -1108,6 +1117,8 @@ export default function MonitorTrips() {
                             {confirmed > 0 && <div style={{ display: "flex", alignItems: "center", gap: 2, padding: "2px 6px", background: "#f0fdf4", borderRadius: 12 }}><Icon icon="mdi:check-circle" width="12" height="12" style={{ color: "#16a34a" }} /><span style={{ fontSize: 10, color: "#16a34a", fontWeight: "bold" }}>{confirmed}</span></div>}
                             {pending > 0 && <div style={{ display: "flex", alignItems: "center", gap: 2, padding: "2px 6px", background: "#fffbeb", borderRadius: 12 }}><Icon icon="mdi:clock-outline" width="12" height="12" style={{ color: "#f5a623" }} /><span style={{ fontSize: 10, color: "#f5a623", fontWeight: "bold" }}>{pending}</span></div>}
                             {disputed > 0 && <div style={{ display: "flex", alignItems: "center", gap: 2, padding: "2px 6px", background: "#fef2f2", borderRadius: 12 }}><Icon icon="mdi:alert-circle" width="12" height="12" style={{ color: "#ef4444" }} /><span style={{ fontSize: 10, color: "#ef4444", fontWeight: "bold" }}>{disputed}</span></div>}
+                            {awaitingReview > 0 && <div style={{ display: "flex", alignItems: "center", gap: 2, padding: "2px 6px", background: "#eff6ff", borderRadius: 12 }}><Icon icon="mdi:eye-outline" width="12" height="12" style={{ color: "#0070f3" }} /><span style={{ fontSize: 10, color: "#0070f3", fontWeight: "bold" }}>{awaitingReview}</span></div>}
+                            {returned > 0 && <div style={{ display: "flex", alignItems: "center", gap: 2, padding: "2px 6px", background: "#fffbeb", borderRadius: 12 }}><Icon icon="mdi:rotate-3d-variant" width="12" height="12" style={{ color: "#d97706" }} /><span style={{ fontSize: 10, color: "#d97706", fontWeight: "bold" }}>{returned}</span></div>}
                             {trip.load_more_entries.length > 0 && <div style={{ display: "flex", alignItems: "center", gap: 2, padding: "2px 6px", background: "#fffbeb", borderRadius: 12 }}><Icon icon="mdi:package-variant-closed" width="12" height="12" style={{ color: "#f59e0b" }} /><span style={{ fontSize: 10, color: "#f59e0b", fontWeight: "bold" }}>+{trip.load_more_entries.reduce((s, e) => s + e.quantity, 0)}</span></div>}
                           </div>
                         </td>
@@ -1198,7 +1209,7 @@ export default function MonitorTrips() {
                 ) : (
                   <div style={{ display: "flex", flexDirection: "column", gap: 12, marginBottom: 20 }}>
                     {selectedStops.map((stop, index) => (
-                      <div key={stop.stop_id} style={{ padding: 14, border: `1px solid ${stop.disputed ? "#fca5a5" : stop.confirmed ? "#86efac" : "#e2e8f0"}`, borderRadius: 8, background: stop.disputed ? "#fef2f2" : stop.confirmed ? "#f0fdf4" : "#f8fafc" }}>
+                      <div key={stop.stop_id} style={{ padding: 14, border: `1px solid ${stop.disputed ? "#fca5a5" : stop.discount_status === "returned" ? "#fcd34d" : stop.discount_status === "pending" ? "#93c5fd" : stop.confirmed ? "#86efac" : "#e2e8f0"}`, borderRadius: 8, background: stop.disputed ? "#fef2f2" : stop.discount_status === "returned" ? "#fffbeb" : stop.discount_status === "pending" ? "#eff6ff" : stop.confirmed ? "#f0fdf4" : "#f8fafc" }}>
                         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 10 }}>
                           <div>
                             <p style={{ margin: "0 0 4px 0", color: "#0f172a", fontSize: FONT_SIZE.base, fontWeight: 600 }}>Stop {index + 1}</p>
@@ -1207,8 +1218,10 @@ export default function MonitorTrips() {
                             </span>
                           </div>
                           {stop.disputed && <span style={{ fontSize: FONT_SIZE.xs, padding: "4px 10px", background: "#fef2f2", borderRadius: 16, color: "#ef4444", fontWeight: 600 }}>Disputed</span>}
-                          {!stop.disputed && stop.confirmed && <span style={{ fontSize: FONT_SIZE.xs, padding: "4px 10px", background: "#f0fdf4", borderRadius: 16, color: "#16a34a", fontWeight: 600 }}>Confirmed</span>}
-                          {!stop.disputed && !stop.confirmed && <span style={{ fontSize: FONT_SIZE.xs, padding: "4px 10px", background: "#fffbeb", borderRadius: 16, color: "#f5a623", fontWeight: 600 }}>Pending</span>}
+                          {!stop.disputed && stop.discount_status === "pending" && <span style={{ fontSize: FONT_SIZE.xs, padding: "4px 10px", background: "#eff6ff", borderRadius: 16, color: "#0070f3", fontWeight: 600 }}>Awaiting Review</span>}
+                          {!stop.disputed && stop.discount_status === "returned" && <span style={{ fontSize: FONT_SIZE.xs, padding: "4px 10px", background: "#fffbeb", borderRadius: 16, color: "#d97706", fontWeight: 600 }}>Returned</span>}
+                          {!stop.disputed && stop.discount_status !== "pending" && stop.discount_status !== "returned" && stop.confirmed && <span style={{ fontSize: FONT_SIZE.xs, padding: "4px 10px", background: "#f0fdf4", borderRadius: 16, color: "#16a34a", fontWeight: 600 }}>Confirmed</span>}
+                          {!stop.disputed && stop.discount_status !== "pending" && stop.discount_status !== "returned" && !stop.confirmed && <span style={{ fontSize: FONT_SIZE.xs, padding: "4px 10px", background: "#fffbeb", borderRadius: 16, color: "#f5a623", fontWeight: 600 }}>Pending</span>}
                         </div>
 
                         {stop.stop_type === "customer" && (

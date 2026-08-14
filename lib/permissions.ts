@@ -27,6 +27,7 @@ export const ALL_SECTIONS = [
   'reports',
   'company-prices',
   'store-sales',
+  'discounts',
   'side-trips',
   'our-stores',
   'trips',

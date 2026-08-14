@@ -270,35 +270,78 @@ export default function BrokerConfirmModal({ isOpen, onClose, brokerId, isMobile
       try {
         const customerIdToSave = selectedCustomer?.customer_id ?? stop.customer_id
         const finalPriceVal = parseAmount(pricePerBag)
+        const cp = companyPriceMap[selectedArea]?.[stop.product] ?? 0
+        const hasDiff = showPriceReason && finalPriceVal !== cp && cp > 0 && finalPriceVal > 0
 
-        const { error } = await apiMutate("trips", {
-          action: "transaction",
-          sub_actions: [
-            {
-              action: "update", table: "Stops",
-              data: { confirmed: true, customer_id: customerIdToSave, updated_by: user.id },
-              filters: { stop_id: stop.stop_id },
-            },
-            {
-              action: "insert", table: "Stop_Confirmations",
-              data: {
-                stop_id: stop.stop_id,
-                broker_id: brokerId,
-                customer_id: customerIdToSave,
-                price_per_bag: finalPriceVal,
-                area: selectedArea,
-                company_price: companyPrice,
-                price_reason: showPriceReason ? priceReason.trim() : null,
+        if (hasDiff) {
+          const { error } = await apiMutate("trips", {
+            action: "transaction",
+            sub_actions: [
+              {
+                action: "update", table: "Stops",
+                data: { confirmed: false, customer_id: customerIdToSave, updated_by: user.id, discount_status: "pending" },
+                filters: { stop_id: stop.stop_id },
               },
-            },
-          ],
-        })
+              {
+                action: "insert", table: "Stop_Confirmations",
+                data: {
+                  stop_id: stop.stop_id,
+                  broker_id: brokerId,
+                  customer_id: customerIdToSave,
+                  price_per_bag: finalPriceVal,
+                  area: selectedArea,
+                  company_price: cp,
+                  price_reason: priceReason.trim(),
+                },
+              },
+              {
+                action: "upsert", table: "price_adjustments",
+                conflict: "unique_price_adjustment_source",
+                data: {
+                  source_type: "stop",
+                  source_id: stop.stop_id,
+                  broker_id: brokerId,
+                  area: selectedArea,
+                  product: stop.product,
+                  company_price: cp,
+                  adjusted_price: finalPriceVal,
+                  price_reason: priceReason.trim(),
+                  status: "Pending",
+                },
+              },
+            ],
+          })
+          if (error) { setMessage("Failed to submit. Please try again."); return }
+        } else {
+          const { error } = await apiMutate("trips", {
+            action: "transaction",
+            sub_actions: [
+              {
+                action: "update", table: "Stops",
+                data: { confirmed: true, customer_id: customerIdToSave, updated_by: user.id },
+                filters: { stop_id: stop.stop_id },
+              },
+              {
+                action: "insert", table: "Stop_Confirmations",
+                data: {
+                  stop_id: stop.stop_id,
+                  broker_id: brokerId,
+                  customer_id: customerIdToSave,
+                  price_per_bag: finalPriceVal,
+                  area: selectedArea,
+                  company_price: cp,
+                  price_reason: null,
+                },
+              },
+            ],
+          })
+          if (error) { setMessage("Failed to confirm stop. Please try again."); return }
+        }
 
-        if (error) { setMessage("Failed to confirm stop. Please try again."); return }
         onConfirmed()
         onClose()
       } catch {
-        setMessage("Failed to confirm stop. Please try again.")
+        setMessage("Failed to submit. Please try again.")
       } finally {
         setSubmitting(false)
       }
@@ -323,18 +366,28 @@ export default function BrokerConfirmModal({ isOpen, onClose, brokerId, isMobile
         const customerName = selectedCustomer.full_name
         const confirmed: string[] = []
         const unconfirmed: string[] = []
+        const groupId = saleGroup.group_id
 
         for (const line of saleGroup.lines) {
           const price = parseAmount(linePrices[line.sale_id] ?? "")
-          const cp = companyPriceMap[selectedArea]?.[line.product]
+          const cp = companyPriceMap[selectedArea]?.[line.product] ?? 0
+          const lineHasDiff = cp > 0 && price > 0 && price !== cp
 
           const updateData: Record<string, unknown> = {
             price_per_bag: price,
-            status: "Confirmed",
             area: selectedArea,
-            price_reason: cp && price !== cp ? priceReason.trim() : null,
+            company_price: cp,
+            price_reason: lineHasDiff ? priceReason.trim() : null,
+            group_id: groupId,
           }
           if (customerName) updateData.customer_name = customerName
+
+          if (hasPriceDiff) {
+            updateData.status = "Pending"
+            updateData.discount_status = "pending"
+          } else {
+            updateData.status = "Confirmed"
+          }
 
           const { data, error } = await apiMutate("finance", {
             action: "update",
@@ -346,6 +399,25 @@ export default function BrokerConfirmModal({ isOpen, onClose, brokerId, isMobile
           if (error || !data || (Array.isArray(data) && data.length === 0)) {
             unconfirmed.push(line.product)
           } else {
+            if (hasPriceDiff && lineHasDiff) {
+              await apiMutate("finance", {
+                action: "upsert",
+                table: "price_adjustments",
+                conflict: "unique_price_adjustment_source",
+                data: {
+                  source_type: "store_sale",
+                  source_id: line.sale_id,
+                  broker_id: brokerId,
+                  area: selectedArea,
+                  product: line.product,
+                  company_price: cp,
+                  adjusted_price: price,
+                  price_reason: priceReason.trim(),
+                  status: "Pending",
+                  group_id: groupId,
+                },
+              })
+            }
             confirmed.push(line.product)
           }
         }
@@ -354,15 +426,15 @@ export default function BrokerConfirmModal({ isOpen, onClose, brokerId, isMobile
           onConfirmed()
           onClose()
           if (unconfirmed.length > 0) {
-            setMessage(`Confirmed ${confirmed.join(", ")}, but could not confirm ${unconfirmed.join(", ")}`)
+            setMessage(`Submitted ${confirmed.join(", ")}, but failed for ${unconfirmed.join(", ")}`)
           }
         } else {
-          setMessage(`Could not confirm: ${unconfirmed.join(", ")}`)
+          setMessage(`Could not submit: ${unconfirmed.join(", ")}`)
           setSubmitting(false)
           return
         }
       } catch {
-        setMessage("Failed to confirm sale. Please try again.")
+        setMessage("Failed to submit. Please try again.")
       } finally {
         setSubmitting(false)
       }

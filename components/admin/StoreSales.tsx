@@ -31,6 +31,7 @@ type StoreSale = {
   depositor_name: string | null
   rejection_reason: string | null
   sale_type: string | null
+  discount_status: string | null
 }
 
 type GroupedSale = {
@@ -116,7 +117,7 @@ export default function StoreSales() {
   async function fetchSales() {
     const { data, error } = await supabase
       .from("store_sales")
-      .select("sale_id, store_name, product, quantity, price_per_bag, total_amount, customer_name, payment_mode, delivery_mode, tricycle_id, truck_plate, broker_id, sold_at, created_at, status, bank_name, depositor_name, rejection_reason, sale_type")
+      .select("sale_id, store_name, product, quantity, price_per_bag, total_amount, customer_name, payment_mode, delivery_mode, tricycle_id, truck_plate, broker_id, sold_at, created_at, status, bank_name, depositor_name, rejection_reason, sale_type, discount_status")
       .order("sold_at", { ascending: false })
 
     if (error) throw error
@@ -598,19 +599,27 @@ export default function StoreSales() {
                   <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(auto-fill, minmax(340px, 1fr))", gap: 16 }}>
                     {group.sales.map((sale) => (
                       <div key={sale.sale_id} style={{ background: "white", borderRadius: 12, padding: 20, border: "1px solid #e2e8f0", boxShadow: "0 1px 3px rgba(0, 0, 0, 0.05)", transition: "all 0.2s ease" }} onMouseEnter={e => !isMobile && (e.currentTarget.style.boxShadow = "0 4px 12px rgba(0, 0, 0, 0.08)", e.currentTarget.style.borderColor = "#cbd5e1")} onMouseLeave={e => !isMobile && (e.currentTarget.style.boxShadow = "0 1px 3px rgba(0, 0, 0, 0.05)", e.currentTarget.style.borderColor = "#e2e8f0")}>
-                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 16 }}>
-                          <div>
+                        <div style={{ marginBottom: 16 }}>
+                          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 6, gap: 8 }}>
                             <h3 style={{ margin: 0, color: "#0f172a", fontSize: FONT_SIZE.lg, fontWeight: 700 }}>{sale.store_name}</h3>
-                            <p style={{ margin: "4px 0 0", color: "#64748b", fontSize: FONT_SIZE.sm }}>{sale.product}</p>
-                            {sale.sale_type === "truck_load_out" && (
-                              <span style={{ marginTop: 4, padding: "2px 8px", borderRadius: 6, background: "#fff7ed", color: "#ea580c", fontWeight: 600, fontSize: FONT_SIZE.xs, display: "inline-block" }}>Truck Load Out</span>
-                            )}
+                            {(() => {
+                              const displayStatus = sale.discount_status === "returned" ? "Returned" : sale.discount_status === "pending" ? "Awaiting Review" : sale.status
+                              const statusBg = sale.discount_status === "returned" ? "#fffbeb" : sale.discount_status === "pending" ? "#eff6ff" : sale.status === "Confirmed" ? "#ecfdf5" : sale.status === "Pending" ? "#fffbeb" : sale.status === "Rejected" ? "#fef2f2" : "#f1f5f9"
+                              const statusColor = sale.discount_status === "returned" ? "#d97706" : sale.discount_status === "pending" ? "#0070f3" : sale.status === "Confirmed" ? "#10b981" : sale.status === "Pending" ? "#f5a623" : sale.status === "Rejected" ? "#ef4444" : "#475569"
+                              const statusBorder = sale.discount_status === "returned" ? "#fcd34d" : sale.discount_status === "pending" ? "#93c5fd" : sale.status === "Confirmed" ? "#10b981" : sale.status === "Pending" ? "#f5a623" : sale.status === "Rejected" ? "#ef4444" : "#cbd5e1"
+                              return (
+                                <span style={{ padding: "6px 12px", borderRadius: 16, fontSize: FONT_SIZE.xs, fontWeight: 600, background: statusBg, color: statusColor, border: `1.5px solid ${statusBorder}`, whiteSpace: "nowrap", flexShrink: 0 }}>
+                                  {displayStatus}
+                                </span>
+                              )
+                            })()}
                           </div>
-                          <span style={{ padding: "6px 12px", borderRadius: 16, fontSize: FONT_SIZE.xs, fontWeight: 600, background: sale.status === "Confirmed" ? "#ecfdf5" : sale.status === "Pending" ? "#fffbeb" : sale.status === "Rejected" ? "#fef2f2" : "#f1f5f9", color: sale.status === "Confirmed" ? "#10b981" : sale.status === "Pending" ? "#f5a623" : sale.status === "Rejected" ? "#ef4444" : "#475569", border: `1.5px solid ${sale.status === "Confirmed" ? "#10b981" : sale.status === "Pending" ? "#f5a623" : sale.status === "Rejected" ? "#ef4444" : "#cbd5e1"}`, whiteSpace: "nowrap" }}>
-                            {sale.status}
-                          </span>
+                          <p style={{ margin: 0, color: "#64748b", fontSize: FONT_SIZE.sm }}>{sale.product}</p>
+                          {sale.sale_type === "truck_load_out" && (
+                            <span style={{ marginTop: 4, padding: "2px 8px", borderRadius: 6, background: "#fff7ed", color: "#ea580c", fontWeight: 600, fontSize: FONT_SIZE.xs, display: "inline-block" }}>Truck Load Out</span>
+                          )}
                           {sale.status === "Rejected" && sale.rejection_reason && (
-                            <div style={{ display: "flex", gap: 10, alignItems: "flex-start", marginTop: 8, padding: 10, background: "#fef2f2", borderRadius: 8, border: "1px solid #fecaca" }}>
+                            <div style={{ display: "flex", gap: 10, alignItems: "flex-start", marginTop: 10, padding: 10, background: "#fef2f2", borderRadius: 8, border: "1px solid #fecaca" }}>
                               <div style={{ background: "#ef4444", color: "white", padding: 3, borderRadius: "50%", flexShrink: 0, marginTop: 1 }}>
                                 <Icon icon="mdi:close" width={12} height={12} />
                               </div>
@@ -625,20 +634,20 @@ export default function StoreSales() {
                         </div>
 
                         <div style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 16, paddingBottom: 16, borderBottom: "1px solid #f1f5f9" }}>
-                          <p style={{ margin: 0, fontSize: FONT_SIZE.sm, color: "#475569" }}><span style={{ color: "#94a3b8", width: 90, display: "inline-block" }}>Qty:</span> <span style={{ fontWeight: 500 }}>{sale.quantity} bags</span></p>
+                          <p style={{ margin: 0, fontSize: FONT_SIZE.sm, color: "#475569" }}><span style={{ color: "#94a3b8", minWidth: 80, display: "inline-block" }}>Qty:</span> <span style={{ fontWeight: 500 }}>{sale.quantity} bags</span></p>
                           {sale.sale_type !== "truck_load_out" && (
                             <>
-                              <p style={{ margin: 0, fontSize: FONT_SIZE.sm, color: "#475569" }}><span style={{ color: "#94a3b8", width: 90, display: "inline-block" }}>Price/bag:</span> <span style={{ fontWeight: 500 }}>{sale.price_per_bag ? formatAmount(sale.price_per_bag) : "—"}</span></p>
-                              <p style={{ margin: 0, fontSize: FONT_SIZE.sm, color: "#475569" }}><span style={{ color: "#94a3b8", width: 90, display: "inline-block" }}>Total:</span> <span style={{ fontWeight: 600, color: "#10b981" }}>{sale.total_amount ? formatAmount(sale.total_amount) : "—"}</span></p>
+                              <p style={{ margin: 0, fontSize: FONT_SIZE.sm, color: "#475569" }}><span style={{ color: "#94a3b8", minWidth: 80, display: "inline-block" }}>Price/bag:</span> <span style={{ fontWeight: 500 }}>{sale.price_per_bag ? formatAmount(sale.price_per_bag) : "—"}</span></p>
+                              <p style={{ margin: 0, fontSize: FONT_SIZE.sm, color: "#475569" }}><span style={{ color: "#94a3b8", minWidth: 80, display: "inline-block" }}>Total:</span> <span style={{ fontWeight: 600, color: "#10b981" }}>{sale.total_amount ? formatAmount(sale.total_amount) : "—"}</span></p>
                             </>
                           )}
-                          <p style={{ margin: 0, fontSize: FONT_SIZE.sm, color: "#475569" }}><span style={{ color: "#94a3b8", width: 90, display: "inline-block" }}>Payment:</span> {sale.payment_mode}</p>
-                          <p style={{ margin: 0, fontSize: FONT_SIZE.sm, color: "#475569" }}><span style={{ color: "#94a3b8", width: 90, display: "inline-block" }}>Delivery:</span> {sale.delivery_mode}{sale.truck_plate ? ` (${sale.truck_plate})` : ""}</p>
+                          <p style={{ margin: 0, fontSize: FONT_SIZE.sm, color: "#475569" }}><span style={{ color: "#94a3b8", minWidth: 80, display: "inline-block" }}>Payment:</span> {sale.payment_mode}</p>
+                          <p style={{ margin: 0, fontSize: FONT_SIZE.sm, color: "#475569" }}><span style={{ color: "#94a3b8", minWidth: 80, display: "inline-block" }}>Delivery:</span> {sale.delivery_mode}{sale.truck_plate ? ` (${sale.truck_plate})` : ""}</p>
                           {sale.customer_name && (
-                            <p style={{ margin: 0, fontSize: FONT_SIZE.sm, color: "#475569" }}><span style={{ color: "#94a3b8", width: 90, display: "inline-block" }}>Customer:</span> {sale.customer_name}</p>
+                            <p style={{ margin: 0, fontSize: FONT_SIZE.sm, color: "#475569" }}><span style={{ color: "#94a3b8", minWidth: 80, display: "inline-block" }}>Customer:</span> {sale.customer_name}</p>
                           )}
                           {sale.broker_name && (
-                            <p style={{ margin: 0, fontSize: FONT_SIZE.sm, color: "#475569" }}><span style={{ color: "#94a3b8", width: 90, display: "inline-block" }}>Broker:</span> {sale.broker_name}</p>
+                            <p style={{ margin: 0, fontSize: FONT_SIZE.sm, color: "#475569" }}><span style={{ color: "#94a3b8", minWidth: 80, display: "inline-block" }}>Broker:</span> {sale.broker_name}</p>
                           )}
                         </div>
 
@@ -756,9 +765,17 @@ export default function StoreSales() {
                           <td style={{ padding: "12px 16px", color: "#64748b", fontSize: FONT_SIZE.sm }}>{sale.delivery_mode}{sale.truck_plate ? ` (${sale.truck_plate})` : ""}</td>
                           <td style={{ padding: "12px 16px", color: "#64748b", fontSize: FONT_SIZE.sm }}>{sale.broker_name || "—"}</td>
                           <td style={{ padding: "12px 16px" }}>
-                            <span style={{ padding: "6px 10px", borderRadius: 14, fontSize: FONT_SIZE.xs, fontWeight: 600, background: sale.status === "Confirmed" ? "#ecfdf5" : sale.status === "Pending" ? "#fffbeb" : sale.status === "Rejected" ? "#fef2f2" : "#f1f5f9", color: sale.status === "Confirmed" ? "#10b981" : sale.status === "Pending" ? "#f5a623" : sale.status === "Rejected" ? "#ef4444" : "#475569", border: `1.5px solid ${sale.status === "Confirmed" ? "#10b981" : sale.status === "Pending" ? "#f5a623" : sale.status === "Rejected" ? "#ef4444" : "#cbd5e1"}` }}>
-                              {sale.status}
-                            </span>
+                            {(() => {
+                              const displayStatus = sale.discount_status === "returned" ? "Returned" : sale.discount_status === "pending" ? "Awaiting Review" : sale.status
+                              const statusBg = sale.discount_status === "returned" ? "#fffbeb" : sale.discount_status === "pending" ? "#eff6ff" : sale.status === "Confirmed" ? "#ecfdf5" : sale.status === "Pending" ? "#fffbeb" : sale.status === "Rejected" ? "#fef2f2" : "#f1f5f9"
+                              const statusColor = sale.discount_status === "returned" ? "#d97706" : sale.discount_status === "pending" ? "#0070f3" : sale.status === "Confirmed" ? "#10b981" : sale.status === "Pending" ? "#f5a623" : sale.status === "Rejected" ? "#ef4444" : "#475569"
+                              const statusBorder = sale.discount_status === "returned" ? "#fcd34d" : sale.discount_status === "pending" ? "#93c5fd" : sale.status === "Confirmed" ? "#10b981" : sale.status === "Pending" ? "#f5a623" : sale.status === "Rejected" ? "#ef4444" : "#cbd5e1"
+                              return (
+                                <span style={{ padding: "6px 10px", borderRadius: 14, fontSize: FONT_SIZE.xs, fontWeight: 600, background: statusBg, color: statusColor, border: `1.5px solid ${statusBorder}` }}>
+                                  {displayStatus}
+                                </span>
+                              )
+                            })()}
                             {sale.status === "Rejected" && sale.rejection_reason && (
                               <div style={{ marginTop: 6, padding: "6px 8px", background: "white", borderRadius: 6, border: "1px solid #fecaca", color: "#7f1d1d", fontSize: FONT_SIZE.xs, fontStyle: "italic", maxWidth: 220 }}>
                                 &ldquo;{sale.rejection_reason}&rdquo;

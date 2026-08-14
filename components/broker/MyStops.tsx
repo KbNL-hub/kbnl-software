@@ -26,6 +26,7 @@ type Stop = {
   product: string
   confirmed: boolean
   disputed: boolean
+  discount_status: string | null
 }
 
 export default function MyStops() {
@@ -33,7 +34,7 @@ export default function MyStops() {
   const isMobile = bp === "mobile"
 
   const [brokerId, setBrokerId] = useState<string | null>(null)
-  const [activeFilter, setActiveFilter] = useState<"pending" | "confirmed" | "disputed">("pending")
+  const [activeFilter, setActiveFilter] = useState<"pending" | "confirmed" | "disputed" | "returned">("pending")
   const [allStops, setAllStops] = useState<Stop[]>([])
   const [loading, setLoading] = useState(true)
   const [viewMode, setViewMode] = useState<"card" | "table">("card")
@@ -68,7 +69,7 @@ export default function MyStops() {
     const { data: stops, error } = await supabase
       .from("Stops")
       .select(`
-        stop_id, trip_id, customer_id, quantity_offloaded, stop_location, stop_time, confirmed, disputed,
+        stop_id, trip_id, customer_id, quantity_offloaded, stop_location, stop_time, confirmed, disputed, discount_status,
         Trips!inner(plate_number, material_centre, ATC, order_no, child_order_no, product),
         Customers(full_name)
       `)
@@ -87,6 +88,7 @@ export default function MyStops() {
       stop_time: stop.stop_time,
       confirmed: stop.confirmed,
       disputed: stop.disputed,
+      discount_status: stop.discount_status ?? "none",
       plate_number: stop.Trips?.plate_number ?? "Unknown",
       material_centre: stop.Trips?.material_centre ?? "",
       atc: stop.Trips?.ATC ?? null,
@@ -132,15 +134,17 @@ export default function MyStops() {
 
   if (loading) return <p style={{ color: "#888" }}>Loading…</p>
 
-  const pendingStops = allStops.filter(s => !s.confirmed && !s.disputed)
-  const confirmedStops = allStops.filter(s => s.confirmed)
+  const pendingStops = allStops.filter(s => !s.confirmed && !s.disputed && s.discount_status !== "returned")
+  const confirmedStops = allStops.filter(s => s.confirmed && s.discount_status !== "returned")
   const disputedStops = allStops.filter(s => s.disputed)
+  const returnedStops = allStops.filter(s => s.discount_status === "returned")
 
-  const visibleStops = activeFilter === "pending" ? pendingStops : activeFilter === "confirmed" ? confirmedStops : disputedStops
+  const visibleStops = activeFilter === "pending" ? pendingStops : activeFilter === "confirmed" ? confirmedStops : activeFilter === "returned" ? returnedStops : disputedStops
 
   const filterOptions = [
     { key: "pending" as const, label: "Pending", count: pendingStops.length, color: "#0070f3" },
     { key: "confirmed" as const, label: "Confirmed", count: confirmedStops.length, color: "#10b981" },
+    { key: "returned" as const, label: "Returned", count: returnedStops.length, color: "#d97706" },
     { key: "disputed" as const, label: "Disputed", count: disputedStops.length, color: "#ff4444" },
   ]
 
@@ -255,6 +259,14 @@ export default function MyStops() {
                 </button>
               </div>
             )}
+            {activeFilter === "returned" && (
+              <div style={{ display: "flex", gap: 8 }}>
+                <button onClick={() => openConfirmModal(stop)} style={{ flex: 1, padding: "11px 0", background: "#0070f3", color: "white", border: "none", borderRadius: 8, cursor: "pointer", fontWeight: "bold", fontSize: isMobile ? 14 : 13, minHeight: 44, display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
+                  <Icon icon="mdi:pencil" width={16} />
+                  Edit Price
+                </button>
+              </div>
+            )}
             {activeFilter === "confirmed" && <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "8px 10px", background: "#ecfdf5", borderRadius: 7 }}><Icon icon="mdi:check-circle" width={16} color="#10b981" /><span style={{ fontSize: 13, color: "#10b981", fontWeight: "600" }}>Confirmed</span></div>}
             {activeFilter === "disputed" && <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "8px 10px", background: "#fff0f0", borderRadius: 7 }}><Icon icon="mdi:alert-circle" width={16} color="#ff4444" /><span style={{ fontSize: 13, color: "#ff4444", fontWeight: "600" }}>Disputed</span></div>}
           </div>
@@ -285,7 +297,9 @@ export default function MyStops() {
                     <td style={{ padding: "12px 16px", color: "#64748b", fontSize: 13 }}>{stop.stop_location}</td>
                     <td style={{ padding: "12px 16px", color: "#64748b", fontSize: 13 }}>{new Date(stop.stop_time).toLocaleDateString("en-NG", { day: "numeric", month: "short" })}</td>
                     <td style={{ padding: "12px 16px" }}>
-                      {stop.confirmed ? (
+                      {stop.discount_status === "returned" ? (
+                        <span style={{ padding: "4px 10px", borderRadius: 6, fontSize: 12, fontWeight: 500, background: "#fffbeb", color: "#92400e", border: "1px solid #fcd34d", display: "inline-block" }}>Returned</span>
+                      ) : stop.confirmed ? (
                         <span style={{ padding: "4px 10px", borderRadius: 6, fontSize: 12, fontWeight: 500, background: "#d1fae5", color: "#065f46", border: "1px solid #a7f3d0", display: "inline-block" }}>Confirmed</span>
                       ) : stop.disputed ? (
                         <span style={{ padding: "4px 10px", borderRadius: 6, fontSize: 12, fontWeight: 500, background: "#fee2e2", color: "#7f1d1d", border: "1px solid #fecaca", display: "inline-block" }}>Disputed</span>
@@ -305,6 +319,11 @@ export default function MyStops() {
                             <Icon icon="mdi:alert-circle" width={14} /> Dispute
                           </button>
                         </div>
+                      ) : activeFilter === "returned" ? (
+                        <button onClick={() => openConfirmModal(stop)} style={{ padding: "6px 10px", cursor: "pointer", borderRadius: 6, border: "1px solid #0070f3", color: "#0070f3", background: "#f0f7ff", fontSize: 12, fontWeight: 600, transition: "all 0.2s", minHeight: 32, display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 4 }}
+                          onMouseEnter={e => { e.currentTarget.style.background = "#e0efff" }} onMouseLeave={e => { e.currentTarget.style.background = "#f0f7ff" }}>
+                          <Icon icon="mdi:pencil" width={14} /> Edit Price
+                        </button>
                       ) : (
                         <span style={{ fontSize: 12, color: "#94a3b8" }}>—</span>
                       )}

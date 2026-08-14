@@ -27,6 +27,7 @@ type SaleLine = {
   status: string
   store_name: string
   rejection_reason: string | null
+  discount_status: string | null
 }
 
 type SaleGroup = {
@@ -48,7 +49,7 @@ export default function BrokerSaleConfirmations() {
   const isMobile = bp === "mobile"
 
   const [brokerId, setBrokerId] = useState<string | null>(null)
-  const [activeFilter, setActiveFilter] = useState<"pending" | "confirmed" | "rejected">("pending")
+  const [activeFilter, setActiveFilter] = useState<"pending" | "confirmed" | "rejected" | "returned">("pending")
   const [allGroups, setAllGroups] = useState<SaleGroup[]>([])
   const [loading, setLoading] = useState(true)
 
@@ -93,7 +94,7 @@ export default function BrokerSaleConfirmations() {
   async function fetchSales(bId: string) {
     const { data, error } = await supabase
       .from("store_sales")
-      .select("sale_id, product, quantity, price_per_bag, total_amount, customer_name, payment_mode, delivery_mode, tricycle_id, truck_plate, sold_at, created_at, status, store_name, rejection_reason")
+      .select("sale_id, product, quantity, price_per_bag, total_amount, customer_name, payment_mode, delivery_mode, tricycle_id, truck_plate, sold_at, created_at, status, store_name, rejection_reason, discount_status")
       .eq("broker_id", bId)
       .order("sold_at", { ascending: false })
 
@@ -218,17 +219,20 @@ export default function BrokerSaleConfirmations() {
 
   if (loading) return <p style={{ color: "#888" }}>Loading…</p>
 
-  const pendingGroups = allGroups.filter(g => g.status === "Pending")
+  const pendingGroups = allGroups.filter(g => g.status === "Pending" && !g.lines.some(l => l.discount_status === "returned"))
   const confirmedGroups = allGroups.filter(g => g.status === "Confirmed")
   const rejectedGroups = allGroups.filter(g => g.status === "Rejected")
+  const returnedGroups = allGroups.filter(g => g.status === "Pending" && g.lines.some(l => l.discount_status === "returned"))
 
   const visibleGroups = activeFilter === "pending" ? pendingGroups
     : activeFilter === "confirmed" ? confirmedGroups
+    : activeFilter === "returned" ? returnedGroups
     : rejectedGroups
 
   const filterOptions = [
     { key: "pending" as const, label: "Pending", count: pendingGroups.length, color: "#f5a623" },
     { key: "confirmed" as const, label: "Confirmed", count: confirmedGroups.length, color: "#10b981" },
+    { key: "returned" as const, label: "Returned", count: returnedGroups.length, color: "#d97706" },
     { key: "rejected" as const, label: "Rejected", count: rejectedGroups.length, color: "#ef4444" },
   ]
 
@@ -383,6 +387,19 @@ export default function BrokerSaleConfirmations() {
                 }}>
                   <Icon icon="mdi:close-circle" width={16} />
                   Reject
+                </button>
+              </div>
+            )}
+            {activeFilter === "returned" && (
+              <div style={{ display: "flex", gap: 8 }}>
+                <button onClick={() => openConfirmModal(group)} style={{
+                  flex: 1, padding: "11px 0", background: "#0070f3", color: "white",
+                  border: "none", borderRadius: 8, cursor: "pointer", fontWeight: "bold",
+                  fontSize: isMobile ? 14 : 13, minHeight: 44,
+                  display: "flex", alignItems: "center", justifyContent: "center", gap: 6
+                }}>
+                  <Icon icon="mdi:pencil" width={16} />
+                  Edit Price
                 </button>
               </div>
             )}

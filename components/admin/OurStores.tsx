@@ -29,6 +29,24 @@ type StockInfo = {
   products: { product: string; balance: number }[]
 }
 
+type PastVerification = {
+  verification_id: string
+  verification_session_id: string
+  product: string
+  system_balance: number
+  physical_count: number
+  discrepancy: number
+  notes: string | null
+  verified_at: string
+}
+
+type VerificationGroup = {
+  key: string
+  verified_at: string
+  supervisor_name: string
+  items: PastVerification[]
+}
+
 type ViewMode = "card" | "table"
 
 export default function OurStores() {
@@ -56,6 +74,12 @@ export default function OurStores() {
   const [originalProducts, setOriginalProducts] = useState<string[]>([])
   const [message, setMessage] = useState("")
   const [submitting, setSubmitting] = useState(false)
+
+  const [showVerificationModal, setShowVerificationModal] = useState(false)
+  const [verificationStore, setVerificationStore] = useState<StoreRow | null>(null)
+  const [verificationGroups, setVerificationGroups] = useState<VerificationGroup[]>([])
+  const [verificationLoading, setVerificationLoading] = useState(false)
+  const [expandedVerificationGroups, setExpandedVerificationGroups] = useState<Set<string>>(new Set())
 
   const nameRef = useRef<HTMLInputElement>(null)
 
@@ -162,6 +186,70 @@ export default function OurStores() {
     }
     setShowStockModal(true)
     setMessage("")
+  }
+
+  async function fetchVerificationHistory(storeName: string) {
+    setVerificationLoading(true)
+    try {
+      const { data } = await supabase
+        .from("stock_verifications")
+        .select("verification_id, verification_session_id, product, system_balance, physical_count, discrepancy, notes, verified_at, supervisor_id")
+        .eq("store_name", storeName)
+        .order("verified_at", { ascending: false })
+        .limit(200)
+
+      const rows = data || []
+
+      const supervisorIds = [...new Set(rows.map((r: Record<string, unknown>) => r.supervisor_id as string).filter(Boolean))]
+      const supervisorMap: Record<string, string> = {}
+      if (supervisorIds.length > 0) {
+        const { data: supervisors } = await supabase
+          .from("store_supervisors")
+          .select("supervisor_id, full_name")
+          .in("supervisor_id", supervisorIds)
+        supervisors?.forEach((s: { supervisor_id: string; full_name: string }) => {
+          supervisorMap[s.supervisor_id] = s.full_name
+        })
+      }
+
+      const groups: VerificationGroup[] = []
+      const sorted = [...rows].sort((a, b) => new Date(b.verified_at).getTime() - new Date(a.verified_at).getTime())
+      for (const row of sorted) {
+        const existing = groups.find(g => g.key === row.verification_session_id)
+        const item: PastVerification = {
+          verification_id: row.verification_id,
+          verification_session_id: row.verification_session_id,
+          product: row.product,
+          system_balance: row.system_balance,
+          physical_count: row.physical_count,
+          discrepancy: row.discrepancy,
+          notes: row.notes,
+          verified_at: row.verified_at,
+        }
+        if (existing) {
+          existing.items.push(item)
+        } else {
+          groups.push({
+            key: row.verification_session_id,
+            verified_at: row.verified_at,
+            supervisor_name: supervisorMap[row.supervisor_id as string] || "Unknown",
+            items: [item],
+          })
+        }
+      }
+      setVerificationGroups(groups)
+    } catch {
+      setVerificationGroups([])
+    } finally {
+      setVerificationLoading(false)
+    }
+  }
+
+  function openVerificationModal(store: StoreRow) {
+    setVerificationStore(store)
+    setExpandedVerificationGroups(new Set())
+    setShowVerificationModal(true)
+    fetchVerificationHistory(store.store_name)
   }
 
   async function handleSaveStock() {
@@ -533,119 +621,122 @@ export default function OurStores() {
                       e.currentTarget.style.borderColor = "#e2e8f0"
                     }}
                   >
-                    <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12 }}>
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
-                          <div
+                    <div>
+                      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
+                        <div
+                          style={{
+                            width: 40,
+                            height: 40,
+                            borderRadius: 10,
+                            background: "#f0f7ff",
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            flexShrink: 0,
+                          }}
+                        >
+                          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#0070f3" strokeWidth="2">
+                            <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
+                            <polyline points="9 22 9 12 15 12 15 22" />
+                          </svg>
+                        </div>
+                        <div style={{ minWidth: 0, flex: 1 }}>
+                          <h3
                             style={{
-                              width: 40,
-                              height: 40,
-                              borderRadius: 10,
-                              background: "#f0f7ff",
-                              display: "flex",
-                              alignItems: "center",
-                              justifyContent: "center",
-                              flexShrink: 0,
+                              margin: 0,
+                              color: "#0f172a",
+                              fontSize: FONT_SIZE.lg,
+                              fontWeight: 600,
+                              overflow: "hidden",
+                              textOverflow: "ellipsis",
+                              whiteSpace: "nowrap",
                             }}
                           >
-                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#0070f3" strokeWidth="2">
-                              <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
-                              <polyline points="9 22 9 12 15 12 15 22" />
-                            </svg>
-                          </div>
-                          <div style={{ minWidth: 0 }}>
-                            <h3
-                              style={{
-                                margin: 0,
-                                color: "#0f172a",
-                                fontSize: FONT_SIZE.lg,
-                                fontWeight: 600,
-                                overflow: "hidden",
-                                textOverflow: "ellipsis",
-                                whiteSpace: "nowrap",
-                              }}
-                            >
-                              {store.store_name}
-                            </h3>
-                          </div>
+                            {store.store_name}
+                          </h3>
+                        </div>
+                      </div>
+
+                      <div style={{ display: "flex", flexDirection: "column", gap: 6, paddingLeft: 50 }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#64748b" strokeWidth="2">
+                            <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
+                            <circle cx="12" cy="7" r="4" />
+                          </svg>
+                          <span style={{ color: "#64748b", fontSize: FONT_SIZE.sm }}>
+                            {officer ? (
+                              <span>
+                                <span style={{ color: "#0f172a", fontWeight: 500 }}>{officer.full_name}</span>
+                                {officer.phone_number && (
+                                  <span style={{ marginLeft: 6, color: "#94a3b8" }}>
+                                    {officer.phone_number}
+                                  </span>
+                                )}
+                              </span>
+                            ) : (
+                              <span style={{ fontStyle: "italic", color: "#94a3b8" }}>Unassigned</span>
+                            )}
+                          </span>
                         </div>
 
-                        <div style={{ display: "flex", flexDirection: "column", gap: 6, paddingLeft: 50 }}>
-                          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#64748b" strokeWidth="2">
-                              <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
-                              <circle cx="12" cy="7" r="4" />
-                            </svg>
-                            <span style={{ color: "#64748b", fontSize: FONT_SIZE.sm }}>
-                              {officer ? (
-                                <span>
-                                  <span style={{ color: "#0f172a", fontWeight: 500 }}>{officer.full_name}</span>
-                                  {officer.phone_number && (
-                                    <span style={{ marginLeft: 6, color: "#94a3b8" }}>
-                                      {officer.phone_number}
-                                    </span>
-                                  )}
-                                </span>
-                              ) : (
-                                <span style={{ fontStyle: "italic", color: "#94a3b8" }}>Unassigned</span>
-                              )}
-                            </span>
-                          </div>
-
-                          {stock && stock.products.length > 0 ? (
-                            <div
-                              onClick={() => setExpandedStore(expandedStore === store.store_name ? null : store.store_name)}
-                              style={{
-                                display: "flex", alignItems: "center", justifyContent: "space-between",
-                                padding: "8px 12px", borderRadius: 8, cursor: "pointer",
-                                background: expandedStore === store.store_name ? "#f0f7ff" : "#f8fafc",
-                                border: `1px solid ${expandedStore === store.store_name ? "#bfdbfe" : "#e2e8f0"}`,
-                                transition: "all 0.2s ease", marginTop: 4,
-                              }}
-                              onMouseEnter={e => { if (expandedStore !== store.store_name) e.currentTarget.style.background = "#f1f5f9" }}
-                              onMouseLeave={e => { if (expandedStore !== store.store_name) e.currentTarget.style.background = "#f8fafc" }}
-                            >
-                              <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#64748b" strokeWidth="2">
-                                  <path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z" />
-                                  <line x1="7" y1="7" x2="7.01" y2="7" />
-                                </svg>
-                                <span style={{ color: "#0f172a", fontWeight: 600, fontSize: FONT_SIZE.md }}>
-                                  {stock.total_balance.toLocaleString()}
-                                </span>
-                                <span style={{ color: "#64748b", fontSize: FONT_SIZE.sm }}>bags</span>
-                                <span style={{ color: "#94a3b8", fontSize: FONT_SIZE.xs }}>
-                                  ({stock.products.length} product{stock.products.length !== 1 ? "s" : ""})
+                        {stock && stock.products.length > 0 ? (
+                          <div
+                            onClick={() => setExpandedStore(expandedStore === store.store_name ? null : store.store_name)}
+                            style={{
+                              padding: "8px 12px", borderRadius: 8, cursor: "pointer",
+                              background: expandedStore === store.store_name ? "#f0f7ff" : "#f8fafc",
+                              border: `1px solid ${expandedStore === store.store_name ? "#bfdbfe" : "#e2e8f0"}`,
+                              transition: "all 0.2s ease", marginTop: 4,
+                            }}
+                            onMouseEnter={e => { if (expandedStore !== store.store_name) e.currentTarget.style.background = "#f1f5f9" }}
+                            onMouseLeave={e => { if (expandedStore !== store.store_name) e.currentTarget.style.background = "#f8fafc" }}
+                          >
+                            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                              <div style={{ display: "flex", alignItems: "baseline", gap: 6, flexWrap: "wrap" }}>
+                                <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+                                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#64748b" strokeWidth="2">
+                                    <path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z" />
+                                    <line x1="7" y1="7" x2="7.01" y2="7" />
+                                  </svg>
+                                  <span style={{ color: "#0f172a", fontWeight: 600, fontSize: FONT_SIZE.md }}>
+                                    {stock.total_balance.toLocaleString()}
+                                  </span>
+                                  <span style={{ color: "#64748b", fontSize: FONT_SIZE.sm }}>bags</span>
                                 </span>
                               </div>
                               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth="2" style={{ transform: expandedStore === store.store_name ? "rotate(180deg)" : "rotate(0deg)", transition: "transform 0.2s", flexShrink: 0 }}>
                                 <polyline points="6 9 12 15 18 9" />
                               </svg>
                             </div>
-                          ) : (
-                            <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "8px 12px", fontSize: FONT_SIZE.sm, color: "#94a3b8", fontStyle: "italic" }}>
-                              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth="2">
-                                <path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z" />
-                                <line x1="7" y1="7" x2="7.01" y2="7" />
-                              </svg>
-                              No stock
+                            <div style={{ fontSize: FONT_SIZE.xs, color: "#94a3b8", marginTop: 2 }}>
+                              {stock.products.length} product{stock.products.length !== 1 ? "s" : ""}
                             </div>
-                          )}
+                          </div>
+                        ) : (
+                          <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "8px 12px", fontSize: FONT_SIZE.sm, color: "#94a3b8", fontStyle: "italic" }}>
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth="2">
+                              <path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z" />
+                              <line x1="7" y1="7" x2="7.01" y2="7" />
+                            </svg>
+                            No stock
+                          </div>
+                        )}
 
-                          {expandedStore === store.store_name && stock && stock.products.length > 0 && (
-                            <div style={{ marginTop: 6, padding: "10px 12px", background: "#f8fafc", borderRadius: 8, border: "1px solid #e2e8f0" }}>
-                              {stock.products.map(p => (
-                                <div key={p.product} style={{ display: "flex", justifyContent: "space-between", padding: "5px 0", fontSize: FONT_SIZE.xs, borderBottom: "1px dashed #e2e8f0" }}>
-                                  <span style={{ color: "#475569" }}>{p.product}</span>
-                                  <span style={{ fontWeight: 600, color: "#0f172a" }}>{p.balance.toLocaleString()} bags</span>
-                                </div>
-                              ))}
-                            </div>
-                          )}
-                        </div>
+                        {expandedStore === store.store_name && stock && stock.products.length > 0 && (
+                          <div style={{ marginTop: 6, padding: "10px 12px", background: "#f8fafc", borderRadius: 8, border: "1px solid #e2e8f0" }}>
+                            {stock.products.map(p => (
+                              <div key={p.product} style={{ display: "flex", justifyContent: "space-between", padding: "5px 0", fontSize: FONT_SIZE.xs, borderBottom: "1px dashed #e2e8f0" }}>
+                                <span style={{ color: "#475569" }}>{p.product}</span>
+                                <span style={{ fontWeight: 600, color: "#0f172a" }}>{p.balance.toLocaleString()} bags</span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
                       </div>
+                    </div>
 
-                      {/* Edit Stock Button */}
+                    {/* CTAs Row */}
+                    <div style={{ display: "flex", gap: 8, marginTop: 12, paddingTop: 12, borderTop: "1px solid #e2e8f0", paddingLeft: 50, flexWrap: "wrap" }}>
                       {canEdit && (
                         <button
                           onClick={() => openStockModal(store)}
@@ -659,8 +750,6 @@ export default function OurStores() {
                             fontWeight: 600,
                             fontSize: FONT_SIZE.sm,
                             transition: "all 0.2s ease",
-                            whiteSpace: "nowrap",
-                            flexShrink: 0,
                           }}
                           onMouseEnter={(e) => {
                             e.currentTarget.style.background = "#f0f7ff"
@@ -672,6 +761,30 @@ export default function OurStores() {
                           Edit Stock
                         </button>
                       )}
+                      <button
+                        onClick={() => openVerificationModal(store)}
+                        style={{
+                          padding: "8px 16px",
+                          background: "transparent",
+                          color: "#64748b",
+                          border: "1px solid #e2e8f0",
+                          borderRadius: 8,
+                          cursor: "pointer",
+                          fontWeight: 500,
+                          fontSize: FONT_SIZE.sm,
+                          transition: "all 0.2s ease",
+                        }}
+                        onMouseEnter={(e) => {
+                          e.currentTarget.style.background = "#f8fafc"
+                          e.currentTarget.style.borderColor = "#cbd5e1"
+                        }}
+                        onMouseLeave={(e) => {
+                          e.currentTarget.style.background = "transparent"
+                          e.currentTarget.style.borderColor = "#e2e8f0"
+                        }}
+                      >
+                        Verification History
+                      </button>
                     </div>
                   </div>
                 )
@@ -693,7 +806,7 @@ export default function OurStores() {
               <table style={{ width: "100%", borderCollapse: "collapse", textAlign: "left" }}>
                 <thead>
                   <tr style={{ background: "#f8fafc", borderBottom: "1px solid #e2e8f0" }}>
-                    {["Store Name", "Assigned Officer", "Phone", "Stock Balance", ...(canEdit ? ["Actions"] : [])].map(
+                    {["Store Name", "Assigned Officer", "Phone", "Stock Balance", "Actions"].map(
                       (header) => (
                         <th
                           key={header}
@@ -755,33 +868,54 @@ export default function OurStores() {
                             <span style={{ color: "#94a3b8", fontStyle: "italic", fontWeight: 400 }}>—</span>
                           )}
                         </td>
-                        {canEdit && (
-                          <td style={{ padding: "12px 16px" }}>
+                        <td style={{ padding: "12px 16px" }}>
+                          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                            {canEdit && (
+                              <button
+                                onClick={() => openStockModal(store)}
+                                style={{
+                                  padding: "6px 14px",
+                                  background: "white",
+                                  color: "#0070f3",
+                                  border: "1px solid #0070f3",
+                                  borderRadius: 6,
+                                  cursor: "pointer",
+                                  fontWeight: 600,
+                                  fontSize: FONT_SIZE.xs,
+                                  transition: "all 0.2s ease",
+                                  whiteSpace: "nowrap",
+                                }}
+                                onMouseEnter={(e) => { e.currentTarget.style.background = "#f0f7ff" }}
+                                onMouseLeave={(e) => { e.currentTarget.style.background = "white" }}
+                              >
+                                Edit Stock
+                              </button>
+                            )}
                             <button
-                              onClick={() => openStockModal(store)}
+                              onClick={() => openVerificationModal(store)}
                               style={{
                                 padding: "6px 14px",
-                                background: "white",
-                                color: "#0070f3",
-                                border: "1px solid #0070f3",
+                                background: "transparent",
+                                color: "#64748b",
+                                border: "1px solid #e2e8f0",
                                 borderRadius: 6,
                                 cursor: "pointer",
-                                fontWeight: 600,
+                                fontWeight: 500,
                                 fontSize: FONT_SIZE.xs,
                                 transition: "all 0.2s ease",
                                 whiteSpace: "nowrap",
                               }}
-                              onMouseEnter={(e) => { e.currentTarget.style.background = "#f0f7ff" }}
-                              onMouseLeave={(e) => { e.currentTarget.style.background = "white" }}
+                              onMouseEnter={(e) => { e.currentTarget.style.background = "#f8fafc"; e.currentTarget.style.borderColor = "#cbd5e1" }}
+                              onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; e.currentTarget.style.borderColor = "#e2e8f0" }}
                             >
-                              Edit Stock
+                              Verification History
                             </button>
-                          </td>
-                        )}
+                          </div>
+                        </td>
                       </tr>
                       {isExpanded && stock && stock.products.length > 0 && (
                         <tr>
-                          <td colSpan={canEdit ? 5 : 4} style={{ padding: "0 16px 12px" }}>
+                          <td colSpan={5} style={{ padding: "0 16px 12px" }}>
                             <div style={{ padding: "10px 12px", background: "#f8fafc", borderRadius: 8, border: "1px solid #e2e8f0" }}>
                               {stock.products.map(p => (
                                 <div key={p.product} style={{ display: "flex", justifyContent: "space-between", padding: "4px 0", fontSize: FONT_SIZE.xs, borderBottom: "1px dashed #e2e8f0" }}>
@@ -1131,6 +1265,152 @@ export default function OurStores() {
                 {submitting ? "Saving..." : "Save Stock"}
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Verification History Modal */}
+      {showVerificationModal && verificationStore && (
+        <div
+          onClick={() => setShowVerificationModal(false)}
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(15, 23, 42, 0.6)",
+            backdropFilter: "blur(4px)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            zIndex: 100,
+            padding: 24,
+          }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              background: "white",
+              borderRadius: 16,
+              padding: 32,
+              width: "100%",
+              maxWidth: 560,
+              maxHeight: "90vh",
+              overflowY: "auto",
+              boxShadow: "0 25px 50px -12px rgba(0, 0, 0, 0.25)",
+            }}
+          >
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24 }}>
+              <div>
+                <h3 style={{ margin: 0, color: "#0f172a", fontSize: FONT_SIZE.xl, fontWeight: 700 }}>
+                  Verification History
+                </h3>
+                <p style={{ margin: "4px 0 0", color: "#64748b", fontSize: FONT_SIZE.sm }}>
+                  {verificationStore.store_name}
+                </p>
+              </div>
+              <button
+                onClick={() => setShowVerificationModal(false)}
+                style={{ background: "none", border: "none", color: "#94a3b8", cursor: "pointer", padding: 4 }}
+              >
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <line x1="18" y1="6" x2="6" y2="18" />
+                  <line x1="6" y1="6" x2="18" y2="18" />
+                </svg>
+              </button>
+            </div>
+
+            {verificationLoading ? (
+              <div style={{ display: "flex", justifyContent: "center", padding: "48px 0" }}>
+                <div style={{ width: 32, height: 32, borderRadius: "50%", border: "3px solid #e2e8f0", borderTopColor: "#0070f3", animation: "spin 1s linear infinite" }} />
+                <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+              </div>
+            ) : verificationGroups.length === 0 ? (
+              <div style={{ textAlign: "center", padding: "48px 24px", background: "#f8fafc", borderRadius: 12, border: "1px dashed #cbd5e1" }}>
+                <div style={{ width: 48, height: 48, background: "white", borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 16px", boxShadow: "0 1px 3px rgba(0,0,0,0.1)" }}>
+                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth="2">
+                    <path d="M9 11l3 3L22 4" />
+                    <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" />
+                  </svg>
+                </div>
+                <p style={{ color: "#64748b", fontSize: FONT_SIZE.base, margin: 0, fontWeight: 500 }}>No verification records yet.</p>
+                <p style={{ color: "#94a3b8", fontSize: FONT_SIZE.sm, margin: "8px 0 0" }}>Stock verifications submitted by supervisors will appear here.</p>
+              </div>
+            ) : (
+              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                {verificationGroups.map(group => {
+                  const isExpanded = expandedVerificationGroups.has(group.key)
+                  const matchedCount = group.items.filter(v => v.discrepancy === 0).length
+                  const mismatchedCount = group.items.filter(v => v.discrepancy !== 0).length
+                  return (
+                    <div key={group.key} style={{ border: "1px solid #e2e8f0", borderRadius: 12, overflow: "hidden" }}>
+                      <button
+                        onClick={() => {
+                          const next = new Set(expandedVerificationGroups)
+                          if (next.has(group.key)) next.delete(group.key)
+                          else next.add(group.key)
+                          setExpandedVerificationGroups(next)
+                        }}
+                        style={{
+                          width: "100%", padding: isMobile ? "14px 16px" : "16px 20px",
+                          background: isExpanded ? "#f8fafc" : "white",
+                          border: "none", borderBottom: isExpanded ? "1px solid #e2e8f0" : "none",
+                          cursor: "pointer", textAlign: "left",
+                          display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12,
+                        }}
+                      >
+                        <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
+                          <svg
+                            width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#64748b" strokeWidth="2"
+                            style={{ flexShrink: 0, transform: isExpanded ? "rotate(90deg)" : "rotate(0deg)", transition: "transform 0.2s" }}
+                          >
+                            <polyline points="9 18 15 12 9 6" />
+                          </svg>
+                          <div style={{ minWidth: 0 }}>
+                            <div style={{ fontWeight: 600, fontSize: FONT_SIZE.base, color: "#0f172a" }}>
+                              {new Date(group.verified_at).toLocaleString(undefined, { month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit" })}
+                            </div>
+                            <div style={{ fontSize: FONT_SIZE.xs, color: "#94a3b8", marginTop: 2 }}>
+                              <span>{group.supervisor_name}</span>
+                              <span style={{ margin: "0 4px" }}>·</span>
+                              <span>{group.items.length} product{group.items.length !== 1 ? "s" : ""}</span>
+                              {matchedCount > 0 && <span style={{ color: "#16a34a" }}> · {matchedCount} matched</span>}
+                              {mismatchedCount > 0 && <span style={{ color: "#dc2626" }}> · {mismatchedCount} mismatched</span>}
+                            </div>
+                          </div>
+                        </div>
+                      </button>
+                      {isExpanded && (
+                        <div style={{ padding: isMobile ? "12px 16px" : "12px 20px", display: "flex", flexDirection: "column", gap: 8, background: "#f8fafc" }}>
+                          {group.items.map(v => (
+                            <div key={v.verification_id} style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", padding: "10px 14px", background: "white", borderRadius: 8, border: "1px solid #e2e8f0" }}>
+                              <div style={{ minWidth: 0 }}>
+                                <div style={{ fontWeight: 600, fontSize: FONT_SIZE.base, color: "#0f172a" }}>{v.product}</div>
+                                <div style={{ display: "flex", gap: 12, marginTop: 4, fontSize: FONT_SIZE.sm, color: "#64748b" }}>
+                                  <span>System: <strong>{v.system_balance}</strong></span>
+                                  <span>Physical: <strong>{v.physical_count}</strong></span>
+                                </div>
+                                {v.notes && <div style={{ marginTop: 4, fontSize: FONT_SIZE.xs, color: "#94a3b8", fontStyle: "italic" }}>{v.notes}</div>}
+                              </div>
+                              {v.discrepancy !== 0 && (
+                                <span style={{
+                                  padding: "4px 10px", borderRadius: 6, fontSize: FONT_SIZE.xs, fontWeight: 700, flexShrink: 0, marginLeft: 12,
+                                  background: v.discrepancy > 0 ? "#ecfdf5" : "#fef2f2",
+                                  color: v.discrepancy > 0 ? "#16a34a" : "#dc2626",
+                                }}>
+                                  {v.discrepancy > 0 ? "+" : ""}{v.discrepancy}
+                                </span>
+                              )}
+                              {v.discrepancy === 0 && (
+                                <span style={{ padding: "4px 10px", borderRadius: 6, fontSize: FONT_SIZE.xs, fontWeight: 700, background: "#ecfdf5", color: "#16a34a", flexShrink: 0, marginLeft: 12 }}>Matched</span>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+            )}
           </div>
         </div>
       )}

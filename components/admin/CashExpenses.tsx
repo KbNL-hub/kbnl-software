@@ -33,6 +33,16 @@ type CashExpense = {
   resolved_at: string | null
 }
 
+type TopUp = {
+  transaction_id: string
+  from_account: string
+  to_account: string
+  amount: number
+  description: string | null
+  created_by: string | null
+  created_at: string
+}
+
 type ExpenseItem = {
   item_id: string
   expense_id: string
@@ -75,13 +85,14 @@ export default function CashExpenses() {
   const [officeBalance, setOfficeBalance] = useState<number>(0)
   const [expenses, setExpenses] = useState<CashExpense[]>([])
   const [deposits, setDeposits] = useState<CashDeposit[]>([])
+  const [topUps, setTopUps] = useState<TopUp[]>([])
   const [clerksMap, setClerksMap] = useState<Record<string, string>>({})
   const [clerkPicsMap, setClerkPicsMap] = useState<Record<string, string>>({})
   const [adminsMap, setAdminsMap] = useState<Record<string, string>>({})
   const [loading, setLoading] = useState(true)
 
   // Filter state
-  const [filter, setFilter] = useState<"All" | "Pending" | "Authorised" | "Rejected">("All")
+  const [filter, setFilter] = useState<"All" | "Pending" | "Authorised" | "Rejected" | "Top-ups">("All")
 
   const [showRejectModal, setShowRejectModal] = useState(false)
   const [rejectId, setRejectId] = useState<string | null>(null)
@@ -107,6 +118,7 @@ export default function CashExpenses() {
       fetchOfficeBalance()
       fetchExpenses()
       fetchDeposits()
+      fetchTopUps()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedOffice])
@@ -202,14 +214,27 @@ export default function CashExpenses() {
     setDeposits(data || [])
   }
 
+  async function fetchTopUps() {
+    const { data } = await supabase
+      .from("transactions")
+      .select("*")
+      .eq("to_account", selectedOffice)
+      .order("created_at", { ascending: false })
+      .limit(100)
+    setTopUps(data || [])
+  }
+
   const balanceMap = useMemo(() => {
     const map: Record<string, number> = {}
     const records: { id: string; amount: number; timestamp: string }[] = [
-      ...expenses.filter(e => e.status === "Authorised").map(e => ({
+      ...expenses.filter(e => e.resolved_at !== null).map(e => ({
         id: e.expense_id, amount: e.total_amount, timestamp: e.resolved_at ?? e.created_at
       })),
       ...deposits.map(d => ({
         id: d.deposit_id, amount: -d.amount, timestamp: d.created_at
+      })),
+      ...topUps.map(t => ({
+        id: t.transaction_id, amount: -t.amount, timestamp: t.created_at
       })),
     ]
     records.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
@@ -219,7 +244,7 @@ export default function CashExpenses() {
       running += rec.amount
     }
     return map
-  }, [expenses, deposits, officeBalance])
+  }, [expenses, deposits, topUps, officeBalance])
 
   async function fetchExpenseItems(expenseId: string) {
     if (expenseItems[expenseId]) return
@@ -317,6 +342,15 @@ export default function CashExpenses() {
       timestamp: e.resolved_at ?? e.created_at,
       data: e,
     }))
+    if (filter === "Top-ups") {
+      const topUpEntries = topUps.map(t => ({
+        kind: "topup" as const,
+        id: t.transaction_id,
+        timestamp: t.created_at,
+        data: t,
+      }))
+      return topUpEntries
+    }
     if (filter !== "All") return expenseEntries
     const depositEntries = deposits.map(d => ({
       kind: "deposit" as const,
@@ -324,10 +358,16 @@ export default function CashExpenses() {
       timestamp: d.created_at,
       data: d,
     }))
-    return [...expenseEntries, ...depositEntries].sort(
+    const topUpEntries = topUps.map(t => ({
+      kind: "topup" as const,
+      id: t.transaction_id,
+      timestamp: t.created_at,
+      data: t,
+    }))
+    return [...expenseEntries, ...depositEntries, ...topUpEntries].sort(
       (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
     )
-  }, [filteredExpenses, deposits, filter])
+  }, [filteredExpenses, deposits, topUps, filter])
 
   function toggleExpand(expenseId: string) {
     if (expandedExpense === expenseId) {
@@ -456,7 +496,7 @@ export default function CashExpenses() {
 
           {/* Status Filters */}
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-            {(["All", "Pending", "Authorised", "Rejected"] as const).map(f => {
+            {(["All", "Pending", "Authorised", "Rejected", "Top-ups"] as const).map(f => {
               const isActive = filter === f
               let bg = "white"
               let color = "#64748b"
@@ -466,6 +506,7 @@ export default function CashExpenses() {
                 if (f === "Pending") { bg = "#eff6ff"; color = "#0070f3"; borderColor = "#0070f3" }
                 else if (f === "Authorised") { bg = "#f0fdf4"; color = "#16a34a"; borderColor = "#16a34a" }
                 else if (f === "Rejected") { bg = "#fef2f2"; color = "#ef4444"; borderColor = "#ef4444" }
+                else if (f === "Top-ups") { bg = "#eef2ff"; color = "#4f46e5"; borderColor = "#4f46e5" }
                 else { bg = "#0f172a"; color = "white"; borderColor = "#0f172a" }
               }
 
@@ -514,33 +555,63 @@ export default function CashExpenses() {
                 const depositorName = adminsMap[dep.deposited_by] || "Cash Officer"
                 return (
                   <div key={dep.deposit_id} style={{ border: "1px solid #bbf7d0", borderRadius: 12, overflow: "hidden", background: "#f0fdf4", boxShadow: "0 1px 3px rgba(0,0,0,0.05)" }}>
-                    <div style={{ padding: isMobile ? "16px" : "20px 24px", display: "flex", justifyContent: "space-between", alignItems: isMobile ? "flex-start" : "center", flexDirection: isMobile ? "column" : "row", gap: 16 }}>
-                      <div style={{ flex: 1, minWidth: 200, width: "100%" }}>
-                        <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 8, flexWrap: "wrap" }}>
+                    <div style={{ padding: isMobile ? "16px" : "20px 24px" }}>
+                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8, flexWrap: "wrap", gap: 8 }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
                           <span style={{ fontWeight: 600, color: "#166534", fontSize: FONT_SIZE.md }}>Cash Deposit</span>
                           <span style={{ padding: "4px 10px", borderRadius: 16, fontSize: FONT_SIZE.xs, fontWeight: 600, background: "#f0fdf4", color: "#16a34a", border: "1px solid #bbf7d0" }}>Income</span>
                         </div>
-                        <div style={{ display: "flex", alignItems: "center", gap: 8, color: "#64748b", fontSize: FONT_SIZE.xs }}>
-                          <strong style={{ color: "#334155" }}>{depositorName}</strong>
-                          <span>•</span>
-                          <span>{new Date(dep.created_at).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>
-                        </div>
-                        {dep.note && (
-                          <p style={{ margin: "8px 0 0", color: "#475569", fontSize: FONT_SIZE.sm, fontStyle: "italic" }}>&quot;{dep.note}&quot;</p>
-                        )}
-                      </div>
-                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", width: isMobile ? "100%" : "auto", gap: 24 }}>
-                        <div style={{ textAlign: isMobile ? "left" : "right" }}>
-                          <div style={{ fontSize: FONT_SIZE.lg, fontWeight: 700, color: "#16a34a", letterSpacing: "-0.5px" }}>
-                            +₦{dep.amount.toLocaleString()}
-                          </div>
-                          {balanceMap[dep.deposit_id] !== undefined && (
-                            <p style={{ margin: "4px 0 0", fontSize: FONT_SIZE.xs, fontWeight: 600, color: "#166534", background: "#f0fdf4", padding: "2px 8px", borderRadius: 4, display: "inline-block", border: "1px solid #bbf7d0" }}>
-                              Balance after: ₦{balanceMap[dep.deposit_id].toLocaleString()}
-                            </p>
-                          )}
+                        <div style={{ fontSize: FONT_SIZE.lg, fontWeight: 700, color: "#16a34a", letterSpacing: "-0.5px" }}>
+                          +₦{dep.amount.toLocaleString()}
                         </div>
                       </div>
+                      <div style={{ fontSize: FONT_SIZE.xs, color: "#64748b", marginBottom: dep.note ? 8 : 0 }}>
+                        <strong style={{ color: "#334155" }}>{depositorName}</strong>
+                        <span style={{ margin: "0 6px" }}>·</span>
+                        <span>{new Date(dep.created_at).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>
+                      </div>
+                      {dep.note && (
+                        <p style={{ margin: "0 0 8px", color: "#475569", fontSize: FONT_SIZE.sm, fontStyle: "italic" }}>&quot;{dep.note}&quot;</p>
+                      )}
+                      {balanceMap[dep.deposit_id] !== undefined && (
+                        <div style={{ fontSize: FONT_SIZE.xs, fontWeight: 600, color: "#166534", background: "#dcfce7", padding: "4px 10px", borderRadius: 6, display: "inline-block", border: "1px solid #bbf7d0" }}>
+                          Balance after: ₦{balanceMap[dep.deposit_id].toLocaleString()}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )
+              }
+              if (entry.kind === "topup") {
+                const t = entry.data
+                const adminName = adminsMap[t.created_by || ""] || "Admin"
+                return (
+                  <div key={t.transaction_id} style={{ border: "1px solid #c7d2fe", borderRadius: 12, overflow: "hidden", background: "#eef2ff", boxShadow: "0 1px 3px rgba(0,0,0,0.05)" }}>
+                    <div style={{ padding: isMobile ? "16px" : "20px 24px" }}>
+                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8, flexWrap: "wrap", gap: 8 }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                          <span style={{ fontWeight: 600, color: "#3730a3", fontSize: FONT_SIZE.md }}>Balance Top-up</span>
+                          <span style={{ padding: "4px 10px", borderRadius: 16, fontSize: FONT_SIZE.xs, fontWeight: 600, background: "#eef2ff", color: "#4f46e5", border: "1px solid #c7d2fe" }}>Income</span>
+                        </div>
+                        <div style={{ fontSize: FONT_SIZE.lg, fontWeight: 700, color: "#4f46e5", letterSpacing: "-0.5px" }}>
+                          +₦{t.amount.toLocaleString()}
+                        </div>
+                      </div>
+                      <div style={{ fontSize: FONT_SIZE.xs, color: "#64748b", marginBottom: t.description ? 8 : 0 }}>
+                        <strong style={{ color: "#334155" }}>{adminName}</strong>
+                        <span style={{ margin: "0 6px" }}>·</span>
+                        <span>from {t.from_account}</span>
+                        <span style={{ margin: "0 6px" }}>·</span>
+                        <span>{new Date(t.created_at).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>
+                      </div>
+                      {t.description && (
+                        <p style={{ margin: "0 0 8px", color: "#475569", fontSize: FONT_SIZE.sm, fontStyle: "italic" }}>&quot;{t.description}&quot;</p>
+                      )}
+                      {balanceMap[t.transaction_id] !== undefined && (
+                        <div style={{ fontSize: FONT_SIZE.xs, fontWeight: 600, color: "#3730a3", background: "#ddd6fe", padding: "4px 10px", borderRadius: 6, display: "inline-block", border: "1px solid #c7d2fe" }}>
+                          Balance after: ₦{balanceMap[t.transaction_id].toLocaleString()}
+                        </div>
+                      )}
                     </div>
                   </div>
                 )
@@ -614,7 +685,7 @@ export default function CashExpenses() {
                         <div style={{ fontSize: FONT_SIZE.lg, fontWeight: 700, color: "#0f172a", letterSpacing: "-0.5px" }}>
                           ₦{exp.total_amount.toLocaleString()}
                         </div>
-                        {exp.status === "Authorised" && balanceMap[exp.expense_id] !== undefined && (
+                        {balanceMap[exp.expense_id] !== undefined && (
                           <p style={{ margin: "4px 0 0", fontSize: FONT_SIZE.xs, fontWeight: 600, color: "#16a34a", background: "#f0fdf4", padding: "2px 8px", borderRadius: 4, display: "inline-block" }}>
                             Balance after: ₦{balanceMap[exp.expense_id].toLocaleString()}
                           </p>

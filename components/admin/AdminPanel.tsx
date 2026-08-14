@@ -42,6 +42,7 @@ const SECTION_IMPORTS = {
   "credit": () => import("@/components/admin/BrokerCredits"),
   "reports": () => import("@/components/admin/Reports"),
   "store-sales": () => import("@/components/admin/StoreSales"),
+  "discounts": () => import("@/components/admin/Discounts"),
   "company-prices": () => import("@/components/admin/CompanyPrices"),
   "side-trips": () => import("@/components/admin/SideTrips"),
   "our-stores": () => import("@/components/admin/OurStores"),
@@ -87,6 +88,7 @@ const NAV_ITEMS: NavItemConfig[] = [
   { label: "Side Trips",        key: "side-trips",           icon: "mdi:road-variant" },
   { label: "Diesel Manager",    key: "diesel-manager",      icon: "mdi:gas-station" },
   { label: "Store Sales",       key: "store-sales",         icon: "mdi:storefront-outline" },
+  { label: "Discounts",         key: "discounts",            icon: "mdi:tag-minus-outline" },
   { label: "Customer Payments", key: "customer-payments",   icon: "mdi:cash-register" },
   { label: "Credit",            key: "credit",              icon: "mdi:credit-card-outline" },
   { label: "Cash Expenses",     key: "cash-expenses",       icon: "mdi:cash-multiple" },
@@ -160,6 +162,7 @@ function AdminPanelContent({ userProfile }: Props) {
   const [disputedCount, setDisputedCount] = useState(0)
   const [unresolvedComplaints, setUnresolvedComplaints] = useState(0)
   const [pendingStoreSales, setPendingStoreSales] = useState(0)
+  const [pendingDiscounts, setPendingDiscounts] = useState(0)
   const [pendingPayments, setPendingPayments] = useState(0)
   const [unauthorizedExpenses, setUnauthorizedExpenses] = useState(0)
   const [unpostedExpenses, setUnpostedExpenses] = useState(0)
@@ -201,6 +204,7 @@ function AdminPanelContent({ userProfile }: Props) {
     const canViewComplaints = getAccess("complaints").canView
     const canViewFuel = getAccess("diesel-manager").canView
     const canViewStoreSales = getAccess("store-sales").canView
+    const canViewDiscounts = getAccess("discounts").canView
     const canViewPayments = getAccess("customer-payments").canView
     const canViewCashExpenses = getAccess("cash-expenses").canView
     const canViewDeskExpenses = getAccess("desk-expenses").canView
@@ -226,6 +230,12 @@ function AdminPanelContent({ userProfile }: Props) {
           const { count } = await supabase
             .from("store_sales").select("*", { count: "exact", head: true }).eq("status", "Pending")
           setPendingStoreSales(count || 0)
+        }
+
+        if (canViewDiscounts) {
+          const { count } = await supabase
+            .from("price_adjustments").select("*", { count: "exact", head: true }).eq("status", "Pending")
+          setPendingDiscounts(count || 0)
         }
 
         if (canViewPayments) {
@@ -271,6 +281,7 @@ function AdminPanelContent({ userProfile }: Props) {
     const canViewComplaints = getAccess("complaints").canView
     const canViewFuel = getAccess("diesel-manager").canView
     const canViewStoreSales = getAccess("store-sales").canView
+    const canViewDiscounts = getAccess("discounts").canView
     const canViewPayments = getAccess("customer-payments").canView
     const canViewCashExpenses = getAccess("cash-expenses").canView
     const canViewDeskExpenses = getAccess("desk-expenses").canView
@@ -293,6 +304,11 @@ function AdminPanelContent({ userProfile }: Props) {
           const { count } = await supabase
             .from("store_sales").select("*", { count: "exact", head: true }).eq("status", "Pending")
           setPendingStoreSales(count || 0)
+        }
+        if (canViewDiscounts) {
+          const { count } = await supabase
+            .from("price_adjustments").select("*", { count: "exact", head: true }).eq("status", "Pending")
+          setPendingDiscounts(count || 0)
         }
         if (canViewPayments) {
           const { count } = await supabase
@@ -462,6 +478,7 @@ function AdminPanelContent({ userProfile }: Props) {
       item.key === "monitor-trips" && disputedCount > 0 ? { count: disputedCount, color: "#ef4444" } :
       item.key === "complaints" && unresolvedComplaints > 0 ? { count: unresolvedComplaints, color: "#f5a623" } :
       item.key === "store-sales" && pendingStoreSales > 0 ? { count: pendingStoreSales, color: "#f5a623" } :
+      item.key === "discounts" && pendingDiscounts > 0 ? { count: pendingDiscounts, color: "#f5a623" } :
       item.key === "customer-payments" && pendingPayments > 0 ? { count: pendingPayments, color: "#f5a623" } :
       item.key === "cash-expenses" && unauthorizedExpenses > 0 ? { count: unauthorizedExpenses, color: "#f5a623" } :
       item.key === "desk-expenses" && unpostedExpenses > 0 ? { count: unpostedExpenses, color: "#f5a623" } :

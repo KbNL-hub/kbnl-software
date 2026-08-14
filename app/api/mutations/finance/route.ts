@@ -15,6 +15,8 @@ import {
   notifyAdminPendingStoreSale,
   notifyDeskOfficerStoreSaleNeedsAttention,
   notifyStoreOfficerSaleConfirmed,
+  notifyBrokerSaleReturned,
+  notifyBrokerStopReturned,
 } from "@/lib/notifications"
 
 const supabaseAdmin = createClient(
@@ -22,7 +24,7 @@ const supabaseAdmin = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!,
 )
 
-const ALLOWED_TABLES = ["customer_payments", "broker_credits", "store_sales", "store_supply_confirmations", "store_supply_lines", "cash_expenses", "cash_expense_items", "cash_offices", "cash_deposits", "admin_office_assignments", "Customers", "Brokers", "store_stock", "store_officers", "stock_verifications"] as const
+const ALLOWED_TABLES = ["customer_payments", "broker_credits", "store_sales", "store_supply_confirmations", "store_supply_lines", "cash_expenses", "cash_expense_items", "cash_offices", "cash_deposits", "admin_office_assignments", "Customers", "Brokers", "store_stock", "store_officers", "stock_verifications", "price_adjustments"] as const
 const ALLOWED_RPCS = ["decrement_store_stock", "add_cash_deposit", "authorise_cash_expense", "create_transaction"] as const
 
 const TABLE_ROLES: Record<string, string[]> = {
@@ -42,6 +44,7 @@ const TABLE_ROLES: Record<string, string[]> = {
   store_stock: ["StoreOfficer", "Admin", "SuperAdmin", "Supervisor", "StoreSupervisor"],
   store_officers: ["Admin", "SuperAdmin"],
   stock_verifications: ["StoreSupervisor", "Admin", "SuperAdmin"],
+  price_adjustments: ["Admin", "SuperAdmin", "DeskOfficer"],
 }
 
 const RPC_ROLES: Record<string, string[]> = {
@@ -474,6 +477,23 @@ export async function POST(req: NextRequest) {
               notifyDeskOfficerStoreSaleNeedsAttention(saleId).catch(console.error)
             } else if (data.status === "Confirmed" && saleId) {
               notifyStoreOfficerSaleConfirmed(saleId).catch(console.error)
+            }
+          }
+        }
+
+        // Price Adjustment Denied – notify broker to edit price
+        if (table === "price_adjustments" && data.status === "Denied" && row) {
+          const brokerId = row.broker_id as string
+          const denialReason = (data.denial_reason as string) || "No reason provided"
+          const sourceType = row.source_type as string
+          if (brokerId) {
+            if (sourceType === "store_sale") {
+              const sourceId = row.source_id as string
+              const { data: sale } = await supabaseAdmin.from("store_sales").select("store_name").eq("sale_id", sourceId).single()
+              const storeName = (sale as Record<string, unknown>)?.store_name as string || "Store"
+              notifyBrokerSaleReturned(brokerId, storeName, denialReason).catch(console.error)
+            } else {
+              notifyBrokerStopReturned(brokerId, row.area as string || "", denialReason).catch(console.error)
             }
           }
         }
