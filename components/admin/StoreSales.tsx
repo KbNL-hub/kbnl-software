@@ -41,6 +41,17 @@ type GroupedSale = {
 
 type ViewMode = "card" | "table"
 
+function getSaleStatusStyle(sale: Pick<StoreSale, "status" | "discount_status">) {
+  if (sale.discount_status === "returned") return { label: "Returned", bg: "#fffbeb", color: "#d97706", border: "#fcd34d" }
+  if (sale.discount_status === "pending") return { label: "Awaiting Review", bg: "#eff6ff", color: "#0070f3", border: "#93c5fd" }
+  const byStatus: Record<string, { bg: string; color: string; border: string }> = {
+    Confirmed: { bg: "#ecfdf5", color: "#10b981", border: "#10b981" },
+    Pending: { bg: "#fffbeb", color: "#f5a623", border: "#f5a623" },
+    Rejected: { bg: "#fef2f2", color: "#ef4444", border: "#ef4444" },
+  }
+  return { label: sale.status, ...(byStatus[sale.status] ?? { bg: "#f1f5f9", color: "#475569", border: "#cbd5e1" }) }
+}
+
 function useBreakpoint() {
   const [isDesktop, setIsDesktop] = useState(false)
   const [isMobile, setIsMobile] = useState(true)
@@ -603,10 +614,7 @@ export default function StoreSales() {
                           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 6, gap: 8 }}>
                             <h3 style={{ margin: 0, color: "#0f172a", fontSize: FONT_SIZE.lg, fontWeight: 700 }}>{sale.store_name}</h3>
                             {(() => {
-                              const displayStatus = sale.discount_status === "returned" ? "Returned" : sale.discount_status === "pending" ? "Awaiting Review" : sale.status
-                              const statusBg = sale.discount_status === "returned" ? "#fffbeb" : sale.discount_status === "pending" ? "#eff6ff" : sale.status === "Confirmed" ? "#ecfdf5" : sale.status === "Pending" ? "#fffbeb" : sale.status === "Rejected" ? "#fef2f2" : "#f1f5f9"
-                              const statusColor = sale.discount_status === "returned" ? "#d97706" : sale.discount_status === "pending" ? "#0070f3" : sale.status === "Confirmed" ? "#10b981" : sale.status === "Pending" ? "#f5a623" : sale.status === "Rejected" ? "#ef4444" : "#475569"
-                              const statusBorder = sale.discount_status === "returned" ? "#fcd34d" : sale.discount_status === "pending" ? "#93c5fd" : sale.status === "Confirmed" ? "#10b981" : sale.status === "Pending" ? "#f5a623" : sale.status === "Rejected" ? "#ef4444" : "#cbd5e1"
+                              const { label: displayStatus, bg: statusBg, color: statusColor, border: statusBorder } = getSaleStatusStyle(sale)
                               return (
                                 <span style={{ padding: "6px 12px", borderRadius: 16, fontSize: FONT_SIZE.xs, fontWeight: 600, background: statusBg, color: statusColor, border: `1.5px solid ${statusBorder}`, whiteSpace: "nowrap", flexShrink: 0 }}>
                                   {displayStatus}
@@ -766,10 +774,7 @@ export default function StoreSales() {
                           <td style={{ padding: "12px 16px", color: "#64748b", fontSize: FONT_SIZE.sm }}>{sale.broker_name || "—"}</td>
                           <td style={{ padding: "12px 16px" }}>
                             {(() => {
-                              const displayStatus = sale.discount_status === "returned" ? "Returned" : sale.discount_status === "pending" ? "Awaiting Review" : sale.status
-                              const statusBg = sale.discount_status === "returned" ? "#fffbeb" : sale.discount_status === "pending" ? "#eff6ff" : sale.status === "Confirmed" ? "#ecfdf5" : sale.status === "Pending" ? "#fffbeb" : sale.status === "Rejected" ? "#fef2f2" : "#f1f5f9"
-                              const statusColor = sale.discount_status === "returned" ? "#d97706" : sale.discount_status === "pending" ? "#0070f3" : sale.status === "Confirmed" ? "#10b981" : sale.status === "Pending" ? "#f5a623" : sale.status === "Rejected" ? "#ef4444" : "#475569"
-                              const statusBorder = sale.discount_status === "returned" ? "#fcd34d" : sale.discount_status === "pending" ? "#93c5fd" : sale.status === "Confirmed" ? "#10b981" : sale.status === "Pending" ? "#f5a623" : sale.status === "Rejected" ? "#ef4444" : "#cbd5e1"
+                              const { label: displayStatus, bg: statusBg, color: statusColor, border: statusBorder } = getSaleStatusStyle(sale)
                               return (
                                 <span style={{ padding: "6px 10px", borderRadius: 14, fontSize: FONT_SIZE.xs, fontWeight: 600, background: statusBg, color: statusColor, border: `1.5px solid ${statusBorder}` }}>
                                   {displayStatus}

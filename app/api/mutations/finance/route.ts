@@ -486,12 +486,27 @@ export async function POST(req: NextRequest) {
           const brokerId = row.broker_id as string
           const denialReason = (data.denial_reason as string) || "No reason provided"
           const sourceType = row.source_type as string
+          const groupId = row.group_id as string | null
           if (brokerId) {
             if (sourceType === "store_sale") {
-              const sourceId = row.source_id as string
-              const { data: sale } = await supabaseAdmin.from("store_sales").select("store_name").eq("sale_id", sourceId).single()
-              const storeName = (sale as Record<string, unknown>)?.store_name as string || "Store"
-              notifyBrokerSaleReturned(brokerId, storeName, denialReason).catch(console.error)
+              // Deduplicate: for grouped denials, only notify once per group
+              let skipNotify = false
+              if (groupId) {
+                const { data: existingDenied } = await supabaseAdmin
+                  .from("price_adjustments")
+                  .select("id")
+                  .eq("group_id", groupId)
+                  .eq("status", "Denied")
+                  .neq("id", row.id)
+                if (existingDenied && existingDenied.length > 0) skipNotify = true
+              }
+
+              if (!skipNotify) {
+                const sourceId = row.source_id as string
+                const { data: sale, error: saleErr } = await supabaseAdmin.from("store_sales").select("store_name").eq("sale_id", sourceId).single()
+                const storeName = !saleErr && sale ? (sale as Record<string, unknown>).store_name as string || "Store" : "Store"
+                notifyBrokerSaleReturned(brokerId, storeName, denialReason).catch(console.error)
+              }
             } else {
               notifyBrokerStopReturned(brokerId, row.area as string || "", denialReason).catch(console.error)
             }

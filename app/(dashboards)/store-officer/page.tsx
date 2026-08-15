@@ -685,7 +685,6 @@ export default function StoreOfficerDashboard() {
       for (const line of editLines) {
         const qty = parseInt(line.quantity)
         const price = saleType === "broker" ? null : saleType === "truck_load_out" ? 0 : parseAmount(line.price_per_bag)
-        const total = price != null ? qty * price : null
 
         sub_actions.push({
           action: "update", table: "store_sales",

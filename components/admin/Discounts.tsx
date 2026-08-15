@@ -60,7 +60,6 @@ function formatTime(dateStr: string) {
 
 export default function Discounts() {
   const [isMobile, setIsMobile] = useState(true)
-  const [isDesktop, setIsDesktop] = useState(false)
   const { getAccess } = usePermissions()
   const canEdit = getAccess("discounts").canEdit
 
@@ -88,7 +87,6 @@ export default function Discounts() {
   useEffect(() => {
     const handleResize = () => {
       setIsMobile(window.innerWidth < 640)
-      setIsDesktop(window.innerWidth >= 640)
     }
     handleResize()
     window.addEventListener("resize", handleResize)
@@ -155,6 +153,7 @@ export default function Discounts() {
     }
   }, [])
 
+  // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { fetchAdjustments() }, [fetchAdjustments])
   usePolling(fetchAdjustments, 30000)
 
@@ -204,6 +203,12 @@ export default function Discounts() {
     const groups: GroupedDisplay[] = []
     for (const [gid, items] of saleGroups) {
       const rep = items[0]
+      const derivedStatus: PriceAdjustment["status"] =
+        items.some(i => i.status === "Pending") ? "Pending"
+          : items.every(i => i.status === "Approved") ? "Approved"
+          : "Denied"
+      const derivedReason = items.find(i => i.price_reason)?.price_reason || rep.price_reason
+      const derivedCreated = items.reduce((latest, i) => i.created_at > latest ? i.created_at : latest, rep.created_at)
       groups.push({
         key: `group:${gid}`,
         type: "group",
@@ -212,9 +217,9 @@ export default function Discounts() {
         broker_name: rep.broker_name,
         broker_id: rep.broker_id,
         area: rep.area,
-        price_reason: rep.price_reason,
-        status: rep.status,
-        created_at: rep.created_at,
+        price_reason: derivedReason,
+        status: derivedStatus,
+        created_at: derivedCreated,
       })
     }
 
@@ -740,7 +745,7 @@ export default function Discounts() {
                 }
 
                 // Store Sale group
-                const { items, group_id: gid } = entry
+                const { items } = entry
                 const sc = STATUS_COLORS[entry.status]
                 const totalCompany = items.reduce((s, i) => s + i.company_price * (i.quantity || 1), 0)
                 const totalAdjusted = items.reduce((s, i) => s + i.adjusted_price * (i.quantity || 1), 0)

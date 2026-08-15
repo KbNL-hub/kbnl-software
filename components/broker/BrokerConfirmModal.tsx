@@ -28,6 +28,7 @@ type Stop = {
   product: string
   confirmed: boolean
   disputed: boolean
+  discount_status: string | null
 }
 
 type SaleLine = {
@@ -46,6 +47,7 @@ type SaleLine = {
   status: string
   store_name: string
   rejection_reason: string | null
+  discount_status: string | null
 }
 
 type SaleGroup = {
@@ -123,6 +125,7 @@ export default function BrokerConfirmModal({ isOpen, onClose, brokerId, isMobile
   const stop = isStop ? rest.stop : null
   const saleGroup = !isStop ? rest.saleGroup : null
 
+  // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => {
     if (!isOpen) return
     setSelectedArea("")
@@ -296,7 +299,7 @@ export default function BrokerConfirmModal({ isOpen, onClose, brokerId, isMobile
               },
               {
                 action: "upsert", table: "price_adjustments",
-                conflict: "unique_price_adjustment_source",
+                conflict: "source_type,source_id",
                 data: {
                   source_type: "stop",
                   source_id: stop.stop_id,
@@ -313,12 +316,15 @@ export default function BrokerConfirmModal({ isOpen, onClose, brokerId, isMobile
           })
           if (error) { setMessage("Failed to submit. Please try again."); return }
         } else {
+          const isReturned = stop.discount_status === "returned"
+          const stopUpdate: Record<string, unknown> = { confirmed: true, customer_id: customerIdToSave, updated_by: user.id }
+          if (isReturned) stopUpdate.discount_status = "pending"
           const { error } = await apiMutate("trips", {
             action: "transaction",
             sub_actions: [
               {
                 action: "update", table: "Stops",
-                data: { confirmed: true, customer_id: customerIdToSave, updated_by: user.id },
+                data: stopUpdate,
                 filters: { stop_id: stop.stop_id },
               },
               {
@@ -366,7 +372,7 @@ export default function BrokerConfirmModal({ isOpen, onClose, brokerId, isMobile
         const customerName = selectedCustomer.full_name
         const confirmed: string[] = []
         const unconfirmed: string[] = []
-        const groupId = saleGroup.group_id
+        const groupId = crypto.randomUUID()
 
         for (const line of saleGroup.lines) {
           const price = parseAmount(linePrices[line.sale_id] ?? "")
@@ -387,13 +393,17 @@ export default function BrokerConfirmModal({ isOpen, onClose, brokerId, isMobile
             if (lineHasDiff) updateData.discount_status = "pending"
           } else {
             updateData.status = "Confirmed"
+            if (line.discount_status === "returned") updateData.discount_status = "pending"
           }
 
+          const isReturnedLine = line.discount_status === "returned"
           const { data, error } = await apiMutate("finance", {
             action: "update",
             table: "store_sales",
             data: updateData,
-            filters: { sale_id: line.sale_id, status: "Pending", broker_id: brokerId },
+            filters: isReturnedLine
+              ? { sale_id: line.sale_id, broker_id: brokerId }
+              : { sale_id: line.sale_id, status: "Pending", broker_id: brokerId },
           })
 
           if (error || !data || (Array.isArray(data) && data.length === 0)) {
@@ -403,7 +413,7 @@ export default function BrokerConfirmModal({ isOpen, onClose, brokerId, isMobile
               const { error: upsertErr } = await apiMutate("finance", {
                 action: "upsert",
                 table: "price_adjustments",
-                conflict: "unique_price_adjustment_source",
+                conflict: "source_type,source_id",
                 data: {
                   source_type: "store_sale",
                   source_id: line.sale_id,

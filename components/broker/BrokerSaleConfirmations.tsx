@@ -28,6 +28,7 @@ type SaleLine = {
   store_name: string
   rejection_reason: string | null
   discount_status: string | null
+  denial_reason?: string | null
 }
 
 type SaleGroup = {
@@ -41,6 +42,7 @@ type SaleGroup = {
   status: string
   store_name: string
   rejection_reason: string | null
+  denial_reason?: string | null
   lines: SaleLine[]
 }
 
@@ -49,7 +51,7 @@ export default function BrokerSaleConfirmations() {
   const isMobile = bp === "mobile"
 
   const [brokerId, setBrokerId] = useState<string | null>(null)
-  const [activeFilter, setActiveFilter] = useState<"pending" | "confirmed" | "rejected" | "returned">("pending")
+  const [activeFilter, setActiveFilter] = useState<"pending" | "confirmed" | "rejected" | "returned" | "review">("pending")
   const [allGroups, setAllGroups] = useState<SaleGroup[]>([])
   const [loading, setLoading] = useState(true)
 
@@ -60,7 +62,7 @@ export default function BrokerSaleConfirmations() {
   const [notification, setNotification] = useState("")
   const [submitting, setSubmitting] = useState(false)
   const [companyPriceMap, setCompanyPriceMap] = useState<Record<string, Record<string, number>>>({})
-
+  const [expandedCard, setExpandedCard] = useState<string | null>(null)
   const initBroker = useCallback(async () => {
     const { data: { session } } = await supabase.auth.getSession()
     if (!session) { window.location.href = "/login"; return }
@@ -100,7 +102,27 @@ export default function BrokerSaleConfirmations() {
 
     if (error) { console.error("Failed to fetch sales:", error); return }
 
-    const groups = groupSales(data || [])
+    // Fetch denial reasons for returned lines
+    const returnedSaleIds = (data || []).filter(s => s.discount_status === "returned").map(s => s.sale_id)
+    const denialMap: Record<string, string> = {}
+    if (returnedSaleIds.length > 0) {
+      const { data: adjustments } = await supabase
+        .from("price_adjustments")
+        .select("source_id, denial_reason")
+        .eq("source_type", "store_sale")
+        .eq("status", "Denied")
+        .in("source_id", returnedSaleIds)
+      for (const adj of adjustments || []) {
+        if (adj.denial_reason) denialMap[adj.source_id] = adj.denial_reason
+      }
+    }
+
+    const enriched = (data || []).map(s => ({
+      ...s,
+      denial_reason: denialMap[s.sale_id] || null,
+    }))
+
+    const groups = groupSales(enriched)
     setAllGroups(groups)
   }
 
@@ -132,6 +154,7 @@ export default function BrokerSaleConfirmations() {
         status: sale.status,
         store_name: sale.store_name,
         rejection_reason: sale.rejection_reason,
+        denial_reason: sale.denial_reason,
         lines: [sale],
       })
 
@@ -320,106 +343,89 @@ export default function BrokerSaleConfirmations() {
           <p style={{ margin: 0, fontSize: 14 }}>No {activeFilter} store sales</p>
         </div>
       ) : (
-        visibleGroups.map((group) => (
+        visibleGroups.map((group) => {
+          const isExpanded = expandedCard === group.group_id
+          const statusColor = group.lines.some(l => l.discount_status === "returned") ? { bg: "#fffbeb", text: "#d97706", border: "#fcd34d", label: "Returned" }
+            : group.status === "Confirmed" ? { bg: "#ecfdf5", text: "#10b981", border: "#a7f3d0", label: "Confirmed" }
+            : group.status === "Rejected" ? { bg: "#fef2f2", text: "#ef4444", border: "#fecaca", label: "Rejected" }
+            : group.lines.some(l => l.discount_status === "pending") ? { bg: "#eff6ff", text: "#0070f3", border: "#93c5fd", label: "In Review" }
+            : { bg: "#fffbeb", text: "#f5a623", border: "#fed7aa", label: "Pending" }
+          return (
           <div key={group.group_id} style={{
-            background: "white", border: "1px solid #eee", borderRadius: 12,
-            padding: isMobile ? "14px 16px" : "16px 20px", marginBottom: 10,
-            boxShadow: "0 1px 4px rgba(0,0,0,0.05)"
-          }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 10 }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                <div style={{ width: 36, height: 36, borderRadius: 9, background: "#fef3c7", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+            background: "white", borderTop: `1px solid ${isExpanded ? "#bfdbfe" : "#e2e8f0"}`, borderRight: `1px solid ${isExpanded ? "#bfdbfe" : "#e2e8f0"}`, borderBottom: `1px solid ${isExpanded ? "#bfdbfe" : "#e2e8f0"}`, borderLeft: `3px solid ${statusColor.border}`, borderRadius: 12, marginBottom: 10,
+            boxShadow: isExpanded ? "0 4px 12px rgba(0,0,0,0.08)" : "0 1px 3px rgba(0,0,0,0.04)", transition: "all 0.2s ease", cursor: "pointer"
+          }}
+            onClick={() => setExpandedCard(isExpanded ? null : group.group_id)}
+          >
+            {/* Summary row */}
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: isMobile ? "14px 16px" : "16px 20px" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0, flex: 1 }}>
+                <div style={{ width: 38, height: 38, borderRadius: 10, background: "#fef3c7", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
                   <Icon icon="mdi:store" width={18} color="#f59e0b" />
                 </div>
-                <div>
-                  <p style={{ margin: 0, fontWeight: "bold", fontSize: isMobile ? 15 : 14, color: "#171717" }}>
-                    {group.store_name}
-                  </p>
-                  <p style={{ margin: "2px 0 0", fontSize: 12, color: "#888" }}>
-                    {group.customer_name || "Walk-in"} · {PAYMENT_LABELS[group.payment_mode] || group.payment_mode}
-                  </p>
-                </div>
-              </div>
-              <p style={{ margin: 0, fontSize: 11, color: "#aaa", flexShrink: 0, paddingLeft: 8 }}>
-                {formatDate(group.sold_at)}
-              </p>
-            </div>
-
-            <div style={{ padding: "10px 12px", background: "#f9f9f9", borderRadius: 8, marginBottom: 12 }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
-                <span style={{ fontSize: 12, color: "#888" }}>
-                  <Icon icon="mdi:van-passenger" width={14} style={{ verticalAlign: "middle", marginRight: 4 }} />
-                  {DELIVERY_LABELS[group.delivery_mode] || group.delivery_mode}
-                </span>
-                {group.truck_plate && <span style={{ fontSize: 12, color: "#888" }}>· {group.truck_plate}</span>}
-              </div>
-              {group.lines.map((line) => (
-                <div key={line.sale_id} style={{
-                  display: "flex", justifyContent: "space-between", alignItems: "center",
-                  padding: "4px 0", borderBottom: "1px solid #eee"
-                }}>
-                  <div>
-                    <span style={{ fontWeight: 600, fontSize: 14, color: "#171717" }}>{line.product}</span>
-                    <span style={{ fontSize: 13, color: "#555", marginLeft: 8 }}>× {line.quantity}</span>
+                <div style={{ minWidth: 0, flex: 1 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                    <p style={{ margin: 0, fontWeight: 700, fontSize: isMobile ? 15 : 14, color: "#0f172a" }}>{group.store_name}</p>
+                    <span style={{ padding: "2px 8px", borderRadius: 10, fontSize: 11, fontWeight: 600, background: statusColor.bg, color: statusColor.text, border: `1px solid ${statusColor.border}` }}>{statusColor.label}</span>
                   </div>
-                  {line.price_per_bag && (
-                    <span style={{ fontSize: 13, color: "#555" }}>
-                      ₦{formatAmount(String(line.price_per_bag))}/bag
-                    </span>
-                  )}
+                  <p style={{ margin: "2px 0 0", fontSize: 12, color: "#64748b", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{group.customer_name || "Walk-in"} &middot; {group.lines.length} item{group.lines.length !== 1 ? "s" : ""}</p>
                 </div>
-              ))}
+              </div>
+              <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0, paddingLeft: 8 }}>
+                <p style={{ margin: 0, fontSize: 11, color: "#94a3b8" }}>
+                  {formatDate(group.sold_at)}
+                </p>
+                <Icon icon="mdi:chevron-down" width={18} color="#94a3b8" style={{ transform: isExpanded ? "rotate(180deg)" : "rotate(0deg)", transition: "transform 0.2s" }} />
+              </div>
             </div>
 
-            {activeFilter === "pending" && (
-              <div style={{ display: "flex", gap: 8 }}>
-                <button onClick={() => openConfirmModal(group)} style={{
-                  flex: 1, padding: "11px 0", background: "#0070f3", color: "white",
-                  border: "none", borderRadius: 8, cursor: "pointer", fontWeight: "bold",
-                  fontSize: isMobile ? 14 : 13, minHeight: 44,
-                  display: "flex", alignItems: "center", justifyContent: "center", gap: 6
-                }}>
-                  <Icon icon="mdi:check-circle" width={16} />
-                  Confirm
-                </button>
-                <button onClick={() => openRejectModal(group)} style={{
-                  flex: 1, padding: "11px 0", background: "white", color: "#ef4444",
-                  border: "1.5px solid #ef4444", borderRadius: 8, cursor: "pointer",
-                  fontWeight: "bold", fontSize: isMobile ? 14 : 13, minHeight: 44,
-                  display: "flex", alignItems: "center", justifyContent: "center", gap: 6
-                }}>
-                  <Icon icon="mdi:close-circle" width={16} />
-                  Reject
-                </button>
-              </div>
-            )}
-            {activeFilter === "returned" && (
-              <div style={{ display: "flex", gap: 8 }}>
-                <button onClick={() => openConfirmModal(group)} style={{
-                  flex: 1, padding: "11px 0", background: "#0070f3", color: "white",
-                  border: "none", borderRadius: 8, cursor: "pointer", fontWeight: "bold",
-                  fontSize: isMobile ? 14 : 13, minHeight: 44,
-                  display: "flex", alignItems: "center", justifyContent: "center", gap: 6
-                }}>
-                  <Icon icon="mdi:pencil" width={16} />
-                  Edit Price
-                </button>
-              </div>
-            )}
-            {activeFilter === "confirmed" && (
-              <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "8px 10px", background: "#ecfdf5", borderRadius: 7 }}>
-                <Icon icon="mdi:check-circle" width={16} color="#10b981" />
-                <span style={{ fontSize: 13, color: "#10b981", fontWeight: "600" }}>Confirmed</span>
-              </div>
-            )}
-            {activeFilter === "rejected" && (
-              <div style={{ width: "100%" }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "8px 10px", background: "#fef2f2", borderRadius: 7 }}>
-                  <Icon icon="mdi:close-circle" width={16} color="#ef4444" />
-                  <span style={{ fontSize: 13, color: "#ef4444", fontWeight: "600" }}>Rejected</span>
+            {/* Expanded detail section */}
+            {isExpanded && (
+              <div style={{ padding: "0 20px 16px", borderTop: "1px solid #f1f5f9" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 0", flexWrap: "wrap" }}>
+                  <span style={{ fontSize: 12, color: "#64748b", display: "flex", alignItems: "center", gap: 4 }}>
+                    <Icon icon="mdi:van-passenger" width={14} />
+                    {DELIVERY_LABELS[group.delivery_mode] || group.delivery_mode}
+                  </span>
+                  {group.truck_plate && <span style={{ fontSize: 12, color: "#64748b" }}>Plate: {group.truck_plate}</span>}
+                  <span style={{ fontSize: 12, color: "#64748b" }}>Payment: {PAYMENT_LABELS[group.payment_mode] || group.payment_mode}</span>
                 </div>
-                {group.rejection_reason && (
-                  <div style={{ display: "flex", gap: 10, alignItems: "flex-start", marginTop: 8, padding: 10, background: "#fef2f2", borderRadius: 8, border: "1px solid #fecaca" }}>
+
+                <div style={{ display: "flex", flexDirection: "column", gap: 4, marginBottom: 12 }}>
+                  {group.lines.map((line) => (
+                    <div key={line.sale_id} style={{
+                      display: "flex", justifyContent: "space-between", alignItems: "center",
+                      padding: "8px 12px", background: "#f8fafc", borderRadius: 8, border: "1px solid #e2e8f0"
+                    }}>
+                      <div>
+                        <span style={{ fontWeight: 600, fontSize: 14, color: "#0f172a" }}>{line.product}</span>
+                        <span style={{ fontSize: 13, color: "#64748b", marginLeft: 8 }}>&times; {line.quantity} bags</span>
+                      </div>
+                      {line.price_per_bag != null && (
+                        <span style={{ fontSize: 13, color: "#475569", fontWeight: 500 }}>
+                          ₦{line.price_per_bag.toLocaleString()}/bag
+                        </span>
+                      )}
+                    </div>
+                  ))}
+                </div>
+
+                {activeFilter === "returned" && group.denial_reason && (
+                  <div style={{ display: "flex", gap: 10, alignItems: "flex-start", marginBottom: 12, padding: 10, background: "#fef2f2", borderRadius: 8, border: "1px solid #fecaca" }}>
+                    <div style={{ background: "#ef4444", color: "white", padding: 3, borderRadius: "50%", flexShrink: 0, marginTop: 1 }}>
+                      <Icon icon="mdi:close" width={12} height={12} />
+                    </div>
+                    <div>
+                      <p style={{ margin: "0 0 4px 0", color: "#ef4444", fontSize: 12, fontWeight: 600 }}>Returned reason</p>
+                      <div style={{ padding: "8px 10px", background: "white", borderRadius: 6, border: "1px solid #fecaca", color: "#7f1d1d", fontSize: 12, fontStyle: "italic" }}>
+                        &ldquo;{group.denial_reason}&rdquo;
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {activeFilter === "rejected" && group.rejection_reason && (
+                  <div style={{ display: "flex", gap: 10, alignItems: "flex-start", marginBottom: 12, padding: 10, background: "#fef2f2", borderRadius: 8, border: "1px solid #fecaca" }}>
                     <div style={{ background: "#ef4444", color: "white", padding: 3, borderRadius: "50%", flexShrink: 0, marginTop: 1 }}>
                       <Icon icon="mdi:close" width={12} height={12} />
                     </div>
@@ -431,10 +437,36 @@ export default function BrokerSaleConfirmations() {
                     </div>
                   </div>
                 )}
+
+                <div style={{ display: "flex", gap: 8, marginTop: 4 }} onClick={e => e.stopPropagation()}>
+                  {activeFilter === "pending" && group.lines.some(l => l.discount_status === "pending") && (
+                    <button disabled style={{ flex: 1, padding: "11px 0", background: "#f5f5f5", color: "#9ca3af", border: "1.5px solid #e5e7eb", borderRadius: 8, cursor: "not-allowed", fontWeight: "bold", fontSize: isMobile ? 14 : 13, minHeight: 44, display: "flex", alignItems: "center", justifyContent: "center", gap: 6, opacity: 0.7 }}>
+                      <Icon icon="mdi:clock-outline" width={16} /> Awaiting Review
+                    </button>
+                  )}
+                  {activeFilter === "pending" && !group.lines.some(l => l.discount_status === "pending") && (
+                    <>
+                      <button onClick={() => openConfirmModal(group)} style={{ flex: 1, padding: "11px 0", background: "#0070f3", color: "white", border: "none", borderRadius: 8, cursor: "pointer", fontWeight: "bold", fontSize: isMobile ? 14 : 13, minHeight: 44, display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
+                        <Icon icon="mdi:check-circle" width={16} /> Confirm
+                      </button>
+                      <button onClick={() => openRejectModal(group)} style={{ flex: 1, padding: "11px 0", background: "white", color: "#ef4444", border: "1.5px solid #ef4444", borderRadius: 8, cursor: "pointer", fontWeight: "bold", fontSize: isMobile ? 14 : 13, minHeight: 44, display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
+                        <Icon icon="mdi:close-circle" width={16} /> Reject
+                      </button>
+                    </>
+                  )}
+                  {activeFilter === "returned" && (
+                    <button onClick={() => openConfirmModal(group)} style={{ flex: 1, padding: "11px 0", background: "#0070f3", color: "white", border: "none", borderRadius: 8, cursor: "pointer", fontWeight: "bold", fontSize: isMobile ? 14 : 13, minHeight: 44, display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
+                      <Icon icon="mdi:pencil" width={16} /> Edit Price
+                    </button>
+                  )}
+                  {activeFilter === "confirmed" && <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "8px 12px", background: "#ecfdf5", borderRadius: 7 }}><Icon icon="mdi:check-circle" width={16} color="#10b981" /><span style={{ fontSize: 13, color: "#10b981", fontWeight: 600 }}>Confirmed</span></div>}
+                  {activeFilter === "rejected" && <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "8px 12px", background: "#fef2f2", borderRadius: 7 }}><Icon icon="mdi:close-circle" width={16} color="#ef4444" /><span style={{ fontSize: 13, color: "#ef4444", fontWeight: 600 }}>Rejected</span></div>}
+                </div>
               </div>
             )}
           </div>
-        ))
+          )
+        })
       )}
 
       <BrokerConfirmModal

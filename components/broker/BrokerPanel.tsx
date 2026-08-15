@@ -111,6 +111,8 @@ export default function BrokerPanel({ userProfile }: Props) {
   const [disputedStops, setDisputedStops] = useState(0)
   const [pendingPayments, setPendingPayments] = useState(0)
   const [pendingSales, setPendingSales] = useState(0)
+  const [returnedStops, setReturnedStops] = useState(0)
+  const [returnedSales, setReturnedSales] = useState(0)
 
    
   useEffect(() => {
@@ -130,16 +132,20 @@ export default function BrokerPanel({ userProfile }: Props) {
     async function fetchBadges() {
       try {
         const bId = userProfile.user_id
-        const [stopsResult, disputedResult, paymentsResult, salesResult] = await Promise.all([
-          supabase.from("Stops").select("*", { count: "exact", head: true }).eq("broker_id", bId).eq("confirmed", false).eq("disputed", false),
+        const [stopsResult, disputedResult, paymentsResult, salesResult, returnedStopsResult, returnedSalesResult] = await Promise.all([
+          supabase.from("Stops").select("*", { count: "exact", head: true }).eq("broker_id", bId).eq("confirmed", false).eq("disputed", false).neq("discount_status", "returned").neq("discount_status", "pending"),
           supabase.from("Stops").select("*", { count: "exact", head: true }).eq("broker_id", bId).eq("disputed", true),
           supabase.from("customer_payments").select("*", { count: "exact", head: true }).eq("broker_id", bId).eq("status", "Pending"),
-          supabase.from("store_sales").select("*", { count: "exact", head: true }).eq("broker_id", bId).eq("status", "Pending"),
+          supabase.from("store_sales").select("*", { count: "exact", head: true }).eq("broker_id", bId).eq("status", "Pending").neq("discount_status", "returned"),
+          supabase.from("Stops").select("*", { count: "exact", head: true }).eq("broker_id", bId).eq("discount_status", "returned"),
+          supabase.from("store_sales").select("*", { count: "exact", head: true }).eq("broker_id", bId).eq("discount_status", "returned"),
         ])
         setPendingStops(stopsResult.count || 0)
         setDisputedStops(disputedResult.count || 0)
         setPendingPayments(paymentsResult.count || 0)
         setPendingSales(salesResult.count || 0)
+        setReturnedStops(returnedStopsResult.count || 0)
+        setReturnedSales(returnedSalesResult.count || 0)
       } catch (err) {
         console.error("Error fetching badge counts:", err)
       }
@@ -150,16 +156,20 @@ export default function BrokerPanel({ userProfile }: Props) {
   usePolling(async () => {
     try {
       const bId = userProfile.user_id
-      const [stopsResult, disputedResult, paymentsResult, salesResult] = await Promise.all([
-        supabase.from("Stops").select("*", { count: "exact", head: true }).eq("broker_id", bId).eq("confirmed", false).eq("disputed", false),
+      const [stopsResult, disputedResult, paymentsResult, salesResult, returnedStopsResult, returnedSalesResult] = await Promise.all([
+        supabase.from("Stops").select("*", { count: "exact", head: true }).eq("broker_id", bId).eq("confirmed", false).eq("disputed", false).neq("discount_status", "returned").neq("discount_status", "pending"),
         supabase.from("Stops").select("*", { count: "exact", head: true }).eq("broker_id", bId).eq("disputed", true),
         supabase.from("customer_payments").select("*", { count: "exact", head: true }).eq("broker_id", bId).eq("status", "Pending"),
-        supabase.from("store_sales").select("*", { count: "exact", head: true }).eq("broker_id", bId).eq("status", "Pending"),
+        supabase.from("store_sales").select("*", { count: "exact", head: true }).eq("broker_id", bId).eq("status", "Pending").neq("discount_status", "returned"),
+        supabase.from("Stops").select("*", { count: "exact", head: true }).eq("broker_id", bId).eq("discount_status", "returned"),
+        supabase.from("store_sales").select("*", { count: "exact", head: true }).eq("broker_id", bId).eq("discount_status", "returned"),
       ])
       setPendingStops(stopsResult.count || 0)
       setDisputedStops(disputedResult.count || 0)
       setPendingPayments(paymentsResult.count || 0)
       setPendingSales(salesResult.count || 0)
+      setReturnedStops(returnedStopsResult.count || 0)
+      setReturnedSales(returnedSalesResult.count || 0)
     } catch (err) {
       console.error("Error fetching badge counts:", err)
     }
@@ -292,8 +302,10 @@ export default function BrokerPanel({ userProfile }: Props) {
     const isActive = active === item.key
     const badge =
       item.key === "trips" && disputedStops > 0 ? { count: disputedStops, color: "#ef4444" } :
+      item.key === "stops" && returnedStops > 0 ? { count: returnedStops, color: "#ef4444" } :
       item.key === "stops" && pendingStops > 0 ? { count: pendingStops, color: "#f5a623" } :
       item.key === "payments" && pendingPayments > 0 ? { count: pendingPayments, color: "#f5a623" } :
+      item.key === "store-sales" && returnedSales > 0 ? { count: returnedSales, color: "#ef4444" } :
       item.key === "store-sales" && pendingSales > 0 ? { count: pendingSales, color: "#f5a623" } :
       null
 

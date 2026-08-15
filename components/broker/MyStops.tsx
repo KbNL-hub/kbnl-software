@@ -45,6 +45,8 @@ export default function MyStops() {
   const [message, setMessage] = useState("")
   const [submitting, setSubmitting] = useState(false)
   const [companyPriceMap, setCompanyPriceMap] = useState<Record<string, Record<string, number>>>({})
+  const [expandedCard, setExpandedCard] = useState<string | null>(null)
+  const [stopAdjustments, setStopAdjustments] = useState<Record<string, { company_price: number; adjusted_price: number; price_reason: string }>>({})
 
   const initBroker = useCallback(async () => {
     const { data: { session } } = await supabase.auth.getSession()
@@ -99,6 +101,18 @@ export default function MyStops() {
     }))
 
     setAllStops(enriched)
+
+    const stopIds = enriched.map(s => s.stop_id)
+    if (stopIds.length > 0) {
+      const { data: adjustments } = await supabase
+        .from("price_adjustments")
+        .select("source_id, company_price, adjusted_price, price_reason")
+        .eq("source_type", "stop")
+        .in("source_id", stopIds)
+      const adjMap: Record<string, { company_price: number; adjusted_price: number; price_reason: string }> = {}
+      for (const a of (adjustments || [])) adjMap[a.source_id] = { company_price: a.company_price, adjusted_price: a.adjusted_price, price_reason: a.price_reason }
+      setStopAdjustments(adjMap)
+    }
   }
 
   function openConfirmModal(stop: Stop) {
@@ -139,7 +153,7 @@ export default function MyStops() {
   const disputedStops = allStops.filter(s => s.disputed)
   const returnedStops = allStops.filter(s => s.discount_status === "returned")
 
-  const visibleStops = activeFilter === "pending" ? pendingStops : activeFilter === "confirmed" ? confirmedStops : activeFilter === "returned" ? returnedStops : disputedStops
+  const visibleStops = activeFilter === "pending" ? pendingStops : activeFilter === "confirmed" ? confirmedStops : activeFilter === "returned" ? returnedStops : activeFilter === "disputed" ? disputedStops : []
 
   const filterOptions = [
     { key: "pending" as const, label: "Pending", count: pendingStops.length, color: "#0070f3" },
@@ -182,9 +196,9 @@ export default function MyStops() {
       <div style={{ display: "flex", gap: 8, marginBottom: 20, overflowX: "auto", scrollbarWidth: "none", paddingBottom: 8 }}>
         {filterOptions.map(({ key, label, count }) => {
           const isActive = activeFilter === key
-          const activeBg = key === "pending" ? "rgba(0,112,243,0.1)" : key === "confirmed" ? "rgba(16,185,129,0.1)" : "rgba(239,68,68,0.1)"
-          const activeColor = key === "pending" ? "#0070f3" : key === "confirmed" ? "#10b981" : "#ef4444"
-          const activeBorder = key === "pending" ? "#0070f3" : key === "confirmed" ? "#10b981" : "#ef4444"
+          const activeBg = key === "pending" ? "rgba(0,112,243,0.1)" : key === "confirmed" ? "rgba(16,185,129,0.1)" : key === "returned" ? "rgba(217,119,6,0.1)" : "rgba(239,68,68,0.1)"
+          const activeColor = key === "pending" ? "#0070f3" : key === "confirmed" ? "#10b981" : key === "returned" ? "#d97706" : "#ef4444"
+          const activeBorder = key === "pending" ? "#0070f3" : key === "confirmed" ? "#10b981" : key === "returned" ? "#d97706" : "#ef4444"
           return (
             <button key={key} onClick={() => setActiveFilter(key)} style={{
               padding: isMobile ? "9px 16px" : "7px 14px", borderRadius: 20, fontSize: 13, cursor: "pointer",
@@ -216,67 +230,128 @@ export default function MyStops() {
           <p style={{ margin: 0, fontSize: 14 }}>No {activeFilter} stops</p>
         </div>
       ) : viewMode === "card" ? (
-        visibleStops.map((stop) => (
-          <div key={stop.stop_id} style={{ background: "white", border: "1px solid #eee", borderRadius: 12, padding: isMobile ? "14px 16px" : "16px 20px", marginBottom: 10, boxShadow: "0 1px 4px rgba(0,0,0,0.05)" }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 10 }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                <div style={{ width: 36, height: 36, borderRadius: 9, background: "#f0f7ff", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+        visibleStops.map((stop) => {
+          const isExpanded = expandedCard === stop.stop_id
+          const statusColor = stop.discount_status === "returned" ? { bg: "#fffbeb", text: "#b45309", border: "#b45309", label: "Returned" }
+            : stop.discount_status === "pending" ? { bg: "#fffbeb", text: "#d97706", border: "#fbbf24", label: "In Review" }
+            : stop.confirmed ? { bg: "#ecfdf5", text: "#10b981", border: "#a7f3d0", label: "Confirmed" }
+            : stop.disputed ? { bg: "#fef2f2", text: "#ef4444", border: "#fecaca", label: "Disputed" }
+            : { bg: "#f0f7ff", text: "#0070f3", border: "#bfdbfe", label: "Pending" }
+          return (
+          <div key={stop.stop_id} style={{ background: "white", borderTop: `1px solid ${isExpanded ? "#bfdbfe" : "#e2e8f0"}`, borderRight: `1px solid ${isExpanded ? "#bfdbfe" : "#e2e8f0"}`, borderBottom: `1px solid ${isExpanded ? "#bfdbfe" : "#e2e8f0"}`, borderLeft: `3px solid ${statusColor.border}`, borderRadius: 12, marginBottom: 10, boxShadow: isExpanded ? "0 4px 12px rgba(0,0,0,0.08)" : "0 1px 3px rgba(0,0,0,0.04)", transition: "all 0.2s ease", cursor: "pointer" }}
+            onClick={() => setExpandedCard(isExpanded ? null : stop.stop_id)}
+          >
+            {/* Summary row */}
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: isMobile ? "14px 16px" : "16px 20px" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0, flex: 1 }}>
+                <div style={{ width: 38, height: 38, borderRadius: 10, background: "#f0f7ff", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
                   <Icon icon="mdi:truck" width={18} color="#0070f3" />
                 </div>
-                <div>
-                  <p style={{ margin: 0, fontWeight: "bold", fontSize: isMobile ? 15 : 14, color: "#171717" }}>{stop.plate_number}</p>
-                  <p style={{ margin: "2px 0 0", fontSize: 12, color: "#888" }}>{stop.stop_location}</p>
+                <div style={{ minWidth: 0, flex: 1 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                    <p style={{ margin: 0, fontWeight: 700, fontSize: isMobile ? 15 : 14, color: "#0f172a" }}>{stop.plate_number}</p>
+                    <span style={{ padding: "2px 8px", borderRadius: 10, fontSize: 11, fontWeight: 600, background: statusColor.bg, color: statusColor.text, border: `1px solid ${statusColor.border}` }}>{statusColor.label}</span>
+                  </div>
+                  <p style={{ margin: "2px 0 0", fontSize: 12, color: "#64748b", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{stop.stop_location} &middot; {stop.customer_name}</p>
                 </div>
               </div>
-              <p style={{ margin: 0, fontSize: 11, color: "#aaa", flexShrink: 0, paddingLeft: 8 }}>
-                {new Date(stop.stop_time).toLocaleDateString("en-NG", { day: "numeric", month: "short" })}
-              </p>
+              <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0, paddingLeft: 8 }}>
+                <p style={{ margin: 0, fontSize: 11, color: "#94a3b8" }}>
+                  {new Date(stop.stop_time).toLocaleDateString("en-NG", { day: "numeric", month: "short" })}
+                </p>
+                <Icon icon="mdi:chevron-down" width={18} color="#94a3b8" style={{ transform: isExpanded ? "rotate(180deg)" : "rotate(0deg)", transition: "transform 0.2s" }} />
+              </div>
             </div>
 
-            {stop.discount_status === "returned" && (
-              <div style={{ marginBottom: 10 }}>
-                <span style={{ padding: "4px 10px", borderRadius: 6, fontSize: 11, fontWeight: 600, background: "#fffbeb", color: "#d97706", border: "1px solid #fcd34d" }}>Returned — Edit price to resubmit</span>
-              </div>
-            )}
+            {/* Expanded detail section */}
+            {isExpanded && (
+              <div style={{ padding: "0 20px 16px", borderTop: "1px solid #f1f5f9" }}>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, padding: "12px 0" }}>
+                  <div><p style={{ margin: 0, fontSize: 11, color: "#94a3b8" }}>Bags</p><p style={{ margin: "2px 0 0", fontWeight: 700, fontSize: 14, color: "#0f172a" }}>{stop.quantity_offloaded}</p></div>
+                  <div><p style={{ margin: 0, fontSize: 11, color: "#94a3b8" }}>Customer</p><p style={{ margin: "2px 0 0", fontSize: 13, color: "#0f172a", fontWeight: 500 }}>{stop.customer_name}</p></div>
+                  <div><p style={{ margin: 0, fontSize: 11, color: "#94a3b8" }}>Loading Point</p><p style={{ margin: "2px 0 0", fontSize: 12, color: "#475569" }}>{stop.material_centre}</p></div>
+                  {stop.order_no ? (
+                    <>
+                      <div><p style={{ margin: 0, fontSize: 11, color: "#94a3b8" }}>Order No</p><p style={{ margin: "2px 0 0", fontSize: 12, color: "#475569" }}>{stop.order_no}</p></div>
+                      {stop.child_order_no && <div><p style={{ margin: 0, fontSize: 11, color: "#94a3b8" }}>Child Order</p><p style={{ margin: "2px 0 0", fontSize: 12, color: "#475569" }}>{stop.child_order_no}</p></div>}
+                    </>
+                  ) : stop.atc ? (
+                    <div><p style={{ margin: 0, fontSize: 11, color: "#94a3b8" }}>ATC</p><p style={{ margin: "2px 0 0", fontSize: 12, color: "#475569" }}>{stop.atc}</p></div>
+                  ) : null}
+                </div>
 
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, padding: "10px 12px", background: "#f9f9f9", borderRadius: 8, marginBottom: 12 }}>
-              <div><p style={{ margin: 0, fontSize: 11, color: "#aaa" }}>Bags</p><p style={{ margin: "2px 0 0", fontWeight: "bold", fontSize: 14, color: "#171717" }}>{stop.quantity_offloaded}</p></div>
-              <div><p style={{ margin: 0, fontSize: 11, color: "#aaa" }}>Customer</p><p style={{ margin: "2px 0 0", fontSize: 13, color: "#171717", fontWeight: "500" }}>{stop.customer_name}</p></div>
-              <div><p style={{ margin: 0, fontSize: 11, color: "#aaa" }}>Loading Point</p><p style={{ margin: "2px 0 0", fontSize: 12, color: "#555" }}>{stop.material_centre}</p></div>
-              {stop.order_no ? (
-                <>
-                  <div><p style={{ margin: 0, fontSize: 11, color: "#aaa" }}>Order No</p><p style={{ margin: "2px 0 0", fontSize: 12, color: "#555" }}>{stop.order_no}</p></div>
-                  {stop.child_order_no && <div><p style={{ margin: 0, fontSize: 11, color: "#aaa" }}>Child Order</p><p style={{ margin: "2px 0 0", fontSize: 12, color: "#555" }}>{stop.child_order_no}</p></div>}
-                </>
-              ) : stop.atc ? (
-                <div><p style={{ margin: 0, fontSize: 11, color: "#aaa" }}>ATC</p><p style={{ margin: "2px 0 0", fontSize: 12, color: "#555" }}>{stop.atc}</p></div>
-              ) : null}
-            </div>
+                {stop.discount_status === "returned" && (
+                  <div style={{ marginBottom: 12 }}>
+                    <span style={{ padding: "4px 10px", borderRadius: 6, fontSize: 11, fontWeight: 600, background: "#fffbeb", color: "#d97706", border: "1px solid #d97706" }}>Returned — Edit price to resubmit</span>
+                  </div>
+                )}
+                {stop.discount_status === "pending" && (
+                  <div style={{ marginBottom: 12 }}>
+                    <span style={{ padding: "4px 10px", borderRadius: 6, fontSize: 11, fontWeight: 600, background: "#fffbeb", color: "#b45309", border: "1px solid #fbbf24" }}>In Review — Awaiting admin approval</span>
+                  </div>
+                )}
 
-            {activeFilter === "pending" && (
-              <div style={{ display: "flex", gap: 8 }}>
-                <button onClick={() => openConfirmModal(stop)} style={{ flex: 1, padding: "11px 0", background: "#0070f3", color: "white", border: "none", borderRadius: 8, cursor: "pointer", fontWeight: "bold", fontSize: isMobile ? 14 : 13, minHeight: 44, display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
-                  <Icon icon="mdi:check-circle" width={16} />
-                  Confirm
-                </button>
-                <button onClick={() => { setDisputingStop(stop); setDisputeReason(""); setMessage("") }} style={{ flex: 1, padding: "11px 0", background: "white", color: "#ff4444", border: "1.5px solid #ff4444", borderRadius: 8, cursor: "pointer", fontWeight: "bold", fontSize: isMobile ? 14 : 13, minHeight: 44, display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
-                  <Icon icon="mdi:alert-circle" width={16} />
-                  Dispute
-                </button>
+                {stopAdjustments[stop.stop_id] && (
+                  <div style={{ padding: "8px 12px", borderRadius: 8, background: "#f8fafc", border: "1px solid #e2e8f0", marginBottom: 12 }}>
+                    <span style={{ fontSize: 11, color: "#94a3b8", fontWeight: 500 }}>Price comparison</span>
+                    <div style={{ display: "flex", gap: 12, marginTop: 4 }}>
+                      <div>
+                        <p style={{ margin: 0, fontSize: 11, color: "#94a3b8" }}>Company</p>
+                        <p style={{ margin: "2px 0 0", fontWeight: 600, fontSize: 13, color: "#0f172a" }}>₦{stopAdjustments[stop.stop_id].company_price.toLocaleString()}</p>
+                      </div>
+                      <div>
+                        <p style={{ margin: 0, fontSize: 11, color: "#94a3b8" }}>Adjusted</p>
+                        <p style={{ margin: "2px 0 0", fontWeight: 600, fontSize: 13, color: "#0f172a" }}>₦{stopAdjustments[stop.stop_id].adjusted_price.toLocaleString()}</p>
+                      </div>
+                      <div>
+                        <p style={{ margin: 0, fontSize: 11, color: stopAdjustments[stop.stop_id].adjusted_price > stopAdjustments[stop.stop_id].company_price ? "#059669" : "#854d09" }}>
+                          {stopAdjustments[stop.stop_id].adjusted_price > stopAdjustments[stop.stop_id].company_price ? "Premium" : "Discount"}
+                        </p>
+                        <p style={{ margin: "2px 0 0", fontWeight: 700, fontSize: 13, color: stopAdjustments[stop.stop_id].adjusted_price > stopAdjustments[stop.stop_id].company_price ? "#059669" : "#854d09" }}>
+                          ₦{Math.abs(stopAdjustments[stop.stop_id].adjusted_price - stopAdjustments[stop.stop_id].company_price).toLocaleString()}
+                        </p>
+                      </div>
+                      <div>
+                        <p style={{ margin: 0, fontSize: 11, color: "#94a3b8" }}>Bags</p>
+                        <p style={{ margin: "2px 0 0", fontWeight: 600, fontSize: 13, color: "#0f172a" }}>{stop.quantity_offloaded}</p>
+                      </div>
+                    </div>
+                    <div style={{ padding: "6px 0", marginTop: 6, borderTop: "1px solid #e2e8f0" }}>
+                      <p style={{ margin: 0, fontSize: 11, color: "#94a3b8" }}>Reason</p>
+                      <p style={{ margin: "2px 0 0", fontSize: 12, color: "#374151", fontStyle: "italic" }}>&ldquo;{stopAdjustments[stop.stop_id].price_reason}&rdquo;</p>
+                    </div>
+                  </div>
+                )}
+
+                <div style={{ display: "flex", gap: 8, marginTop: 4 }} onClick={e => e.stopPropagation()}>
+                  {activeFilter === "pending" && stop.discount_status === "pending" && (
+                    <button disabled style={{ flex: 1, padding: "11px 0", background: "#f5f5f5", color: "#9ca3af", border: "1.5px solid #e5e7eb", borderRadius: 8, cursor: "not-allowed", fontWeight: "bold", fontSize: isMobile ? 14 : 13, minHeight: 44, display: "flex", alignItems: "center", justifyContent: "center", gap: 6, opacity: 0.7 }}>
+                      <Icon icon="mdi:clock-outline" width={16} /> Awaiting Review
+                    </button>
+                  )}
+                  {activeFilter === "pending" && stop.discount_status !== "pending" && (
+                    <>
+                      <button onClick={() => openConfirmModal(stop)} style={{ flex: 1, padding: "11px 0", background: "#0070f3", color: "white", border: "none", borderRadius: 8, cursor: "pointer", fontWeight: "bold", fontSize: isMobile ? 14 : 13, minHeight: 44, display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
+                        <Icon icon="mdi:check-circle" width={16} /> Confirm
+                      </button>
+                      <button onClick={() => { setDisputingStop(stop); setDisputeReason(""); setMessage("") }} style={{ flex: 1, padding: "11px 0", background: "white", color: "#ef4444", border: "1.5px solid #ef4444", borderRadius: 8, cursor: "pointer", fontWeight: "bold", fontSize: isMobile ? 14 : 13, minHeight: 44, display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
+                        <Icon icon="mdi:alert-circle" width={16} /> Dispute
+                      </button>
+                    </>
+                  )}
+                  {activeFilter === "returned" && (
+                    <button onClick={() => openConfirmModal(stop)} style={{ flex: 1, padding: "11px 0", background: "#0070f3", color: "white", border: "none", borderRadius: 8, cursor: "pointer", fontWeight: "bold", fontSize: isMobile ? 14 : 13, minHeight: 44, display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
+                      <Icon icon="mdi:pencil" width={16} /> Edit Price
+                    </button>
+                  )}
+                  {activeFilter === "confirmed" && <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "8px 12px", background: "#ecfdf5", borderRadius: 7 }}><Icon icon="mdi:check-circle" width={16} color="#10b981" /><span style={{ fontSize: 13, color: "#10b981", fontWeight: 600 }}>Confirmed</span></div>}
+                  {activeFilter === "disputed" && <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "8px 12px", background: "#fef2f2", borderRadius: 7 }}><Icon icon="mdi:alert-circle" width={16} color="#ef4444" /><span style={{ fontSize: 13, color: "#ef4444", fontWeight: 600 }}>Disputed</span></div>}
+                </div>
               </div>
             )}
-            {activeFilter === "returned" && (
-              <div style={{ display: "flex", gap: 8 }}>
-                <button onClick={() => openConfirmModal(stop)} style={{ flex: 1, padding: "11px 0", background: "#0070f3", color: "white", border: "none", borderRadius: 8, cursor: "pointer", fontWeight: "bold", fontSize: isMobile ? 14 : 13, minHeight: 44, display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
-                  <Icon icon="mdi:pencil" width={16} />
-                  Edit Price
-                </button>
-              </div>
-            )}
-            {activeFilter === "confirmed" && <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "8px 10px", background: "#ecfdf5", borderRadius: 7 }}><Icon icon="mdi:check-circle" width={16} color="#10b981" /><span style={{ fontSize: 13, color: "#10b981", fontWeight: "600" }}>Confirmed</span></div>}
-            {activeFilter === "disputed" && <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "8px 10px", background: "#fff0f0", borderRadius: 7 }}><Icon icon="mdi:alert-circle" width={16} color="#ff4444" /><span style={{ fontSize: 13, color: "#ff4444", fontWeight: "600" }}>Disputed</span></div>}
           </div>
-        ))
+          )
+        })
       ) : (
           <div style={{ background: "white", borderRadius: 12, border: "1px solid #e2e8f0", boxShadow: "0 1px 3px rgba(0,0,0,0.05)", overflowX: "auto" }}>
             <table style={{ width: "100%", borderCollapse: "collapse", textAlign: "left" }}>
@@ -305,6 +380,8 @@ export default function MyStops() {
                     <td style={{ padding: "12px 16px" }}>
                       {stop.discount_status === "returned" ? (
                         <span style={{ padding: "4px 10px", borderRadius: 6, fontSize: 12, fontWeight: 500, background: "#fffbeb", color: "#92400e", border: "1px solid #fcd34d", display: "inline-block" }}>Returned</span>
+                      ) : stop.discount_status === "pending" ? (
+                        <span style={{ padding: "4px 10px", borderRadius: 6, fontSize: 12, fontWeight: 500, background: "#fffbeb", color: "#b45309", border: "1px solid #fbbf24", display: "inline-block" }}>In Review</span>
                       ) : stop.confirmed ? (
                         <span style={{ padding: "4px 10px", borderRadius: 6, fontSize: 12, fontWeight: 500, background: "#d1fae5", color: "#065f46", border: "1px solid #a7f3d0", display: "inline-block" }}>Confirmed</span>
                       ) : stop.disputed ? (

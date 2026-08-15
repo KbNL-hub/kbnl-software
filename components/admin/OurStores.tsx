@@ -223,32 +223,32 @@ export default function OurStores() {
         })
       }
 
-      const groups: VerificationGroup[] = []
-      const sorted = [...rows].sort((a, b) => new Date(b.verified_at).getTime() - new Date(a.verified_at).getTime())
-      for (const row of sorted) {
-        const existing = groups.find(g => g.key === row.verification_session_id)
+      const groupMap = new Map<string, VerificationGroup>()
+      for (const row of rows) {
+        const key = (row.verification_session_id as string) || (row.verification_id as string)
+        const existing = groupMap.get(key)
         const item: PastVerification = {
-          verification_id: row.verification_id,
-          verification_session_id: row.verification_session_id,
-          product: row.product,
-          system_balance: row.system_balance,
-          physical_count: row.physical_count,
-          discrepancy: row.discrepancy,
-          notes: row.notes,
-          verified_at: row.verified_at,
+          verification_id: row.verification_id as string,
+          verification_session_id: row.verification_session_id as string,
+          product: row.product as string,
+          system_balance: row.system_balance as number,
+          physical_count: row.physical_count as number,
+          discrepancy: row.discrepancy as number,
+          notes: row.notes as string | null,
+          verified_at: row.verified_at as string,
         }
         if (existing) {
           existing.items.push(item)
         } else {
-          groups.push({
-            key: row.verification_session_id,
-            verified_at: row.verified_at,
+          groupMap.set(key, {
+            key,
+            verified_at: row.verified_at as string,
             supervisor_name: supervisorMap[row.supervisor_id as string] || "Unknown",
             items: [item],
           })
         }
       }
-      setVerificationGroups(groups)
+      setVerificationGroups([...groupMap.values()])
     } catch {
       setVerificationGroups([])
     } finally {
@@ -1362,6 +1362,7 @@ export default function OurStores() {
                   return (
                     <div key={group.key} style={{ border: "1px solid #e2e8f0", borderRadius: 12, overflow: "hidden" }}>
                       <button
+                        aria-expanded={isExpanded}
                         onClick={() => {
                           const next = new Set(expandedVerificationGroups)
                           if (next.has(group.key)) next.delete(group.key)
