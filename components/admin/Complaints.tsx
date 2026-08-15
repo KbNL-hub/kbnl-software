@@ -72,13 +72,26 @@ export default function Complaints() {
 
   usePolling(fetchComplaints, 120000)
 
+  useEffect(() => {
+    if (!replyingTo) return
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && !replyLoading) { setReplyingTo(null); setReplyText("") }
+    }
+    window.addEventListener("keydown", onKey)
+    return () => window.removeEventListener("keydown", onKey)
+  }, [replyingTo, replyLoading])
+
   async function fetchComplaints() {
     const [driverRes, reportRes] = await Promise.all([
       supabase.from("driver_complaints").select("complaint_id, driver_id, plate_number, complaint_type, notes, reported_at, resolved, trip_id").order("reported_at", { ascending: false }),
       supabase.from("reports").select("*").order("created_at", { ascending: false }),
     ])
 
-    if (driverRes.error || reportRes.error) return
+    if (driverRes.error || reportRes.error) {
+      console.error("Load complaints failed", driverRes.error ?? reportRes.error)
+      setLoading(false)
+      return
+    }
 
     const driverComplaints = await Promise.all((driverRes.data || []).map(async (c) => {
       const [driverRes, truckRes] = await Promise.all([
@@ -101,23 +114,27 @@ export default function Complaints() {
       }
     }))
 
-    const reportComplaints = await Promise.all((reportRes.data || []).map(async (r: Record<string, unknown>) => {
-      const { data: profile } = await supabase.from("Profiles").select("full_name").eq("user_id", r.user_id).single()
-      return {
-        complaint_id: `report-${r.id}`,
-        driver_name: profile?.full_name ?? "Unknown",
-        plate_number: r.role as string,
-        kbnl_truck_no: null,
-        complaint_type: "User Report",
-        notes: r.message as string,
-        reported_at: r.created_at as string,
-        resolved: r.resolved as boolean ?? false,
-        trip_id: null,
-        status: (r.status as "Open" | "In Progress" | "Resolved") || (r.resolved ? "Resolved" : "Open"),
-        admin_reply: r.admin_reply as string | null ?? null,
-        admin_reply_at: r.admin_reply_at as string | null ?? null,
-        raw_id: r.id as string,
-      }
+    const reportRows = (reportRes.data || []) as Record<string, unknown>[]
+    const reportUserIds = [...new Set(reportRows.map(r => r.user_id as string).filter(Boolean))]
+    const { data: profiles } = reportUserIds.length
+      ? await supabase.from("Profiles").select("user_id, full_name").in("user_id", reportUserIds)
+      : { data: [] }
+    const nameByUserId = new Map((profiles || []).map(p => [p.user_id, p.full_name]))
+
+    const reportComplaints = reportRows.map(r => ({
+      complaint_id: `report-${r.id}`,
+      driver_name: nameByUserId.get(r.user_id as string) ?? "Unknown",
+      plate_number: r.role as string,
+      kbnl_truck_no: null,
+      complaint_type: "User Report",
+      notes: r.message as string,
+      reported_at: r.created_at as string,
+      resolved: r.resolved as boolean ?? false,
+      trip_id: null,
+      status: (r.status as "Open" | "In Progress" | "Resolved") || (r.resolved ? "Resolved" : "Open"),
+      admin_reply: r.admin_reply as string | null ?? null,
+      admin_reply_at: r.admin_reply_at as string | null ?? null,
+      raw_id: r.id as string,
     }))
 
     const merged = [...driverComplaints, ...reportComplaints].sort(
@@ -240,7 +257,7 @@ export default function Complaints() {
       <div style={{ display: "flex", gap: 8, marginBottom: 24, flexWrap: "wrap" }}>
         {filters.map(f => {
           const count = f === "All" ? complaints.length : f === "Open" ? openCount : f === "In Progress" ? inProgressCount : resolvedCount
-          const s = f === "All" ? { bg: "#f1f5f9", color: "#0f172a", border: "#cbd5e1" } : statusBadge(f === "In Progress" ? "In Progress" : f)
+          const s = f === "All" ? { bg: "#f1f5f9", color: "#0f172a", border: "#cbd5e1" } : statusBadge(f)
           const isActive = filter === f
           return (
             <button

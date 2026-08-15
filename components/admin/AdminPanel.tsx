@@ -221,11 +221,9 @@ function AdminPanelContent({ userProfile }: Props) {
         if (canViewComplaints) {
           const { count: driverComplaints } = await supabase
             .from("driver_complaints").select("*", { count: "exact", head: true }).eq("resolved", false)
-          const { count: openReports } = await supabase
-            .from("reports").select("*", { count: "exact", head: true }).eq("status", "Open")
-          const { count: inProgressReports } = await supabase
-            .from("reports").select("*", { count: "exact", head: true }).eq("status", "In Progress")
-          setUnresolvedComplaints((driverComplaints || 0) + (openReports || 0) + (inProgressReports || 0))
+          const { count: activeReports } = await supabase
+            .from("reports").select("*", { count: "exact", head: true }).neq("status", "Resolved")
+          setUnresolvedComplaints((driverComplaints || 0) + (activeReports || 0))
         }
 
         if (canViewStoreSales) {
@@ -298,11 +296,9 @@ function AdminPanelContent({ userProfile }: Props) {
         if (canViewComplaints) {
           const { count: driverComplaints } = await supabase
             .from("driver_complaints").select("*", { count: "exact", head: true }).eq("resolved", false)
-          const { count: openReports } = await supabase
-            .from("reports").select("*", { count: "exact", head: true }).eq("status", "Open")
-          const { count: inProgressReports } = await supabase
-            .from("reports").select("*", { count: "exact", head: true }).eq("status", "In Progress")
-          setUnresolvedComplaints((driverComplaints || 0) + (openReports || 0) + (inProgressReports || 0))
+          const { count: activeReports } = await supabase
+            .from("reports").select("*", { count: "exact", head: true }).neq("status", "Resolved")
+          setUnresolvedComplaints((driverComplaints || 0) + (activeReports || 0))
         }
         if (canViewStoreSales) {
           const { count } = await supabase

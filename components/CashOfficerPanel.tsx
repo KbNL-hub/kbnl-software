@@ -91,6 +91,11 @@ export default function CashOfficerPanel({ clerkId, officeName }: Props) {
     fetchTopUps()
   }, 30000, !!clerkId && !!officeName)
 
+  useEffect(() => {
+    const creatorIds = [...new Set(topUps.map(t => t.created_by).filter(Boolean))] as string[]
+    if (creatorIds.length > 0) fetchAdminsMap(creatorIds)
+  }, [topUps])
+
   async function loadData() {
     setLoading(true)
     await Promise.all([
@@ -98,7 +103,6 @@ export default function CashOfficerPanel({ clerkId, officeName }: Props) {
       fetchExpenses(),
       fetchDeposits(),
       fetchTopUps(),
-      fetchAdminsMap()
     ])
     setLoading(false)
   }
@@ -162,8 +166,10 @@ export default function CashOfficerPanel({ clerkId, officeName }: Props) {
     if (data) setTopUps(data)
   }
 
-  async function fetchAdminsMap() {
-    const { data } = await supabase.from("Profiles").select("user_id, full_name")
+  async function fetchAdminsMap(userIds?: string[]) {
+    const ids = userIds?.filter(Boolean) ?? []
+    if (ids.length === 0) { setAdminsMap({}); return }
+    const { data } = await supabase.from("Profiles").select("user_id, full_name").in("user_id", ids)
     const aMap: Record<string, string> = {}
     data?.forEach(a => { aMap[a.user_id] = a.full_name })
     setAdminsMap(aMap)
@@ -310,7 +316,9 @@ export default function CashOfficerPanel({ clerkId, officeName }: Props) {
     setLoading(false)
   }
 
-  const filteredExpenses = expenses.filter(e => e.clerk_id === clerkId && (filter === "All" || filter === "Pending" || filter === "Authorised" || filter === "Rejected" ? e.status === filter : true))
+  const filteredExpenses = expenses.filter(
+    e => e.clerk_id === clerkId && (filter === "All" || filter === "Top-ups" || e.status === filter)
+  )
 
   const logEntries = useMemo(() => {
     const expenseEntries = filteredExpenses.map(e => ({

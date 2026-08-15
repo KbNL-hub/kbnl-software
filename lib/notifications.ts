@@ -675,7 +675,7 @@ export function notifyReportReplied(userId: string, reportId: string) {
   return sendToUser(userId, {
     title: 'Admin Replied to Your Report',
     body: 'Admin has responded to your complaint. Tap to view.',
-    url: '/admin',
+    url: '/',
     tag: `report-replied-${reportId}`,
   })
 }

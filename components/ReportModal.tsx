@@ -44,14 +44,24 @@ export default function ReportModal({ isOpen, onClose, userId, userRole }: Repor
     if (isOpen) {
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setMode("list")
+      setLoading(true)
       fetchReports()
-      pollingRef.current = setInterval(fetchReports, 30000)
     }
     return () => {
       if (pollingRef.current) { clearInterval(pollingRef.current); pollingRef.current = null }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen])
+
+  useEffect(() => {
+    if (!isOpen || mode !== "list") {
+      if (pollingRef.current) { clearInterval(pollingRef.current); pollingRef.current = null }
+      return
+    }
+    pollingRef.current = setInterval(fetchReports, 120000)
+    return () => { if (pollingRef.current) { clearInterval(pollingRef.current); pollingRef.current = null } }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen, mode])
 
   useEffect(() => {
     return () => {
