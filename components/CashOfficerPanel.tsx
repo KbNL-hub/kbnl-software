@@ -33,6 +33,16 @@ type CashExpense = {
   resolved_at: string | null
 }
 
+type TopUp = {
+  transaction_id: string
+  from_account: string
+  to_account: string
+  amount: number
+  description: string | null
+  created_by: string | null
+  created_at: string
+}
+
 type ExpenseItemInput = {
   item_name: string
   amount: string
@@ -48,6 +58,8 @@ export default function CashOfficerPanel({ clerkId, officeName }: Props) {
   const [officeBalance, setOfficeBalance] = useState<number>(0)
   const [expenses, setExpenses] = useState<CashExpense[]>([])
   const [deposits, setDeposits] = useState<CashDeposit[]>([])
+  const [topUps, setTopUps] = useState<TopUp[]>([])
+  const [adminsMap, setAdminsMap] = useState<Record<string, string>>({})
   const [loading, setLoading] = useState(true)
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null)
   const [filter, setFilter] = useState("All")
@@ -76,6 +88,7 @@ export default function CashOfficerPanel({ clerkId, officeName }: Props) {
     fetchOfficeBalance()
     fetchExpenses()
     fetchDeposits()
+    fetchTopUps()
   }, 30000, !!clerkId && !!officeName)
 
   async function loadData() {
@@ -83,7 +96,9 @@ export default function CashOfficerPanel({ clerkId, officeName }: Props) {
     await Promise.all([
       fetchOfficeBalance(),
       fetchExpenses(),
-      fetchDeposits()
+      fetchDeposits(),
+      fetchTopUps(),
+      fetchAdminsMap()
     ])
     setLoading(false)
   }
@@ -107,6 +122,9 @@ export default function CashOfficerPanel({ clerkId, officeName }: Props) {
       ...deposits.map(d => ({
         id: d.deposit_id, amount: -d.amount, timestamp: d.created_at
       })),
+      ...topUps.map(t => ({
+        id: t.transaction_id, amount: -t.amount, timestamp: t.created_at
+      })),
     ]
     records.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
     let running = officeBalance
@@ -115,7 +133,7 @@ export default function CashOfficerPanel({ clerkId, officeName }: Props) {
       running += rec.amount
     }
     return map
-  }, [expenses, deposits, officeBalance])
+  }, [expenses, deposits, topUps, officeBalance])
 
   async function fetchExpenses() {
     const { data } = await supabase
@@ -133,6 +151,22 @@ export default function CashOfficerPanel({ clerkId, officeName }: Props) {
       .eq("office_name", officeName)
       .order("created_at", { ascending: false })
     if (data) setDeposits(data)
+  }
+
+  async function fetchTopUps() {
+    const { data } = await supabase
+      .from("transactions")
+      .select("*")
+      .eq("to_account", officeName)
+      .order("created_at", { ascending: false })
+    if (data) setTopUps(data)
+  }
+
+  async function fetchAdminsMap() {
+    const { data } = await supabase.from("Profiles").select("user_id, full_name")
+    const aMap: Record<string, string> = {}
+    data?.forEach(a => { aMap[a.user_id] = a.full_name })
+    setAdminsMap(aMap)
   }
 
   function handleAddItem() {
@@ -276,6 +310,35 @@ export default function CashOfficerPanel({ clerkId, officeName }: Props) {
     setLoading(false)
   }
 
+  const filteredExpenses = expenses.filter(e => e.clerk_id === clerkId && (filter === "All" || filter === "Pending" || filter === "Authorised" || filter === "Rejected" ? e.status === filter : true))
+
+  const logEntries = useMemo(() => {
+    const expenseEntries = filteredExpenses.map(e => ({
+      kind: "expense" as const,
+      id: e.expense_id,
+      timestamp: e.resolved_at ?? e.created_at,
+      data: e,
+    }))
+    if (filter === "Top-ups") {
+      return topUps.map(t => ({
+        kind: "topup" as const,
+        id: t.transaction_id,
+        timestamp: t.created_at,
+        data: t,
+      }))
+    }
+    if (filter !== "All") return expenseEntries
+    const topUpEntries = topUps.map(t => ({
+      kind: "topup" as const,
+      id: t.transaction_id,
+      timestamp: t.created_at,
+      data: t,
+    }))
+    return [...expenseEntries, ...topUpEntries].sort(
+      (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+    )
+  }, [filteredExpenses, topUps, filter])
+
   return (
     <div>
       {successMsg && (
@@ -342,12 +405,13 @@ export default function CashOfficerPanel({ clerkId, officeName }: Props) {
       <div style={{ background: "white", borderRadius: 12, border: "1px solid #eee", padding: 24 }}>
         <h3 style={{ margin: "0 0 20px" }}>My Logged Expenses</h3>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 20 }}>
-          {["All", "Pending", "Authorised", "Rejected"].map(f => {
+          {["All", "Pending", "Authorised", "Rejected", "Top-ups"].map(f => {
             let activeColor = "white"
             let activeBg = "#171717"
             if (f === "Pending") { activeColor = "#0070f3"; activeBg = "rgba(0, 112, 243, 0.1)" }
             if (f === "Authorised") { activeColor = "#16a34a"; activeBg = "rgba(22, 163, 74, 0.1)" }
             if (f === "Rejected") { activeColor = "#ef4444"; activeBg = "rgba(239, 68, 68, 0.1)" }
+            if (f === "Top-ups") { activeColor = "#4f46e5"; activeBg = "rgba(79, 70, 229, 0.1)" }
             return (
               <button key={f} onClick={() => setFilter(f)} style={{
                 padding: "6px 14px", borderRadius: 20, fontSize: 12, cursor: "pointer",
@@ -366,11 +430,47 @@ export default function CashOfficerPanel({ clerkId, officeName }: Props) {
 
         {loading ? (
           <p style={{ color: "#888", textAlign: "center", padding: "40px 0" }}>Loading expenses...</p>
-        ) : expenses.filter(e => e.clerk_id === clerkId && (filter === "All" || e.status === filter)).length === 0 ? (
-          <p style={{ color: "#888", textAlign: "center", padding: "40px 0" }}>No {filter === "All" ? "" : filter.toLowerCase()} expenses found.</p>
+        ) : logEntries.length === 0 ? (
+          <p style={{ color: "#888", textAlign: "center", padding: "40px 0" }}>No {filter === "All" ? "" : filter.toLowerCase()} records found.</p>
         ) : (
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: "16px" }}>
-            {expenses.filter(e => e.clerk_id === clerkId && (filter === "All" || e.status === filter)).map((exp) => {
+            {logEntries.map((entry) => {
+              if (entry.kind === "topup") {
+                const t = entry.data
+                const adminName = adminsMap[t.created_by || ""] || "Admin"
+                return (
+                  <div key={t.transaction_id} style={{ border: "1px solid #c7d2fe", borderRadius: 12, padding: 16, background: "#eef2ff", display: "flex", flexDirection: "column", gap: 12, boxShadow: "0 2px 8px rgba(0,0,0,0.04)" }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                      <span style={{ fontSize: 13, color: "#6366f1", fontWeight: "500" }}>{new Date(t.created_at).toLocaleDateString()}</span>
+                      <span style={{ padding: "4px 10px", borderRadius: 12, fontSize: 11, background: "#eef2ff", color: "#4f46e5", fontWeight: "bold", letterSpacing: 0.3, border: "1px solid #c7d2fe" }}>
+                        Income
+                      </span>
+                    </div>
+                    <div>
+                      <h4 style={{ margin: "0 0 6px 0", fontSize: 16, color: "#3730a3", lineHeight: 1.3 }}>Balance Top-up</h4>
+                      <div style={{ fontSize: 20, fontWeight: "bold", color: "#4f46e5", display: "flex", alignItems: "baseline", gap: 2 }}>
+                        <span style={{ fontSize: 14, color: "#6366f1" }}>+</span>
+                        <span style={{ fontSize: 14, color: "#6366f1" }}>₦</span>
+                        {t.amount.toLocaleString()}
+                      </div>
+                      <div style={{ fontSize: 12, color: "#64748b", marginTop: 4 }}>
+                        <strong style={{ color: "#334155" }}>{adminName}</strong>
+                        <span style={{ margin: "0 4px" }}>·</span>
+                        <span>from {t.from_account}</span>
+                      </div>
+                      {t.description && (
+                        <p style={{ margin: "4px 0 0", color: "#475569", fontSize: 12, fontStyle: "italic" }}>&quot;{t.description}&quot;</p>
+                      )}
+                      {balanceMap[t.transaction_id] !== undefined && (
+                        <span style={{ marginTop: 4, fontSize: 11, fontWeight: 600, color: "#4338ca", background: "#e0e7ff", padding: "2px 8px", borderRadius: 4, display: "inline-block" }}>
+                          Balance after: ₦{balanceMap[t.transaction_id].toLocaleString()}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                )
+              }
+              const exp = entry.data
               let statusBg = "#eee"
               let statusColor = "#666"
               if (exp.status === "Pending") { statusBg = "#ebf8ff"; statusColor = "#2b6cb0" }

@@ -10,6 +10,9 @@ type ReportItem = {
   message: string
   created_at: string
   resolved: boolean
+  status: "Open" | "In Progress" | "Resolved"
+  admin_reply: string | null
+  admin_reply_at: string | null
 }
 
 type ReportModalProps = {
@@ -21,21 +24,31 @@ type ReportModalProps = {
 
 const fontSize = { xs: 12, sm: 13, base: 14, md: 15 }
 
+function statusStyle(status: string) {
+  if (status === "Resolved") return { bg: "#d1fae5", color: "#065f46", border: "#a7f3d0" }
+  if (status === "In Progress") return { bg: "#dbeafe", color: "#1e40af", border: "#93c5fd" }
+  return { bg: "#fef3c7", color: "#78350f", border: "#fde68a" }
+}
+
 export default function ReportModal({ isOpen, onClose, userId, userRole }: ReportModalProps) {
   const [mode, setMode] = useState<"list" | "form" | "success">("list")
   const [reports, setReports] = useState<ReportItem[]>([])
   const [loading, setLoading] = useState(false)
-  const [resolving, setResolving] = useState<string | null>(null)
   const [message, setMessage] = useState("")
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState("")
   const closeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   useEffect(() => {
     if (isOpen) {
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setMode("list")
       fetchReports()
+      pollingRef.current = setInterval(fetchReports, 30000)
+    }
+    return () => {
+      if (pollingRef.current) { clearInterval(pollingRef.current); pollingRef.current = null }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen])
@@ -47,36 +60,21 @@ export default function ReportModal({ isOpen, onClose, userId, userRole }: Repor
   }, [])
 
   async function fetchReports() {
-    setLoading(true)
-    const { data } = await supabase
+    if (!userId) return
+    const { data, error } = await supabase
       .from("reports")
-      .select("id, message, created_at, resolved")
+      .select("id, message, created_at, resolved, status, admin_reply, admin_reply_at")
       .eq("user_id", userId)
       .order("created_at", { ascending: false })
-    setReports((data || []) as ReportItem[])
+    if (!error) {
+      setReports((data || []) as ReportItem[])
+    }
     setLoading(false)
   }
 
-  async function handleResolve(id: string) {
-    setResolving(id)
-    try {
-      await apiMutate("admin", {
-        action: "update", table: "reports",
-        data: { resolved: true }, filters: { id },
-      })
-      setReports(prev => prev.map(r => r.id === id ? { ...r, resolved: true } : r))
-    } catch {
-      // silent
-    } finally {
-      setResolving(null)
-    }
-  }
-
   function handleClose() {
-    if (closeTimerRef.current) {
-      clearTimeout(closeTimerRef.current)
-      closeTimerRef.current = null
-    }
+    if (closeTimerRef.current) { clearTimeout(closeTimerRef.current); closeTimerRef.current = null }
+    if (pollingRef.current) { clearInterval(pollingRef.current); pollingRef.current = null }
     setMessage(""); setError(""); setSubmitting(false)
     setMode("list"); setReports([])
     onClose()
@@ -97,7 +95,7 @@ export default function ReportModal({ isOpen, onClose, userId, userRole }: Repor
     try {
       const { error: insertError } = await apiMutate("reports", {
         action: "insert", table: "reports",
-        data: { user_id: userId, role: userRole, message: message.trim(), resolved: false },
+        data: { user_id: userId, role: userRole, message: message.trim(), resolved: false, status: "Open" },
       })
 
       if (insertError) {
@@ -139,15 +137,16 @@ export default function ReportModal({ isOpen, onClose, userId, userRole }: Repor
     marginBottom: 8, fontSize: 13, color: "#475569",
   }
 
-  const unresolved = reports.filter(r => !r.resolved)
-  const resolvedCount = reports.filter(r => r.resolved).length
+  const openCount = reports.filter(r => r.status === "Open").length
+  const inProgressCount = reports.filter(r => r.status === "In Progress").length
+  const resolvedCount = reports.filter(r => r.status === "Resolved").length
 
   return (
     <div style={modalOverlay} onClick={handleClose}>
       <div style={modalBox} onClick={e => e.stopPropagation()}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
           <h2 style={{ margin: 0, fontSize: 18, fontWeight: 700, color: "#0f172a" }}>
-            {mode === "list" ? "My Reports" : mode === "success" ? "" : "Submit Report"}
+            {mode === "list" ? "My Complaints" : mode === "success" ? "" : "Submit Report"}
           </h2>
           <button
             onClick={handleClose}
@@ -278,7 +277,7 @@ export default function ReportModal({ isOpen, onClose, userId, userRole }: Repor
 
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
               <p style={{ margin: 0, fontSize: fontSize.sm, color: "#64748b" }}>
-                {unresolved.length} open &middot; {resolvedCount} resolved
+                {openCount} open · {inProgressCount} in progress · {resolvedCount} resolved
               </p>
               <button
                 onClick={() => { setMode("form"); setMessage(""); setError("") }}
@@ -292,7 +291,7 @@ export default function ReportModal({ isOpen, onClose, userId, userRole }: Repor
                 onMouseEnter={e => e.currentTarget.style.background = "#0060df"}
                 onMouseLeave={e => e.currentTarget.style.background = "#0070f3"}
               >
-                <Icon icon="mdi:plus" width={16} /> New Report
+                <Icon icon="mdi:plus" width={16} /> New
               </button>
             </div>
 
@@ -308,56 +307,60 @@ export default function ReportModal({ isOpen, onClose, userId, userRole }: Repor
                 <p style={{ margin: 0, color: "#64748b", fontSize: fontSize.base }}>No reports yet</p>
               </div>
             ) : (
-              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                {reports.map(r => (
-                  <div
-                    key={r.id}
-                    style={{
-                      display: "flex", alignItems: "flex-start", gap: 10,
-                      padding: "12px 14px", borderRadius: 8,
-                      border: `1px solid ${r.resolved ? "#e2e8f0" : "#fef3c7"}`,
-                      background: r.resolved ? "#fafafa" : "#fffcf5",
-                      opacity: r.resolved ? 0.7 : 1,
-                      transition: "all 0.2s ease",
-                    }}
-                  >
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <p style={{ margin: "0 0 4px", fontSize: fontSize.sm, color: "#0f172a", fontWeight: 500, lineHeight: 1.4, wordBreak: "break-word" }}>
-                        {r.message.length > 100 ? r.message.slice(0, 100) + "…" : r.message}
-                      </p>
-                      <p style={{ margin: 0, fontSize: fontSize.xs, color: "#94a3b8" }}>
-                        {new Date(r.created_at).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit" })}
-                      </p>
-                    </div>
-                    <div style={{ display: "flex", flexDirection: "column", gap: 6, alignItems: "flex-end", flexShrink: 0 }}>
-                      <span style={{
-                        padding: "3px 8px", borderRadius: 5, fontSize: fontSize.xs, fontWeight: 500,
-                        background: r.resolved ? "#d1fae5" : "#fef3c7",
-                        color: r.resolved ? "#065f46" : "#78350f",
-                        border: `1px solid ${r.resolved ? "#a7f3d0" : "#fde68a"}`,
-                      }}>
-                        {r.resolved ? "Resolved" : "Open"}
-                      </span>
-                      {!r.resolved && (
-                        <button
-                          onClick={() => handleResolve(r.id)}
-                          disabled={resolving === r.id}
-                          style={{
-                            padding: "4px 10px", fontSize: fontSize.xs, fontWeight: 600,
-                            background: resolving === r.id ? "#94a3b8" : "#16a34a",
-                            color: "white", border: "none", borderRadius: 5,
-                            cursor: resolving === r.id ? "not-allowed" : "pointer",
-                            transition: "all 0.2s ease", minHeight: 28,
-                          }}
-                          onMouseEnter={e => { if (!resolving) e.currentTarget.style.background = "#15803d" }}
-                          onMouseLeave={e => { if (!resolving) e.currentTarget.style.background = "#16a34a" }}
-                        >
-                          {resolving === r.id ? "…" : "Mark Resolved"}
-                        </button>
+              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                {reports.map(r => {
+                  const s = statusStyle(r.status)
+                  return (
+                    <div
+                      key={r.id}
+                      style={{
+                        padding: "12px 14px", borderRadius: 8,
+                        border: `1px solid ${s.border}`,
+                        background: r.status === "Resolved" ? "#fafafa" : s.bg + "18",
+                        opacity: r.status === "Resolved" ? 0.7 : 1,
+                        transition: "all 0.2s ease",
+                      }}
+                    >
+                      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 10, marginBottom: r.admin_reply ? 10 : 0 }}>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <p style={{ margin: "0 0 4px", fontSize: fontSize.sm, color: "#0f172a", fontWeight: 500, lineHeight: 1.4, wordBreak: "break-word" }}>
+                            {r.message.length > 100 ? r.message.slice(0, 100) + "…" : r.message}
+                          </p>
+                          <p style={{ margin: 0, fontSize: fontSize.xs, color: "#94a3b8" }}>
+                            {new Date(r.created_at).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit" })}
+                          </p>
+                        </div>
+                        <span style={{
+                          padding: "3px 8px", borderRadius: 5, fontSize: fontSize.xs, fontWeight: 600,
+                          background: s.bg, color: s.color, border: `1px solid ${s.border}`,
+                          whiteSpace: "nowrap", flexShrink: 0,
+                        }}>
+                          {r.status}
+                        </span>
+                      </div>
+
+                      {r.admin_reply && (
+                        <div style={{
+                          marginTop: 8, padding: "10px 12px", borderRadius: 6,
+                          background: "#eef2ff", border: "1px solid #c7d2fe",
+                          borderLeft: "3px solid #4f46e5",
+                        }}>
+                          <p style={{ margin: "0 0 4px", fontSize: fontSize.xs, fontWeight: 600, color: "#4338ca", textTransform: "uppercase", letterSpacing: 0.3 }}>
+                            Admin Response
+                          </p>
+                          <p style={{ margin: "0 0 4px", fontSize: fontSize.sm, color: "#1e1b4b", lineHeight: 1.4, wordBreak: "break-word" }}>
+                            {r.admin_reply}
+                          </p>
+                          {r.admin_reply_at && (
+                            <p style={{ margin: 0, fontSize: fontSize.xs, color: "#6366f1" }}>
+                              {new Date(r.admin_reply_at).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit" })}
+                            </p>
+                          )}
+                        </div>
                       )}
                     </div>
-                  </div>
-                ))}
+                  )
+                })}
               </div>
             )}
           </>

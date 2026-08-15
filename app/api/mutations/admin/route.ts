@@ -6,6 +6,7 @@ import {
   notifyTruckAdminNewSideTrip,
   notifyATCSideTripSubmitted,
   notifyComplaintResolved,
+  notifyReportReplied,
   notifyBrokerPricesUpdated,
   notifyATCPricesUpdated,
   notifyAdminPricesUpdated,
@@ -135,6 +136,15 @@ export async function POST(req: NextRequest) {
           const reportId = (filters.id ?? row.id) as string
           if (userId && reportId) {
             notifyComplaintResolved(userId, reportId).catch(console.error)
+          }
+        }
+
+        // Report Replied
+        if (table === "reports" && data.admin_reply && row) {
+          const userId = row.user_id as string
+          const reportId = (filters.id ?? row.id) as string
+          if (userId && reportId) {
+            notifyReportReplied(userId, reportId).catch(console.error)
           }
         }
 

@@ -532,7 +532,7 @@ export function notifyATCDisputedStop(plateNumber: string, brokerName: string) {
   return notify(['ATCOfficer'], {
     title: 'Disputed Stop',
     body: `Stop disputed by ${brokerName} for ${plateNumber}. Tap to review.`,
-    url: '/admin?section=complaints',
+    url: '/admin?section=monitor-trips',
     tag: `atc-disputed-${plateNumber}`,
   })
 }
@@ -581,7 +581,7 @@ export function notifyAdminStopDisputed(plateNumber: string, brokerName: string)
   return notify(adminRoles, {
     title: 'Stop Disputed by Broker',
     body: `Stop disputed by ${brokerName} for ${plateNumber}. Tap to review.`,
-    url: '/admin?section=complaints',
+    url: '/admin?section=monitor-trips',
     tag: `admin-disputed-${plateNumber}`,
   })
 }
@@ -666,5 +666,16 @@ export function notifyComplaintResolved(userId: string, complaintId: string) {
     body: 'Your complaint has been resolved. Tap to view details.',
     url: '/admin?section=complaints',
     tag: `complaint-resolved-${complaintId}`,
+  })
+}
+
+// ─── Global: Report Replied ──────────────────────────────
+
+export function notifyReportReplied(userId: string, reportId: string) {
+  return sendToUser(userId, {
+    title: 'Admin Replied to Your Report',
+    body: 'Admin has responded to your complaint. Tap to view.',
+    url: '/admin',
+    tag: `report-replied-${reportId}`,
   })
 }

@@ -1418,12 +1418,12 @@ export default function DriverDashboard() {
         <div style={modalOverlay}>
           <div onClick={e => e.stopPropagation()} style={{ ...modalBox, maxHeight: "85vh", overflowY: "auto" }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
-              <h3 style={{ margin: 0, color: "#0f172a", fontSize: FONT_SIZE.xl, fontWeight: 700 }}>My Reports</h3>
+              <h3 style={{ margin: 0, color: "#0f172a", fontSize: FONT_SIZE.xl, fontWeight: 700 }}>My Complaints</h3>
               <button onClick={() => setShowMyComplaints(false)} className="complaint-close-btn" style={{ background: "none", border: "none", cursor: "pointer", padding: 4, color: "#94a3b8" }}><Icon icon="mdi:close" width={20} /></button>
             </div>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
               <p style={{ margin: 0, fontSize: FONT_SIZE.sm, color: "#64748b" }}>{myComplaints.filter(c => !c.resolved).length} open &middot; {myComplaints.filter(c => c.resolved).length} resolved</p>
-              <button onClick={() => { setShowMyComplaints(false); setShowComplaintModal(true) }} className="new-report-btn" style={{ padding: "8px 16px", background: "#f5a623", color: "white", border: "none", borderRadius: 6, cursor: "pointer", fontWeight: 600, fontSize: FONT_SIZE.sm, display: "flex", alignItems: "center", gap: 6, minHeight: 36 }}><Icon icon="mdi:plus" width={16} /> New Report</button>
+              <button onClick={() => { setShowMyComplaints(false); setShowComplaintModal(true) }} className="new-report-btn" style={{ padding: "8px 16px", background: "#f5a623", color: "white", border: "none", borderRadius: 6, cursor: "pointer", fontWeight: 600, fontSize: FONT_SIZE.sm, display: "flex", alignItems: "center", gap: 6, minHeight: 36 }}><Icon icon="mdi:plus" width={16} /> New</button>
             </div>
             {fetchingComplaints ? (
               <div style={{ display: "flex", justifyContent: "center", padding: "32px 0" }}><div style={{ width: 28, height: 28, borderRadius: "50%", border: "3px solid #e2e8f0", borderTopColor: "#0070f3", animation: "spin 1s linear infinite" }} /></div>
