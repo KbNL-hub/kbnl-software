@@ -31,6 +31,7 @@ export const ALL_SECTIONS = [
   'side-trips',
   'our-stores',
   'trips',
+  'credit-approvals',
 ] as const
 
 export type SectionKey = (typeof ALL_SECTIONS)[number]
@@ -135,6 +136,11 @@ export const ROLES: { [key: string]: RoleConfig | undefined } & Partial<Record<R
     access: 'write',
     label: 'Store Supervisor',
   },
+  [Role.CreditManager]: {
+    sections: ['credit-approvals'],
+    access: 'write',
+    label: 'Credit Manager',
+  },
 }
 
 export const ROLE_DASHBOARDS: Record<Role, string> = {
@@ -154,6 +160,7 @@ export const ROLE_DASHBOARDS: Record<Role, string> = {
   [Role.StoreOfficer]: '/store-officer',
   [Role.CashOfficer]: '/cash-officer',
   [Role.StoreSupervisor]: '/store-supervisor',
+  [Role.CreditManager]: '/admin',
 }
 
 export function getRoleDashboard(role: string): string {

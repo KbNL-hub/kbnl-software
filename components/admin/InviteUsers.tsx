@@ -20,6 +20,7 @@ const ALL_ROLES = [
   { key: "TruckAdmin", label: "Truck Admin", group: "admin", needsField: null },
   { key: "DeskOfficer", label: "Desk Officer", group: "admin", needsField: null },
   { key: "ATCOfficer", label: "ATC Officer", group: "admin", needsField: null },
+  { key: "CreditManager", label: "Credit Manager", group: "admin", needsField: null },
   { key: "Driver", label: "Driver", group: "other", needsField: null },
   { key: "StationManager", label: "Station Manager", group: "other", needsField: "company" },
   { key: "TruckOfficer", label: "Truck Officer", group: "other", needsField: null },

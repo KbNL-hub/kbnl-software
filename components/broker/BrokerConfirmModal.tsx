@@ -95,6 +95,9 @@ export default function BrokerConfirmModal({ isOpen, onClose, brokerId, isMobile
   const [discounts, setDiscounts] = useState<Record<string, string>>({})
   const [salePrices, setSalePrices] = useState<Record<string, string>>({})
   const [priceReason, setPriceReason] = useState("")
+  const [isOnCredit, setIsOnCredit] = useState(false)
+  const [selectedCreditManagerId, setSelectedCreditManagerId] = useState("")
+  const [creditManagersList, setCreditManagersList] = useState<{ manager_id: string; full_name: string }[]>([])
   const [message, setMessage] = useState("")
   const [submitting, setSubmitting] = useState(false)
 
@@ -137,6 +140,12 @@ export default function BrokerConfirmModal({ isOpen, onClose, brokerId, isMobile
     setLinePrices({})
     setPriceReason("")
     setMessage("")
+    setIsOnCredit(false)
+    setSelectedCreditManagerId("")
+
+    supabase.from("credit_managers").select("manager_id, full_name").order("full_name").then(({ data }) => {
+      if (data) setCreditManagersList(data)
+    })
 
     if (isStop && stop) {
       setSelectedCustomer(
@@ -266,6 +275,7 @@ export default function BrokerConfirmModal({ isOpen, onClose, brokerId, isMobile
       if (!selectedCustomer) { setMessage("Customer is required"); return }
       if (!pricePerBag) { setMessage("Price per bag required"); return }
       if (showPriceReason && !priceReason.trim()) { setMessage("Provide a reason for using a different price"); return }
+      if (isOnCredit && !selectedCreditManagerId) { setMessage("Select a credit manager"); return }
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) return
 
@@ -276,7 +286,83 @@ export default function BrokerConfirmModal({ isOpen, onClose, brokerId, isMobile
         const cp = companyPriceMap[selectedArea]?.[stop.product] ?? 0
         const hasDiff = showPriceReason && finalPriceVal !== cp && cp > 0 && finalPriceVal > 0
 
-        if (hasDiff) {
+        let creditApprovalId: string | null = null
+
+        if (isOnCredit) {
+          const { data: caData, error: caError } = await apiMutate("finance", {
+            action: "insert",
+            table: "credit_approvals",
+            data: {
+              source_type: "stop",
+              source_id: stop.stop_id,
+              broker_id: brokerId,
+              credit_manager_id: selectedCreditManagerId,
+              area: selectedArea,
+              product: stop.product,
+              quantity: stop.quantity_offloaded,
+              company_price: cp,
+              adjusted_price: hasDiff ? finalPriceVal : null,
+              status: "Pending",
+            },
+          })
+          if (caError) { setMessage("Failed to submit. Please try again."); return }
+          creditApprovalId = caData?.[0]?.id ?? null
+        }
+
+        if (isOnCredit && hasDiff) {
+          const { error } = await apiMutate("trips", {
+            action: "transaction",
+            sub_actions: [
+              {
+                action: "update", table: "Stops",
+                data: {
+                  confirmed: false, customer_id: customerIdToSave, updated_by: user.id,
+                  discount_status: "pending", on_credit: true,
+                  ...(creditApprovalId ? { credit_approval_id: creditApprovalId } : {}),
+                },
+                filters: { stop_id: stop.stop_id },
+              },
+              {
+                action: "insert", table: "Stop_Confirmations",
+                data: {
+                  stop_id: stop.stop_id, broker_id: brokerId, customer_id: customerIdToSave,
+                  price_per_bag: finalPriceVal, area: selectedArea, company_price: cp,
+                  price_reason: priceReason.trim(),
+                },
+              },
+              {
+                action: "upsert", table: "price_adjustments",
+                conflict: "source_type,source_id",
+                data: {
+                  source_type: "stop", source_id: stop.stop_id, broker_id: brokerId,
+                  area: selectedArea, product: stop.product, company_price: cp,
+                  adjusted_price: finalPriceVal, price_reason: priceReason.trim(),
+                  status: "Pending", credit_status: "pending",
+                },
+              },
+            ],
+          })
+          if (error) { setMessage("Failed to submit. Please try again."); return }
+        } else if (isOnCredit) {
+          const { error } = await apiMutate("trips", {
+            action: "update", table: "Stops",
+            data: {
+              confirmed: false, customer_id: customerIdToSave, updated_by: user.id,
+              on_credit: true,
+              ...(creditApprovalId ? { credit_approval_id: creditApprovalId } : {}),
+            },
+            filters: { stop_id: stop.stop_id },
+          })
+          if (error) { setMessage("Failed to submit. Please try again."); return }
+          await apiMutate("trips", {
+            action: "insert", table: "Stop_Confirmations",
+            data: {
+              stop_id: stop.stop_id, broker_id: brokerId, customer_id: customerIdToSave,
+              price_per_bag: finalPriceVal, area: selectedArea, company_price: cp,
+              price_reason: null,
+            },
+          })
+        } else if (hasDiff) {
           const { error } = await apiMutate("trips", {
             action: "transaction",
             sub_actions: [
@@ -288,12 +374,8 @@ export default function BrokerConfirmModal({ isOpen, onClose, brokerId, isMobile
               {
                 action: "insert", table: "Stop_Confirmations",
                 data: {
-                  stop_id: stop.stop_id,
-                  broker_id: brokerId,
-                  customer_id: customerIdToSave,
-                  price_per_bag: finalPriceVal,
-                  area: selectedArea,
-                  company_price: cp,
+                  stop_id: stop.stop_id, broker_id: brokerId, customer_id: customerIdToSave,
+                  price_per_bag: finalPriceVal, area: selectedArea, company_price: cp,
                   price_reason: priceReason.trim(),
                 },
               },
@@ -301,14 +383,9 @@ export default function BrokerConfirmModal({ isOpen, onClose, brokerId, isMobile
                 action: "upsert", table: "price_adjustments",
                 conflict: "source_type,source_id",
                 data: {
-                  source_type: "stop",
-                  source_id: stop.stop_id,
-                  broker_id: brokerId,
-                  area: selectedArea,
-                  product: stop.product,
-                  company_price: cp,
-                  adjusted_price: finalPriceVal,
-                  price_reason: priceReason.trim(),
+                  source_type: "stop", source_id: stop.stop_id, broker_id: brokerId,
+                  area: selectedArea, product: stop.product, company_price: cp,
+                  adjusted_price: finalPriceVal, price_reason: priceReason.trim(),
                   status: "Pending",
                 },
               },
@@ -330,12 +407,8 @@ export default function BrokerConfirmModal({ isOpen, onClose, brokerId, isMobile
               {
                 action: "insert", table: "Stop_Confirmations",
                 data: {
-                  stop_id: stop.stop_id,
-                  broker_id: brokerId,
-                  customer_id: customerIdToSave,
-                  price_per_bag: finalPriceVal,
-                  area: selectedArea,
-                  company_price: cp,
+                  stop_id: stop.stop_id, broker_id: brokerId, customer_id: customerIdToSave,
+                  price_per_bag: finalPriceVal, area: selectedArea, company_price: cp,
                   price_reason: null,
                 },
               },
@@ -354,6 +427,7 @@ export default function BrokerConfirmModal({ isOpen, onClose, brokerId, isMobile
     } else if (saleGroup) {
       if (!selectedArea) { setMessage("Select an area"); return }
       if (!selectedCustomer) { setMessage("Customer is required"); return }
+      if (isOnCredit && !selectedCreditManagerId) { setMessage("Select a credit manager"); return }
 
       for (const line of saleGroup.lines) {
         if (!linePrices[line.sale_id]) {
@@ -374,6 +448,34 @@ export default function BrokerConfirmModal({ isOpen, onClose, brokerId, isMobile
         const unconfirmed: string[] = []
         const groupId = crypto.randomUUID()
 
+        const creditApprovalIds: Record<string, string> = {}
+        if (isOnCredit) {
+          for (const line of saleGroup.lines) {
+            const price = parseAmount(linePrices[line.sale_id] ?? "")
+            const cp = companyPriceMap[selectedArea]?.[line.product] ?? 0
+            const lineHasDiff = cp > 0 && price > 0 && price !== cp
+            const { data: caData, error: caError } = await apiMutate("finance", {
+              action: "insert",
+              table: "credit_approvals",
+              data: {
+                source_type: "store_sale",
+                source_id: line.sale_id,
+                broker_id: brokerId,
+                credit_manager_id: selectedCreditManagerId,
+                area: selectedArea,
+                product: line.product,
+                quantity: line.quantity,
+                company_price: cp,
+                adjusted_price: lineHasDiff ? price : null,
+                status: "Pending",
+              },
+            })
+            if (!caError && caData?.[0]?.id) {
+              creditApprovalIds[line.sale_id] = caData[0].id
+            }
+          }
+        }
+
         for (const line of saleGroup.lines) {
           const price = parseAmount(linePrices[line.sale_id] ?? "")
           const cp = companyPriceMap[selectedArea]?.[line.product] ?? 0
@@ -388,7 +490,14 @@ export default function BrokerConfirmModal({ isOpen, onClose, brokerId, isMobile
           }
           if (customerName) updateData.customer_name = customerName
 
-          if (hasPriceDiff) {
+          if (isOnCredit) {
+            updateData.status = "Pending"
+            updateData.on_credit = true
+            if (creditApprovalIds[line.sale_id]) updateData.credit_approval_id = creditApprovalIds[line.sale_id]
+            if (lineHasDiff) {
+              updateData.discount_status = "pending"
+            }
+          } else if (hasPriceDiff) {
             updateData.status = lineHasDiff ? "Pending" : "Confirmed"
             if (lineHasDiff) updateData.discount_status = "pending"
           } else {
@@ -409,7 +518,7 @@ export default function BrokerConfirmModal({ isOpen, onClose, brokerId, isMobile
           if (error || !data || (Array.isArray(data) && data.length === 0)) {
             unconfirmed.push(line.product)
           } else {
-            if (hasPriceDiff && lineHasDiff) {
+            if (lineHasDiff) {
               const { error: upsertErr } = await apiMutate("finance", {
                 action: "upsert",
                 table: "price_adjustments",
@@ -425,6 +534,7 @@ export default function BrokerConfirmModal({ isOpen, onClose, brokerId, isMobile
                   price_reason: priceReason.trim(),
                   status: "Pending",
                   group_id: groupId,
+                  credit_status: isOnCredit ? "pending" : "none",
                 },
               })
               if (upsertErr) {
@@ -689,6 +799,32 @@ export default function BrokerConfirmModal({ isOpen, onClose, brokerId, isMobile
               rows={3}
               style={{ ...inputStyle, resize: "none", minHeight: 80 }}
             />
+          </div>
+        )}
+
+        <div style={{ marginBottom: 16 }}>
+          <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", fontWeight: 500, fontSize: 13, color: "#444" }}>
+            <input type="checkbox" checked={isOnCredit} onChange={e => { setIsOnCredit(e.target.checked); setSelectedCreditManagerId(""); setMessage("") }} style={{ width: 16, height: 16, cursor: "pointer" }} />
+            This is a credit transaction
+          </label>
+        </div>
+
+        {isOnCredit && (
+          <div style={{ marginBottom: 16 }}>
+            <label style={labelStyle}>Credit Manager *</label>
+            <select
+              value={selectedCreditManagerId}
+              onChange={e => { setSelectedCreditManagerId(e.target.value); setMessage("") }}
+              style={{ ...inputStyle, appearance: "none", WebkitAppearance: "none", cursor: "pointer" }}
+            >
+              <option value="">Select credit manager</option>
+              {creditManagersList.map(cm => (
+                <option key={cm.manager_id} value={cm.manager_id}>{cm.full_name}</option>
+              ))}
+            </select>
+            {creditManagersList.length === 0 && (
+              <p style={{ margin: "4px 0 0", fontSize: 12, color: "#94a3b8" }}>No credit managers available</p>
+            )}
           </div>
         )}
 

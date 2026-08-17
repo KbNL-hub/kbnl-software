@@ -61,7 +61,7 @@ export default function AdminDashboard() {
         if (roles.length === 0) {
           roles = [profile.role]
         }
-        const dashboardRoles = [Role.SuperAdmin, Role.Supervisor, Role.CashAuthorizer, Role.TruckAdmin, Role.DeskOfficer, Role.ATCOfficer, Role.Admin, Role.Broker]
+        const dashboardRoles = [Role.SuperAdmin, Role.Supervisor, Role.CashAuthorizer, Role.TruckAdmin, Role.DeskOfficer, Role.ATCOfficer, Role.Admin, Role.Broker, Role.CreditManager]
         let dashboardRole: Role | undefined = dashboardRoles.find(r => roles.includes(r))
         const params = new URLSearchParams(window.location.search)
         const requestedRole = params.get("role") as Role | null
@@ -151,6 +151,7 @@ export default function AdminDashboard() {
       case Role.CashAuthorizer:
       case Role.DeskOfficer:
       case Role.ATCOfficer:
+      case Role.CreditManager:
         return (
           <ErrorBoundary label="Admin Panel">
             <AdminPanel userProfile={userProfile} initialRole={role} />

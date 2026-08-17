@@ -27,6 +27,12 @@ type Stop = {
   confirmed: boolean
   disputed: boolean
   discount_status: string | null
+  on_credit: boolean
+  credit_approval_id: string | null
+  credit_approval_status: string | null
+  denial_reason?: string | null
+  denied_by?: string | null
+  denial_date?: string | null
 }
 
 export default function MyStops() {
@@ -34,7 +40,7 @@ export default function MyStops() {
   const isMobile = bp === "mobile"
 
   const [brokerId, setBrokerId] = useState<string | null>(null)
-  const [activeFilter, setActiveFilter] = useState<"pending" | "confirmed" | "disputed" | "returned">("pending")
+  const [activeFilter, setActiveFilter] = useState<"pending" | "confirmed" | "disputed" | "returned" | "review">("pending")
   const [allStops, setAllStops] = useState<Stop[]>([])
   const [loading, setLoading] = useState(true)
   const [viewMode, setViewMode] = useState<"card" | "table">("card")
@@ -71,7 +77,7 @@ export default function MyStops() {
     const { data: stops, error } = await supabase
       .from("Stops")
       .select(`
-        stop_id, trip_id, customer_id, quantity_offloaded, stop_location, stop_time, confirmed, disputed, discount_status,
+        stop_id, trip_id, customer_id, quantity_offloaded, stop_location, stop_time, confirmed, disputed, discount_status, on_credit, credit_approval_id,
         Trips!inner(plate_number, material_centre, ATC, order_no, child_order_no, product),
         Customers(full_name)
       `)
@@ -79,6 +85,16 @@ export default function MyStops() {
       .order("stop_time", { ascending: false })
 
     if (error) { console.error("Failed to fetch stops:", error); return }
+
+    const creditApprovalIds = (stops || []).filter((s: any) => s.credit_approval_id).map((s: any) => s.credit_approval_id)
+    const creditMap: Record<string, string> = {}
+    if (creditApprovalIds.length > 0) {
+      const { data: cas } = await supabase
+        .from("credit_approvals")
+        .select("id, status")
+        .in("id", creditApprovalIds)
+      for (const ca of (cas || [])) creditMap[ca.id] = ca.status
+    }
 
     /* eslint-disable @typescript-eslint/no-explicit-any */
     const enriched = (stops || []).map((stop: any) => ({
@@ -91,6 +107,9 @@ export default function MyStops() {
       confirmed: stop.confirmed,
       disputed: stop.disputed,
       discount_status: stop.discount_status ?? "none",
+      on_credit: stop.on_credit ?? false,
+      credit_approval_id: stop.credit_approval_id ?? null,
+      credit_approval_status: stop.credit_approval_id ? (creditMap[stop.credit_approval_id] ?? null) : null,
       plate_number: stop.Trips?.plate_number ?? "Unknown",
       material_centre: stop.Trips?.material_centre ?? "",
       atc: stop.Trips?.ATC ?? null,
@@ -101,6 +120,60 @@ export default function MyStops() {
     }))
 
     setAllStops(enriched)
+
+    const returnedStops = enriched.filter(s => s.discount_status === "returned" || s.credit_approval_status === "Rejected")
+    const returnedIds = returnedStops.map(s => s.stop_id)
+    const denialMap: Record<string, { reason: string; by: string; at: string }> = {}
+
+    if (returnedIds.length > 0) {
+      // Fetch discount denial reasons
+      const { data: adjRows } = await supabase
+        .from("price_adjustments")
+        .select("source_id, denial_reason, reviewed_by, reviewed_at")
+        .eq("source_type", "stop")
+        .eq("status", "Denied")
+        .in("source_id", returnedIds)
+      for (const a of adjRows || []) {
+        if (a.denial_reason) denialMap[a.source_id] = { reason: a.denial_reason, by: a.reviewed_by ?? "Admin", at: a.reviewed_at ?? "" }
+      }
+
+      // Fetch credit rejection reasons
+      const creditRejectedIds = returnedStops.filter(s => s.credit_approval_id).map(s => s.credit_approval_id as string)
+      if (creditRejectedIds.length > 0) {
+        const { data: cas } = await supabase
+          .from("credit_approvals")
+          .select("source_id, rejection_reason, reviewed_by, credit_manager_id, reviewed_at")
+          .eq("status", "Rejected")
+          .in("id", creditRejectedIds)
+        for (const ca of cas || []) {
+          if (ca.rejection_reason && !denialMap[ca.source_id]) {
+            denialMap[ca.source_id] = { reason: ca.rejection_reason, by: ca.reviewed_by ?? ca.credit_manager_id ?? "Credit Manager", at: ca.reviewed_at ?? "" }
+          }
+        }
+      }
+
+      // Resolve reviewer names from profiles
+      const reviewerIds = [...new Set(Object.values(denialMap).map(d => d.by).filter(id => id && !id.includes(" ")))].filter(Boolean)
+      if (reviewerIds.length > 0) {
+        const { data: profiles } = await supabase
+          .from("Profiles")
+          .select("user_id, full_name")
+          .in("user_id", reviewerIds)
+        const nameMap: Record<string, string> = {}
+        for (const p of profiles || []) nameMap[p.user_id] = p.full_name
+        for (const key of Object.keys(denialMap)) {
+          const entry = denialMap[key]
+          if (nameMap[entry.by]) entry.by = nameMap[entry.by]
+        }
+      }
+    }
+
+    setAllStops(enriched.map(s => ({
+      ...s,
+      denial_reason: denialMap[s.stop_id]?.reason ?? null,
+      denied_by: denialMap[s.stop_id]?.by ?? null,
+      denial_date: denialMap[s.stop_id]?.at ?? null,
+    })))
 
     const stopIds = enriched.map(s => s.stop_id)
     if (stopIds.length > 0) {
@@ -148,17 +221,19 @@ export default function MyStops() {
 
   if (loading) return <p style={{ color: "#888" }}>Loading…</p>
 
-  const pendingStops = allStops.filter(s => !s.confirmed && !s.disputed && s.discount_status !== "returned")
+  const pendingStops = allStops.filter(s => !s.confirmed && !s.disputed && s.discount_status !== "returned" && s.credit_approval_status !== "Pending" && s.discount_status !== "pending")
+  const reviewStops = allStops.filter(s => !s.confirmed && !s.disputed && (s.credit_approval_status === "Pending" || s.discount_status === "pending"))
   const confirmedStops = allStops.filter(s => s.confirmed && s.discount_status !== "returned")
   const disputedStops = allStops.filter(s => s.disputed)
   const returnedStops = allStops.filter(s => s.discount_status === "returned")
 
-  const visibleStops = activeFilter === "pending" ? pendingStops : activeFilter === "confirmed" ? confirmedStops : activeFilter === "returned" ? returnedStops : activeFilter === "disputed" ? disputedStops : []
+  const visibleStops = activeFilter === "pending" ? pendingStops : activeFilter === "review" ? reviewStops : activeFilter === "confirmed" ? confirmedStops : activeFilter === "returned" ? returnedStops : activeFilter === "disputed" ? disputedStops : []
 
   const filterOptions = [
     { key: "pending" as const, label: "Pending", count: pendingStops.length, color: "#0070f3" },
+    { key: "review" as const, label: "Awaiting Review", count: reviewStops.length, color: "#f5a623" },
     { key: "confirmed" as const, label: "Confirmed", count: confirmedStops.length, color: "#10b981" },
-    { key: "returned" as const, label: "Returned", count: returnedStops.length, color: "#d97706" },
+    { key: "returned" as const, label: "Returned", count: returnedStops.length, color: "#7c3aed" },
     { key: "disputed" as const, label: "Disputed", count: disputedStops.length, color: "#ff4444" },
   ]
 
@@ -196,9 +271,9 @@ export default function MyStops() {
       <div style={{ display: "flex", gap: 8, marginBottom: 20, overflowX: "auto", scrollbarWidth: "none", paddingBottom: 8 }}>
         {filterOptions.map(({ key, label, count }) => {
           const isActive = activeFilter === key
-          const activeBg = key === "pending" ? "rgba(0,112,243,0.1)" : key === "confirmed" ? "rgba(16,185,129,0.1)" : key === "returned" ? "rgba(217,119,6,0.1)" : "rgba(239,68,68,0.1)"
-          const activeColor = key === "pending" ? "#0070f3" : key === "confirmed" ? "#10b981" : key === "returned" ? "#d97706" : "#ef4444"
-          const activeBorder = key === "pending" ? "#0070f3" : key === "confirmed" ? "#10b981" : key === "returned" ? "#d97706" : "#ef4444"
+          const activeBg = key === "pending" ? "rgba(0,112,243,0.1)" : key === "review" ? "rgba(245,166,35,0.1)" : key === "confirmed" ? "rgba(16,185,129,0.1)" : key === "returned" ? "rgba(124,58,237,0.1)" : "rgba(239,68,68,0.1)"
+          const activeColor = key === "pending" ? "#0070f3" : key === "review" ? "#f5a623" : key === "confirmed" ? "#10b981" : key === "returned" ? "#7c3aed" : "#ef4444"
+          const activeBorder = key === "pending" ? "#0070f3" : key === "review" ? "#f5a623" : key === "confirmed" ? "#10b981" : key === "returned" ? "#7c3aed" : "#ef4444"
           return (
             <button key={key} onClick={() => setActiveFilter(key)} style={{
               padding: isMobile ? "9px 16px" : "7px 14px", borderRadius: 20, fontSize: 13, cursor: "pointer",
@@ -232,8 +307,8 @@ export default function MyStops() {
       ) : viewMode === "card" ? (
         visibleStops.map((stop) => {
           const isExpanded = expandedCard === stop.stop_id
-          const statusColor = stop.discount_status === "returned" ? { bg: "#fffbeb", text: "#b45309", border: "#b45309", label: "Returned" }
-            : stop.discount_status === "pending" ? { bg: "#fffbeb", text: "#d97706", border: "#fbbf24", label: "In Review" }
+          const statusColor = stop.discount_status === "returned" ? { bg: "#f5f3ff", text: "#7c3aed", border: "#c4b5fd", label: "Returned" }
+            : stop.discount_status === "pending" ? { bg: "#fffbeb", text: "#f5a623", border: "#fcd34d", label: "In Review" }
             : stop.confirmed ? { bg: "#ecfdf5", text: "#10b981", border: "#a7f3d0", label: "Confirmed" }
             : stop.disputed ? { bg: "#fef2f2", text: "#ef4444", border: "#fecaca", label: "Disputed" }
             : { bg: "#f0f7ff", text: "#0070f3", border: "#bfdbfe", label: "Pending" }
@@ -282,12 +357,24 @@ export default function MyStops() {
 
                 {stop.discount_status === "returned" && (
                   <div style={{ marginBottom: 12 }}>
-                    <span style={{ padding: "4px 10px", borderRadius: 6, fontSize: 11, fontWeight: 600, background: "#fffbeb", color: "#d97706", border: "1px solid #d97706" }}>Returned — Edit price to resubmit</span>
+                    <span style={{ padding: "4px 10px", borderRadius: 6, fontSize: 11, fontWeight: 600, background: "#f5f3ff", color: "#7c3aed", border: "1px solid #c4b5fd" }}>Returned — Edit price to resubmit</span>
+                    {stop.denial_reason && (
+                      <div style={{ marginTop: 8, padding: "8px 12px", borderRadius: 8, background: "#fef2f2", border: "1px solid #fecaca" }}>
+                        <p style={{ margin: 0, fontSize: 11, color: "#ef4444", fontWeight: 600 }}>Rejection reason</p>
+                        <p style={{ margin: "2px 0 0", fontSize: 12, color: "#374151", fontStyle: "italic" }}>&ldquo;{stop.denial_reason}&rdquo;</p>
+                        {stop.denied_by && (
+                          <p style={{ margin: "4px 0 0", fontSize: 11, color: "#94a3b8" }}>
+                            Returned by <span style={{ fontWeight: 600, color: "#64748b" }}>{stop.denied_by}</span>
+                            {stop.denial_date && <span> &middot; {new Date(stop.denial_date).toLocaleDateString()}</span>}
+                          </p>
+                        )}
+                      </div>
+                    )}
                   </div>
                 )}
                 {stop.discount_status === "pending" && (
                   <div style={{ marginBottom: 12 }}>
-                    <span style={{ padding: "4px 10px", borderRadius: 6, fontSize: 11, fontWeight: 600, background: "#fffbeb", color: "#b45309", border: "1px solid #fbbf24" }}>In Review — Awaiting admin approval</span>
+                    <span style={{ padding: "4px 10px", borderRadius: 6, fontSize: 11, fontWeight: 600, background: "#fffbeb", color: "#f5a623", border: "1px solid #fcd34d" }}>In Review — Awaiting admin approval</span>
                   </div>
                 )}
 
@@ -341,7 +428,7 @@ export default function MyStops() {
                   )}
                   {activeFilter === "returned" && (
                     <button onClick={() => openConfirmModal(stop)} style={{ flex: 1, padding: "11px 0", background: "#0070f3", color: "white", border: "none", borderRadius: 8, cursor: "pointer", fontWeight: "bold", fontSize: isMobile ? 14 : 13, minHeight: 44, display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
-                      <Icon icon="mdi:pencil" width={16} /> Edit Price
+                      <Icon icon="mdi:pencil" width={14} /> Edit
                     </button>
                   )}
                   {activeFilter === "confirmed" && <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "8px 12px", background: "#ecfdf5", borderRadius: 7 }}><Icon icon="mdi:check-circle" width={16} color="#10b981" /><span style={{ fontSize: 13, color: "#10b981", fontWeight: 600 }}>Confirmed</span></div>}
@@ -379,9 +466,9 @@ export default function MyStops() {
                     <td style={{ padding: "12px 16px", color: "#64748b", fontSize: 13 }}>{new Date(stop.stop_time).toLocaleDateString("en-NG", { day: "numeric", month: "short" })}</td>
                     <td style={{ padding: "12px 16px" }}>
                       {stop.discount_status === "returned" ? (
-                        <span style={{ padding: "4px 10px", borderRadius: 6, fontSize: 12, fontWeight: 500, background: "#fffbeb", color: "#92400e", border: "1px solid #fcd34d", display: "inline-block" }}>Returned</span>
+                        <span style={{ padding: "4px 10px", borderRadius: 6, fontSize: 12, fontWeight: 500, background: "#f5f3ff", color: "#7c3aed", border: "1px solid #c4b5fd", display: "inline-block" }}>Returned</span>
                       ) : stop.discount_status === "pending" ? (
-                        <span style={{ padding: "4px 10px", borderRadius: 6, fontSize: 12, fontWeight: 500, background: "#fffbeb", color: "#b45309", border: "1px solid #fbbf24", display: "inline-block" }}>In Review</span>
+                        <span style={{ padding: "4px 10px", borderRadius: 6, fontSize: 12, fontWeight: 500, background: "#fffbeb", color: "#f5a623", border: "1px solid #fcd34d", display: "inline-block" }}>In Review</span>
                       ) : stop.confirmed ? (
                         <span style={{ padding: "4px 10px", borderRadius: 6, fontSize: 12, fontWeight: 500, background: "#d1fae5", color: "#065f46", border: "1px solid #a7f3d0", display: "inline-block" }}>Confirmed</span>
                       ) : stop.disputed ? (

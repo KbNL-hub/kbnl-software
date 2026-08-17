@@ -651,11 +651,12 @@ export default function StoreSales() {
                           )}
                           <p style={{ margin: 0, fontSize: FONT_SIZE.sm, color: "#475569" }}><span style={{ color: "#94a3b8", minWidth: 80, display: "inline-block" }}>Payment:</span> {sale.payment_mode}</p>
                           <p style={{ margin: 0, fontSize: FONT_SIZE.sm, color: "#475569" }}><span style={{ color: "#94a3b8", minWidth: 80, display: "inline-block" }}>Delivery:</span> {sale.delivery_mode}{sale.truck_plate ? ` (${sale.truck_plate})` : ""}</p>
-                          {sale.customer_name && (
-                            <p style={{ margin: 0, fontSize: FONT_SIZE.sm, color: "#475569" }}><span style={{ color: "#94a3b8", minWidth: 80, display: "inline-block" }}>Customer:</span> {sale.customer_name}</p>
-                          )}
+                          <p style={{ margin: 0, fontSize: FONT_SIZE.sm, color: "#475569" }}><span style={{ color: "#94a3b8", minWidth: 80, display: "inline-block" }}>Customer:</span> {sale.customer_name || "—"}</p>
                           {sale.broker_name && (
                             <p style={{ margin: 0, fontSize: FONT_SIZE.sm, color: "#475569" }}><span style={{ color: "#94a3b8", minWidth: 80, display: "inline-block" }}>Broker:</span> {sale.broker_name}</p>
+                          )}
+                          {sale.depositor_name && (
+                            <p style={{ margin: 0, fontSize: FONT_SIZE.sm, color: "#475569" }}><span style={{ color: "#94a3b8", minWidth: 80, display: "inline-block" }}>Depositor:</span> {sale.depositor_name}{sale.bank_name ? ` (${sale.bank_name})` : ""}</p>
                           )}
                         </div>
 
@@ -728,7 +729,7 @@ export default function StoreSales() {
 
           {viewMode === "table" && (
             <div style={{ background: "white", borderRadius: 12, border: "1px solid #e2e8f0", boxShadow: "0 1px 3px rgba(0, 0, 0, 0.05)", overflowX: "auto" }}>
-              <table style={{ width: "100%", borderCollapse: "collapse", textAlign: "left", minWidth: 900 }}>
+              <table style={{ width: "100%", borderCollapse: "collapse", textAlign: "left", minWidth: 1050 }}>
                 <thead>
                   <tr style={{ background: "#f8fafc", borderBottom: "1px solid #e2e8f0" }}>
                     <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: FONT_SIZE.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px" }}>Store</th>
@@ -737,6 +738,7 @@ export default function StoreSales() {
                     <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: FONT_SIZE.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px" }}>Price/Bag</th>
                     <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: FONT_SIZE.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px" }}>Total</th>
                     <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: FONT_SIZE.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px" }}>Customer</th>
+                    <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: FONT_SIZE.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px" }}>Depositor</th>
                     <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: FONT_SIZE.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px" }}>Payment</th>
                     <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: FONT_SIZE.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px" }}>Delivery</th>
                     <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: FONT_SIZE.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px" }}>Broker</th>
@@ -748,7 +750,7 @@ export default function StoreSales() {
                   {groupedByDate.map((group) => (
                     <Fragment key={group.date}>
                       <tr>
-                        <td colSpan={11} style={{ padding: "10px 16px", background: "#f8fafc", fontWeight: 700, fontSize: FONT_SIZE.sm, color: "#0f172a", borderBottom: "2px solid #e2e8f0" }}>
+                        <td colSpan={12} style={{ padding: "10px 16px", background: "#f8fafc", fontWeight: 700, fontSize: FONT_SIZE.sm, color: "#0f172a", borderBottom: "2px solid #e2e8f0" }}>
                           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                             <Icon icon="mdi:calendar" width={16} color="#64748b" />
                             {new Date(group.date + "T00:00:00").toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" })}
@@ -769,6 +771,7 @@ export default function StoreSales() {
                           <td style={{ padding: "12px 16px", color: "#64748b", fontSize: FONT_SIZE.sm }}>{sale.sale_type === "truck_load_out" ? "—" : formatAmount(sale.price_per_bag)}</td>
                           <td style={{ padding: "12px 16px", color: "#10b981", fontSize: FONT_SIZE.base, fontWeight: 600 }}>{sale.sale_type === "truck_load_out" ? "—" : formatAmount(sale.total_amount)}</td>
                           <td style={{ padding: "12px 16px", color: "#64748b", fontSize: FONT_SIZE.sm }}>{sale.customer_name || "—"}</td>
+                          <td style={{ padding: "12px 16px", color: "#64748b", fontSize: FONT_SIZE.sm }}>{sale.depositor_name ? `${sale.depositor_name}${sale.bank_name ? ` (${sale.bank_name})` : ""}` : "—"}</td>
                           <td style={{ padding: "12px 16px", color: "#64748b", fontSize: FONT_SIZE.sm }}>{sale.payment_mode}</td>
                           <td style={{ padding: "12px 16px", color: "#64748b", fontSize: FONT_SIZE.sm }}>{sale.delivery_mode}{sale.truck_plate ? ` (${sale.truck_plate})` : ""}</td>
                           <td style={{ padding: "12px 16px", color: "#64748b", fontSize: FONT_SIZE.sm }}>{sale.broker_name || "—"}</td>

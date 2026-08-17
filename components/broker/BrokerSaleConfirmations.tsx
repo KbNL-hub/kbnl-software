@@ -29,6 +29,10 @@ type SaleLine = {
   rejection_reason: string | null
   discount_status: string | null
   denial_reason?: string | null
+  denied_by?: string | null
+  denial_date?: string | null
+  on_credit: boolean
+  credit_approval_status: string | null
 }
 
 type SaleGroup = {
@@ -43,6 +47,8 @@ type SaleGroup = {
   store_name: string
   rejection_reason: string | null
   denial_reason?: string | null
+  denied_by?: string | null
+  denial_date?: string | null
   lines: SaleLine[]
 }
 
@@ -96,7 +102,7 @@ export default function BrokerSaleConfirmations() {
   async function fetchSales(bId: string) {
     const { data, error } = await supabase
       .from("store_sales")
-      .select("sale_id, product, quantity, price_per_bag, total_amount, customer_name, payment_mode, delivery_mode, tricycle_id, truck_plate, sold_at, created_at, status, store_name, rejection_reason, discount_status")
+      .select("sale_id, product, quantity, price_per_bag, total_amount, customer_name, payment_mode, delivery_mode, tricycle_id, truck_plate, sold_at, created_at, status, store_name, rejection_reason, discount_status, on_credit, credit_approval_id")
       .eq("broker_id", bId)
       .order("sold_at", { ascending: false })
 
@@ -104,22 +110,66 @@ export default function BrokerSaleConfirmations() {
 
     // Fetch denial reasons for returned lines
     const returnedSaleIds = (data || []).filter(s => s.discount_status === "returned").map(s => s.sale_id)
-    const denialMap: Record<string, string> = {}
+    const denialMap: Record<string, { reason: string; by: string; at: string }> = {}
     if (returnedSaleIds.length > 0) {
       const { data: adjustments } = await supabase
         .from("price_adjustments")
-        .select("source_id, denial_reason")
+        .select("source_id, denial_reason, reviewed_by, reviewed_at")
         .eq("source_type", "store_sale")
         .eq("status", "Denied")
         .in("source_id", returnedSaleIds)
       for (const adj of adjustments || []) {
-        if (adj.denial_reason) denialMap[adj.source_id] = adj.denial_reason
+        if (adj.denial_reason) denialMap[adj.source_id] = { reason: adj.denial_reason, by: adj.reviewed_by ?? "Admin", at: adj.reviewed_at ?? "" }
       }
+
+      // Also fetch credit rejection reasons for returned lines
+      const returnedWithCredit = (data || []).filter(s => s.discount_status === "returned" && (s as any).credit_approval_id).map(s => (s as any).credit_approval_id)
+      if (returnedWithCredit.length > 0) {
+        const { data: cas } = await supabase
+          .from("credit_approvals")
+          .select("source_id, rejection_reason, reviewed_by, credit_manager_id, reviewed_at")
+          .eq("status", "Rejected")
+          .in("id", returnedWithCredit)
+        for (const ca of cas || []) {
+          if (ca.rejection_reason && !denialMap[ca.source_id]) {
+            denialMap[ca.source_id] = { reason: ca.rejection_reason, by: ca.reviewed_by ?? ca.credit_manager_id ?? "Credit Manager", at: ca.reviewed_at ?? "" }
+          }
+        }
+      }
+
+      // Resolve reviewer names from profiles
+      const reviewerIds = [...new Set(Object.values(denialMap).map(d => d.by).filter(id => id && !id.includes(" ")))].filter(Boolean)
+      if (reviewerIds.length > 0) {
+        const { data: profiles } = await supabase
+          .from("Profiles")
+          .select("user_id, full_name")
+          .in("user_id", reviewerIds)
+        const nameMap: Record<string, string> = {}
+        for (const p of profiles || []) nameMap[p.user_id] = p.full_name
+        for (const key of Object.keys(denialMap)) {
+          const entry = denialMap[key]
+          if (nameMap[entry.by]) entry.by = nameMap[entry.by]
+        }
+      }
+    }
+
+    // Fetch credit approval statuses
+    const creditApprovalIds = (data || []).filter((s: any) => s.credit_approval_id).map((s: any) => s.credit_approval_id)
+    const creditMap: Record<string, string> = {}
+    if (creditApprovalIds.length > 0) {
+      const { data: cas } = await supabase
+        .from("credit_approvals")
+        .select("id, status")
+        .in("id", creditApprovalIds)
+      for (const ca of (cas || [])) creditMap[ca.id] = ca.status
     }
 
     const enriched = (data || []).map(s => ({
       ...s,
-      denial_reason: denialMap[s.sale_id] || null,
+      denial_reason: denialMap[s.sale_id]?.reason ?? null,
+      denied_by: denialMap[s.sale_id]?.by ?? null,
+      denial_date: denialMap[s.sale_id]?.at ?? null,
+      credit_approval_status: (s as any).credit_approval_id ? (creditMap[(s as any).credit_approval_id] ?? null) : null,
     }))
 
     const groups = groupSales(enriched)
@@ -155,6 +205,8 @@ export default function BrokerSaleConfirmations() {
         store_name: sale.store_name,
         rejection_reason: sale.rejection_reason,
         denial_reason: sale.denial_reason,
+        denied_by: sale.denied_by,
+        denial_date: sale.denial_date,
         lines: [sale],
       })
 
@@ -242,8 +294,8 @@ export default function BrokerSaleConfirmations() {
 
   if (loading) return <p style={{ color: "#888" }}>Loading…</p>
 
-  const pendingGroups = allGroups.filter(g => g.status === "Pending" && !g.lines.some(l => l.discount_status === "returned") && !g.lines.some(l => l.discount_status === "pending"))
-  const reviewGroups = allGroups.filter(g => g.status === "Pending" && g.lines.some(l => l.discount_status === "pending"))
+  const pendingGroups = allGroups.filter(g => g.status === "Pending" && !g.lines.some(l => l.discount_status === "returned") && !g.lines.some(l => l.discount_status === "pending") && !g.lines.some(l => l.credit_approval_status === "Pending"))
+  const reviewGroups = allGroups.filter(g => g.status === "Pending" && (g.lines.some(l => l.discount_status === "pending") || g.lines.some(l => l.credit_approval_status === "Pending")))
   const confirmedGroups = allGroups.filter(g => g.status === "Confirmed")
   const rejectedGroups = allGroups.filter(g => g.status === "Rejected")
   const returnedGroups = allGroups.filter(g => g.status === "Pending" && g.lines.some(l => l.discount_status === "returned"))
@@ -420,6 +472,12 @@ export default function BrokerSaleConfirmations() {
                       <div style={{ padding: "8px 10px", background: "white", borderRadius: 6, border: "1px solid #fecaca", color: "#7f1d1d", fontSize: 12, fontStyle: "italic" }}>
                         &ldquo;{group.denial_reason}&rdquo;
                       </div>
+                      {group.denied_by && (
+                        <p style={{ margin: "4px 0 0", fontSize: 11, color: "#94a3b8" }}>
+                          Returned by <span style={{ fontWeight: 600, color: "#64748b" }}>{group.denied_by}</span>
+                          {group.denial_date && <span> &middot; {new Date(group.denial_date).toLocaleDateString()}</span>}
+                        </p>
+                      )}
                     </div>
                   </div>
                 )}
@@ -456,7 +514,7 @@ export default function BrokerSaleConfirmations() {
                   )}
                   {activeFilter === "returned" && (
                     <button onClick={() => openConfirmModal(group)} style={{ flex: 1, padding: "11px 0", background: "#0070f3", color: "white", border: "none", borderRadius: 8, cursor: "pointer", fontWeight: "bold", fontSize: isMobile ? 14 : 13, minHeight: 44, display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
-                      <Icon icon="mdi:pencil" width={16} /> Edit Price
+                      <Icon icon="mdi:pencil" width={16} /> Edit
                     </button>
                   )}
                   {activeFilter === "confirmed" && <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "8px 12px", background: "#ecfdf5", borderRadius: 7 }}><Icon icon="mdi:check-circle" width={16} color="#10b981" /><span style={{ fontSize: 13, color: "#10b981", fontWeight: 600 }}>Confirmed</span></div>}

@@ -43,6 +43,7 @@ const SECTION_IMPORTS = {
   "reports": () => import("@/components/admin/Reports"),
   "store-sales": () => import("@/components/admin/StoreSales"),
   "discounts": () => import("@/components/admin/Discounts"),
+  "credit-approvals": () => import("@/components/admin/CreditApprovals"),
   "company-prices": () => import("@/components/admin/CompanyPrices"),
   "side-trips": () => import("@/components/admin/SideTrips"),
   "our-stores": () => import("@/components/admin/OurStores"),
@@ -89,6 +90,7 @@ const NAV_ITEMS: NavItemConfig[] = [
   { label: "Diesel Manager",    key: "diesel-manager",      icon: "mdi:gas-station" },
   { label: "Store Sales",       key: "store-sales",         icon: "mdi:storefront-outline" },
   { label: "Discounts",         key: "discounts",            icon: "mdi:tag-minus-outline" },
+  { label: "Credit Approvals",  key: "credit-approvals",     icon: "mdi:credit-card-check-outline" },
   { label: "Customer Payments", key: "customer-payments",   icon: "mdi:cash-register" },
   { label: "Credit",            key: "credit",              icon: "mdi:credit-card-outline" },
   { label: "Cash Expenses",     key: "cash-expenses",       icon: "mdi:cash-multiple" },
@@ -167,6 +169,7 @@ function AdminPanelContent({ userProfile }: Props) {
   const [unauthorizedExpenses, setUnauthorizedExpenses] = useState(0)
   const [unpostedExpenses, setUnpostedExpenses] = useState(0)
   const [pendingDeskTrips, setPendingDeskTrips] = useState(0)
+  const [pendingCreditApprovals, setPendingCreditApprovals] = useState(0)
   const [lowBalanceCompanies, setLowBalanceCompanies] = useState<LowBalanceCompany[]>([])
   const [dismissedAlerts, setDismissedAlerts] = useState<Set<string>>(() => {
     const stored = localStorage.getItem("dismissedFuelAlerts")
@@ -209,6 +212,7 @@ function AdminPanelContent({ userProfile }: Props) {
     const canViewCashExpenses = getAccess("cash-expenses").canView
     const canViewDeskExpenses = getAccess("desk-expenses").canView
     const canViewDeskTrips = getAccess("trips").canView
+    const canViewCreditApprovals = getAccess("credit-approvals").canView
 
     async function checkAlerts() {
       try {
@@ -261,6 +265,12 @@ function AdminPanelContent({ userProfile }: Props) {
             .eq("recorded", true)
             .eq("posted", false)
           setPendingDeskTrips(count || 0)
+        }
+
+        if (canViewCreditApprovals) {
+          const { count } = await supabase
+            .from("credit_approvals").select("*", { count: "exact", head: true }).eq("status", "Pending")
+          setPendingCreditApprovals(count || 0)
         }
 
         if (canViewFuel) {
@@ -286,6 +296,7 @@ function AdminPanelContent({ userProfile }: Props) {
     const canViewCashExpenses = getAccess("cash-expenses").canView
     const canViewDeskExpenses = getAccess("desk-expenses").canView
     const canViewDeskTrips = getAccess("trips").canView
+    const canViewCreditApprovals = getAccess("credit-approvals").canView
     async function checkAlerts() {
       try {
         if (canViewTrips) {
@@ -330,6 +341,11 @@ function AdminPanelContent({ userProfile }: Props) {
             .eq("recorded", true)
             .eq("posted", false)
           setPendingDeskTrips(count || 0)
+        }
+        if (canViewCreditApprovals) {
+          const { count } = await supabase
+            .from("credit_approvals").select("*", { count: "exact", head: true }).eq("status", "Pending")
+          setPendingCreditApprovals(count || 0)
         }
         if (canViewFuel) {
           const { data } = await supabase
@@ -483,6 +499,7 @@ function AdminPanelContent({ userProfile }: Props) {
       item.key === "cash-expenses" && unauthorizedExpenses > 0 ? { count: unauthorizedExpenses, color: "#f5a623" } :
       item.key === "desk-expenses" && unpostedExpenses > 0 ? { count: unpostedExpenses, color: "#f5a623" } :
       item.key === "trips" && pendingDeskTrips > 0 ? { count: pendingDeskTrips, color: "#f5a623" } :
+      item.key === "credit-approvals" && pendingCreditApprovals > 0 ? { count: pendingCreditApprovals, color: "#f5a623" } :
       null
 
     return (

@@ -26,6 +26,7 @@ type PriceAdjustment = {
   reviewed_by: string | null
   reviewed_at: string | null
   created_at: string
+  credit_status: string | null
 }
 
 type ViewMode = "card" | "table"
@@ -158,6 +159,7 @@ export default function Discounts() {
   usePolling(fetchAdjustments, 30000)
 
   const filtered = adjustments.filter(a => {
+    if (a.credit_status === "pending") return false
     if (filterStatus !== "All" && a.status !== filterStatus) return false
     if (filterBroker && a.broker_id !== filterBroker) return false
     const aDate = new Date(a.created_at).toISOString().slice(0, 10)
@@ -226,9 +228,9 @@ export default function Discounts() {
     return [...stops, ...groups]
   })()
 
-  const pendingCount = adjustments.filter(a => a.status === "Pending").length
-  const approvedCount = adjustments.filter(a => a.status === "Approved").length
-  const deniedCount = adjustments.filter(a => a.status === "Denied").length
+  const pendingCount = adjustments.filter(a => a.status === "Pending" && a.credit_status !== "pending").length
+  const approvedCount = adjustments.filter(a => a.status === "Approved" && a.credit_status !== "pending").length
+  const deniedCount = adjustments.filter(a => a.status === "Denied" && a.credit_status !== "pending").length
 
   async function handleApprove(adj: PriceAdjustment) {
     if (!canEdit) return

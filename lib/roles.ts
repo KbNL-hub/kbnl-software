@@ -13,6 +13,7 @@ export const Role = {
   StoreOfficer: "StoreOfficer",
   CashOfficer: "CashOfficer",
   StoreSupervisor: "StoreSupervisor",
+  CreditManager: "CreditManager",
 } as const
 
 export type Role = (typeof Role)[keyof typeof Role]
@@ -32,6 +33,7 @@ export const ROLE_LABELS: Record<Role, string> = {
   [Role.StoreOfficer]: "Store Officer",
   [Role.CashOfficer]: "Cash Officer",
   [Role.StoreSupervisor]: "Store Supervisor",
+  [Role.CreditManager]: "Credit Manager",
 }
 
 export function isRole(value: string): value is Role {

@@ -25,7 +25,7 @@ type UserRow = {
 }
 
 const ALL_ROLE_KEYS = Object.keys(ROLES).sort((a, b) => {
-  const order = ["SuperAdmin", "Admin", "Supervisor", "Broker", "TruckAdmin", "DeskOfficer", "ATCOfficer", "CashAuthorizer", "Driver", "StationManager", "TruckOfficer", "StoreOfficer", "CashOfficer", "StoreSupervisor"]
+  const order = ["SuperAdmin", "Admin", "Supervisor", "Broker", "TruckAdmin", "DeskOfficer", "ATCOfficer", "CashAuthorizer", "CreditManager", "Driver", "StationManager", "TruckOfficer", "StoreOfficer", "CashOfficer", "StoreSupervisor"]
   return order.indexOf(a) - order.indexOf(b)
 })
 

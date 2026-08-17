@@ -24,7 +24,7 @@ const supabaseAdmin = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!,
 )
 
-const ALLOWED_TABLES = ["customer_payments", "broker_credits", "store_sales", "store_supply_confirmations", "store_supply_lines", "cash_expenses", "cash_expense_items", "cash_offices", "cash_deposits", "admin_office_assignments", "Customers", "Brokers", "store_stock", "store_officers", "stock_verifications", "price_adjustments"] as const
+const ALLOWED_TABLES = ["customer_payments", "broker_credits", "store_sales", "store_supply_confirmations", "store_supply_lines", "cash_expenses", "cash_expense_items", "cash_offices", "cash_deposits", "admin_office_assignments", "Customers", "Brokers", "store_stock", "store_officers", "stock_verifications", "price_adjustments", "credit_approvals"] as const
 const ALLOWED_RPCS = ["decrement_store_stock", "add_cash_deposit", "authorise_cash_expense", "create_transaction"] as const
 
 const TABLE_ROLES: Record<string, string[]> = {
@@ -44,7 +44,8 @@ const TABLE_ROLES: Record<string, string[]> = {
   store_stock: ["StoreOfficer", "Admin", "SuperAdmin", "Supervisor", "StoreSupervisor"],
   store_officers: ["Admin", "SuperAdmin"],
   stock_verifications: ["StoreSupervisor", "Admin", "SuperAdmin"],
-  price_adjustments: ["Broker", "Admin", "SuperAdmin", "DeskOfficer"],
+  price_adjustments: ["Broker", "Admin", "SuperAdmin", "DeskOfficer", "CreditManager"],
+  credit_approvals: ["Broker", "Admin", "SuperAdmin", "DeskOfficer", "CreditManager"],
 }
 
 const RPC_ROLES: Record<string, string[]> = {

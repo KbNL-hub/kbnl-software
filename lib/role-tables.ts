@@ -27,6 +27,7 @@ export const ROLE_TABLE_META: Record<string, RoleTableEntry | null> = {
   ATCOfficer: { table: "atc_officers", pkColumn: "officer_id", nameColumn: "full_name" },
   CashAuthorizer: { table: "cash_authorizers", pkColumn: "authorizer_id", nameColumn: "full_name", extraFields: ["assigned_office"] },
   StoreSupervisor: { table: "store_supervisors", pkColumn: "supervisor_id", nameColumn: "full_name", extraFields: ["store_names"] },
+  CreditManager: { table: "credit_managers", pkColumn: "manager_id", nameColumn: "full_name" },
 }
 
 export async function createRoleEntry(
