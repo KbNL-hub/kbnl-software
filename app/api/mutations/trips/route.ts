@@ -66,7 +66,13 @@ export async function POST(req: NextRequest) {
       const rolesForTable = TABLE_ROLES[table] || ["Admin"]
       await requireRole(req, rolesForTable)
     } else {
-      await requireRole(req, ["Driver", "Broker", "TruckOfficer", "Admin", "SuperAdmin", "ATCOfficer"])
+      const auth = await requireRole(req, ["Driver", "Broker", "TruckOfficer", "Admin", "SuperAdmin", "ATCOfficer"])
+      for (const sa of sub_actions || []) {
+        const rolesForTable = TABLE_ROLES[sa.table] || ["Admin"]
+        if (!auth.roles.some(r => rolesForTable.includes(r))) {
+          return buildError(`Access denied for ${sa.action} on ${sa.table}`, 403)
+        }
+      }
     }
 
     switch (action) {

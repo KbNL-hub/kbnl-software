@@ -26,6 +26,7 @@ export default function AdminDashboard() {
   const [loading, setLoading] = useState(true)
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [validRoles, setValidRoles] = useState<string[]>([])
   const searchParams = useSearchParams()
   const urlRole = searchParams.get("role")
 
@@ -87,6 +88,7 @@ export default function AdminDashboard() {
         }
 
         setUserProfile({ ...profile, role: dashboardRole!, profile_picture_url: profilePictureUrl })
+        setValidRoles(roles)
         setLoading(false)
       } catch (err) {
         console.error("Init error:", err)
@@ -98,11 +100,11 @@ export default function AdminDashboard() {
   }, [mounted, router])
 
   useEffect(() => {
-    if (urlRole) {
+    if (urlRole && validRoles.includes(urlRole)) {
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setUserProfile(prev => prev && prev.role !== urlRole ? { ...prev, role: urlRole } : prev)
     }
-  }, [urlRole])
+  }, [urlRole, validRoles])
 
   async function handleLogout() {
     await supabase.auth.signOut()

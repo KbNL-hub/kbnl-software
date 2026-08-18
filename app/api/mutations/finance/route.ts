@@ -145,6 +145,18 @@ export async function POST(req: NextRequest) {
         }
       }
 
+      const auth = await requireRole(req, ["Broker", "Admin", "SuperAdmin", "DeskOfficer", "Supervisor", "StoreOfficer", "StoreSupervisor", "CashOfficer", "CashAuthorizer", "CreditManager"])
+
+      for (const sa of sub_actions) {
+        const rolesForTable = TABLE_ROLES[sa.table] || ["Admin"]
+        if (!auth.roles.some(r => rolesForTable.includes(r))) {
+          return buildError(`Access denied for ${sa.action} on ${sa.table}`, 403)
+        }
+        if (sa.table === "credit_approvals" && sa.action !== "insert" && auth.roles.includes("Broker") && !auth.roles.includes("Admin")) {
+          return buildError("Brokers cannot modify or delete credit approvals", 403)
+        }
+      }
+
       const completed: Array<{
         action: string
         table: string
@@ -340,7 +352,11 @@ export async function POST(req: NextRequest) {
     }
 
     const rolesForTable = TABLE_ROLES[table] || ["Admin"]
-    await requireRole(req, rolesForTable)
+    const auth = await requireRole(req, rolesForTable)
+
+    if (table === "credit_approvals" && action !== "insert" && auth.roles.includes("Broker") && !auth.roles.includes("Admin")) {
+      return buildError("Brokers cannot modify or delete credit approvals", 403)
+    }
 
     switch (action) {
       case "insert": {

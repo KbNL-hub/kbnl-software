@@ -306,7 +306,8 @@ export default function BrokerConfirmModal({ isOpen, onClose, brokerId, isMobile
             },
           })
           if (caError) { setMessage("Failed to submit. Please try again."); return }
-          creditApprovalId = caData?.[0]?.id ?? null
+          creditApprovalId = (caData as { id: string }[])?.[0]?.id ?? null
+          if (!creditApprovalId) { setMessage("Failed to submit. Please try again."); return }
         }
 
         if (isOnCredit && hasDiff) {
@@ -318,7 +319,7 @@ export default function BrokerConfirmModal({ isOpen, onClose, brokerId, isMobile
                 data: {
                   confirmed: false, customer_id: customerIdToSave, updated_by: user.id,
                   discount_status: "pending", on_credit: true,
-                  ...(creditApprovalId ? { credit_approval_id: creditApprovalId } : {}),
+                  credit_approval_id: creditApprovalId,
                 },
                 filters: { stop_id: stop.stop_id },
               },
@@ -345,23 +346,27 @@ export default function BrokerConfirmModal({ isOpen, onClose, brokerId, isMobile
           if (error) { setMessage("Failed to submit. Please try again."); return }
         } else if (isOnCredit) {
           const { error } = await apiMutate("trips", {
-            action: "update", table: "Stops",
-            data: {
-              confirmed: false, customer_id: customerIdToSave, updated_by: user.id,
-              on_credit: true,
-              ...(creditApprovalId ? { credit_approval_id: creditApprovalId } : {}),
-            },
-            filters: { stop_id: stop.stop_id },
+            action: "transaction",
+            sub_actions: [
+              {
+                action: "update", table: "Stops",
+                data: {
+                  confirmed: false, customer_id: customerIdToSave, updated_by: user.id,
+                  on_credit: true, credit_approval_id: creditApprovalId,
+                },
+                filters: { stop_id: stop.stop_id },
+              },
+              {
+                action: "insert", table: "Stop_Confirmations",
+                data: {
+                  stop_id: stop.stop_id, broker_id: brokerId, customer_id: customerIdToSave,
+                  price_per_bag: finalPriceVal, area: selectedArea, company_price: cp,
+                  price_reason: null,
+                },
+              },
+            ],
           })
           if (error) { setMessage("Failed to submit. Please try again."); return }
-          await apiMutate("trips", {
-            action: "insert", table: "Stop_Confirmations",
-            data: {
-              stop_id: stop.stop_id, broker_id: brokerId, customer_id: customerIdToSave,
-              price_per_bag: finalPriceVal, area: selectedArea, company_price: cp,
-              price_reason: null,
-            },
-          })
         } else if (hasDiff) {
           const { error } = await apiMutate("trips", {
             action: "transaction",
@@ -470,9 +475,12 @@ export default function BrokerConfirmModal({ isOpen, onClose, brokerId, isMobile
                 status: "Pending",
               },
             })
-            if (!caError && caData?.[0]?.id) {
-              creditApprovalIds[line.sale_id] = caData[0].id
+            if (caError || !(caData as { id: string }[])?.[0]?.id) {
+              setMessage("Failed to submit. Please try again.")
+              setSubmitting(false)
+              return
             }
+            creditApprovalIds[line.sale_id] = (caData as { id: string }[])[0].id
           }
         }
 

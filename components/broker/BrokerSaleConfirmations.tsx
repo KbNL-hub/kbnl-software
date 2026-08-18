@@ -32,6 +32,7 @@ type SaleLine = {
   denied_by?: string | null
   denial_date?: string | null
   on_credit: boolean
+  credit_approval_id: string | null
   credit_approval_status: string | null
 }
 
@@ -122,8 +123,8 @@ export default function BrokerSaleConfirmations() {
         if (adj.denial_reason) denialMap[adj.source_id] = { reason: adj.denial_reason, by: adj.reviewed_by ?? "Admin", at: adj.reviewed_at ?? "" }
       }
 
-      // Also fetch credit rejection reasons for returned lines
-      const returnedWithCredit = (data || []).filter(s => s.discount_status === "returned" && (s as any).credit_approval_id).map(s => (s as any).credit_approval_id)
+    // Also fetch credit rejection reasons for returned lines
+    const returnedWithCredit = (data || []).filter(s => s.discount_status === "returned" && s.credit_approval_id).map(s => s.credit_approval_id as string)
       if (returnedWithCredit.length > 0) {
         const { data: cas } = await supabase
           .from("credit_approvals")
@@ -138,7 +139,8 @@ export default function BrokerSaleConfirmations() {
       }
 
       // Resolve reviewer names from profiles
-      const reviewerIds = [...new Set(Object.values(denialMap).map(d => d.by).filter(id => id && !id.includes(" ")))].filter(Boolean)
+      const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+      const reviewerIds = [...new Set(Object.values(denialMap).map(d => d.by).filter(id => UUID_RE.test(id)))]
       if (reviewerIds.length > 0) {
         const { data: profiles } = await supabase
           .from("Profiles")
@@ -154,7 +156,7 @@ export default function BrokerSaleConfirmations() {
     }
 
     // Fetch credit approval statuses
-    const creditApprovalIds = (data || []).filter((s: any) => s.credit_approval_id).map((s: any) => s.credit_approval_id)
+    const creditApprovalIds = (data || []).filter(s => s.credit_approval_id).map(s => s.credit_approval_id as string)
     const creditMap: Record<string, string> = {}
     if (creditApprovalIds.length > 0) {
       const { data: cas } = await supabase
@@ -169,7 +171,7 @@ export default function BrokerSaleConfirmations() {
       denial_reason: denialMap[s.sale_id]?.reason ?? null,
       denied_by: denialMap[s.sale_id]?.by ?? null,
       denial_date: denialMap[s.sale_id]?.at ?? null,
-      credit_approval_status: (s as any).credit_approval_id ? (creditMap[(s as any).credit_approval_id] ?? null) : null,
+      credit_approval_status: s.credit_approval_id ? (creditMap[s.credit_approval_id] ?? null) : null,
     }))
 
     const groups = groupSales(enriched)
@@ -400,7 +402,7 @@ export default function BrokerSaleConfirmations() {
           const statusColor = group.lines.some(l => l.discount_status === "returned") ? { bg: "#fffbeb", text: "#d97706", border: "#fcd34d", label: "Returned" }
             : group.status === "Confirmed" ? { bg: "#ecfdf5", text: "#10b981", border: "#a7f3d0", label: "Confirmed" }
             : group.status === "Rejected" ? { bg: "#fef2f2", text: "#ef4444", border: "#fecaca", label: "Rejected" }
-            : group.lines.some(l => l.discount_status === "pending") ? { bg: "#eff6ff", text: "#0070f3", border: "#93c5fd", label: "In Review" }
+            : group.lines.some(l => l.discount_status === "pending" || l.credit_approval_status === "Pending") ? { bg: "#eff6ff", text: "#0070f3", border: "#93c5fd", label: "In Review" }
             : { bg: "#fffbeb", text: "#f5a623", border: "#fed7aa", label: "Pending" }
           return (
           <div key={group.group_id} style={{

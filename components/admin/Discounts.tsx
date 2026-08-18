@@ -14,6 +14,7 @@ type PriceAdjustment = {
   source_id: string
   broker_id: string
   broker_name: string | null
+  customer_name: string | null
   area: string
   product: string
   company_price: number
@@ -123,26 +124,44 @@ export default function Discounts() {
       const saleSourceIds = (data || []).filter(a => a.source_type === "store_sale").map(a => a.source_id)
 
       const quantityMap: Record<string, number> = {}
+      const customerNameMap: Record<string, string> = {}
 
       if (stopSourceIds.length > 0) {
         const { data: stops } = await supabase
           .from("Stops")
-          .select("stop_id, quantity_offloaded")
+          .select("stop_id, quantity_offloaded, customer_id")
           .in("stop_id", stopSourceIds)
         for (const s of stops || []) quantityMap[`stop:${s.stop_id}`] = s.quantity_offloaded
+
+        const customerIds = (stops || []).map(s => s.customer_id).filter(Boolean)
+        const customerMap: Record<string, string> = {}
+        if (customerIds.length > 0) {
+          const { data: customers } = await supabase
+            .from("Customers")
+            .select("customer_id, full_name")
+            .in("customer_id", customerIds)
+          for (const c of customers || []) customerMap[c.customer_id] = c.full_name
+        }
+        for (const s of stops || []) {
+          customerNameMap[`stop_customer:${s.stop_id}`] = s.customer_id ? (customerMap[s.customer_id] ?? "") : ""
+        }
       }
 
       if (saleSourceIds.length > 0) {
         const { data: sales } = await supabase
           .from("store_sales")
-          .select("sale_id, quantity")
+          .select("sale_id, quantity, customer_name")
           .in("sale_id", saleSourceIds)
-        for (const s of sales || []) quantityMap[`store_sale:${s.sale_id}`] = s.quantity
+        for (const s of sales || []) {
+          quantityMap[`store_sale:${s.sale_id}`] = s.quantity
+          customerNameMap[`store_sale_customer:${s.sale_id}`] = s.customer_name ?? ""
+        }
       }
 
       const enriched = (data || []).map(a => ({
         ...a,
         broker_name: brokerMap[a.broker_id] || "Unknown",
+        customer_name: customerNameMap[`${a.source_type}_customer:${a.source_id}`] ?? null,
         quantity: quantityMap[`${a.source_type}:${a.source_id}`] ?? null,
       }))
 
@@ -181,6 +200,7 @@ export default function Discounts() {
     items: PriceAdjustment[]
     group_id: string
     broker_name: string | null
+    customer_name: string | null
     broker_id: string
     area: string
     price_reason: string
@@ -217,6 +237,7 @@ export default function Discounts() {
         items,
         group_id: gid,
         broker_name: rep.broker_name,
+        customer_name: rep.customer_name,
         broker_id: rep.broker_id,
         area: rep.area,
         price_reason: derivedReason,
@@ -684,6 +705,7 @@ export default function Discounts() {
                             <h3 style={{ margin: 0, color: "#0f172a", fontSize: FONT_SIZE.lg, fontWeight: 700 }}>{adj.broker_name}</h3>
                             <span style={{ fontSize: 10, padding: "2px 8px", borderRadius: 12, background: "#e0f2fe", color: "#0369a1", fontWeight: 700, border: "1px solid #7dd3fc" }}>Stop</span>
                           </div>
+                          {adj.customer_name && <p style={{ margin: 0, color: "#0f172a", fontSize: FONT_SIZE.sm, fontWeight: 500 }}>{adj.customer_name}</p>}
                           <p style={{ margin: 0, color: "#64748b", fontSize: FONT_SIZE.sm }}>{adj.product} · {adj.area}</p>
                         </div>
                         <span style={{ padding: "6px 12px", borderRadius: 16, fontSize: FONT_SIZE.xs, fontWeight: 600, background: sc.bg, color: sc.color, border: `1.5px solid ${sc.border}`, whiteSpace: "nowrap" }}>{adj.status}</span>
@@ -713,11 +735,9 @@ export default function Discounts() {
                         </div>
                       </div>
 
-                      <div style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 16, paddingBottom: 16, borderBottom: "1px solid #f1f5f9" }}>
-                        <div style={{ padding: "8px 10px", background: "#f8fafc", borderRadius: 8, borderLeft: "3px solid #0070f3" }}>
-                          <p style={{ margin: 0, fontSize: 11, color: "#94a3b8" }}>Reason</p>
-                          <p style={{ margin: "2px 0 0", fontSize: FONT_SIZE.sm, color: "#374151", fontStyle: "italic" }}>&ldquo;{adj.price_reason}&rdquo;</p>
-                        </div>
+                      <div style={{ padding: "8px 10px", background: "#f8fafc", borderRadius: 8, borderLeft: "3px solid #0070f3", marginBottom: 12 }}>
+                        <p style={{ margin: 0, fontSize: 11, color: "#94a3b8" }}>Reason</p>
+                        <p style={{ margin: "2px 0 0", fontSize: FONT_SIZE.sm, color: "#374151", fontStyle: "italic" }}>&ldquo;{adj.price_reason}&rdquo;</p>
                       </div>
 
                       {adj.status === "Denied" && adj.denial_reason && (
@@ -727,16 +747,16 @@ export default function Discounts() {
                         </div>
                       )}
 
-                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", borderTop: "1px solid #f1f5f9", paddingTop: 12, marginTop: 4 }}>
                         <span style={{ color: "#94a3b8", fontSize: FONT_SIZE.xs }}>
                           {formatDate(adj.created_at)} · {formatTime(adj.created_at)}
                         </span>
                         {adj.status === "Pending" && canEdit && (
-                          <div style={{ display: "flex", gap: 8 }}>
-                            <button onClick={() => handleApprove(adj)} disabled={submitting} style={{ padding: "6px 14px", background: "#10b981", color: "white", border: "none", borderRadius: 6, cursor: "pointer", fontSize: FONT_SIZE.xs, fontWeight: 600, display: "flex", alignItems: "center", gap: 4, opacity: submitting ? 0.6 : 1 }}>
+                          <div style={{ display: "flex", gap: 6 }}>
+                            <button onClick={() => handleApprove(adj)} disabled={submitting} style={{ padding: "7px 14px", background: "#10b981", color: "white", border: "none", borderRadius: 6, cursor: "pointer", fontSize: FONT_SIZE.xs, fontWeight: 600, display: "flex", alignItems: "center", gap: 4, opacity: submitting ? 0.6 : 1 }}>
                               <Icon icon="mdi:check-circle" width={14} /> Approve
                             </button>
-                            <button onClick={() => { setDenialModal(adj); setDenialReason(""); setMessage("") }} disabled={submitting} style={{ padding: "6px 14px", background: "white", color: "#ef4444", border: "1.5px solid #ef4444", borderRadius: 6, cursor: "pointer", fontSize: FONT_SIZE.xs, fontWeight: 600, display: "flex", alignItems: "center", gap: 4 }}>
+                            <button onClick={() => { setDenialModal(adj); setDenialReason(""); setMessage("") }} disabled={submitting} style={{ padding: "7px 14px", background: "white", color: "#ef4444", border: "1.5px solid #ef4444", borderRadius: 6, cursor: "pointer", fontSize: FONT_SIZE.xs, fontWeight: 600, display: "flex", alignItems: "center", gap: 4 }}>
                               <Icon icon="mdi:close-circle" width={14} /> Deny
                             </button>
                           </div>
@@ -762,6 +782,7 @@ export default function Discounts() {
                           <h3 style={{ margin: 0, color: "#0f172a", fontSize: FONT_SIZE.lg, fontWeight: 700 }}>{entry.broker_name}</h3>
                           <span style={{ fontSize: 10, padding: "2px 8px", borderRadius: 12, background: "#f3e5f5", color: "#7c3aed", fontWeight: 700, border: "1px solid #d8b4fe" }}>Store Sale</span>
                         </div>
+                        {entry.customer_name && <p style={{ margin: 0, color: "#0f172a", fontSize: FONT_SIZE.sm, fontWeight: 500 }}>{entry.customer_name}</p>}
                         <p style={{ margin: 0, color: "#64748b", fontSize: FONT_SIZE.sm }}>{productNames.join(", ")} · {entry.area}</p>
                       </div>
                       <span style={{ padding: "6px 12px", borderRadius: 16, fontSize: FONT_SIZE.xs, fontWeight: 600, background: sc.bg, color: sc.color, border: `1.5px solid ${sc.border}`, whiteSpace: "nowrap" }}>{entry.status}</span>
@@ -789,11 +810,9 @@ export default function Discounts() {
                       </div>
                     </div>
 
-                    <div style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 16, paddingBottom: 16, borderBottom: "1px solid #f1f5f9" }}>
-                      <div style={{ padding: "8px 10px", background: "#f8fafc", borderRadius: 8, borderLeft: "3px solid #0070f3" }}>
-                        <p style={{ margin: 0, fontSize: 11, color: "#94a3b8" }}>Reason</p>
-                        <p style={{ margin: "2px 0 0", fontSize: FONT_SIZE.sm, color: "#374151", fontStyle: "italic" }}>&ldquo;{entry.price_reason}&rdquo;</p>
-                      </div>
+                    <div style={{ padding: "8px 10px", background: "#f8fafc", borderRadius: 8, borderLeft: "3px solid #0070f3", marginBottom: 12 }}>
+                      <p style={{ margin: 0, fontSize: 11, color: "#94a3b8" }}>Reason</p>
+                      <p style={{ margin: "2px 0 0", fontSize: FONT_SIZE.sm, color: "#374151", fontStyle: "italic" }}>&ldquo;{entry.price_reason}&rdquo;</p>
                     </div>
 
                     {entry.status === "Denied" && items[0]?.denial_reason && (
@@ -803,16 +822,16 @@ export default function Discounts() {
                       </div>
                     )}
 
-                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", borderTop: "1px solid #f1f5f9", paddingTop: 12, marginTop: 4 }}>
                       <span style={{ color: "#94a3b8", fontSize: FONT_SIZE.xs }}>
                         {formatDate(entry.created_at)} · {formatTime(entry.created_at)}
                       </span>
                       {entry.status === "Pending" && canEdit && (
-                        <div style={{ display: "flex", gap: 8 }}>
-                          <button onClick={() => handleApproveGroup(items)} disabled={submitting} style={{ padding: "6px 14px", background: "#10b981", color: "white", border: "none", borderRadius: 6, cursor: "pointer", fontSize: FONT_SIZE.xs, fontWeight: 600, display: "flex", alignItems: "center", gap: 4, opacity: submitting ? 0.6 : 1 }}>
+                        <div style={{ display: "flex", gap: 6 }}>
+                          <button onClick={() => handleApproveGroup(items)} disabled={submitting} style={{ padding: "7px 14px", background: "#10b981", color: "white", border: "none", borderRadius: 6, cursor: "pointer", fontSize: FONT_SIZE.xs, fontWeight: 600, display: "flex", alignItems: "center", gap: 4, opacity: submitting ? 0.6 : 1 }}>
                             <Icon icon="mdi:check-circle" width={14} /> Approve all
                           </button>
-                          <button onClick={() => { setDenialModalGroup(items); setDenialReason(""); setMessage("") }} disabled={submitting} style={{ padding: "6px 14px", background: "white", color: "#ef4444", border: "1.5px solid #ef4444", borderRadius: 6, cursor: "pointer", fontSize: FONT_SIZE.xs, fontWeight: 600, display: "flex", alignItems: "center", gap: 4 }}>
+                          <button onClick={() => { setDenialModalGroup(items); setDenialReason(""); setMessage("") }} disabled={submitting} style={{ padding: "7px 14px", background: "white", color: "#ef4444", border: "1.5px solid #ef4444", borderRadius: 6, cursor: "pointer", fontSize: FONT_SIZE.xs, fontWeight: 600, display: "flex", alignItems: "center", gap: 4 }}>
                             <Icon icon="mdi:close-circle" width={14} /> Deny all
                           </button>
                         </div>
@@ -830,7 +849,7 @@ export default function Discounts() {
               <table style={{ width: "100%", borderCollapse: "collapse", textAlign: "left", minWidth: 900 }}>
                 <thead>
                   <tr style={{ background: "#f8fafc", borderBottom: "1px solid #e2e8f0" }}>
-                    {["Broker", "Product", "Area", "Bags", "Company", "Adjusted", "Diff", "Reason", "Status", "Date", "Actions"].map(h => (
+                    {["Broker", "Customer", "Product", "Area", "Bags", "Company", "Adjusted", "Diff", "Reason", "Status", "Denial Reason", "Date", "Actions"].map(h => (
                       <th key={h} style={{ padding: "12px 16px", fontWeight: 600, fontSize: FONT_SIZE.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px", whiteSpace: "nowrap" }}>{h}</th>
                     ))}
                   </tr>
@@ -847,6 +866,7 @@ export default function Discounts() {
                             <div>{adj.broker_name}</div>
                             <span style={{ fontSize: 9, padding: "1px 6px", borderRadius: 8, background: "#e0f2fe", color: "#0369a1", fontWeight: 700, border: "1px solid #7dd3fc" }}>Stop</span>
                           </td>
+                          <td style={{ padding: "12px 16px", fontSize: FONT_SIZE.sm, color: "#374151" }}>{adj.customer_name || "—"}</td>
                           <td style={{ padding: "12px 16px", fontSize: FONT_SIZE.sm }}>{adj.product}</td>
                           <td style={{ padding: "12px 16px", fontSize: FONT_SIZE.sm, color: "#64748b" }}>{adj.area}</td>
                           <td style={{ padding: "12px 16px", fontSize: FONT_SIZE.sm, fontWeight: 600 }}>{adj.quantity != null ? adj.quantity : "—"}</td>
@@ -859,6 +879,7 @@ export default function Discounts() {
                           <td style={{ padding: "12px 16px" }}>
                             <span style={{ padding: "6px 10px", borderRadius: 14, fontSize: FONT_SIZE.xs, fontWeight: 600, background: sc.bg, color: sc.color, border: `1.5px solid ${sc.border}` }}>{adj.status}</span>
                           </td>
+                          <td style={{ padding: "12px 16px", fontSize: FONT_SIZE.xs, maxWidth: 180, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: adj.denial_reason ? "#dc2626" : "#94a3b8" }} title={adj.denial_reason || ""}>{adj.denial_reason || "—"}</td>
                           <td style={{ padding: "12px 16px", fontSize: FONT_SIZE.xs, color: "#94a3b8", whiteSpace: "nowrap" }}>{formatDate(adj.created_at)}</td>
                           <td style={{ padding: "12px 16px" }}>
                             {adj.status === "Pending" && canEdit && (
@@ -892,6 +913,7 @@ export default function Discounts() {
                                 <div>{entry.broker_name}</div>
                                 <span style={{ fontSize: 9, padding: "1px 6px", borderRadius: 8, background: "#f3e5f5", color: "#7c3aed", fontWeight: 700, border: "1px solid #d8b4fe" }}>Store Sale</span>
                               </td>
+                              <td rowSpan={items.length} style={{ padding: "12px 16px", fontSize: FONT_SIZE.sm, color: "#374151", verticalAlign: "top", borderBottom: idx === items.length - 1 ? "1px solid #f1f5f9" : undefined }}>{entry.customer_name || "—"}</td>
                               <td rowSpan={items.length} style={{ padding: "12px 16px", fontSize: FONT_SIZE.sm, verticalAlign: "top", borderBottom: idx === items.length - 1 ? "1px solid #f1f5f9" : undefined }}>
                                 {items.map((it, i) => (
                                   <div key={i} style={{ marginBottom: i < items.length - 1 ? 4 : 0 }}>{it.product}</div>
@@ -912,6 +934,7 @@ export default function Discounts() {
                               <td rowSpan={items.length} style={{ padding: "12px 16px", verticalAlign: "top", borderBottom: "1px solid #f1f5f9" }}>
                                 <span style={{ padding: "6px 10px", borderRadius: 14, fontSize: FONT_SIZE.xs, fontWeight: 600, background: sc.bg, color: sc.color, border: `1.5px solid ${sc.border}` }}>{entry.status}</span>
                               </td>
+                              <td rowSpan={items.length} style={{ padding: "12px 16px", fontSize: FONT_SIZE.xs, maxWidth: 180, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: items[0]?.denial_reason ? "#dc2626" : "#94a3b8", verticalAlign: "top", borderBottom: "1px solid #f1f5f9" }} title={items[0]?.denial_reason || ""}>{items[0]?.denial_reason || "—"}</td>
                               <td rowSpan={items.length} style={{ padding: "12px 16px", fontSize: FONT_SIZE.xs, color: "#94a3b8", whiteSpace: "nowrap", verticalAlign: "top", borderBottom: "1px solid #f1f5f9" }}>{formatDate(entry.created_at)}</td>
                               <td rowSpan={items.length} style={{ padding: "12px 16px", verticalAlign: "top", borderBottom: "1px solid #f1f5f9" }}>
                                 {entry.status === "Pending" && canEdit && (

@@ -73,6 +73,15 @@ export default function MyStops() {
   // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { initBroker() }, [initBroker])
 
+  type StopRow = {
+    stop_id: string; trip_id: string; customer_id: string | null;
+    quantity_offloaded: number; stop_location: string; stop_time: string;
+    confirmed: boolean; disputed: boolean; discount_status: string | null;
+    on_credit: boolean; credit_approval_id: string | null;
+    Trips: { plate_number: string; material_centre: string; ATC: string | null; order_no: string | null; child_order_no: string | null; product: string } | null;
+    Customers: { full_name: string } | null;
+  }
+
   async function fetchStops(bId: string) {
     const { data: stops, error } = await supabase
       .from("Stops")
@@ -86,7 +95,8 @@ export default function MyStops() {
 
     if (error) { console.error("Failed to fetch stops:", error); return }
 
-    const creditApprovalIds = (stops || []).filter((s: any) => s.credit_approval_id).map((s: any) => s.credit_approval_id)
+    const stopsData = (stops || []) as unknown as StopRow[]
+    const creditApprovalIds = stopsData.filter(s => s.credit_approval_id).map(s => s.credit_approval_id as string)
     const creditMap: Record<string, string> = {}
     if (creditApprovalIds.length > 0) {
       const { data: cas } = await supabase
@@ -97,7 +107,7 @@ export default function MyStops() {
     }
 
     /* eslint-disable @typescript-eslint/no-explicit-any */
-    const enriched = (stops || []).map((stop: any) => ({
+    const enriched = (stopsData || []).map((stop: any) => ({
       stop_id: stop.stop_id,
       trip_id: stop.trip_id,
       customer_id: stop.customer_id,
@@ -118,8 +128,6 @@ export default function MyStops() {
       product: stop.Trips?.product ?? "",
       customer_name: stop.Customers?.full_name ?? "Not provided",
     }))
-
-    setAllStops(enriched)
 
     const returnedStops = enriched.filter(s => s.discount_status === "returned" || s.credit_approval_status === "Rejected")
     const returnedIds = returnedStops.map(s => s.stop_id)
@@ -153,7 +161,8 @@ export default function MyStops() {
       }
 
       // Resolve reviewer names from profiles
-      const reviewerIds = [...new Set(Object.values(denialMap).map(d => d.by).filter(id => id && !id.includes(" ")))].filter(Boolean)
+      const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+      const reviewerIds = [...new Set(Object.values(denialMap).map(d => d.by).filter(id => UUID_RE.test(id)))]
       if (reviewerIds.length > 0) {
         const { data: profiles } = await supabase
           .from("Profiles")
@@ -308,7 +317,7 @@ export default function MyStops() {
         visibleStops.map((stop) => {
           const isExpanded = expandedCard === stop.stop_id
           const statusColor = stop.discount_status === "returned" ? { bg: "#f5f3ff", text: "#7c3aed", border: "#c4b5fd", label: "Returned" }
-            : stop.discount_status === "pending" ? { bg: "#fffbeb", text: "#f5a623", border: "#fcd34d", label: "In Review" }
+            : (stop.discount_status === "pending" || stop.credit_approval_status === "Pending") ? { bg: "#fffbeb", text: "#f5a623", border: "#fcd34d", label: "In Review" }
             : stop.confirmed ? { bg: "#ecfdf5", text: "#10b981", border: "#a7f3d0", label: "Confirmed" }
             : stop.disputed ? { bg: "#fef2f2", text: "#ef4444", border: "#fecaca", label: "Disputed" }
             : { bg: "#f0f7ff", text: "#0070f3", border: "#bfdbfe", label: "Pending" }
@@ -355,9 +364,9 @@ export default function MyStops() {
                   ) : null}
                 </div>
 
-                {stop.discount_status === "returned" && (
+                {(stop.discount_status === "returned" || stop.credit_approval_status === "Rejected") && (
                   <div style={{ marginBottom: 12 }}>
-                    <span style={{ padding: "4px 10px", borderRadius: 6, fontSize: 11, fontWeight: 600, background: "#f5f3ff", color: "#7c3aed", border: "1px solid #c4b5fd" }}>Returned — Edit price to resubmit</span>
+                    <span style={{ padding: "4px 10px", borderRadius: 6, fontSize: 11, fontWeight: 600, background: stop.discount_status === "returned" ? "#f5f3ff" : "#fef2f2", color: stop.discount_status === "returned" ? "#7c3aed" : "#dc2626", border: `1px solid ${stop.discount_status === "returned" ? "#c4b5fd" : "#fecaca"}` }}>{stop.discount_status === "returned" ? "Returned — Edit price to resubmit" : "Credit Rejected"}</span>
                     {stop.denial_reason && (
                       <div style={{ marginTop: 8, padding: "8px 12px", borderRadius: 8, background: "#fef2f2", border: "1px solid #fecaca" }}>
                         <p style={{ margin: 0, fontSize: 11, color: "#ef4444", fontWeight: 600 }}>Rejection reason</p>
@@ -467,7 +476,7 @@ export default function MyStops() {
                     <td style={{ padding: "12px 16px" }}>
                       {stop.discount_status === "returned" ? (
                         <span style={{ padding: "4px 10px", borderRadius: 6, fontSize: 12, fontWeight: 500, background: "#f5f3ff", color: "#7c3aed", border: "1px solid #c4b5fd", display: "inline-block" }}>Returned</span>
-                      ) : stop.discount_status === "pending" ? (
+                      ) : (stop.discount_status === "pending" || stop.credit_approval_status === "Pending") ? (
                         <span style={{ padding: "4px 10px", borderRadius: 6, fontSize: 12, fontWeight: 500, background: "#fffbeb", color: "#f5a623", border: "1px solid #fcd34d", display: "inline-block" }}>In Review</span>
                       ) : stop.confirmed ? (
                         <span style={{ padding: "4px 10px", borderRadius: 6, fontSize: 12, fontWeight: 500, background: "#d1fae5", color: "#065f46", border: "1px solid #a7f3d0", display: "inline-block" }}>Confirmed</span>

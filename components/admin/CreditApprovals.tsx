@@ -27,6 +27,10 @@ type CreditApproval = {
   reviewed_at: string | null
   created_at: string
   has_discount: boolean
+  credit_limit: number | null
+  active_credit_total: number
+  credit_amount: number
+  projected_total: number
 }
 
 type ViewMode = "card" | "table"
@@ -105,13 +109,27 @@ export default function CreditApprovals() {
       const managerIds = [...new Set((data || []).map(a => a.credit_manager_id).filter(Boolean))]
       const brokerMap: Record<string, string> = {}
       const managerMap: Record<string, string> = {}
+      const brokerLimitMap: Record<string, number | null> = {}
+      const brokerActiveCreditMap: Record<string, number> = {}
 
       if (brokerIds.length > 0) {
         const { data: brokers } = await supabase
           .from("Brokers")
-          .select("broker_id, broker_name")
+          .select("broker_id, broker_name, credit_limit")
           .in("broker_id", brokerIds)
-        for (const b of brokers || []) brokerMap[b.broker_id] = b.broker_name
+        for (const b of brokers || []) {
+          brokerMap[b.broker_id] = b.broker_name
+          brokerLimitMap[b.broker_id] = b.credit_limit ?? null
+        }
+
+        const { data: activeCredits } = await supabase
+          .from("broker_credits")
+          .select("broker_id, amount")
+          .eq("status", "Active")
+          .in("broker_id", brokerIds)
+        for (const c of activeCredits || []) {
+          brokerActiveCreditMap[c.broker_id] = (brokerActiveCreditMap[c.broker_id] || 0) + Number(c.amount)
+        }
       }
 
       if (managerIds.length > 0) {
@@ -149,12 +167,20 @@ export default function CreditApprovals() {
         }
       }
 
-      const enriched = (data || []).map(a => ({
-        ...a,
-        broker_name: brokerMap[a.broker_id] || "Unknown",
-        credit_manager_name: managerMap[a.credit_manager_id] || "Unknown",
-        has_discount: discountMap[`${a.source_type}:${a.source_id}`] || false,
-      }))
+      const enriched = (data || []).map(a => {
+        const creditAmount = (a.adjusted_price ?? a.company_price ?? 0) * (a.quantity ?? 0)
+        const activeTotal = brokerActiveCreditMap[a.broker_id] || 0
+        return {
+          ...a,
+          broker_name: brokerMap[a.broker_id] || "Unknown",
+          credit_manager_name: managerMap[a.credit_manager_id] || "Unknown",
+          has_discount: discountMap[`${a.source_type}:${a.source_id}`] || false,
+          credit_limit: brokerLimitMap[a.broker_id] ?? null,
+          active_credit_total: activeTotal,
+          credit_amount: creditAmount,
+          projected_total: activeTotal + creditAmount,
+        }
+      })
 
       setApprovals(enriched)
     } catch (err) {
@@ -195,31 +221,35 @@ export default function CreditApprovals() {
 
       if (approval.has_discount) {
         if (approval.source_type === "store_sale") {
-          await apiMutate("finance", {
+          const { error: adjError } = await apiMutate("finance", {
             action: "update",
             table: "price_adjustments",
             data: { credit_status: "approved" },
             filters: { source_type: "store_sale", source_id: approval.source_id },
           })
-          await apiMutate("finance", {
+          if (adjError) { setMessage("Approved but failed to release the discount for review. Try again."); return }
+          const { error: saleError } = await apiMutate("finance", {
             action: "update",
             table: "store_sales",
             data: { discount_status: "pending" },
             filters: { sale_id: approval.source_id },
           })
+          if (saleError) { setMessage("Approved but failed to update the sale. Try again."); return }
         } else {
-          await apiMutate("finance", {
+          const { error: adjError } = await apiMutate("finance", {
             action: "update",
             table: "price_adjustments",
             data: { credit_status: "approved" },
             filters: { source_type: "stop", source_id: approval.source_id },
           })
-          await apiMutate("trips", {
+          if (adjError) { setMessage("Approved but failed to release the discount for review. Try again."); return }
+          const { error: stopError } = await apiMutate("trips", {
             action: "update",
             table: "Stops",
             data: { discount_status: "pending" },
             filters: { stop_id: approval.source_id },
           })
+          if (stopError) { setMessage("Approved but failed to update the stop. Try again."); return }
         }
       } else {
         if (approval.source_type === "store_sale") {
@@ -481,6 +511,45 @@ export default function CreditApprovals() {
                       )}
                     </div>
 
+                    {/* Credit impact summary — only for pending */}
+                    {approval.status === "Pending" && (() => {
+                      const limit = approval.credit_limit
+                      const active = approval.active_credit_total
+                      const thisAmt = approval.credit_amount
+                      const projected = approval.projected_total
+                      const overLimit = limit != null && projected > limit
+                      return (
+                        <div style={{ padding: "10px 12px", borderRadius: 8, background: overLimit ? "#fef2f2" : "#f0f7ff", border: `1px solid ${overLimit ? "#fecaca" : "#bfdbfe"}`, marginBottom: 12, display: "flex", flexDirection: "column", gap: 6 }}>
+                          <p style={{ margin: 0, fontSize: 10, fontWeight: 700, color: overLimit ? "#dc2626" : "#0369a1", textTransform: "uppercase", letterSpacing: "0.5px" }}>
+                            Credit Impact
+                          </p>
+                          <div style={{ display: "flex", gap: 16, flexWrap: "wrap", fontSize: FONT_SIZE.xs }}>
+                            <div>
+                              <span style={{ color: "#64748b" }}>Limit: </span>
+                              <span style={{ fontWeight: 600, color: "#0f172a" }}>{limit != null ? `₦${limit.toLocaleString()}` : "No limit"}</span>
+                            </div>
+                            <div>
+                              <span style={{ color: "#64748b" }}>Active: </span>
+                              <span style={{ fontWeight: 600, color: "#0f172a" }}>₦{active.toLocaleString()}</span>
+                            </div>
+                            <div>
+                              <span style={{ color: "#64748b" }}>This: </span>
+                              <span style={{ fontWeight: 600, color: "#0f172a" }}>₦{thisAmt.toLocaleString()}</span>
+                            </div>
+                          </div>
+                          <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: FONT_SIZE.xs }}>
+                            <span style={{ color: "#64748b" }}>After approval: </span>
+                            <span style={{ fontWeight: 700, color: overLimit ? "#dc2626" : "#0f172a" }}>₦{projected.toLocaleString()}</span>
+                            {limit != null && (
+                              <span style={{ padding: "1px 6px", borderRadius: 6, fontSize: 10, fontWeight: 700, background: overLimit ? "#dc2626" : "#10b981", color: "white" }}>
+                                {overLimit ? "⚠ Over limit" : "✓ OK"}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      )
+                    })()}
+
                     <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8, padding: "10px 12px", borderRadius: 8, background: "#f8fafc", border: "1px solid #e2e8f0", marginBottom: 12 }}>
                       {approval.company_price != null && (
                         <div>
@@ -527,10 +596,10 @@ export default function CreditApprovals() {
 
           {viewMode === "table" && (
             <div style={{ background: "white", borderRadius: 12, border: "1px solid #e2e8f0", boxShadow: "0 1px 3px rgba(0, 0, 0, 0.05)", overflowX: "auto" }}>
-              <table style={{ width: "100%", borderCollapse: "collapse", textAlign: "left", minWidth: 900 }}>
+              <table style={{ width: "100%", borderCollapse: "collapse", textAlign: "left", minWidth: 1050 }}>
                 <thead>
                   <tr style={{ background: "#f8fafc", borderBottom: "1px solid #e2e8f0" }}>
-                    {["Broker", "Type", "Product", "Area", "Bags", "Company", "Adjusted", "Credit Manager", "Status", "Date", "Actions"].map(h => (
+                    {["Broker", "Type", "Product", "Area", "Bags", "Company", "Adjusted", "Credit Impact", "Status", "Date", "Actions"].map(h => (
                       <th key={h} style={{ padding: "12px 16px", fontWeight: 600, fontSize: FONT_SIZE.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px", whiteSpace: "nowrap" }}>{h}</th>
                     ))}
                   </tr>
@@ -554,7 +623,27 @@ export default function CreditApprovals() {
                         <td style={{ padding: "12px 16px", fontSize: FONT_SIZE.sm, fontWeight: 600 }}>{approval.quantity != null ? approval.quantity : "—"}</td>
                         <td style={{ padding: "12px 16px", fontSize: FONT_SIZE.sm }}>{approval.company_price != null ? `₦${approval.company_price.toLocaleString()}` : "—"}</td>
                         <td style={{ padding: "12px 16px", fontSize: FONT_SIZE.sm }}>{approval.adjusted_price != null ? `₦${approval.adjusted_price.toLocaleString()}` : "—"}</td>
-                        <td style={{ padding: "12px 16px", fontSize: FONT_SIZE.sm, color: "#64748b" }}>{isSuperAdmin ? approval.credit_manager_name : "—"}</td>
+                        <td style={{ padding: "12px 16px" }}>
+                          {approval.status === "Pending" ? (() => {
+                            const limit = approval.credit_limit
+                            const active = approval.active_credit_total
+                            const thisAmt = approval.credit_amount
+                            const projected = approval.projected_total
+                            const overLimit = limit != null && projected > limit
+                            return (
+                              <div style={{ fontSize: FONT_SIZE.xs, lineHeight: 1.5 }}>
+                                <div>Limit: <b>{limit != null ? `₦${limit.toLocaleString()}` : "None"}</b> · Active: <b>₦{active.toLocaleString()}</b></div>
+                                <div>This: <b>₦{thisAmt.toLocaleString()}</b> → After: <b style={{ color: overLimit ? "#dc2626" : "#0f172a" }}>₦{projected.toLocaleString()}</b>
+                                  {limit != null && (
+                                    <span style={{ marginLeft: 6, padding: "1px 5px", borderRadius: 4, fontSize: 10, fontWeight: 700, background: overLimit ? "#dc2626" : "#10b981", color: "white" }}>
+                                      {overLimit ? "Over" : "OK"}
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+                            )
+                          })() : <span style={{ fontSize: FONT_SIZE.xs, color: "#94a3b8" }}>—</span>}
+                        </td>
                         <td style={{ padding: "12px 16px" }}>
                           <span style={{ padding: "6px 10px", borderRadius: 14, fontSize: FONT_SIZE.xs, fontWeight: 600, background: sc.bg, color: sc.color, border: `1.5px solid ${sc.border}` }}>{approval.status}</span>
                         </td>
