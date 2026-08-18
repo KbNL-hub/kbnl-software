@@ -27,7 +27,7 @@ const ALLOWED_TABLES = ["Trips", "Trucks", "dd_trips", "trip_load_more", "Stops"
 const TABLE_ROLES: Record<string, string[]> = {
   Trips: ["Driver", "TruckOfficer", "Broker", "Admin", "SuperAdmin", "DeskOfficer", "ATCOfficer", "Supervisor"],
   Trucks: ["Driver", "TruckOfficer", "TruckAdmin", "Admin", "SuperAdmin", "ATCOfficer", "Supervisor"],
-  Stops: ["Driver", "Broker", "StoreOfficer", "Admin", "SuperAdmin", "TruckAdmin", "ATCOfficer", "Supervisor"],
+  Stops: ["Driver", "Broker", "StoreOfficer", "Admin", "SuperAdmin", "TruckAdmin", "ATCOfficer", "Supervisor", "CreditManager"],
   Stop_Confirmations: ["Broker", "Admin", "SuperAdmin"],
   trip_load_more: ["Driver", "Admin", "SuperAdmin"],
   trip_discrepancies: ["Driver", "Admin", "SuperAdmin"],

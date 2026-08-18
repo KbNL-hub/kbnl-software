@@ -30,7 +30,7 @@ const ALLOWED_RPCS = ["decrement_store_stock", "add_cash_deposit", "authorise_ca
 const TABLE_ROLES: Record<string, string[]> = {
   customer_payments: ["Broker", "Admin", "SuperAdmin", "DeskOfficer", "Supervisor"],
   broker_credits: ["Broker", "Admin", "SuperAdmin", "DeskOfficer"],
-  store_sales: ["StoreOfficer", "Admin", "SuperAdmin", "Supervisor", "StoreSupervisor", "DeskOfficer"],
+  store_sales: ["StoreOfficer", "Admin", "SuperAdmin", "Supervisor", "StoreSupervisor", "DeskOfficer", "CreditManager"],
   store_supply_confirmations: ["StoreOfficer", "Admin", "SuperAdmin", "StoreSupervisor"],
   store_supply_lines: ["StoreOfficer", "Admin", "SuperAdmin", "StoreSupervisor"],
   cash_expenses: ["CashOfficer", "Admin", "SuperAdmin", "Broker", "CashAuthorizer", "DeskOfficer"],
