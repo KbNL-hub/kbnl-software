@@ -119,10 +119,13 @@ export default function BrokerConfirmModal({ isOpen, onClose, brokerId, isMobile
   const [submitting, setSubmitting] = useState(false)
 
   useEffect(() => {
+    if (!isOpen) return
+    let active = true
     supabase.from("credit_managers").select("manager_id, full_name").order("full_name").then(({ data }) => {
-      if (data) setCreditManagersList(data)
+      if (active && data) setCreditManagersList(data)
     })
-  }, [])
+    return () => { active = false }
+  }, [isOpen])
 
   const inputStyle: React.CSSProperties = {
     width: "100%", padding: isMobile ? "14px 12px" : "11px 12px",
@@ -300,15 +303,13 @@ export default function BrokerConfirmModal({ isOpen, onClose, brokerId, isMobile
         const stopUpdate: Record<string, unknown> = {
           customer_id: customerIdToSave,
           updated_by: user.id,
-          confirmed: saleType === "credit" || hasDiff ? false : true,
+          confirmed: !(saleType === "credit" || hasDiff),
         }
         if (saleType === "credit") {
           stopUpdate.on_credit = true
           stopUpdate.credit_approval_id = creditApprovalId
         }
-        if (hasDiff) {
-          stopUpdate.discount_status = "pending"
-        } else if (isReturned) {
+        if (hasDiff || isReturned) {
           stopUpdate.discount_status = "pending"
         }
 
@@ -483,7 +484,9 @@ export default function BrokerConfirmModal({ isOpen, onClose, brokerId, isMobile
             sub_actions: subActions,
           })
 
-          if (error || !data || (Array.isArray(data) && data.length === 0)) {
+          const saleUpdateIndex = subActions.findIndex(sa => sa.table === "store_sales")
+          const saleUpdateRows = Array.isArray(data) ? data[saleUpdateIndex] : null
+          if (error || !Array.isArray(saleUpdateRows) || saleUpdateRows.length === 0) {
             unconfirmed.push(line.product)
           } else {
             confirmed.push(line.product)

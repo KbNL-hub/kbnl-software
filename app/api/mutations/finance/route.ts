@@ -78,6 +78,23 @@ function applyFilters(query: any, filters: Record<string, unknown>) {
   return query
 }
 
+function enforceBrokerScope(
+  table: string,
+  action: string,
+  filters: Record<string, unknown> | undefined,
+  auth: { userId: string; roles: string[] },
+) {
+  const brokerOnly = auth.roles.includes("Broker") &&
+    !auth.roles.some(r => ["Admin", "SuperAdmin", "DeskOfficer", "Supervisor", "CreditManager", "StoreOfficer", "StoreSupervisor"].includes(r))
+  if (!brokerOnly) return null
+  if (table !== "store_sales") return null
+  if (action !== "update" && action !== "delete") return null
+  if (filters?.broker_id !== auth.userId) {
+    return `Access denied for ${action} on ${table}`
+  }
+  return null
+}
+
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json()
@@ -154,6 +171,10 @@ export async function POST(req: NextRequest) {
         }
         if (sa.table === "credit_approvals" && sa.action !== "insert" && auth.roles.includes("Broker") && !auth.roles.includes("Admin")) {
           return buildError("Brokers cannot modify or delete credit approvals", 403)
+        }
+        const brokerScopeError = enforceBrokerScope(sa.table, sa.action, sa.filters, auth)
+        if (brokerScopeError) {
+          return buildError(brokerScopeError, 403)
         }
       }
 
@@ -356,6 +377,11 @@ export async function POST(req: NextRequest) {
 
     if (table === "credit_approvals" && action !== "insert" && auth.roles.includes("Broker") && !auth.roles.includes("Admin")) {
       return buildError("Brokers cannot modify or delete credit approvals", 403)
+    }
+
+    const brokerScopeError = enforceBrokerScope(table, action, filters, auth)
+    if (brokerScopeError) {
+      return buildError(brokerScopeError, 403)
     }
 
     switch (action) {

@@ -57,6 +57,15 @@ export default function MyStops() {
   const [expandedCard, setExpandedCard] = useState<string | null>(null)
   const [stopAdjustments, setStopAdjustments] = useState<Record<string, { company_price: number; adjusted_price: number; price_reason: string }>>({})
 
+  type StopRow = {
+    stop_id: string; trip_id: string; customer_id: string | null;
+    quantity_offloaded: number; stop_location: string; stop_time: string;
+    confirmed: boolean; disputed: boolean; discount_status: string | null;
+    on_credit: boolean; credit_approval_id: string | null;
+    Trips: { plate_number: string; material_centre: string; ATC: string | null; order_no: string | null; child_order_no: string | null; product: string } | null;
+    Customers: { full_name: string } | null;
+  }
+
   const fetchStops = useCallback(async (bId: string) => {
     const { data: stops, error } = await supabase
       .from("Stops")
@@ -187,15 +196,6 @@ export default function MyStops() {
 
   // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { initBroker() }, [initBroker])
-
-  type StopRow = {
-    stop_id: string; trip_id: string; customer_id: string | null;
-    quantity_offloaded: number; stop_location: string; stop_time: string;
-    confirmed: boolean; disputed: boolean; discount_status: string | null;
-    on_credit: boolean; credit_approval_id: string | null;
-    Trips: { plate_number: string; material_centre: string; ATC: string | null; order_no: string | null; child_order_no: string | null; product: string } | null;
-    Customers: { full_name: string } | null;
-  }
 
   function openConfirmModal(stop: Stop) {
     setSelectedStop(stop)
