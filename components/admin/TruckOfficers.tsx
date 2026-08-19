@@ -9,6 +9,8 @@ import { apiMutate } from "@/lib/api-mutation"
 import ModernInput from "@/components/ModernInput"
 import InviteSuccessCard from "@/components/admin/InviteSuccessCard"
 import { usePermissions } from "@/lib/PermissionContext"
+import { usePagination } from "@/lib/hooks/usePagination"
+import PaginationControls from "@/components/PaginationControls"
 
 type TruckOfficer = {
   manager_id: string
@@ -70,6 +72,8 @@ export default function ManageTruckOfficers() {
   const [inviteResult, setInviteResult] = useState<{ tempPassword: string; email: string } | null>(null)
   const [assignError, setAssignError] = useState("")
   const [pendingPlate, setPendingPlate] = useState<string | null>(null)
+
+  const { page, setPage, totalPages, paginatedItems, totalItems } = usePagination(managers)
 
   const phoneRef = useRef<HTMLInputElement>(null)
   const emailRef = useRef<HTMLInputElement>(null)
@@ -320,7 +324,7 @@ export default function ManageTruckOfficers() {
         <>
           {viewMode === "card" && (
             <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-              {managers.map((m) => {
+              {paginatedItems.map((m) => {
                 const { bg, color, border } = statusColor(m.status)
                 return (
                   <div key={m.manager_id} style={{ background: "white", borderRadius: 12, padding: 16, border: "1px solid #e2e8f0", boxShadow: "0 1px 3px rgba(0, 0, 0, 0.05)", transition: "all 0.2s ease" }} onMouseEnter={e => { e.currentTarget.style.boxShadow = "0 4px 12px rgba(0, 0, 0, 0.08)"; e.currentTarget.style.borderColor = "#cbd5e1" }} onMouseLeave={e => { e.currentTarget.style.boxShadow = "0 1px 3px rgba(0, 0, 0, 0.05)"; e.currentTarget.style.borderColor = "#e2e8f0" }}>
@@ -378,7 +382,7 @@ export default function ManageTruckOfficers() {
                   </tr>
                 </thead>
                 <tbody>
-                  {managers.map((m, idx) => {
+                  {paginatedItems.map((m, idx) => {
                     const { bg, color, border } = statusColor(m.status)
                     return (
                       <tr key={m.manager_id} style={{ borderBottom: idx === managers.length - 1 ? "none" : "1px solid #e2e8f0", transition: "background 0.2s ease" }} onMouseEnter={e => e.currentTarget.style.background = "#f8fafc"} onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
@@ -426,6 +430,10 @@ export default function ManageTruckOfficers() {
             </div>
           )}
         </>
+      )}
+
+      {managers.length > 0 && (
+        <PaginationControls page={page} totalPages={totalPages} totalItems={totalItems} onPageChange={setPage} />
       )}
 
       {(showInviteModal || editingManager || deletingId || assigningManager) && (

@@ -10,6 +10,8 @@ import { Icon } from "@iconify/react"
 import ModernInput from "@/components/ModernInput"
 import StopForm from "@/components/StopForm"
 import { usePermissions } from "@/lib/PermissionContext"
+import { usePagination } from "@/lib/hooks/usePagination"
+import PaginationControls from "@/components/PaginationControls"
 
 type ActiveTruck = {
   trip_id: string
@@ -493,6 +495,14 @@ export default function MonitorTrucks({ viewOnly = false }: { viewOnly?: boolean
     ? trucks
     : trucks.filter(t => t.trip_status === filterStatus)
 
+  const { page, setPage, totalPages, paginatedItems, totalItems } = usePagination(filteredTrucks)
+
+  const ddFiltered = ddFilterStatus === "All"
+    ? ddTrips
+    : ddTrips.filter(t => t.trip_status === ddFilterStatus)
+
+  const { page: ddPage, setPage: setDdPage, totalPages: ddTotalPages, paginatedItems: paginatedDdItems, totalItems: ddTotalItems } = usePagination(ddFiltered)
+
   const statusColor = (status: string) =>
     status === "In transit" ? "#0070f3" :
     status === "On hold" ? "#f5a623" :
@@ -651,7 +661,7 @@ export default function MonitorTrucks({ viewOnly = false }: { viewOnly?: boolean
             <>
               {viewMode === "card" && (
                 <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-                  {filteredTrucks.map((truck) => (
+                  {paginatedItems.map((truck) => (
                     <div key={truck.trip_id} style={{ background: "white", borderRadius: 12, padding: 16, border: "1px solid #e2e8f0", boxShadow: "0 1px 3px rgba(0, 0, 0, 0.05)", transition: "all 0.2s ease" }} onMouseEnter={e => { e.currentTarget.style.boxShadow = "0 4px 12px rgba(0, 0, 0, 0.08)"; e.currentTarget.style.borderColor = "#cbd5e1" }} onMouseLeave={e => { e.currentTarget.style.boxShadow = "0 1px 3px rgba(0, 0, 0, 0.05)"; e.currentTarget.style.borderColor = "#e2e8f0" }}>
                       <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12, marginBottom: 12 }}>
                         <div style={{ flex: 1, minWidth: 0 }}>
@@ -734,7 +744,7 @@ export default function MonitorTrucks({ viewOnly = false }: { viewOnly?: boolean
                       </tr>
                     </thead>
                     <tbody>
-                      {filteredTrucks.map((truck, idx) => (
+                      {paginatedItems.map((truck, idx) => (
                         <tr key={truck.trip_id} style={{ borderBottom: idx === filteredTrucks.length - 1 ? "none" : "1px solid #e2e8f0", transition: "background 0.2s ease" }} onMouseEnter={e => e.currentTarget.style.background = "#f8fafc"} onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
                           <td style={{ padding: "12px 16px" }}>
                             <strong style={{ color: "#0f172a", fontSize: FONT_SIZE.base }}>{truck.plate_number}</strong>
@@ -781,6 +791,10 @@ export default function MonitorTrucks({ viewOnly = false }: { viewOnly?: boolean
                 </div>
               )}
             </>
+          )}
+
+          {filteredTrucks.length > 0 && (
+            <PaginationControls page={page} totalPages={totalPages} totalItems={totalItems} onPageChange={setPage} />
           )}
 
           {editingRoute && (
@@ -954,11 +968,7 @@ export default function MonitorTrucks({ viewOnly = false }: { viewOnly?: boolean
             <div style={{ display: "flex", justifyContent: "center", padding: "64px 0" }}>
               <div style={{ width: 40, height: 40, borderRadius: "50%", border: "3px solid #e2e8f0", borderTopColor: "#0070f3", animation: "spin 1s linear infinite" }} />
             </div>
-          ) : (() => {
-            const ddFiltered = ddFilterStatus === "All"
-              ? ddTrips
-              : ddTrips.filter(t => t.trip_status === ddFilterStatus)
-            return ddFiltered.length === 0 ? (
+          ) : ddFiltered.length === 0 ? (
               <div style={{ textAlign: "center", padding: "64px 24px", background: "white", borderRadius: 12, border: "1px solid #e2e8f0", boxShadow: "0 1px 3px rgba(0, 0, 0, 0.05)" }}>
                 <div style={{ width: 64, height: 64, background: "#f1f5f9", borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 16px" }}>
                   <Icon icon="mdi:truck-delivery" width={32} color="#94a3b8" />
@@ -970,7 +980,7 @@ export default function MonitorTrucks({ viewOnly = false }: { viewOnly?: boolean
               </div>
             ) : ddViewMode === "card" ? (
               <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-                {ddFiltered.map(trip => (
+                {paginatedDdItems.map(trip => (
                   <div key={trip.dd_trip_id} style={{ background: "white", borderRadius: 12, padding: 16, border: "1px solid #e2e8f0", boxShadow: "0 1px 3px rgba(0, 0, 0, 0.05)", transition: "all 0.2s ease" }} onMouseEnter={e => { e.currentTarget.style.boxShadow = "0 4px 12px rgba(0, 0, 0, 0.08)"; e.currentTarget.style.borderColor = "#cbd5e1" }} onMouseLeave={e => { e.currentTarget.style.boxShadow = "0 1px 3px rgba(0, 0, 0, 0.05)"; e.currentTarget.style.borderColor = "#e2e8f0" }}>
                     <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12, marginBottom: 12 }}>
                       <div style={{ flex: 1, minWidth: 0 }}>
@@ -1090,7 +1100,7 @@ export default function MonitorTrucks({ viewOnly = false }: { viewOnly?: boolean
                     </tr>
                   </thead>
                   <tbody>
-                    {ddFiltered.map((trip, idx) => (
+                    {paginatedDdItems.map((trip, idx) => (
                       <tr key={trip.dd_trip_id} style={{ borderBottom: idx === ddFiltered.length - 1 ? "none" : "1px solid #e2e8f0", transition: "background 0.2s ease" }} onMouseEnter={e => e.currentTarget.style.background = "#f8fafc"} onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
                         <td style={{ padding: "12px 16px" }}>
                           <strong style={{ color: "#0f172a", fontSize: FONT_SIZE.base }}>{trip.plate_number}</strong>
@@ -1135,8 +1145,11 @@ export default function MonitorTrucks({ viewOnly = false }: { viewOnly?: boolean
                   </tbody>
                 </table>
               </div>
-            )
-          })()}
+            )}
+
+          {ddFiltered.length > 0 && (
+            <PaginationControls page={ddPage} totalPages={ddTotalPages} totalItems={ddTotalItems} onPageChange={setDdPage} />
+          )}
 
           {/* ── Log New Trip Modal ── */}
           {showDdForm && (

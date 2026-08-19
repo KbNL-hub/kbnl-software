@@ -5,6 +5,8 @@ import { usePolling } from "@/lib/hooks/usePolling"
 
 import { useState, useEffect, useMemo } from "react"
 import { supabase } from "@/lib/supabase"
+import { usePagination } from "@/lib/hooks/usePagination"
+import PaginationControls from "@/components/PaginationControls"
 
 type ActiveTruck = {
   trip_id: string
@@ -122,6 +124,8 @@ export default function TruckMonitorSection({ plates }: Props) {
     ? trucks
     : trucks.filter(t => t.trip_status === filterStatus)
 
+  const { page, setPage, totalPages, paginatedItems, totalItems } = usePagination(filteredTrucks)
+
   return (
     <div>
       {/* Controls */}
@@ -220,7 +224,7 @@ export default function TruckMonitorSection({ plates }: Props) {
           {/* Card View */}
           {viewMode === "card" && (
             <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-              {filteredTrucks.map((truck) => (
+              {paginatedItems.map((truck) => (
                 <div key={truck.trip_id} style={{ background: "white", borderRadius: 12, padding: 16, border: "1px solid #e2e8f0", boxShadow: "0 1px 3px rgba(0, 0, 0, 0.05)", transition: "all 0.2s ease" }}
                   onMouseEnter={e => { e.currentTarget.style.boxShadow = "0 4px 12px rgba(0, 0, 0, 0.08)"; e.currentTarget.style.borderColor = "#cbd5e1" }}
                   onMouseLeave={e => { e.currentTarget.style.boxShadow = "0 1px 3px rgba(0, 0, 0, 0.05)"; e.currentTarget.style.borderColor = "#e2e8f0" }}>
@@ -288,7 +292,7 @@ export default function TruckMonitorSection({ plates }: Props) {
                   </tr>
                 </thead>
                 <tbody>
-                  {filteredTrucks.map((truck, idx) => (
+                  {paginatedItems.map((truck, idx) => (
                     <tr key={truck.trip_id} style={{ borderBottom: idx === filteredTrucks.length - 1 ? "none" : "1px solid #e2e8f0", transition: "background 0.2s ease" }}
                       onMouseEnter={e => e.currentTarget.style.background = "#f8fafc"}
                       onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
@@ -319,6 +323,9 @@ export default function TruckMonitorSection({ plates }: Props) {
             </div>
           )}
         </>
+      )}
+      {filteredTrucks.length > 0 && (
+        <PaginationControls page={page} totalPages={totalPages} totalItems={totalItems} onPageChange={setPage} />
       )}
     </div>
   )

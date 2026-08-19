@@ -5,12 +5,15 @@ import { FONT_SIZE } from "@/lib/constants"
 import { formatDateTime } from "@/lib/date-utils"
 import { useFuelExpenses } from "@/lib/hooks/useFuelExpenses"
 import { useState } from "react"
+import { usePagination } from "@/lib/hooks/usePagination"
+import PaginationControls from "@/components/PaginationControls"
 
 type ViewMode = "card" | "table"
 
 export default function DieselConsumptionSection() {
   const { data: fuelExpenses, loading } = useFuelExpenses()
   const [viewMode, setViewMode] = useState<ViewMode>("card")
+  const { page, setPage, totalPages, paginatedItems, totalItems } = usePagination(fuelExpenses)
 
   const totalLitres = fuelExpenses.reduce((sum, e) => sum + e.litres, 0)
 
@@ -112,7 +115,7 @@ export default function DieselConsumptionSection() {
               </tr>
             </thead>
             <tbody>
-              {fuelExpenses.map(expense => (
+              {paginatedItems.map(expense => (
                 <tr key={expense.expense_id} style={{ transition: "background 0.15s" }} className="diesel-row">
                   <td style={{ padding: "10px 12px", borderBottom: "1px solid #e2e8f0" }}>
                     <span style={{ fontWeight: 600, color: "#0f172a" }}>{expense.plate_number}</span>
@@ -140,7 +143,7 @@ export default function DieselConsumptionSection() {
         </div>
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-          {fuelExpenses.map(expense => (
+          {paginatedItems.map(expense => (
             <div key={expense.expense_id} style={{ background: "white", border: "1px solid #e2e8f0", borderRadius: 12, padding: 16, boxShadow: "0 1px 3px rgba(0,0,0,0.05)" }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 8 }}>
                 <div>
@@ -163,6 +166,9 @@ export default function DieselConsumptionSection() {
             </div>
           ))}
         </div>
+      )}
+      {fuelExpenses.length > 0 && (
+        <PaginationControls page={page} totalPages={totalPages} totalItems={totalItems} onPageChange={setPage} />
       )}
     </div>
   )

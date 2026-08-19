@@ -9,6 +9,8 @@ import { useBreakpoint } from "@/app/hooks/useBreakpoint"
 import CustomerSelector, { Customer } from "./CustomerSelector"
 import { BANKS } from "@/lib/constants"
 import { generateCustomerId } from "@/lib/customerUtils"
+import { usePagination } from "@/lib/hooks/usePagination"
+import PaginationControls from "@/components/PaginationControls"
 
 type Payment = {
   payment_id: string
@@ -158,6 +160,8 @@ export default function CustomerPayments({ brokerId }: { brokerId: string }) {
     color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px",
   }
 
+  const { page, setPage, totalPages, paginatedItems, totalItems } = usePagination(payments)
+
   return (
     <div>
       {/* Header */}
@@ -208,7 +212,7 @@ export default function CustomerPayments({ brokerId }: { brokerId: string }) {
         </div>
       ) : viewMode === "card" ? (
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))", gap: 12 }}>
-          {payments.map(p => {
+          {paginatedItems.map(p => {
             const ss = statusStyle(p.status)
             return (
               <div key={p.payment_id} style={{ background: "white", borderRadius: 12, border: "1px solid #e2e8f0", padding: 20, boxShadow: "0 1px 3px rgba(0,0,0,0.05)", transition: "all 0.2s ease" }}
@@ -269,10 +273,10 @@ export default function CustomerPayments({ brokerId }: { brokerId: string }) {
               </tr>
             </thead>
             <tbody>
-              {payments.map((p, idx) => {
+              {paginatedItems.map((p, idx) => {
                 const ss = statusStyle(p.status)
                 return (
-                  <tr key={p.payment_id} style={{ borderBottom: idx === payments.length - 1 ? "none" : "1px solid #e2e8f0", transition: "background 0.2s" }}
+                  <tr key={p.payment_id} style={{ borderBottom: idx === paginatedItems.length - 1 ? "none" : "1px solid #e2e8f0", transition: "background 0.2s" }}
                     onMouseEnter={e => e.currentTarget.style.background = "#f8fafc"}
                     onMouseLeave={e => e.currentTarget.style.background = "transparent"}
                   >
@@ -306,6 +310,10 @@ export default function CustomerPayments({ brokerId }: { brokerId: string }) {
             </tbody>
           </table>
         </div>
+      )}
+
+      {payments.length > 0 && (
+        <PaginationControls page={page} totalPages={totalPages} totalItems={totalItems} onPageChange={setPage} />
       )}
 
       {/* Modal */}

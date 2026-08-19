@@ -3,12 +3,14 @@
 import { apiMutate } from "@/lib/api-mutation"
 import { FONT_SIZE } from "@/lib/constants"
 import { usePolling } from "@/lib/hooks/usePolling"
+import { usePagination } from "@/lib/hooks/usePagination"
 
 import { useState, useEffect, useCallback, Fragment } from "react"
 import { Icon } from "@iconify/react"
 import { supabase } from "@/lib/supabase"
 import { fetchStores } from "@/lib/stores"
 import ModernInput from "@/components/ModernInput"
+import PaginationControls from "@/components/PaginationControls"
 
 type StoreSale = {
   sale_id: string
@@ -192,6 +194,8 @@ export default function StoreSales() {
     groups.push({ date: dateKey, sales: [sale] })
     return groups
   }, [])
+
+  const { page, setPage, totalPages, paginatedItems, totalItems } = usePagination(groupedByDate)
 
   function formatAmount(val: number | null | undefined): string {
     if (val == null) return "—"
@@ -596,7 +600,7 @@ export default function StoreSales() {
         <>
           {viewMode === "card" && (
             <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
-              {groupedByDate.map((group) => (
+              {paginatedItems.map((group) => (
                 <div key={group.date}>
                   <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
                     <Icon icon="mdi:calendar" width={18} color="#64748b" />
@@ -747,7 +751,7 @@ export default function StoreSales() {
                   </tr>
                 </thead>
                 <tbody>
-                  {groupedByDate.map((group) => (
+                  {paginatedItems.map((group) => (
                     <Fragment key={group.date}>
                       <tr>
                         <td colSpan={12} style={{ padding: "10px 16px", background: "#f8fafc", fontWeight: 700, fontSize: FONT_SIZE.sm, color: "#0f172a", borderBottom: "2px solid #e2e8f0" }}>
@@ -854,6 +858,10 @@ export default function StoreSales() {
             </div>
           )}
         </>
+      )}
+
+      {filteredSales.length > 0 && (
+        <PaginationControls page={page} totalPages={totalPages} totalItems={totalItems} onPageChange={setPage} />
       )}
 
       {showRejectModal && rejectingSale && (

@@ -10,6 +10,8 @@ import { supabase } from "@/lib/supabase"
 import { apiMutate } from "@/lib/api-mutation"
 import { formatAmount, parseAmount } from "@/lib/formatAmount"
 import { usePermissions } from "@/lib/PermissionContext"
+import { usePagination } from "@/lib/hooks/usePagination"
+import PaginationControls from "@/components/PaginationControls"
 
 type FuelDeposit = {
   deposit_id: string
@@ -322,6 +324,8 @@ export default function DieselManager() {
   }
 
   const filteredATFs = filter === "All" ? atfs : atfs.filter(a => a.atf_status === filter)
+
+  const { page, setPage, totalPages, paginatedItems, totalItems } = usePagination(filteredATFs)
 
   const balanceMap = useMemo(() => {
     const map: Record<string, number> = {}
@@ -654,7 +658,7 @@ export default function DieselManager() {
         <>
           {viewMode === "card" && (
             <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(auto-fill, minmax(340px, 1fr))", gap: 16 }}>
-              {filteredATFs.map(atf => {
+              {paginatedItems.map(atf => {
                 const { bg, color, border } = atfStatusColor(atf.atf_status)
                 return (
                   <div key={atf.request_id} style={{ background: "white", border: "1px solid #e2e8f0", borderRadius: 12, padding: 20, boxShadow: "0 1px 3px rgba(0,0,0,0.05)", transition: "all 0.2s ease" }} onMouseEnter={e => !isMobile && (e.currentTarget.style.boxShadow = "0 4px 12px rgba(0,0,0,0.08)")} onMouseLeave={e => !isMobile && (e.currentTarget.style.boxShadow = "0 1px 3px rgba(0,0,0,0.05)")}>
@@ -725,7 +729,7 @@ export default function DieselManager() {
                   </tr>
                 </thead>
                 <tbody>
-                  {filteredATFs.map((atf, idx) => {
+                  {paginatedItems.map((atf, idx) => {
                     const { bg, color, border } = atfStatusColor(atf.atf_status)
                     return (
                       <tr key={atf.request_id} style={{ borderBottom: idx === filteredATFs.length - 1 ? "none" : "1px solid #e2e8f0", transition: "background 0.2s ease" }} onMouseEnter={e => e.currentTarget.style.background = "#f8fafc"} onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
@@ -752,6 +756,10 @@ export default function DieselManager() {
             </div>
           )}
         </>
+      )}
+
+      {filteredATFs.length > 0 && (
+        <PaginationControls page={page} totalPages={totalPages} totalItems={totalItems} onPageChange={setPage} />
       )}
 
       {/* Deposit Modal */}

@@ -10,6 +10,8 @@ import { apiMutate } from "@/lib/api-mutation"
 import ModernInput from "@/components/ModernInput"
 import InviteSuccessCard from "@/components/admin/InviteSuccessCard"
 import { usePermissions } from "@/lib/PermissionContext"
+import { usePagination } from "@/lib/hooks/usePagination"
+import PaginationControls from "@/components/PaginationControls"
 
 type CashOfficer = {
   clerk_id: string
@@ -70,6 +72,8 @@ export default function CashOfficers() {
   const [message, setMessage] = useState("")
   const [submitting, setSubmitting] = useState(false)
   const [inviteResult, setInviteResult] = useState<{ tempPassword: string; email: string } | null>(null)
+
+  const { page, setPage, totalPages, paginatedItems, totalItems } = usePagination(clerks)
 
   const phoneRef = useRef<HTMLInputElement>(null)
   const emailRef = useRef<HTMLInputElement>(null)
@@ -447,7 +451,7 @@ export default function CashOfficers() {
           {/* Card View */}
           {viewMode === "card" && (
             <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-              {clerks.map((clerk) => {
+              {paginatedItems.map((clerk) => {
                 const { bg, color, border } = statusColor(clerk.status)
                 return (
                   <div
@@ -602,7 +606,7 @@ export default function CashOfficers() {
                   </tr>
                 </thead>
                 <tbody>
-                  {clerks.map((clerk, idx) => {
+                  {paginatedItems.map((clerk, idx) => {
                     const { bg, color, border } = statusColor(clerk.status)
                     return (
                       <tr
@@ -698,6 +702,10 @@ export default function CashOfficers() {
             </div>
           )}
         </>
+      )}
+
+      {clerks.length > 0 && (
+        <PaginationControls page={page} totalPages={totalPages} totalItems={totalItems} onPageChange={setPage} />
       )}
 
       {/* Modals */}

@@ -9,6 +9,8 @@ import { supabase } from "@/lib/supabase"
 import type { User } from "@supabase/supabase-js"
 import { apiMutate } from "@/lib/api-mutation"
 import { usePermissions } from "@/lib/PermissionContext"
+import { usePagination } from "@/lib/hooks/usePagination"
+import PaginationControls from "@/components/PaginationControls"
 
 type CashDeposit = {
   deposit_id: string
@@ -368,6 +370,8 @@ export default function CashExpenses() {
     )
   }, [filteredExpenses, deposits, topUps, filter])
 
+  const { page, setPage, totalPages, paginatedItems, totalItems } = usePagination(logEntries)
+
   function toggleExpand(expenseId: string) {
     if (expandedExpense === expenseId) {
       setExpandedExpense(null)
@@ -548,7 +552,7 @@ export default function CashExpenses() {
           </div>
         ) : (
           <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-            {logEntries.map(entry => {
+            {paginatedItems.map(entry => {
               if (entry.kind === "deposit") {
                 const dep = entry.data
                 const depositorName = adminsMap[dep.deposited_by] || "Cash Officer"
@@ -804,9 +808,11 @@ export default function CashExpenses() {
             })}
           </div>
         )}
-      </div>
 
-      {/* MODALS */}
+        {logEntries.length > 0 && (
+          <PaginationControls page={page} totalPages={totalPages} totalItems={totalItems} onPageChange={setPage} />
+        )}
+      </div>
       {/* 1. Rejection Reason Modal */}
       {showRejectModal && (
         <div onClick={() => setShowRejectModal(false)} style={{ position: "fixed", inset: 0, background: "rgba(15, 23, 42, 0.6)", backdropFilter: "blur(4px)", display: "flex", alignItems: isMobile ? "flex-end" : "center", justifyContent: "center", zIndex: 100, padding: isMobile ? 0 : 24, animation: "fadeIn 0.2s ease-out" }}>

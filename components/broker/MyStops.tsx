@@ -7,6 +7,8 @@ import { apiMutate } from "@/lib/api-mutation"
 import ModernInput from "@/components/ModernInput"
 import BrokerConfirmModal from "@/components/broker/BrokerConfirmModal"
 import { useBreakpoint } from "@/app/hooks/useBreakpoint"
+import { usePagination } from "@/lib/hooks/usePagination"
+import PaginationControls from "@/components/PaginationControls"
 
 const AREAS = ["Calabar to Obubra", "Ikom to Obudu", "Akwa-Ibom", "East"]
 
@@ -228,8 +230,6 @@ export default function MyStops() {
     }
   }
 
-  if (loading) return <p style={{ color: "#888" }}>Loading…</p>
-
   const pendingStops = allStops.filter(s => !s.confirmed && !s.disputed && s.discount_status !== "returned" && s.credit_approval_status !== "Pending" && s.discount_status !== "pending")
   const reviewStops = allStops.filter(s => !s.confirmed && !s.disputed && (s.credit_approval_status === "Pending" || s.discount_status === "pending"))
   const confirmedStops = allStops.filter(s => s.confirmed && s.discount_status !== "returned")
@@ -237,6 +237,10 @@ export default function MyStops() {
   const returnedStops = allStops.filter(s => s.discount_status === "returned")
 
   const visibleStops = activeFilter === "pending" ? pendingStops : activeFilter === "review" ? reviewStops : activeFilter === "confirmed" ? confirmedStops : activeFilter === "returned" ? returnedStops : activeFilter === "disputed" ? disputedStops : []
+
+  const { page, setPage, totalPages, paginatedItems, totalItems } = usePagination(visibleStops)
+
+  if (loading) return <p style={{ color: "#888" }}>Loading…</p>
 
   const filterOptions = [
     { key: "pending" as const, label: "Pending", count: pendingStops.length, color: "#0070f3" },
@@ -314,7 +318,7 @@ export default function MyStops() {
           <p style={{ margin: 0, fontSize: 14 }}>No {activeFilter} stops</p>
         </div>
       ) : viewMode === "card" ? (
-        visibleStops.map((stop) => {
+        paginatedItems.map((stop) => {
           const isExpanded = expandedCard === stop.stop_id
           const statusColor = stop.discount_status === "returned" ? { bg: "#f5f3ff", text: "#7c3aed", border: "#c4b5fd", label: "Returned" }
             : (stop.discount_status === "pending" || stop.credit_approval_status === "Pending") ? { bg: "#fffbeb", text: "#f5a623", border: "#fcd34d", label: "In Review" }
@@ -463,7 +467,7 @@ export default function MyStops() {
                 </tr>
               </thead>
               <tbody>
-                {visibleStops.map((stop, idx) => (
+                {paginatedItems.map((stop, idx) => (
                   <tr key={stop.stop_id} style={{ borderBottom: idx === visibleStops.length - 1 ? "none" : "1px solid #e2e8f0", transition: "background 0.2s" }}
                     onMouseEnter={e => e.currentTarget.style.background = "#f8fafc"}
                     onMouseLeave={e => e.currentTarget.style.background = "transparent"}
@@ -512,6 +516,10 @@ export default function MyStops() {
               </tbody>
             </table>
           </div>
+      )}
+
+      {visibleStops.length > 0 && (
+        <PaginationControls page={page} totalPages={totalPages} totalItems={totalItems} onPageChange={setPage} />
       )}
 
       <BrokerConfirmModal

@@ -9,6 +9,8 @@ import { apiMutate } from "@/lib/api-mutation"
 import ModernInput from "@/components/ModernInput"
 import InviteSuccessCard from "@/components/admin/InviteSuccessCard"
 import { usePermissions } from "@/lib/PermissionContext"
+import { usePagination } from "@/lib/hooks/usePagination"
+import PaginationControls from "@/components/PaginationControls"
 
 type TruckAdmin = {
   admin_id: string
@@ -157,6 +159,8 @@ export default function ManageTruckAdmins() {
     }
   }
 
+  const { page, setPage, totalPages, paginatedItems, totalItems } = usePagination(admins)
+
   return (
     <div style={{ minHeight: "100vh", background: "#f8fafc", padding: isMobile ? "16px" : "32px", fontFamily: "'Inter', sans-serif" }}>
       <div style={{ display: "flex", flexDirection: isMobile ? "column" : "row", justifyContent: "space-between", alignItems: isMobile ? "flex-start" : "center", gap: 16, marginBottom: 32 }}>
@@ -208,7 +212,7 @@ export default function ManageTruckAdmins() {
         <>
           {viewMode === "card" && (
             <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-              {admins.map((admin) => {
+              {paginatedItems.map((admin) => {
                 const { bg, color, border } = statusColor(admin.status)
                 return (
                   <div key={admin.admin_id} style={{ background: "white", borderRadius: 12, padding: 16, border: "1px solid #e2e8f0", boxShadow: "0 1px 3px rgba(0, 0, 0, 0.05)", transition: "all 0.2s ease" }} onMouseEnter={e => { e.currentTarget.style.boxShadow = "0 4px 12px rgba(0, 0, 0, 0.08)"; e.currentTarget.style.borderColor = "#cbd5e1" }} onMouseLeave={e => { e.currentTarget.style.boxShadow = "0 1px 3px rgba(0, 0, 0, 0.05)"; e.currentTarget.style.borderColor = "#e2e8f0" }}>
@@ -257,7 +261,7 @@ export default function ManageTruckAdmins() {
                   </tr>
                 </thead>
                 <tbody>
-                  {admins.map((admin, idx) => {
+                  {paginatedItems.map((admin, idx) => {
                     const { bg, color, border } = statusColor(admin.status)
                     return (
                       <tr key={admin.admin_id} style={{ borderBottom: idx === admins.length - 1 ? "none" : "1px solid #e2e8f0", transition: "background 0.2s ease" }} onMouseEnter={e => e.currentTarget.style.background = "#f8fafc"} onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
@@ -299,6 +303,10 @@ export default function ManageTruckAdmins() {
             </div>
           )}
         </>
+      )}
+
+      {admins.length > 0 && (
+        <PaginationControls page={page} totalPages={totalPages} totalItems={totalItems} onPageChange={setPage} />
       )}
 
       {(showInviteModal || editingAdmin || deletingId) && (

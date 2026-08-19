@@ -118,7 +118,7 @@ export default function TruckAdminDashboard() {
   const [atfFilter, setAtfFilter] = useState("All")
   const [feedPage, setFeedPage] = useState(1)
   const [atfPage, setAtfPage] = useState(1)
-  const PAGE_SIZE = 50
+  const PAGE_SIZE = 100
 
   const [showPictureModal, setShowPictureModal] = useState(false)
   const [showReportModal, setShowReportModal] = useState(false)

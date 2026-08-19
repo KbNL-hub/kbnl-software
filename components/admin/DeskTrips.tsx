@@ -2,6 +2,8 @@
 
 import { FONT_SIZE } from "@/lib/constants"
 import { usePolling } from "@/lib/hooks/usePolling"
+import { usePagination } from "@/lib/hooks/usePagination"
+import PaginationControls from "@/components/PaginationControls"
 
 import { useState, useEffect, useCallback } from "react"
 import { Icon } from "@iconify/react"
@@ -507,6 +509,8 @@ export default function DeskTrips() {
     return (!filterDateFrom || tripDate >= filterDateFrom) && (!filterDateTo || tripDate <= filterDateTo)
   })
 
+  const { page, setPage, totalPages, paginatedItems, totalItems } = usePagination(filteredTrips)
+
   function closeModals() {
     setSelectedDriver(null)
     setSelectedStops(null)
@@ -815,7 +819,7 @@ export default function DeskTrips() {
           {/* Card View */}
           {viewMode === "card" && (
             <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(auto-fill, minmax(340px, 1fr))", gap: 16 }}>
-              {filteredTrips.map((trip) => {
+              {paginatedItems.map((trip) => {
                 const confirmed = trip.stops.filter(s => s.confirmed).length
                 const pending = trip.stops.filter(s => !s.confirmed && !s.disputed).length
                 const disputed = trip.stops.filter(s => s.disputed).length
@@ -939,7 +943,7 @@ export default function DeskTrips() {
                   </tr>
                 </thead>
                 <tbody>
-                  {filteredTrips.map((trip) => {
+              {paginatedItems.map((trip) => {
                     const confirmed = trip.stops.filter(s => s.confirmed).length
                     const pending = trip.stops.filter(s => !s.confirmed && !s.disputed).length
                     const disputed = trip.stops.filter(s => s.disputed).length
@@ -1007,6 +1011,10 @@ export default function DeskTrips() {
             </div>
           )}
         </>
+      )}
+
+      {filteredTrips.length > 0 && (
+        <PaginationControls page={page} totalPages={totalPages} totalItems={totalItems} onPageChange={setPage} />
       )}
 
       {(selectedDriver || selectedStops) && (

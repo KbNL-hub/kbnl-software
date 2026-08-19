@@ -3,6 +3,8 @@
 import { useState, useEffect } from "react"
 import { Icon } from "@iconify/react"
 import { supabase } from "@/lib/supabase"
+import { usePagination } from "@/lib/hooks/usePagination"
+import PaginationControls from "@/components/PaginationControls"
 
 const PRODUCTS = ["BUA cement", "Falcon", "3X", "Supaset", "Supafix", "Classic"]
 const AREAS = ["Calabar to Obubra", "Ikom to Obudu", "Akwa-Ibom", "East"]
@@ -67,6 +69,10 @@ export default function BrokerPrices() {
   // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { fetchData() }, [])
 
+  const groupedHistory = groupHistory(history)
+
+  const { page, setPage, totalPages, paginatedItems, totalItems } = usePagination(groupedHistory)
+
   if (loading) {
     return (
       <div style={{ display: "flex", justifyContent: "center", padding: "48px 0" }}>
@@ -75,8 +81,6 @@ export default function BrokerPrices() {
       </div>
     )
   }
-
-  const groupedHistory = groupHistory(history)
   const areaPrices = prices[selectedArea] || {}
 
   return (
@@ -138,7 +142,7 @@ export default function BrokerPrices() {
             {groupedHistory.length === 0 ? (
               <p style={{ color: "#94a3b8", fontSize: fz.sm, textAlign: "center", padding: "16px 0" }}>No price changes yet.</p>
             ) : (
-              groupedHistory.map(group => {
+              paginatedItems.map(group => {
                 const isGroupExpanded = expandedGroups.has(group.change_group_id)
                 const first = group.items[0]
                 const changedBy = first.changed_by ? profiles[first.changed_by] || "Unknown" : "System"
@@ -178,6 +182,10 @@ export default function BrokerPrices() {
           </div>
         )}
       </div>
+
+      {groupedHistory.length > 0 && (
+        <PaginationControls page={page} totalPages={totalPages} totalItems={totalItems} onPageChange={setPage} />
+      )}
     </div>
   )
 }

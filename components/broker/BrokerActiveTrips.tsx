@@ -5,6 +5,8 @@ import { Icon } from "@iconify/react"
 import { supabase } from "@/lib/supabase"
 import { useBreakpoint } from "@/app/hooks/useBreakpoint"
 import { usePolling } from "@/lib/hooks/usePolling"
+import { usePagination } from "@/lib/hooks/usePagination"
+import PaginationControls from "@/components/PaginationControls"
 
 type Stop = {
   stop_id: string
@@ -364,6 +366,8 @@ export default function BrokerActiveTrips() {
 
   usePolling(loadAll, 30000)
 
+  const { page, setPage, totalPages, paginatedItems, totalItems } = usePagination(trips)
+
   function closeModals() {
     setSelectedDriver(null)
     setSelectedStops(null)
@@ -442,7 +446,7 @@ export default function BrokerActiveTrips() {
         </div>
       ) : viewMode === "card" ? (
         <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(auto-fill, minmax(340px, 1fr))", gap: 16 }}>
-          {trips.map((trip) => {
+          {paginatedItems.map((trip) => {
             const confirmed = trip.stops.filter(s => s.confirmed).length
             const pending = trip.stops.filter(s => !s.confirmed && !s.disputed).length
             const disputed = trip.stops.filter(s => s.disputed).length
@@ -540,7 +544,7 @@ export default function BrokerActiveTrips() {
               </tr>
             </thead>
             <tbody>
-              {trips.map((trip) => {
+              {paginatedItems.map((trip) => {
                 const confirmed = trip.stops.filter(s => s.confirmed).length
                 const pending = trip.stops.filter(s => !s.confirmed && !s.disputed).length
                 const disputed = trip.stops.filter(s => s.disputed).length
@@ -583,6 +587,10 @@ export default function BrokerActiveTrips() {
             </tbody>
           </table>
         </div>
+      )}
+
+      {trips.length > 0 && (
+        <PaginationControls page={page} totalPages={totalPages} totalItems={totalItems} onPageChange={setPage} />
       )}
 
       {/* Driver Info Modal */}

@@ -2,6 +2,8 @@
 
 import { Icon } from "@iconify/react"
 import { FONT_SIZE } from "@/lib/constants"
+import { usePagination } from "@/lib/hooks/usePagination"
+import PaginationControls from "@/components/PaginationControls"
 
 type SideTrip = {
   id: string
@@ -21,6 +23,7 @@ type Props = {
 }
 
 export default function SideTripsSection({ sideTrips, loading, viewMode, setViewMode }: Props) {
+  const { page, setPage, totalPages, paginatedItems, totalItems } = usePagination(sideTrips)
   return (
     <div>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 24 }}>
@@ -103,7 +106,7 @@ export default function SideTripsSection({ sideTrips, loading, viewMode, setView
               </tr>
             </thead>
             <tbody>
-              {sideTrips.map((trip) => (
+              {paginatedItems.map((trip) => (
                 <tr key={trip.id} style={{ transition: "background 0.15s" }} className="side-trip-row">
                   <td style={{ padding: "10px 12px", borderBottom: "1px solid #e2e8f0", color: "#0f172a" }}>
                     <span style={{ fontWeight: 600 }}>{trip.driver_name}</span>
@@ -125,7 +128,7 @@ export default function SideTripsSection({ sideTrips, loading, viewMode, setView
         </div>
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-          {sideTrips.map(t => (
+          {paginatedItems.map(t => (
             <div key={t.id} style={{ background: "white", border: "1px solid #e2e8f0", borderRadius: 12, padding: 16, boxShadow: "0 1px 3px rgba(0,0,0,0.05)" }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 8 }}>
                 <p style={{ margin: 0, fontWeight: 700, fontSize: FONT_SIZE.base, color: "#0f172a" }}>{t.driver_name}</p>
@@ -141,6 +144,9 @@ export default function SideTripsSection({ sideTrips, loading, viewMode, setView
             </div>
           ))}
         </div>
+      )}
+      {sideTrips.length > 0 && (
+        <PaginationControls page={page} totalPages={totalPages} totalItems={totalItems} onPageChange={setPage} />
       )}
     </div>
   )

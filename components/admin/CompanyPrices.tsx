@@ -5,6 +5,8 @@ import { Icon } from "@iconify/react"
 import { supabase } from "@/lib/supabase"
 import { apiMutate } from "@/lib/api-mutation"
 import { usePermissions } from "@/lib/PermissionContext"
+import { usePagination } from "@/lib/hooks/usePagination"
+import PaginationControls from "@/components/PaginationControls"
 
 const PRODUCTS = ["BUA cement", "Falcon", "3X", "Supaset", "Supafix", "Classic"]
 const AREAS = ["Calabar to Obubra", "Ikom to Obudu", "Akwa-Ibom", "East"]
@@ -142,6 +144,11 @@ export default function CompanyPrices() {
     border: "1.5px solid #e0e0e0", fontSize: fz.base, background: "white", color: "#171717", minHeight: 42,
   }
 
+  const groupedHistory = groupHistory(history)
+
+  const { page: areaPage, setPage: setAreaPage, totalPages: areaTotalPages, paginatedItems: paginatedAreas, totalItems: areaTotalItems } = usePagination(AREAS)
+  const { page: histPage, setPage: setHistPage, totalPages: histTotalPages, paginatedItems: paginatedHistory, totalItems: histTotalItems } = usePagination(groupedHistory)
+
   if (loading) {
     return (
       <div style={{ display: "flex", justifyContent: "center", padding: "64px 0" }}>
@@ -150,8 +157,6 @@ export default function CompanyPrices() {
       </div>
     )
   }
-
-  const groupedHistory = groupHistory(history)
 
   return (
     <div style={{ minHeight: "100vh", background: "#f8fafc", padding: isMobile ? "16px" : "32px", fontFamily: "'Inter', sans-serif" }}>
@@ -168,7 +173,7 @@ export default function CompanyPrices() {
 
       {/* ── Area Accordion Cards ── */}
       <div style={{ display: "flex", flexDirection: "column", gap: 12, marginBottom: 24 }}>
-        {AREAS.map(area => {
+        {paginatedAreas.map(area => {
           const isAreaExpanded = expandedAreas.has(area)
           const areaPrices = prices[area] || {}
 
@@ -275,6 +280,10 @@ export default function CompanyPrices() {
         })}
       </div>
 
+      {AREAS.length > 0 && (
+        <PaginationControls page={areaPage} totalPages={areaTotalPages} totalItems={areaTotalItems} onPageChange={setAreaPage} />
+      )}
+
       {canEdit && (
         <button
           onClick={handleSave}
@@ -312,7 +321,7 @@ export default function CompanyPrices() {
             {groupedHistory.length === 0 ? (
               <p style={{ color: "#94a3b8", fontSize: fz.sm, textAlign: "center", padding: "20px 0" }}>No price changes yet.</p>
             ) : (
-              groupedHistory.map(group => {
+              paginatedHistory.map(group => {
                 const isGroupExpanded = expandedGroups.has(group.change_group_id)
                 const first = group.items[0]
                 const changedBy = first.changed_by ? profiles[first.changed_by] || "Unknown" : "System"
@@ -353,6 +362,9 @@ export default function CompanyPrices() {
                   </div>
                 )
               })
+            )}
+            {groupedHistory.length > 0 && (
+              <PaginationControls page={histPage} totalPages={histTotalPages} totalItems={histTotalItems} onPageChange={setHistPage} />
             )}
           </div>
         )}

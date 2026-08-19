@@ -6,6 +6,8 @@ import { supabase } from "@/lib/supabase"
 import { formatAmount } from "@/lib/formatAmount"
 import { useBreakpoint } from "@/app/hooks/useBreakpoint"
 import { formatDateTime } from "@/lib/date-utils"
+import { usePagination } from "@/lib/hooks/usePagination"
+import PaginationControls from "@/components/PaginationControls"
 
 type CreditEntry = {
   credit_id: string
@@ -81,6 +83,8 @@ export default function BrokerCreditsView() {
     : null
 
   const displayedCredits = credits
+
+  const { page, setPage, totalPages, paginatedItems, totalItems } = usePagination(displayedCredits)
 
   const tblHeadStyle: React.CSSProperties = {
     padding: "12px 16px", fontWeight: 600, fontSize: fontSize.xs,
@@ -195,7 +199,7 @@ export default function BrokerCreditsView() {
         </div>
       ) : viewMode === "card" ? (
         <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-          {displayedCredits.map(c => (
+          {paginatedItems.map(c => (
             <div key={c.credit_id} style={{ background: "white", borderRadius: 12, padding: "16px 18px", border: "1px solid #e5e7eb", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
               <div style={{ minWidth: 0, flex: 1 }}>
                 <span style={{ fontSize: fontSize.base, fontWeight: 600, color: "#171717" }}>{c.customer_name}</span>
@@ -230,7 +234,7 @@ export default function BrokerCreditsView() {
               </tr>
             </thead>
             <tbody>
-              {displayedCredits.map((c, idx) => (
+              {paginatedItems.map((c, idx) => (
                 <tr key={c.credit_id} style={{ borderBottom: idx === displayedCredits.length - 1 ? "none" : "1px solid #e2e8f0" }}>
                   <td style={{ padding: "12px 16px", color: "#0f172a", fontSize: fontSize.base, fontWeight: 500 }}>{c.customer_name}</td>
                   <td style={{ padding: "12px 16px", textAlign: "right", color: "#475569", fontSize: fontSize.sm, fontWeight: 600 }}>₦{formatAmount(String(c.amount))}</td>
@@ -252,6 +256,10 @@ export default function BrokerCreditsView() {
             </tbody>
           </table>
         </div>
+      )}
+
+      {displayedCredits.length > 0 && (
+        <PaginationControls page={page} totalPages={totalPages} totalItems={totalItems} onPageChange={setPage} />
       )}
     </div>
   )

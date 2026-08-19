@@ -6,6 +6,8 @@ import { supabase } from "@/lib/supabase"
 import { apiMutate } from "@/lib/api-mutation"
 import { useBreakpoint } from "@/app/hooks/useBreakpoint"
 import { toISOString } from "@/lib/date-utils"
+import { usePagination } from "@/lib/hooks/usePagination"
+import PaginationControls from "@/components/PaginationControls"
 
 const OFFICES = ["Calabar", "Ikom", "Ogoja", "Uyo", "Haulage"]
 
@@ -111,6 +113,8 @@ export default function CashExpensesPosting() {
     return e.status === filterStatus
   })
 
+  const { page, setPage, totalPages, paginatedItems, totalItems } = usePagination(filtered)
+
   const thStyle: React.CSSProperties = {
     padding: "12px 16px", fontWeight: 600, fontSize: fontSize.xs,
     color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px",
@@ -203,7 +207,7 @@ export default function CashExpensesPosting() {
         </div>
       ) : viewMode === "card" ? (
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))", gap: 12 }}>
-          {filtered.map(e => {
+          {paginatedItems.map(e => {
             const ss = statusStyle(e.status)
             const os = officeStyle(e.office_name)
             return (
@@ -267,7 +271,7 @@ export default function CashExpensesPosting() {
               </tr>
             </thead>
             <tbody>
-              {filtered.map((e, idx) => {
+              {paginatedItems.map((e, idx) => {
                 const ss = statusStyle(e.status)
                 const os = officeStyle(e.office_name)
                 return (
@@ -310,6 +314,10 @@ export default function CashExpensesPosting() {
             </tbody>
           </table>
         </div>
+      )}
+
+      {filtered.length > 0 && (
+        <PaginationControls page={page} totalPages={totalPages} totalItems={totalItems} onPageChange={setPage} />
       )}
 
       {/* Modal */}

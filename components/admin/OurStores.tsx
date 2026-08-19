@@ -9,6 +9,8 @@ import ModernInput from "@/components/ModernInput"
 import { usePermissions } from "@/lib/PermissionContext"
 import { invalidateStoreCache } from "@/lib/stores"
 import { useBreakpoint } from "@/app/hooks/useBreakpoint"
+import { usePagination } from "@/lib/hooks/usePagination"
+import PaginationControls from "@/components/PaginationControls"
 
 type StoreRow = {
   store_id: string
@@ -336,6 +338,8 @@ export default function OurStores() {
     }
   }
 
+  const { page, setPage, totalPages, paginatedItems, totalItems } = usePagination(stores)
+
   if (!canView) return null
 
   const inputStyle: React.CSSProperties = {
@@ -609,7 +613,7 @@ export default function OurStores() {
           {/* Card View */}
           {viewMode === "card" && (
             <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-              {stores.map((store) => {
+              {paginatedItems.map((store) => {
                 const officer = getOfficer(store.store_name)
                 const stock = getStock(store.store_name)
                 return (
@@ -842,7 +846,7 @@ export default function OurStores() {
                   </tr>
                 </thead>
                 <tbody>
-                  {stores.map((store, idx) => {
+                  {paginatedItems.map((store, idx) => {
                     const officer = getOfficer(store.store_name)
                     const stock = getStock(store.store_name)
                     const isExpanded = expandedStore === store.store_name
@@ -954,6 +958,10 @@ export default function OurStores() {
             </div>
           )}
         </>
+      )}
+
+      {stores.length > 0 && (
+        <PaginationControls page={page} totalPages={totalPages} totalItems={totalItems} onPageChange={setPage} />
       )}
 
       {/* Add Store Modal */}

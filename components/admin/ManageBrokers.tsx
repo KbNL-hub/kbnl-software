@@ -11,6 +11,8 @@ import InviteSuccessCard from "@/components/admin/InviteSuccessCard"
 import ConfirmDeleteModal from "@/components/admin/ConfirmDeleteModal"
 import { usePermissions } from "@/lib/PermissionContext"
 import { formatAmount } from "@/lib/formatAmount"
+import { usePagination } from "@/lib/hooks/usePagination"
+import PaginationControls from "@/components/PaginationControls"
 
 type Broker = {
   broker_id: string
@@ -179,6 +181,8 @@ export default function ManageBrokers() {
     }
   }
 
+  const { page, setPage, totalPages, paginatedItems, totalItems } = usePagination(brokers)
+
   const inputStyle: React.CSSProperties = {
     width: "100%",
     padding: "12px 14px",
@@ -320,7 +324,7 @@ export default function ManageBrokers() {
           {/* Card View */}
           {viewMode === "card" && (
             <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-              {brokers.map((broker) => (
+              {paginatedItems.map((broker) => (
                 <div key={broker.broker_id} style={{ background: "white", borderRadius: 12, padding: 16, border: "1px solid #e2e8f0", boxShadow: "0 1px 3px rgba(0, 0, 0, 0.05)", transition: "all 0.2s ease" }} onMouseEnter={e => { e.currentTarget.style.boxShadow = "0 4px 12px rgba(0, 0, 0, 0.08)"; e.currentTarget.style.borderColor = "#cbd5e1" }} onMouseLeave={e => { e.currentTarget.style.boxShadow = "0 1px 3px rgba(0, 0, 0, 0.05)"; e.currentTarget.style.borderColor = "#e2e8f0" }}>
                   <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12 }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 12, flex: 1, minWidth: 0 }}>
@@ -386,8 +390,8 @@ export default function ManageBrokers() {
                   </tr>
                 </thead>
                 <tbody>
-                  {brokers.map((broker, idx) => (
-                    <tr key={broker.broker_id} style={{ borderBottom: idx === brokers.length - 1 ? "none" : "1px solid #e2e8f0", transition: "background 0.2s ease" }} onMouseEnter={e => e.currentTarget.style.background = "#f8fafc"} onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
+                  {paginatedItems.map((broker, idx) => (
+                    <tr key={broker.broker_id} style={{ borderBottom: idx === paginatedItems.length - 1 ? "none" : "1px solid #e2e8f0", transition: "background 0.2s ease" }} onMouseEnter={e => e.currentTarget.style.background = "#f8fafc"} onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
                       <td style={{ padding: "12px 16px" }}>
                         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                           <div style={{ width: 36, height: 36, borderRadius: "50%", background: broker.profile_picture_url ? "transparent" : "linear-gradient(135deg, #0070f3 0%, #0056d4 100%)", color: "white", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 600, fontSize: FONT_SIZE.base, flexShrink: 0, overflow: "hidden" }}>
@@ -440,6 +444,10 @@ export default function ManageBrokers() {
             </div>
           )}
         </>
+      )}
+
+      {totalItems > 0 && (
+        <PaginationControls page={page} totalPages={totalPages} totalItems={totalItems} onPageChange={setPage} />
       )}
 
       {/* Modals */}

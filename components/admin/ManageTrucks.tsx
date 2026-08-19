@@ -7,6 +7,8 @@ import { supabase } from "@/lib/supabase"
 import { apiMutate } from "@/lib/api-mutation"
 import { usePermissions } from "@/lib/PermissionContext"
 import { Role } from "@/lib/roles"
+import { usePagination } from "@/lib/hooks/usePagination"
+import PaginationControls from "@/components/PaginationControls"
 
 type Truck = {
   plate_number: string
@@ -106,6 +108,7 @@ export default function ManageTrucks() {
 
   const filterOptions = ["All", "Empty", "Loaded", "To Plant", "Undergoing Repairs", "Decommissioned"]
   const filteredTrucks = filterStatus === "All" ? trucks : trucks.filter((t) => t.status === filterStatus)
+  const { page, setPage, totalPages, paginatedItems, totalItems } = usePagination(filteredTrucks)
 
   function startEdit(truck: Truck) {
     setEditingTruck(truck)
@@ -309,7 +312,7 @@ export default function ManageTrucks() {
         <>
           {viewMode === "card" && (
             <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-              {filteredTrucks.map((truck) => {
+              {paginatedItems.map((truck) => {
                 const pill = statusPillColor(truck.status)
                 return (
                   <div key={truck.plate_number} style={{ background: "white", borderRadius: 12, padding: 16, border: "1px solid #e2e8f0", boxShadow: "0 1px 3px rgba(0, 0, 0, 0.05)", transition: "all 0.2s ease" }} onMouseEnter={e => { e.currentTarget.style.boxShadow = "0 4px 12px rgba(0, 0, 0, 0.08)"; e.currentTarget.style.borderColor = "#cbd5e1" }} onMouseLeave={e => { e.currentTarget.style.boxShadow = "0 1px 3px rgba(0, 0, 0, 0.05)"; e.currentTarget.style.borderColor = "#e2e8f0" }}>
@@ -377,7 +380,7 @@ export default function ManageTrucks() {
                   </tr>
                 </thead>
                 <tbody>
-                  {filteredTrucks.map((truck, idx) => {
+                  {paginatedItems.map((truck, idx) => {
                     const pill = statusPillColor(truck.status)
                     return (
                       <tr key={truck.plate_number} style={{ borderBottom: idx === filteredTrucks.length - 1 ? "none" : "1px solid #e2e8f0", transition: "background 0.2s ease" }} onMouseEnter={e => e.currentTarget.style.background = "#f8fafc"} onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
@@ -423,6 +426,10 @@ export default function ManageTrucks() {
             </div>
           )}
         </>
+      )}
+
+      {filteredTrucks.length > 0 && (
+        <PaginationControls page={page} totalPages={totalPages} totalItems={totalItems} onPageChange={setPage} />
       )}
 
       {(editingTruck || deletingPlate) && (

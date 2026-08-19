@@ -9,6 +9,8 @@ import { apiMutate } from "@/lib/api-mutation"
 import ModernInput from "@/components/ModernInput"
 import InviteSuccessCard from "@/components/admin/InviteSuccessCard"
 import { usePermissions } from "@/lib/PermissionContext"
+import { usePagination } from "@/lib/hooks/usePagination"
+import PaginationControls from "@/components/PaginationControls"
 
 type StationManager = {
   manager_id: string
@@ -310,6 +312,8 @@ export default function ManageStationManagers() {
     transition: "border-color 0.2s ease",
   }
 
+  const { page, setPage, totalPages, paginatedItems, totalItems } = usePagination(managers)
+
   return (
     <div
       style={{
@@ -584,7 +588,7 @@ export default function ManageStationManagers() {
                 gap: 12,
               }}
             >
-              {managers.map((manager) => {
+              {paginatedItems.map((manager) => {
                 const { bg, color, border } = statusColor(manager.status)
                 return (
                   <div
@@ -854,7 +858,7 @@ export default function ManageStationManagers() {
                   </tr>
                 </thead>
                 <tbody>
-                  {managers.map((manager, idx) => {
+                  {paginatedItems.map((manager, idx) => {
                     const { bg, color, border } = statusColor(manager.status)
                     return (
                       <tr
@@ -1044,6 +1048,10 @@ export default function ManageStationManagers() {
             </div>
           )}
         </>
+      )}
+
+      {managers.length > 0 && (
+        <PaginationControls page={page} totalPages={totalPages} totalItems={totalItems} onPageChange={setPage} />
       )}
 
       {/* Modals */}

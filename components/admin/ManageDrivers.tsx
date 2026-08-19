@@ -9,6 +9,8 @@ import ModernInput from "@/components/ModernInput"
 import InviteSuccessCard from "@/components/admin/InviteSuccessCard"
 import { apiMutate } from "@/lib/api-mutation"
 import { usePermissions } from "@/lib/PermissionContext"
+import { usePagination } from "@/lib/hooks/usePagination"
+import PaginationControls from "@/components/PaginationControls"
 
 type Driver = {
   driver_id: string
@@ -87,6 +89,7 @@ export default function ManageDrivers() {
 
   const filterOptions = ["All", "Active", "Invited", "Suspended"]
   const filteredDrivers = filterStatus === "All" ? drivers : drivers.filter((d) => d.status === filterStatus)
+  const { page, setPage, totalPages, paginatedItems, totalItems } = usePagination(filteredDrivers)
 
   async function fetchDrivers() {
     const { data, error } = await supabase
@@ -382,7 +385,7 @@ export default function ManageDrivers() {
         <>
           {viewMode === "card" && (
             <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-              {filteredDrivers.map((driver) => {
+              {paginatedItems.map((driver) => {
                 const pill = statusPillColor(driver.status)
                 return (
                   <div key={driver.driver_id} style={{ background: "white", borderRadius: 12, padding: 16, border: "1px solid #e2e8f0", boxShadow: "0 1px 3px rgba(0, 0, 0, 0.05)", transition: "all 0.2s ease" }} onMouseEnter={e => { e.currentTarget.style.boxShadow = "0 4px 12px rgba(0, 0, 0, 0.08)"; e.currentTarget.style.borderColor = "#cbd5e1" }} onMouseLeave={e => { e.currentTarget.style.boxShadow = "0 1px 3px rgba(0, 0, 0, 0.05)"; e.currentTarget.style.borderColor = "#e2e8f0" }}>
@@ -457,7 +460,7 @@ export default function ManageDrivers() {
                   </tr>
                 </thead>
                 <tbody>
-                  {filteredDrivers.map((driver, idx) => {
+                  {paginatedItems.map((driver, idx) => {
                     const pill = statusPillColor(driver.status)
                     return (
                       <tr key={driver.driver_id} style={{ borderBottom: idx === filteredDrivers.length - 1 ? "none" : "1px solid #e2e8f0", transition: "background 0.2s ease" }} onMouseEnter={e => e.currentTarget.style.background = "#f8fafc"} onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
@@ -521,6 +524,10 @@ export default function ManageDrivers() {
             </div>
           )}
         </>
+      )}
+
+      {filteredDrivers.length > 0 && (
+        <PaginationControls page={page} totalPages={totalPages} totalItems={totalItems} onPageChange={setPage} />
       )}
 
       {(showInviteModal || editingDriver || deletingId) && (

@@ -6,6 +6,8 @@ import { usePermissions } from "@/lib/PermissionContext"
 import { ROLES } from "@/lib/permissions"
 import { fetchStores } from "@/lib/stores"
 import { Icon } from "@iconify/react"
+import { usePagination } from "@/lib/hooks/usePagination"
+import PaginationControls from "@/components/PaginationControls"
 
 const OFFICE_LOCATIONS = ["Uyo", "Ikom", "Calabar", "Ogoja"]
 
@@ -141,6 +143,8 @@ export default function ManageUsers() {
     }
     return result
   }, [users, search, roleFilter])
+
+  const { page, setPage, totalPages, paginatedItems, totalItems } = usePagination(filteredUsers)
 
   function openRoleEditor(user: UserRow) {
     if (!canEdit) return
@@ -472,7 +476,7 @@ export default function ManageUsers() {
                 </tr>
               </thead>
               <tbody>
-                {filteredUsers.map(user => (
+                {paginatedItems.map(user => (
                   <tr key={user.user_id} style={{
                     borderBottom: "1px solid #f1f5f9",
                     opacity: user.is_deactivated ? 0.6 : 1,
@@ -611,6 +615,10 @@ export default function ManageUsers() {
           </div>
         )}
       </div>
+
+      {filteredUsers.length > 0 && (
+        <PaginationControls page={page} totalPages={totalPages} totalItems={totalItems} onPageChange={setPage} />
+      )}
 
       {/* Role Assignment Modal */}
       {editingUser && (

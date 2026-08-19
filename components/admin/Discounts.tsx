@@ -7,6 +7,8 @@ import { useState, useEffect, useCallback } from "react"
 import { Icon } from "@iconify/react"
 import { supabase } from "@/lib/supabase"
 import { apiMutate } from "@/lib/api-mutation"
+import { usePagination } from "@/lib/hooks/usePagination"
+import PaginationControls from "@/components/PaginationControls"
 
 type PriceAdjustment = {
   id: string
@@ -248,6 +250,8 @@ export default function Discounts() {
 
     return [...stops, ...groups]
   })()
+
+  const { page, setPage, totalPages, paginatedItems, totalItems } = usePagination(groupedDisplay)
 
   const pendingCount = adjustments.filter(a => a.status === "Pending" && a.credit_status !== "pending").length
   const approvedCount = adjustments.filter(a => a.status === "Approved" && a.credit_status !== "pending").length
@@ -691,7 +695,7 @@ export default function Discounts() {
           {/* Card View */}
           {viewMode === "card" && (
             <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(auto-fill, minmax(380px, 1fr))", gap: 16 }}>
-              {groupedDisplay.map(entry => {
+              {paginatedItems.map(entry => {
                 if (entry.type === "stop") {
                   const adj = entry.item
                   const sc = STATUS_COLORS[adj.status]
@@ -855,7 +859,7 @@ export default function Discounts() {
                   </tr>
                 </thead>
                 <tbody>
-                  {groupedDisplay.map(entry => {
+                  {paginatedItems.map(entry => {
                     if (entry.type === "stop") {
                       const adj = entry.item
                       const sc = STATUS_COLORS[adj.status]
@@ -961,6 +965,10 @@ export default function Discounts() {
             </div>
           )}
         </>
+      )}
+
+      {groupedDisplay.length > 0 && (
+        <PaginationControls page={page} totalPages={totalPages} totalItems={totalItems} onPageChange={setPage} />
       )}
 
       {/* Denial Modal */}

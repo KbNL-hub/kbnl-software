@@ -7,6 +7,8 @@ import { useState, useEffect } from "react"
 import { supabase } from "@/lib/supabase"
 import { Icon } from "@iconify/react"
 import { usePermissions } from "@/lib/PermissionContext"
+import { usePagination } from "@/lib/hooks/usePagination"
+import PaginationControls from "@/components/PaginationControls"
 
 type SideTrip = {
   id: string
@@ -63,6 +65,8 @@ export default function SideTrips() {
   }, [])
 
   usePolling(fetchTrips, 120000)
+
+  const { page, setPage, totalPages, paginatedItems, totalItems } = usePagination(trips)
 
   if (!canView) return null
 
@@ -169,7 +173,7 @@ export default function SideTrips() {
               </tr>
             </thead>
             <tbody>
-              {trips.map((trip) => (
+              {paginatedItems.map((trip) => (
                 <tr key={trip.id} style={{ transition: "background 0.15s" }} className="side-trip-row">
                   <td style={tdStyle}>
                     <span style={{ fontWeight: 600 }}>{trip.driver_name}</span>
@@ -191,7 +195,7 @@ export default function SideTrips() {
         </div>
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-          {trips.map((trip) => (
+          {paginatedItems.map((trip) => (
             <div key={trip.id} style={{ background: "white", border: "1px solid #e2e8f0", borderRadius: 10, padding: 14, boxShadow: "0 1px 3px rgba(0,0,0,0.05)" }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 8 }}>
                 <p style={{ margin: 0, fontWeight: 700, fontSize: FONT_SIZE.sm, color: "#0f172a" }}>{trip.driver_name}</p>
@@ -207,6 +211,9 @@ export default function SideTrips() {
             </div>
           ))}
         </div>
+      )}
+      {trips.length > 0 && (
+        <PaginationControls page={page} totalPages={totalPages} totalItems={totalItems} onPageChange={setPage} />
       )}
       <style>{`
         @keyframes spin { to { transform: rotate(360deg); } }

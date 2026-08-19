@@ -7,6 +7,8 @@ import { useState, useEffect } from "react"
 import { supabase } from "@/lib/supabase"
 import { apiMutate } from "@/lib/api-mutation"
 import { usePermissions } from "@/lib/PermissionContext"
+import { usePagination } from "@/lib/hooks/usePagination"
+import PaginationControls from "@/components/PaginationControls"
 
 type Complaint = {
   complaint_id: string
@@ -213,6 +215,8 @@ export default function Complaints() {
     ? complaints
     : complaints.filter(c => c.status === filter)
 
+  const { page, setPage, totalPages, paginatedItems, totalItems } = usePagination(filtered)
+
   const openCount = complaints.filter(c => c.status === "Open").length
   const inProgressCount = complaints.filter(c => c.status === "In Progress").length
   const resolvedCount = complaints.filter(c => c.status === "Resolved").length
@@ -298,7 +302,7 @@ export default function Complaints() {
         <>
           {viewMode === "card" && (
             <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-              {filtered.map(c => {
+              {paginatedItems.map(c => {
                 const s = statusBadge(c.status)
                 const isReport = c.complaint_id.startsWith("report-")
                 return (
@@ -470,7 +474,7 @@ export default function Complaints() {
                   </tr>
                 </thead>
                 <tbody>
-                  {filtered.map((c, idx) => {
+                  {paginatedItems.map((c, idx) => {
                     const s = statusBadge(c.status)
                     const isReport = c.complaint_id.startsWith("report-")
                     return (
@@ -532,6 +536,10 @@ export default function Complaints() {
             </div>
           )}
         </>
+      )}
+
+      {filtered.length > 0 && (
+        <PaginationControls page={page} totalPages={totalPages} totalItems={totalItems} onPageChange={setPage} />
       )}
 
       {/* Reply Modal */}

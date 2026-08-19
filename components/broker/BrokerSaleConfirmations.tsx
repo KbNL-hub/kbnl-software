@@ -8,6 +8,8 @@ import { formatAmount } from "@/lib/formatAmount"
 import ModernInput from "@/components/ModernInput"
 import BrokerConfirmModal from "@/components/broker/BrokerConfirmModal"
 import { useBreakpoint } from "@/app/hooks/useBreakpoint"
+import { usePagination } from "@/lib/hooks/usePagination"
+import PaginationControls from "@/components/PaginationControls"
 
 const AREAS = ["Calabar to Obubra", "Ikom to Obudu", "Akwa-Ibom", "East"]
 
@@ -294,8 +296,6 @@ export default function BrokerSaleConfirmations() {
     return () => clearTimeout(t)
   }, [notification])
 
-  if (loading) return <p style={{ color: "#888" }}>Loading…</p>
-
   const pendingGroups = allGroups.filter(g => g.status === "Pending" && !g.lines.some(l => l.discount_status === "returned") && !g.lines.some(l => l.discount_status === "pending") && !g.lines.some(l => l.credit_approval_status === "Pending"))
   const reviewGroups = allGroups.filter(g => g.status === "Pending" && (g.lines.some(l => l.discount_status === "pending") || g.lines.some(l => l.credit_approval_status === "Pending")))
   const confirmedGroups = allGroups.filter(g => g.status === "Confirmed")
@@ -307,6 +307,10 @@ export default function BrokerSaleConfirmations() {
     : activeFilter === "confirmed" ? confirmedGroups
     : activeFilter === "returned" ? returnedGroups
     : rejectedGroups
+
+  const { page, setPage, totalPages, paginatedItems, totalItems } = usePagination(visibleGroups)
+
+  if (loading) return <p style={{ color: "#888" }}>Loading…</p>
 
   const filterOptions = [
     { key: "pending" as const, label: "Pending", count: pendingGroups.length, color: "#f5a623" },
@@ -397,7 +401,7 @@ export default function BrokerSaleConfirmations() {
           <p style={{ margin: 0, fontSize: 14 }}>No {activeFilter} store sales</p>
         </div>
       ) : (
-        visibleGroups.map((group) => {
+        paginatedItems.map((group) => {
           const isExpanded = expandedCard === group.group_id
           const statusColor = group.lines.some(l => l.discount_status === "returned") ? { bg: "#fffbeb", text: "#d97706", border: "#fcd34d", label: "Returned" }
             : group.status === "Confirmed" ? { bg: "#ecfdf5", text: "#10b981", border: "#a7f3d0", label: "Confirmed" }
@@ -527,6 +531,10 @@ export default function BrokerSaleConfirmations() {
           </div>
           )
         })
+      )}
+
+      {visibleGroups.length > 0 && (
+        <PaginationControls page={page} totalPages={totalPages} totalItems={totalItems} onPageChange={setPage} />
       )}
 
       <BrokerConfirmModal

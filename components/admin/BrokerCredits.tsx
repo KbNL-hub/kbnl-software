@@ -13,6 +13,8 @@ import ModernInput from "@/components/ModernInput"
 import { FONT_SIZE } from "@/lib/constants"
 import { usePolling } from "@/lib/hooks/usePolling"
 import { toISOString } from "@/lib/date-utils"
+import { usePagination } from "@/lib/hooks/usePagination"
+import PaginationControls from "@/components/PaginationControls"
 
 type Broker = { broker_id: string; broker_name: string; credit_limit: number | null }
 type CreditEntry = {
@@ -106,6 +108,8 @@ export default function BrokerCredits() {
   }, 120000)
 
   const companyTotal = brokerTotals.reduce((sum, b) => sum + b.total_credit, 0)
+
+  const { page: brokerPage, setPage: setBrokerPage, totalPages: brokerTotalPages, paginatedItems: paginatedBrokers, totalItems: brokerTotalItems } = usePagination(brokerTotals)
 
   function openBrokerDetail(broker: Broker) {
     setSelectedBroker(broker)
@@ -315,7 +319,7 @@ export default function BrokerCredits() {
             <EmptyState message="No brokers found" />
           ) : viewMode === "card" ? (
             <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-              {brokerTotals.map(b => (
+              {paginatedBrokers.map(b => (
                 <div
                   key={b.broker_id}
                   onClick={() => openBrokerDetail(b)}
@@ -366,7 +370,7 @@ export default function BrokerCredits() {
                   </tr>
                 </thead>
                 <tbody>
-                  {brokerTotals.map((b, idx) => (
+                  {paginatedBrokers.map((b, idx) => (
                     <tr
                       key={b.broker_id}
                       onClick={() => openBrokerDetail(b)}
@@ -403,6 +407,9 @@ export default function BrokerCredits() {
                 </tbody>
               </table>
             </div>
+          )}
+          {brokerTotals.length > 0 && (
+            <PaginationControls page={brokerPage} totalPages={brokerTotalPages} totalItems={brokerTotalItems} onPageChange={setBrokerPage} />
           )}
         </>
       )}

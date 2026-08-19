@@ -9,6 +9,8 @@ import { BANKS, FONT_SIZE } from "@/lib/constants"
 import { useBreakpoint } from "@/app/hooks/useBreakpoint"
 import ModernInput from "@/components/ModernInput"
 import { EmptyState } from "@/components/admin/EmptyState"
+import { usePagination } from "@/lib/hooks/usePagination"
+import PaginationControls from "@/components/PaginationControls"
 import type { User } from "@supabase/supabase-js"
 
 type Transaction = {
@@ -157,6 +159,8 @@ export default function Transactions() {
   }
 
   const totalTransferred = transactions.reduce((sum, t) => sum + (t.amount || 0), 0)
+
+  const { page, setPage, totalPages, paginatedItems, totalItems } = usePagination(transactions)
 
   return (
     <div style={{ fontFamily: "'Inter', sans-serif", minHeight: "100vh", background: "#f8fafc", padding: isMobile ? 16 : 32 }}>
@@ -418,7 +422,7 @@ export default function Transactions() {
                     </tr>
                   </thead>
                   <tbody>
-                    {transactions.map((t, idx) => {
+                    {paginatedItems.map((t, idx) => {
                       const isMaintenance = t.to_account === "Haulage"
                       return (
                         <tr
@@ -454,7 +458,7 @@ export default function Transactions() {
             {/* Mobile Card List */}
             {isMobile && (
               <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                {transactions.map(t => {
+                {paginatedItems.map(t => {
                   const isMaintenance = t.to_account === "Haulage"
                   return (
                     <div key={t.transaction_id} style={{ background: "#f8fafc", borderRadius: 10, padding: 14, border: "1px solid #e2e8f0" }}>
@@ -482,6 +486,10 @@ export default function Transactions() {
           </>
         )}
       </div>
+
+      {transactions.length > 0 && (
+        <PaginationControls page={page} totalPages={totalPages} totalItems={totalItems} onPageChange={setPage} />
+      )}
 
       <style>{`
         @keyframes spin { to { transform: rotate(360deg); } }

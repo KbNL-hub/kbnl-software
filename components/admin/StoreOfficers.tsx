@@ -10,6 +10,8 @@ import ModernInput from "@/components/ModernInput"
 import InviteSuccessCard from "@/components/admin/InviteSuccessCard"
 import { usePermissions } from "@/lib/PermissionContext"
 import { fetchStores } from "@/lib/stores"
+import { usePagination } from "@/lib/hooks/usePagination"
+import PaginationControls from "@/components/PaginationControls"
 
 type StoreOfficer = {
   officer_id: string
@@ -198,6 +200,8 @@ export default function StoreOfficers() {
     minHeight: 48,
     transition: "border-color 0.2s ease",
   }
+
+  const { page, setPage, totalPages, paginatedItems, totalItems } = usePagination(officers)
 
   return (
     <div
@@ -462,7 +466,7 @@ export default function StoreOfficers() {
                 gap: 12,
               }}
             >
-              {officers.map((officer) => {
+              {paginatedItems.map((officer) => {
                 const { bg, color, border } = statusColor(officer.status)
                 return (
                   <div
@@ -682,7 +686,7 @@ export default function StoreOfficers() {
                   </tr>
                 </thead>
                 <tbody>
-                  {officers.map((officer, idx) => {
+                  {paginatedItems.map((officer, idx) => {
                     const { bg, color, border } = statusColor(officer.status)
                     return (
                       <tr
@@ -831,6 +835,10 @@ export default function StoreOfficers() {
             </div>
           )}
         </>
+      )}
+
+      {officers.length > 0 && (
+        <PaginationControls page={page} totalPages={totalPages} totalItems={totalItems} onPageChange={setPage} />
       )}
 
       {/* Modals */}

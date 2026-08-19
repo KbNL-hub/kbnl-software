@@ -7,6 +7,8 @@ import { supabase } from "@/lib/supabase"
 import { apiMutate } from "@/lib/api-mutation"
 import { Icon } from "@iconify/react"
 import { usePermissions } from "@/lib/PermissionContext"
+import { usePagination } from "@/lib/hooks/usePagination"
+import PaginationControls from "@/components/PaginationControls"
 
 type Payment = {
   payment_id: string
@@ -152,6 +154,8 @@ export default function CustomerPaymentsAdmin() {
     }
     return true
   })
+
+  const { page, setPage, totalPages, paginatedItems, totalItems } = usePagination(filteredPayments)
 
   return (
     <div style={{ minHeight: "100vh", background: "#f8fafc", padding: isMobile ? "16px" : "32px", fontFamily: "'Inter', sans-serif" }}>
@@ -351,7 +355,7 @@ export default function CustomerPaymentsAdmin() {
         </div>
       ) : viewMode === "card" ? (
         <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-          {filteredPayments.map((p) => (
+          {paginatedItems.map((p) => (
             <div key={p.payment_id} style={{ background: "white", borderRadius: 12, padding: 16, border: "1px solid #e2e8f0", boxShadow: "0 1px 3px rgba(0, 0, 0, 0.05)", transition: "all 0.2s ease" }} onMouseEnter={e => { e.currentTarget.style.boxShadow = "0 4px 12px rgba(0, 0, 0, 0.08)"; e.currentTarget.style.borderColor = "#cbd5e1" }} onMouseLeave={e => { e.currentTarget.style.boxShadow = "0 1px 3px rgba(0, 0, 0, 0.05)"; e.currentTarget.style.borderColor = "#e2e8f0" }}>
               <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12, marginBottom: 12 }}>
                 <div style={{ flex: 1 }}>
@@ -411,7 +415,7 @@ export default function CustomerPaymentsAdmin() {
               </tr>
             </thead>
             <tbody>
-              {filteredPayments.map((p, idx) => (
+              {paginatedItems.map((p, idx) => (
                 <tr key={p.payment_id} style={{ borderBottom: idx === filteredPayments.length - 1 ? "none" : "1px solid #e2e8f0", transition: "background 0.2s ease" }} onMouseEnter={e => e.currentTarget.style.background = "#f8fafc"} onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
                   <td style={{ padding: "12px 16px", color: "#0f172a", fontSize: FONT_SIZE.sm }}>{new Date(p.payment_date).toLocaleDateString()}</td>
                   <td style={{ padding: "12px 16px", color: "#0f172a", fontSize: FONT_SIZE.base, fontWeight: 500 }}>{profilesMap[p.broker_id] || "Unknown"}</td>
@@ -444,6 +448,10 @@ export default function CustomerPaymentsAdmin() {
             </tbody>
           </table>
         </div>
+      )}
+
+      {filteredPayments.length > 0 && (
+        <PaginationControls page={page} totalPages={totalPages} totalItems={totalItems} onPageChange={setPage} />
       )}
 
       {showPostModal && selectedPayment && (

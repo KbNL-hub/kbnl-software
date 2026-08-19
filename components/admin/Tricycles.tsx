@@ -7,6 +7,8 @@ import ModernInput from "@/components/ModernInput"
 import { supabase } from "@/lib/supabase"
 import { apiMutate } from "@/lib/api-mutation"
 import { usePermissions } from "@/lib/PermissionContext"
+import { usePagination } from "@/lib/hooks/usePagination"
+import PaginationControls from "@/components/PaginationControls"
 
 type Tricycle = {
   tricycle_id: string
@@ -176,6 +178,8 @@ export default function ManageTricycles() {
     }
   }
 
+  const { page, setPage, totalPages, paginatedItems, totalItems } = usePagination(tricycles)
+
   return (
     <div style={{ minHeight: "100vh", background: "#f8fafc", padding: isMobile ? "16px" : "32px", fontFamily: "'Inter', sans-serif" }}>
       <div style={{ display: "flex", flexDirection: isMobile ? "column" : "row", justifyContent: "space-between", alignItems: isMobile ? "flex-start" : "center", gap: 16, marginBottom: 32 }}>
@@ -227,7 +231,7 @@ export default function ManageTricycles() {
         <>
           {viewMode === "card" && (
             <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-              {tricycles.map((t) => (
+              {paginatedItems.map((t) => (
                 <div key={t.tricycle_id} style={{ background: "white", borderRadius: 12, padding: 16, border: "1px solid #e2e8f0", boxShadow: "0 1px 3px rgba(0, 0, 0, 0.05)", transition: "all 0.2s ease" }} onMouseEnter={e => { e.currentTarget.style.boxShadow = "0 4px 12px rgba(0, 0, 0, 0.08)"; e.currentTarget.style.borderColor = "#cbd5e1" }} onMouseLeave={e => { e.currentTarget.style.boxShadow = "0 1px 3px rgba(0, 0, 0, 0.05)"; e.currentTarget.style.borderColor = "#e2e8f0" }}>
                   <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12, marginBottom: 12 }}>
                     <div>
@@ -285,7 +289,7 @@ export default function ManageTricycles() {
                   </tr>
                 </thead>
                 <tbody>
-                  {tricycles.map((t, idx) => (
+                  {paginatedItems.map((t, idx) => (
                     <tr key={t.tricycle_id} style={{ borderBottom: idx === tricycles.length - 1 ? "none" : "1px solid #e2e8f0", transition: "background 0.2s ease" }} onMouseEnter={e => e.currentTarget.style.background = "#f8fafc"} onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
                       <td style={{ padding: "12px 16px", fontFamily: "monospace", fontWeight: 600, fontSize: FONT_SIZE.base, color: "#0f172a" }}>
                         {t.tricycle_number}
@@ -316,6 +320,10 @@ export default function ManageTricycles() {
             </div>
           )}
         </>
+      )}
+
+      {tricycles.length > 0 && (
+        <PaginationControls page={page} totalPages={totalPages} totalItems={totalItems} onPageChange={setPage} />
       )}
 
       {(showAddModal || editingTricycle || deletingId) && (
