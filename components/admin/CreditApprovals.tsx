@@ -7,6 +7,8 @@ import { useState, useEffect, useCallback } from "react"
 import { Icon } from "@iconify/react"
 import { supabase } from "@/lib/supabase"
 import { apiMutate } from "@/lib/api-mutation"
+import { usePagination } from "@/lib/hooks/usePagination"
+import PaginationControls from "@/components/PaginationControls"
 
 type CreditApproval = {
   id: string
@@ -16,6 +18,7 @@ type CreditApproval = {
   broker_name: string | null
   credit_manager_id: string
   credit_manager_name: string | null
+  customer_name: string | null
   area: string
   product: string
   quantity: number | null
@@ -144,8 +147,24 @@ export default function CreditApprovals() {
       const saleSourceIds = (data || []).filter(a => a.source_type === "store_sale").map(a => a.source_id)
 
       const discountMap: Record<string, boolean> = {}
+      const customerMap: Record<string, string> = {}
 
       if (stopSourceIds.length > 0) {
+        const { data: stops } = await supabase
+          .from("Stops")
+          .select("stop_id, customer_id")
+          .in("stop_id", stopSourceIds)
+        const stopCustomerIds = (stops || []).map(s => s.customer_id).filter(Boolean)
+        if (stopCustomerIds.length > 0) {
+          const { data: customers } = await supabase
+            .from("Customers")
+            .select("customer_id, full_name")
+            .in("customer_id", stopCustomerIds)
+          const custMap: Record<string, string> = {}
+          for (const c of customers || []) custMap[c.customer_id] = c.full_name
+          for (const s of stops || []) customerMap[`stop:${s.stop_id}`] = s.customer_id ? (custMap[s.customer_id] ?? "") : ""
+        }
+
         const { data: adjustments } = await supabase
           .from("price_adjustments")
           .select("source_id, credit_status")
@@ -157,6 +176,12 @@ export default function CreditApprovals() {
       }
 
       if (saleSourceIds.length > 0) {
+        const { data: sales } = await supabase
+          .from("store_sales")
+          .select("sale_id, customer_name")
+          .in("sale_id", saleSourceIds)
+        for (const s of sales || []) customerMap[`store_sale:${s.sale_id}`] = s.customer_name ?? ""
+
         const { data: adjustments } = await supabase
           .from("price_adjustments")
           .select("source_id, credit_status")
@@ -174,6 +199,7 @@ export default function CreditApprovals() {
           ...a,
           broker_name: brokerMap[a.broker_id] || "Unknown",
           credit_manager_name: managerMap[a.credit_manager_id] || "Unknown",
+          customer_name: customerMap[`${a.source_type}:${a.source_id}`] || "",
           has_discount: discountMap[`${a.source_type}:${a.source_id}`] || false,
           credit_limit: brokerLimitMap[a.broker_id] ?? null,
           active_credit_total: activeTotal,
@@ -198,6 +224,8 @@ export default function CreditApprovals() {
     if (filterStatus !== "All" && a.status !== filterStatus) return false
     return true
   })
+
+  const { page, setPage, totalPages, paginatedItems, totalItems } = usePagination(filtered)
 
   const pendingCount = approvals.filter(a => a.status === "Pending").length
   const approvedCount = approvals.filter(a => a.status === "Approved").length
@@ -486,7 +514,7 @@ export default function CreditApprovals() {
         <>
           {viewMode === "card" && (
             <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(auto-fill, minmax(380px, 1fr))", gap: 16 }}>
-              {filtered.map(approval => {
+              {paginatedItems.map(approval => {
                 const sc = STATUS_COLORS[approval.status]
                 return (
                   <div key={approval.id} style={{ background: "white", borderRadius: 12, padding: 20, border: "1px solid #e2e8f0", boxShadow: "0 1px 3px rgba(0,0,0,0.05)", transition: "all 0.2s ease" }} onMouseEnter={e => !isMobile && (e.currentTarget.style.boxShadow = "0 4px 12px rgba(0, 0, 0, 0.08)", e.currentTarget.style.borderColor = "#cbd5e1")} onMouseLeave={e => !isMobile && (e.currentTarget.style.boxShadow = "0 1px 3px rgba(0, 0, 0, 0.05)", e.currentTarget.style.borderColor = "#e2e8f0")}>
@@ -499,7 +527,11 @@ export default function CreditApprovals() {
                     </div>
 
                     <h3 style={{ margin: "0 0 4px", color: "#0f172a", fontSize: FONT_SIZE.lg, fontWeight: 700 }}>{approval.broker_name}</h3>
-                    <p style={{ margin: "0 0 10px", color: "#64748b", fontSize: FONT_SIZE.sm }}>{approval.product} · {approval.area}</p>
+                    <p style={{ margin: "0 0 2px", color: "#64748b", fontSize: FONT_SIZE.sm }}>{approval.product} · {approval.area}</p>
+                    {approval.customer_name && (
+                      <p style={{ margin: "0 0 10px", color: "#0f172a", fontSize: FONT_SIZE.sm, fontWeight: 500 }}>Customer: {approval.customer_name}</p>
+                    )}
+                    {!approval.customer_name && <p style={{ margin: "0 0 10px" }} />}
 
                     <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 14 }}>
                       <span style={{ fontSize: 10, padding: "3px 10px", borderRadius: 12, background: "#e0f2fe", color: "#0369a1", fontWeight: 700, border: "1px solid #7dd3fc" }}>{approval.source_type === "stop" ? "Stop" : "Store Sale"}</span>
@@ -596,21 +628,24 @@ export default function CreditApprovals() {
 
           {viewMode === "table" && (
             <div style={{ background: "white", borderRadius: 12, border: "1px solid #e2e8f0", boxShadow: "0 1px 3px rgba(0, 0, 0, 0.05)", overflowX: "auto" }}>
-              <table style={{ width: "100%", borderCollapse: "collapse", textAlign: "left", minWidth: 1050 }}>
+              <table style={{ width: "100%", borderCollapse: "collapse", textAlign: "left", minWidth: 1150 }}>
                 <thead>
                   <tr style={{ background: "#f8fafc", borderBottom: "1px solid #e2e8f0" }}>
-                    {["Broker", "Type", "Product", "Area", "Bags", "Company", "Adjusted", "Credit Impact", "Status", "Date", "Actions"].map(h => (
+                    {["Broker", "Customer", "Type", "Product", "Area", "Bags", "Company", "Adjusted", "Credit Impact", "Status", "Date", "Actions"].map(h => (
                       <th key={h} style={{ padding: "12px 16px", fontWeight: 600, fontSize: FONT_SIZE.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px", whiteSpace: "nowrap" }}>{h}</th>
                     ))}
                   </tr>
                 </thead>
                 <tbody>
-                  {filtered.map(approval => {
+                  {paginatedItems.map(approval => {
                     const sc = STATUS_COLORS[approval.status]
                     return (
                       <tr key={approval.id} style={{ borderBottom: "1px solid #f1f5f9", transition: "background 0.2s ease" }} onMouseEnter={e => e.currentTarget.style.background = "#f8fafc"} onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
                         <td style={{ padding: "12px 16px", fontSize: FONT_SIZE.sm, fontWeight: 500 }}>
                           <div>{approval.broker_name}</div>
+                        </td>
+                        <td style={{ padding: "12px 16px", fontSize: FONT_SIZE.sm, color: "#64748b" }}>
+                          {approval.customer_name || "—"}
                         </td>
                         <td style={{ padding: "12px 16px" }}>
                           <span style={{ fontSize: 9, padding: "1px 6px", borderRadius: 8, background: approval.source_type === "stop" ? "#e0f2fe" : "#f3e5f5", color: approval.source_type === "stop" ? "#0369a1" : "#7c3aed", fontWeight: 700, border: `1px solid ${approval.source_type === "stop" ? "#7dd3fc" : "#d8b4fe"}` }}>
@@ -670,6 +705,10 @@ export default function CreditApprovals() {
             </div>
           )}
         </>
+      )}
+
+      {filtered.length > 0 && (
+        <PaginationControls page={page} totalPages={totalPages} totalItems={totalItems} onPageChange={setPage} />
       )}
 
       {rejectModal && (

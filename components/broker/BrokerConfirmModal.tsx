@@ -95,7 +95,7 @@ export default function BrokerConfirmModal({ isOpen, onClose, brokerId, isMobile
   const [discounts, setDiscounts] = useState<Record<string, string>>({})
   const [salePrices, setSalePrices] = useState<Record<string, string>>({})
   const [priceReason, setPriceReason] = useState("")
-  const [isOnCredit, setIsOnCredit] = useState(false)
+  const [saleType, setSaleType] = useState<"cash" | "credit" | "">("")
   const [selectedCreditManagerId, setSelectedCreditManagerId] = useState("")
   const [creditManagersList, setCreditManagersList] = useState<{ manager_id: string; full_name: string }[]>([])
   const [message, setMessage] = useState("")
@@ -140,7 +140,7 @@ export default function BrokerConfirmModal({ isOpen, onClose, brokerId, isMobile
     setLinePrices({})
     setPriceReason("")
     setMessage("")
-    setIsOnCredit(false)
+    setSaleType("")
     setSelectedCreditManagerId("")
 
     supabase.from("credit_managers").select("manager_id, full_name").order("full_name").then(({ data }) => {
@@ -275,7 +275,7 @@ export default function BrokerConfirmModal({ isOpen, onClose, brokerId, isMobile
       if (!selectedCustomer) { setMessage("Customer is required"); return }
       if (!pricePerBag) { setMessage("Price per bag required"); return }
       if (showPriceReason && !priceReason.trim()) { setMessage("Provide a reason for using a different price"); return }
-      if (isOnCredit && !selectedCreditManagerId) { setMessage("Select a credit manager"); return }
+      if (saleType === "credit" && !selectedCreditManagerId) { setMessage("Select a credit manager"); return }
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) return
 
@@ -288,7 +288,7 @@ export default function BrokerConfirmModal({ isOpen, onClose, brokerId, isMobile
 
         let creditApprovalId: string | null = null
 
-        if (isOnCredit) {
+        if (saleType === "credit") {
           const { data: caData, error: caError } = await apiMutate("finance", {
             action: "insert",
             table: "credit_approvals",
@@ -310,7 +310,7 @@ export default function BrokerConfirmModal({ isOpen, onClose, brokerId, isMobile
           if (!creditApprovalId) { setMessage("Failed to submit. Please try again."); return }
         }
 
-        if (isOnCredit && hasDiff) {
+        if (saleType === "credit" && hasDiff) {
           const { error } = await apiMutate("trips", {
             action: "transaction",
             sub_actions: [
@@ -344,7 +344,7 @@ export default function BrokerConfirmModal({ isOpen, onClose, brokerId, isMobile
             ],
           })
           if (error) { setMessage("Failed to submit. Please try again."); return }
-        } else if (isOnCredit) {
+        } else if (saleType === "credit") {
           const { error } = await apiMutate("trips", {
             action: "transaction",
             sub_actions: [
@@ -432,7 +432,7 @@ export default function BrokerConfirmModal({ isOpen, onClose, brokerId, isMobile
     } else if (saleGroup) {
       if (!selectedArea) { setMessage("Select an area"); return }
       if (!selectedCustomer) { setMessage("Customer is required"); return }
-      if (isOnCredit && !selectedCreditManagerId) { setMessage("Select a credit manager"); return }
+      if (saleType === "credit" && !selectedCreditManagerId) { setMessage("Select a credit manager"); return }
 
       for (const line of saleGroup.lines) {
         if (!linePrices[line.sale_id]) {
@@ -454,7 +454,7 @@ export default function BrokerConfirmModal({ isOpen, onClose, brokerId, isMobile
         const groupId = crypto.randomUUID()
 
         const creditApprovalIds: Record<string, string> = {}
-        if (isOnCredit) {
+        if (saleType === "credit") {
           for (const line of saleGroup.lines) {
             const price = parseAmount(linePrices[line.sale_id] ?? "")
             const cp = companyPriceMap[selectedArea]?.[line.product] ?? 0
@@ -498,7 +498,7 @@ export default function BrokerConfirmModal({ isOpen, onClose, brokerId, isMobile
           }
           if (customerName) updateData.customer_name = customerName
 
-          if (isOnCredit) {
+          if (saleType === "credit") {
             updateData.status = "Pending"
             updateData.on_credit = true
             if (creditApprovalIds[line.sale_id]) updateData.credit_approval_id = creditApprovalIds[line.sale_id]
@@ -542,7 +542,7 @@ export default function BrokerConfirmModal({ isOpen, onClose, brokerId, isMobile
                   price_reason: priceReason.trim(),
                   status: "Pending",
                   group_id: groupId,
-                  credit_status: isOnCredit ? "pending" : "none",
+                  credit_status: saleType === "credit" ? "pending" : "none",
                 },
               })
               if (upsertErr) {
@@ -811,13 +811,19 @@ export default function BrokerConfirmModal({ isOpen, onClose, brokerId, isMobile
         )}
 
         <div style={{ marginBottom: 16 }}>
-          <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", fontWeight: 500, fontSize: 13, color: "#444" }}>
-            <input type="checkbox" checked={isOnCredit} onChange={e => { setIsOnCredit(e.target.checked); setSelectedCreditManagerId(""); setMessage("") }} style={{ width: 16, height: 16, cursor: "pointer" }} />
-            This is a credit transaction
-          </label>
+          <label style={labelStyle}>Sale Type *</label>
+          <select
+            value={saleType}
+            onChange={e => { setSaleType(e.target.value as "cash" | "credit" | ""); setSelectedCreditManagerId(""); setMessage("") }}
+            style={{ ...inputStyle, appearance: "none", WebkitAppearance: "none", cursor: "pointer" }}
+          >
+            <option value="">Select sale type</option>
+            <option value="cash">Cash</option>
+            <option value="credit">Credit</option>
+          </select>
         </div>
 
-        {isOnCredit && (
+        {saleType === "credit" && (
           <div style={{ marginBottom: 16 }}>
             <label style={labelStyle}>Credit Manager *</label>
             <select
