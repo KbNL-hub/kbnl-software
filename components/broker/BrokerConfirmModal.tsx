@@ -84,14 +84,31 @@ function formatDate(dateStr: string) {
 }
 
 export default function BrokerConfirmModal({ isOpen, onClose, brokerId, isMobile, companyPriceMap, onConfirmed, ...rest }: Props) {
-  const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null)
+  const isStop = rest.mode === "stop"
+  const stop = isStop ? rest.stop : null
+  const saleGroup = !isStop ? rest.saleGroup : null
+
+  const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(() =>
+    stop?.customer_id
+      ? { customer_id: stop.customer_id, full_name: stop.customer_name, phone_number: "" }
+      : saleGroup?.customer_name
+        ? { customer_id: "", full_name: saleGroup.customer_name, phone_number: "" }
+        : null
+  )
   const [selectedArea, setSelectedArea] = useState("")
   const [pricePerBag, setPricePerBag] = useState("")
   const [companyPrice, setCompanyPrice] = useState(0)
   const [soldAtDifferentPrice, setSoldAtDifferentPrice] = useState(false)
   const [discount, setDiscount] = useState("")
   const [salePrice, setSalePrice] = useState("")
-  const [linePrices, setLinePrices] = useState<Record<string, string>>({})
+  const [linePrices, setLinePrices] = useState<Record<string, string>>(() => {
+    if (!saleGroup) return {}
+    const prices: Record<string, string> = {}
+    for (const line of saleGroup.lines) {
+      prices[line.sale_id] = line.price_per_bag ? formatAmount(String(line.price_per_bag)) : ""
+    }
+    return prices
+  })
   const [discounts, setDiscounts] = useState<Record<string, string>>({})
   const [salePrices, setSalePrices] = useState<Record<string, string>>({})
   const [priceReason, setPriceReason] = useState("")
@@ -100,6 +117,12 @@ export default function BrokerConfirmModal({ isOpen, onClose, brokerId, isMobile
   const [creditManagersList, setCreditManagersList] = useState<{ manager_id: string; full_name: string }[]>([])
   const [message, setMessage] = useState("")
   const [submitting, setSubmitting] = useState(false)
+
+  useEffect(() => {
+    supabase.from("credit_managers").select("manager_id, full_name").order("full_name").then(({ data }) => {
+      if (data) setCreditManagersList(data)
+    })
+  }, [])
 
   const inputStyle: React.CSSProperties = {
     width: "100%", padding: isMobile ? "14px 12px" : "11px 12px",
@@ -123,49 +146,6 @@ export default function BrokerConfirmModal({ isOpen, onClose, brokerId, isMobile
     maxHeight: isMobile ? "92vh" : "88vh",
     overflowY: "auto", boxShadow: "0 8px 32px rgba(0,0,0,0.2)",
   }
-
-  const isStop = rest.mode === "stop"
-  const stop = isStop ? rest.stop : null
-  const saleGroup = !isStop ? rest.saleGroup : null
-
-  // eslint-disable-next-line react-hooks/set-state-in-effect
-  useEffect(() => {
-    if (!isOpen) return
-    setSelectedArea("")
-    setPricePerBag("")
-    setCompanyPrice(0)
-    setSoldAtDifferentPrice(false)
-    setDiscount("")
-    setSalePrice("")
-    setLinePrices({})
-    setPriceReason("")
-    setMessage("")
-    setSaleType("")
-    setSelectedCreditManagerId("")
-
-    supabase.from("credit_managers").select("manager_id, full_name").order("full_name").then(({ data }) => {
-      if (data) setCreditManagersList(data)
-    })
-
-    if (isStop && stop) {
-      setSelectedCustomer(
-        stop.customer_id
-          ? { customer_id: stop.customer_id, full_name: stop.customer_name, phone_number: "" }
-          : null
-      )
-    } else if (saleGroup) {
-      const prices: Record<string, string> = {}
-      for (const line of saleGroup.lines) {
-        prices[line.sale_id] = line.price_per_bag ? formatAmount(String(line.price_per_bag)) : ""
-      }
-      setLinePrices(prices)
-      setSelectedCustomer(
-        saleGroup.customer_name
-          ? { customer_id: "", full_name: saleGroup.customer_name, phone_number: "" }
-          : null
-      )
-    }
-  }, [isOpen, isStop, stop, saleGroup])
 
   function handleAreaChange(area: string) {
     setSelectedArea(area)
@@ -286,14 +266,23 @@ export default function BrokerConfirmModal({ isOpen, onClose, brokerId, isMobile
         const finalPriceVal = parseAmount(pricePerBag)
         const cp = companyPriceMap[selectedArea]?.[stop.product] ?? 0
         const hasDiff = showPriceReason && finalPriceVal !== cp && cp > 0 && finalPriceVal > 0
+        const isReturned = stop.discount_status === "returned"
+        const creditApprovalId = saleType === "credit" ? crypto.randomUUID() : null
 
-        let creditApprovalId: string | null = null
+        const subActions: Array<{
+          action: "insert" | "update" | "upsert" | "delete"
+          table: string
+          data?: Record<string, unknown>
+          filters?: Record<string, unknown>
+          conflict?: string
+        }> = []
 
         if (saleType === "credit") {
-          const { data: caData, error: caError } = await apiMutate("finance", {
+          subActions.push({
             action: "insert",
             table: "credit_approvals",
             data: {
+              id: creditApprovalId!,
               source_type: "stop",
               source_id: stop.stop_id,
               broker_id: brokerId,
@@ -306,122 +295,69 @@ export default function BrokerConfirmModal({ isOpen, onClose, brokerId, isMobile
               status: "Pending",
             },
           })
-          if (caError) { setMessage("Failed to submit. Please try again."); return }
-          creditApprovalId = (caData as { id: string }[])?.[0]?.id ?? null
-          if (!creditApprovalId) { setMessage("Failed to submit. Please try again."); return }
         }
 
-        if (saleType === "credit" && hasDiff) {
-          const { error } = await apiMutate("trips", {
-            action: "transaction",
-            sub_actions: [
-              {
-                action: "update", table: "Stops",
-                data: {
-                  confirmed: false, customer_id: customerIdToSave, updated_by: user.id,
-                  discount_status: "pending", on_credit: true,
-                  credit_approval_id: creditApprovalId,
-                },
-                filters: { stop_id: stop.stop_id },
-              },
-              {
-                action: "insert", table: "Stop_Confirmations",
-                data: {
-                  stop_id: stop.stop_id, broker_id: brokerId, customer_id: customerIdToSave,
-                  price_per_bag: finalPriceVal, area: selectedArea, company_price: cp,
-                  price_reason: priceReason.trim(),
-                },
-              },
-              {
-                action: "upsert", table: "price_adjustments",
-                conflict: "source_type,source_id",
-                data: {
-                  source_type: "stop", source_id: stop.stop_id, broker_id: brokerId,
-                  area: selectedArea, product: stop.product, company_price: cp,
-                  adjusted_price: finalPriceVal, price_reason: priceReason.trim(),
-                  status: "Pending", credit_status: "pending",
-                },
-              },
-            ],
-          })
-          if (error) { setMessage("Failed to submit. Please try again."); return }
-        } else if (saleType === "credit") {
-          const { error } = await apiMutate("trips", {
-            action: "transaction",
-            sub_actions: [
-              {
-                action: "update", table: "Stops",
-                data: {
-                  confirmed: false, customer_id: customerIdToSave, updated_by: user.id,
-                  on_credit: true, credit_approval_id: creditApprovalId,
-                },
-                filters: { stop_id: stop.stop_id },
-              },
-              {
-                action: "insert", table: "Stop_Confirmations",
-                data: {
-                  stop_id: stop.stop_id, broker_id: brokerId, customer_id: customerIdToSave,
-                  price_per_bag: finalPriceVal, area: selectedArea, company_price: cp,
-                  price_reason: null,
-                },
-              },
-            ],
-          })
-          if (error) { setMessage("Failed to submit. Please try again."); return }
-        } else if (hasDiff) {
-          const { error } = await apiMutate("trips", {
-            action: "transaction",
-            sub_actions: [
-              {
-                action: "update", table: "Stops",
-                data: { confirmed: false, customer_id: customerIdToSave, updated_by: user.id, discount_status: "pending" },
-                filters: { stop_id: stop.stop_id },
-              },
-              {
-                action: "insert", table: "Stop_Confirmations",
-                data: {
-                  stop_id: stop.stop_id, broker_id: brokerId, customer_id: customerIdToSave,
-                  price_per_bag: finalPriceVal, area: selectedArea, company_price: cp,
-                  price_reason: priceReason.trim(),
-                },
-              },
-              {
-                action: "upsert", table: "price_adjustments",
-                conflict: "source_type,source_id",
-                data: {
-                  source_type: "stop", source_id: stop.stop_id, broker_id: brokerId,
-                  area: selectedArea, product: stop.product, company_price: cp,
-                  adjusted_price: finalPriceVal, price_reason: priceReason.trim(),
-                  status: "Pending",
-                },
-              },
-            ],
-          })
-          if (error) { setMessage("Failed to submit. Please try again."); return }
-        } else {
-          const isReturned = stop.discount_status === "returned"
-          const stopUpdate: Record<string, unknown> = { confirmed: true, customer_id: customerIdToSave, updated_by: user.id }
-          if (isReturned) stopUpdate.discount_status = "pending"
-          const { error } = await apiMutate("trips", {
-            action: "transaction",
-            sub_actions: [
-              {
-                action: "update", table: "Stops",
-                data: stopUpdate,
-                filters: { stop_id: stop.stop_id },
-              },
-              {
-                action: "insert", table: "Stop_Confirmations",
-                data: {
-                  stop_id: stop.stop_id, broker_id: brokerId, customer_id: customerIdToSave,
-                  price_per_bag: finalPriceVal, area: selectedArea, company_price: cp,
-                  price_reason: null,
-                },
-              },
-            ],
-          })
-          if (error) { setMessage("Failed to confirm stop. Please try again."); return }
+        const stopUpdate: Record<string, unknown> = {
+          customer_id: customerIdToSave,
+          updated_by: user.id,
+          confirmed: saleType === "credit" || hasDiff ? false : true,
         }
+        if (saleType === "credit") {
+          stopUpdate.on_credit = true
+          stopUpdate.credit_approval_id = creditApprovalId
+        }
+        if (hasDiff) {
+          stopUpdate.discount_status = "pending"
+        } else if (isReturned) {
+          stopUpdate.discount_status = "pending"
+        }
+
+        subActions.push({
+          action: "update",
+          table: "Stops",
+          data: stopUpdate,
+          filters: { stop_id: stop.stop_id },
+        })
+
+        subActions.push({
+          action: "insert",
+          table: "Stop_Confirmations",
+          data: {
+            stop_id: stop.stop_id,
+            broker_id: brokerId,
+            customer_id: customerIdToSave,
+            price_per_bag: finalPriceVal,
+            area: selectedArea,
+            company_price: cp,
+            price_reason: hasDiff ? priceReason.trim() : null,
+          },
+        })
+
+        if (hasDiff) {
+          subActions.push({
+            action: "upsert",
+            table: "price_adjustments",
+            conflict: "source_type,source_id",
+            data: {
+              source_type: "stop",
+              source_id: stop.stop_id,
+              broker_id: brokerId,
+              area: selectedArea,
+              product: stop.product,
+              company_price: cp,
+              adjusted_price: finalPriceVal,
+              price_reason: priceReason.trim(),
+              status: "Pending",
+              credit_status: saleType === "credit" ? "pending" : "none",
+            },
+          })
+        }
+
+        const { error } = await apiMutate("trips", {
+          action: "transaction",
+          sub_actions: subActions,
+        })
+        if (error) { setMessage("Failed to submit. Please try again."); return }
 
         onConfirmed()
         onClose()
@@ -455,16 +391,26 @@ export default function BrokerConfirmModal({ isOpen, onClose, brokerId, isMobile
         const unconfirmed: string[] = []
         const groupId = crypto.randomUUID()
 
-        const creditApprovalIds: Record<string, string> = {}
-        if (saleType === "credit") {
-          for (const line of saleGroup.lines) {
-            const price = parseAmount(linePrices[line.sale_id] ?? "")
-            const cp = companyPriceMap[selectedArea]?.[line.product] ?? 0
-            const lineHasDiff = cp > 0 && price > 0 && price !== cp
-            const { data: caData, error: caError } = await apiMutate("finance", {
+        for (const line of saleGroup.lines) {
+          const price = parseAmount(linePrices[line.sale_id] ?? "")
+          const cp = companyPriceMap[selectedArea]?.[line.product] ?? 0
+          const lineHasDiff = cp > 0 && price > 0 && price !== cp
+          const approvalId = saleType === "credit" ? crypto.randomUUID() : null
+
+          const subActions: Array<{
+            action: "insert" | "update" | "upsert" | "delete"
+            table: string
+            data?: Record<string, unknown>
+            filters?: Record<string, unknown>
+            conflict?: string
+          }> = []
+
+          if (saleType === "credit" && approvalId) {
+            subActions.push({
               action: "insert",
               table: "credit_approvals",
               data: {
+                id: approvalId,
                 source_type: "store_sale",
                 source_id: line.sale_id,
                 broker_id: brokerId,
@@ -477,19 +423,7 @@ export default function BrokerConfirmModal({ isOpen, onClose, brokerId, isMobile
                 status: "Pending",
               },
             })
-            if (caError || !(caData as { id: string }[])?.[0]?.id) {
-              setMessage("Failed to submit. Please try again.")
-              setSubmitting(false)
-              return
-            }
-            creditApprovalIds[line.sale_id] = (caData as { id: string }[])[0].id
           }
-        }
-
-        for (const line of saleGroup.lines) {
-          const price = parseAmount(linePrices[line.sale_id] ?? "")
-          const cp = companyPriceMap[selectedArea]?.[line.product] ?? 0
-          const lineHasDiff = cp > 0 && price > 0 && price !== cp
 
           const updateData: Record<string, unknown> = {
             price_per_bag: price,
@@ -503,10 +437,8 @@ export default function BrokerConfirmModal({ isOpen, onClose, brokerId, isMobile
           if (saleType === "credit") {
             updateData.status = "Pending"
             updateData.on_credit = true
-            if (creditApprovalIds[line.sale_id]) updateData.credit_approval_id = creditApprovalIds[line.sale_id]
-            if (lineHasDiff) {
-              updateData.discount_status = "pending"
-            }
+            if (approvalId) updateData.credit_approval_id = approvalId
+            if (lineHasDiff) updateData.discount_status = "pending"
           } else if (hasPriceDiff) {
             updateData.status = lineHasDiff ? "Pending" : "Confirmed"
             if (lineHasDiff) updateData.discount_status = "pending"
@@ -516,7 +448,7 @@ export default function BrokerConfirmModal({ isOpen, onClose, brokerId, isMobile
           }
 
           const isReturnedLine = line.discount_status === "returned"
-          const { data, error } = await apiMutate("finance", {
+          subActions.push({
             action: "update",
             table: "store_sales",
             data: updateData,
@@ -525,32 +457,35 @@ export default function BrokerConfirmModal({ isOpen, onClose, brokerId, isMobile
               : { sale_id: line.sale_id, status: "Pending", broker_id: brokerId },
           })
 
+          if (lineHasDiff) {
+            subActions.push({
+              action: "upsert",
+              table: "price_adjustments",
+              conflict: "source_type,source_id",
+              data: {
+                source_type: "store_sale",
+                source_id: line.sale_id,
+                broker_id: brokerId,
+                area: selectedArea,
+                product: line.product,
+                company_price: cp,
+                adjusted_price: price,
+                price_reason: priceReason.trim(),
+                status: "Pending",
+                group_id: groupId,
+                credit_status: saleType === "credit" ? "pending" : "none",
+              },
+            })
+          }
+
+          const { data, error } = await apiMutate("finance", {
+            action: "transaction",
+            sub_actions: subActions,
+          })
+
           if (error || !data || (Array.isArray(data) && data.length === 0)) {
             unconfirmed.push(line.product)
           } else {
-            if (lineHasDiff) {
-              const { error: upsertErr } = await apiMutate("finance", {
-                action: "upsert",
-                table: "price_adjustments",
-                conflict: "source_type,source_id",
-                data: {
-                  source_type: "store_sale",
-                  source_id: line.sale_id,
-                  broker_id: brokerId,
-                  area: selectedArea,
-                  product: line.product,
-                  company_price: cp,
-                  adjusted_price: price,
-                  price_reason: priceReason.trim(),
-                  status: "Pending",
-                  group_id: groupId,
-                  credit_status: saleType === "credit" ? "pending" : "none",
-                },
-              })
-              if (upsertErr) {
-                console.error("price_adjustments upsert failed:", upsertErr)
-              }
-            }
             confirmed.push(line.product)
           }
         }

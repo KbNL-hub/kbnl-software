@@ -4,7 +4,6 @@ import { useState, useEffect, useCallback } from "react"
 import { Icon } from "@iconify/react"
 import { supabase } from "@/lib/supabase"
 import { apiMutate } from "@/lib/api-mutation"
-import { formatAmount } from "@/lib/formatAmount"
 import ModernInput from "@/components/ModernInput"
 import BrokerConfirmModal from "@/components/broker/BrokerConfirmModal"
 import { useBreakpoint } from "@/app/hooks/useBreakpoint"
@@ -65,6 +64,7 @@ export default function BrokerSaleConfirmations() {
   const [loading, setLoading] = useState(true)
 
   const [confirmingGroup, setConfirmingGroup] = useState<SaleGroup | null>(null)
+  const [confirmModalKey, setConfirmModalKey] = useState(0)
   const [rejectingGroup, setRejectingGroup] = useState<SaleGroup | null>(null)
   const [rejectReason, setRejectReason] = useState("")
   const [message, setMessage] = useState("")
@@ -220,6 +220,7 @@ export default function BrokerSaleConfirmations() {
 
   function openConfirmModal(group: SaleGroup) {
     setConfirmingGroup(group)
+    setConfirmModalKey(k => k + 1)
     setMessage("")
   }
 
@@ -538,6 +539,7 @@ export default function BrokerSaleConfirmations() {
       )}
 
       <BrokerConfirmModal
+        key={confirmModalKey}
         isOpen={!!confirmingGroup}
         onClose={closeConfirmModal}
         brokerId={brokerId || ""}

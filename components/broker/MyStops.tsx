@@ -48,6 +48,7 @@ export default function MyStops() {
   const [viewMode, setViewMode] = useState<"card" | "table">("card")
 
   const [selectedStop, setSelectedStop] = useState<Stop | null>(null)
+  const [confirmModalKey, setConfirmModalKey] = useState(0)
   const [disputingStop, setDisputingStop] = useState<Stop | null>(null)
   const [disputeReason, setDisputeReason] = useState("")
   const [message, setMessage] = useState("")
@@ -56,35 +57,7 @@ export default function MyStops() {
   const [expandedCard, setExpandedCard] = useState<string | null>(null)
   const [stopAdjustments, setStopAdjustments] = useState<Record<string, { company_price: number; adjusted_price: number; price_reason: string }>>({})
 
-  const initBroker = useCallback(async () => {
-    const { data: { session } } = await supabase.auth.getSession()
-    if (!session) { window.location.href = "/login"; return }
-    setBrokerId(session.user.id)
-    const { data: priceData } = await supabase.from("company_prices").select("*")
-    const priceMap: Record<string, Record<string, number>> = {}
-    for (const area of AREAS) priceMap[area] = {}
-    for (const p of (priceData || [])) {
-      if (!priceMap[p.area]) priceMap[p.area] = {}
-      priceMap[p.area][p.product] = p.price
-    }
-    setCompanyPriceMap(priceMap)
-    await fetchStops(session.user.id)
-    setLoading(false)
-  }, [])
-
-  // eslint-disable-next-line react-hooks/set-state-in-effect
-  useEffect(() => { initBroker() }, [initBroker])
-
-  type StopRow = {
-    stop_id: string; trip_id: string; customer_id: string | null;
-    quantity_offloaded: number; stop_location: string; stop_time: string;
-    confirmed: boolean; disputed: boolean; discount_status: string | null;
-    on_credit: boolean; credit_approval_id: string | null;
-    Trips: { plate_number: string; material_centre: string; ATC: string | null; order_no: string | null; child_order_no: string | null; product: string } | null;
-    Customers: { full_name: string } | null;
-  }
-
-  async function fetchStops(bId: string) {
+  const fetchStops = useCallback(async (bId: string) => {
     const { data: stops, error } = await supabase
       .from("Stops")
       .select(`
@@ -136,7 +109,6 @@ export default function MyStops() {
     const denialMap: Record<string, { reason: string; by: string; at: string }> = {}
 
     if (returnedIds.length > 0) {
-      // Fetch discount denial reasons
       const { data: adjRows } = await supabase
         .from("price_adjustments")
         .select("source_id, denial_reason, reviewed_by, reviewed_at")
@@ -147,7 +119,6 @@ export default function MyStops() {
         if (a.denial_reason) denialMap[a.source_id] = { reason: a.denial_reason, by: a.reviewed_by ?? "Admin", at: a.reviewed_at ?? "" }
       }
 
-      // Fetch credit rejection reasons
       const creditRejectedIds = returnedStops.filter(s => s.credit_approval_id).map(s => s.credit_approval_id as string)
       if (creditRejectedIds.length > 0) {
         const { data: cas } = await supabase
@@ -162,7 +133,6 @@ export default function MyStops() {
         }
       }
 
-      // Resolve reviewer names from profiles
       const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
       const reviewerIds = [...new Set(Object.values(denialMap).map(d => d.by).filter(id => UUID_RE.test(id)))]
       if (reviewerIds.length > 0) {
@@ -197,10 +167,39 @@ export default function MyStops() {
       for (const a of (adjustments || [])) adjMap[a.source_id] = { company_price: a.company_price, adjusted_price: a.adjusted_price, price_reason: a.price_reason }
       setStopAdjustments(adjMap)
     }
+  }, [])
+
+  const initBroker = useCallback(async () => {
+    const { data: { session } } = await supabase.auth.getSession()
+    if (!session) { window.location.href = "/login"; return }
+    setBrokerId(session.user.id)
+    const { data: priceData } = await supabase.from("company_prices").select("*")
+    const priceMap: Record<string, Record<string, number>> = {}
+    for (const area of AREAS) priceMap[area] = {}
+    for (const p of (priceData || [])) {
+      if (!priceMap[p.area]) priceMap[p.area] = {}
+      priceMap[p.area][p.product] = p.price
+    }
+    setCompanyPriceMap(priceMap)
+    await fetchStops(session.user.id)
+    setLoading(false)
+  }, [fetchStops])
+
+  // eslint-disable-next-line react-hooks/set-state-in-effect
+  useEffect(() => { initBroker() }, [initBroker])
+
+  type StopRow = {
+    stop_id: string; trip_id: string; customer_id: string | null;
+    quantity_offloaded: number; stop_location: string; stop_time: string;
+    confirmed: boolean; disputed: boolean; discount_status: string | null;
+    on_credit: boolean; credit_approval_id: string | null;
+    Trips: { plate_number: string; material_centre: string; ATC: string | null; order_no: string | null; child_order_no: string | null; product: string } | null;
+    Customers: { full_name: string } | null;
   }
 
   function openConfirmModal(stop: Stop) {
     setSelectedStop(stop)
+    setConfirmModalKey(k => k + 1)
     setMessage("")
   }
 
@@ -523,6 +522,7 @@ export default function MyStops() {
       )}
 
       <BrokerConfirmModal
+        key={confirmModalKey}
         isOpen={!!selectedStop}
         onClose={closeModal}
         brokerId={brokerId || ""}
