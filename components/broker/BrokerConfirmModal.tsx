@@ -272,6 +272,7 @@ export default function BrokerConfirmModal({ isOpen, onClose, brokerId, isMobile
   async function handleConfirm() {
     if (isStop && stop) {
       if (!selectedArea) { setMessage("Select an area"); return }
+      if (!saleType) { setMessage("Select a sale type"); return }
       if (!selectedCustomer) { setMessage("Customer is required"); return }
       if (!pricePerBag) { setMessage("Price per bag required"); return }
       if (showPriceReason && !priceReason.trim()) { setMessage("Provide a reason for using a different price"); return }
@@ -431,6 +432,7 @@ export default function BrokerConfirmModal({ isOpen, onClose, brokerId, isMobile
       }
     } else if (saleGroup) {
       if (!selectedArea) { setMessage("Select an area"); return }
+      if (!saleType) { setMessage("Select a sale type"); return }
       if (!selectedCustomer) { setMessage("Customer is required"); return }
       if (saleType === "credit" && !selectedCreditManagerId) { setMessage("Select a credit manager"); return }
 
