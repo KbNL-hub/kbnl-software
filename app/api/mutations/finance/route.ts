@@ -364,6 +364,10 @@ export async function POST(req: NextRequest) {
         const { data: result, error } = await supabaseAdmin.from(table).insert([data]).select()
         if (error) {
           console.error("Mutation failed", error)
+          if (process.env.NODE_ENV === 'development') {
+            const errAny = error as unknown as Record<string, unknown>
+            return buildError(`DB Error: ${errAny.message || String(error)} (code: ${errAny.code}, details: ${errAny.details}, hint: ${errAny.hint})`, 500)
+          }
           return buildError("Action failed, try again. If the issue persists, kindly contact admin or submit a complaint.", 500)
         }
         const row = result?.[0] as Record<string, unknown> | undefined
@@ -430,6 +434,10 @@ export async function POST(req: NextRequest) {
         const { data: result, error } = await supabaseAdmin.from(table).upsert([data], upsertOptions).select()
         if (error) {
           console.error("Mutation failed", error)
+          if (process.env.NODE_ENV === 'development') {
+            const errAny = error as unknown as Record<string, unknown>
+            return buildError(`DB Error: ${errAny.message || String(error)} (code: ${errAny.code}, details: ${errAny.details}, hint: ${errAny.hint})`, 500)
+          }
           return buildError("Action failed, try again. If the issue persists, kindly contact admin or submit a complaint.", 500)
         }
         return NextResponse.json({ data: result })
@@ -445,6 +453,10 @@ export async function POST(req: NextRequest) {
         const { data: result, error } = await query.select()
         if (error) {
           console.error("Mutation failed", error)
+          if (process.env.NODE_ENV === 'development') {
+            const errAny = error as unknown as Record<string, unknown>
+            return buildError(`DB Error: ${errAny.message || String(error)} (code: ${errAny.code}, details: ${errAny.details}, hint: ${errAny.hint})`, 500)
+          }
           return buildError("Action failed, try again. If the issue persists, kindly contact admin or submit a complaint.", 500)
         }
         const row = result?.[0] as Record<string, unknown> | undefined
@@ -542,6 +554,10 @@ export async function POST(req: NextRequest) {
         const { data: result, error } = await query.select()
         if (error) {
           console.error("Mutation failed", error)
+          if (process.env.NODE_ENV === 'development') {
+            const errAny = error as unknown as Record<string, unknown>
+            return buildError(`DB Error: ${errAny.message || String(error)} (code: ${errAny.code}, details: ${errAny.details}, hint: ${errAny.hint})`, 500)
+          }
           return buildError("Action failed, try again. If the issue persists, kindly contact admin or submit a complaint.", 500)
         }
         return NextResponse.json({ data: result })
