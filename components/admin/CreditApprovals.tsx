@@ -573,7 +573,7 @@ export default function CreditApprovals() {
                             <span style={{ color: "#64748b" }}>After approval: </span>
                             <span style={{ fontWeight: 700, color: overLimit ? "#dc2626" : "#0f172a" }}>₦{projected.toLocaleString()}</span>
                             {limit != null && (
-                              <span style={{ padding: "1px 6px", borderRadius: 6, fontSize: 10, fontWeight: 700, background: overLimit ? "#dc2626" : "#10b981", color: "white" }}>
+                              <span style={{ padding: "1px 6px", borderRadius: 6, fontSize: 10, fontWeight: 700, background: overLimit ? "#dc2626" : "#059669", color: "white" }}>
                                 {overLimit ? "⚠ Over limit" : "✓ OK"}
                               </span>
                             )}
@@ -612,7 +612,7 @@ export default function CreditApprovals() {
 
                     {approval.status === "Pending" && canEdit && (
                       <div style={{ display: "flex", gap: 8 }}>
-                        <button onClick={() => handleApprove(approval)} disabled={submitting} style={{ flex: 1, padding: "10px 0", background: "#10b981", color: "white", border: "none", borderRadius: 8, cursor: "pointer", fontSize: FONT_SIZE.sm, fontWeight: 600, display: "flex", alignItems: "center", justifyContent: "center", gap: 4, opacity: submitting ? 0.6 : 1 }}>
+                        <button onClick={() => handleApprove(approval)} disabled={submitting} style={{ flex: 1, padding: "10px 0", background: "#059669", color: "white", border: "none", borderRadius: 8, cursor: "pointer", fontSize: FONT_SIZE.sm, fontWeight: 600, display: "flex", alignItems: "center", justifyContent: "center", gap: 4, opacity: submitting ? 0.6 : 1 }}>
                           <Icon icon="mdi:check-circle" width={15} /> Approve
                         </button>
                         <button onClick={() => { setRejectModal(approval); setRejectReason(""); setMessage("") }} disabled={submitting} style={{ flex: 1, padding: "10px 0", background: "white", color: "#ef4444", border: "1.5px solid #ef4444", borderRadius: 8, cursor: "pointer", fontSize: FONT_SIZE.sm, fontWeight: 600, display: "flex", alignItems: "center", justifyContent: "center", gap: 4 }}>
@@ -670,7 +670,7 @@ export default function CreditApprovals() {
                                 <div>Limit: <b>{limit != null ? `₦${limit.toLocaleString()}` : "None"}</b> · Active: <b>₦{active.toLocaleString()}</b></div>
                                 <div>This: <b>₦{thisAmt.toLocaleString()}</b> → After: <b style={{ color: overLimit ? "#dc2626" : "#0f172a" }}>₦{projected.toLocaleString()}</b>
                                   {limit != null && (
-                                    <span style={{ marginLeft: 6, padding: "1px 5px", borderRadius: 4, fontSize: 10, fontWeight: 700, background: overLimit ? "#dc2626" : "#10b981", color: "white" }}>
+                                    <span style={{ marginLeft: 6, padding: "1px 5px", borderRadius: 4, fontSize: 10, fontWeight: 700, background: overLimit ? "#dc2626" : "#059669", color: "white" }}>
                                       {overLimit ? "Over" : "OK"}
                                     </span>
                                   )}
@@ -686,7 +686,7 @@ export default function CreditApprovals() {
                         <td style={{ padding: "12px 16px" }}>
                           {approval.status === "Pending" && canEdit && (
                             <div style={{ display: "flex", gap: 6 }}>
-                              <button onClick={() => handleApprove(approval)} disabled={submitting} style={{ padding: "6px 10px", cursor: "pointer", borderRadius: 6, border: "1px solid #10b981", color: "#10b981", background: "#f0fdf4", fontSize: 12, fontWeight: 600, transition: "all 0.2s", minHeight: 32, display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 4 }}
+                              <button onClick={() => handleApprove(approval)} disabled={submitting} style={{ padding: "6px 10px", cursor: "pointer", borderRadius: 6, border: "1px solid #059669", color: "#059669", background: "#f0fdf4", fontSize: 12, fontWeight: 600, transition: "all 0.2s", minHeight: 32, display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 4 }}
                                 onMouseEnter={e => { e.currentTarget.style.background = "#dcfce7" }} onMouseLeave={e => { e.currentTarget.style.background = "#f0fdf4" }}>
                                 <Icon icon="mdi:check-circle" width={14} /> Approve
                               </button>

@@ -40,6 +40,11 @@ function buildError(msg: string, status: number) {
   return NextResponse.json({ error: msg }, { status })
 }
 
+function isBrokerOnly(roles: string[]) {
+  return roles.includes("Broker") &&
+    !roles.some(r => ["Admin", "SuperAdmin", "DeskOfficer", "Supervisor", "CreditManager", "StoreOfficer", "StoreSupervisor"].includes(r))
+}
+
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json()
@@ -67,7 +72,7 @@ export async function POST(req: NextRequest) {
       }
       const rolesForTable = TABLE_ROLES[table] || ["Admin"]
       const auth = await requireRole(req, rolesForTable)
-      if (table === "credit_approvals" && action !== "insert" && auth.roles.includes("Broker") && !auth.roles.includes("Admin")) {
+      if (table === "credit_approvals" && action !== "insert" && isBrokerOnly(auth.roles)) {
         return buildError("Brokers cannot modify or delete credit approvals", 403)
       }
     } else {
@@ -80,7 +85,7 @@ export async function POST(req: NextRequest) {
         if (!auth.roles.some(r => rolesForTable.includes(r))) {
           return buildError(`Access denied for ${sa.action} on ${sa.table}`, 403)
         }
-        if (sa.table === "credit_approvals" && sa.action !== "insert" && auth.roles.includes("Broker") && !auth.roles.includes("Admin")) {
+        if (sa.table === "credit_approvals" && sa.action !== "insert" && isBrokerOnly(auth.roles)) {
           return buildError("Brokers cannot modify or delete credit approvals", 403)
         }
       }

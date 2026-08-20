@@ -757,7 +757,7 @@ export default function Discounts() {
                         </span>
                         {adj.status === "Pending" && canEdit && (
                           <div style={{ display: "flex", gap: 6 }}>
-                            <button onClick={() => handleApprove(adj)} disabled={submitting} style={{ padding: "7px 14px", background: "#10b981", color: "white", border: "none", borderRadius: 6, cursor: "pointer", fontSize: FONT_SIZE.xs, fontWeight: 600, display: "flex", alignItems: "center", gap: 4, opacity: submitting ? 0.6 : 1 }}>
+                            <button onClick={() => handleApprove(adj)} disabled={submitting} style={{ padding: "7px 14px", background: "#059669", color: "white", border: "none", borderRadius: 6, cursor: "pointer", fontSize: FONT_SIZE.xs, fontWeight: 600, display: "flex", alignItems: "center", gap: 4, opacity: submitting ? 0.6 : 1 }}>
                               <Icon icon="mdi:check-circle" width={14} /> Approve
                             </button>
                             <button onClick={() => { setDenialModal(adj); setDenialReason(""); setMessage("") }} disabled={submitting} style={{ padding: "7px 14px", background: "white", color: "#ef4444", border: "1.5px solid #ef4444", borderRadius: 6, cursor: "pointer", fontSize: FONT_SIZE.xs, fontWeight: 600, display: "flex", alignItems: "center", gap: 4 }}>
@@ -832,7 +832,7 @@ export default function Discounts() {
                       </span>
                       {entry.status === "Pending" && canEdit && (
                         <div style={{ display: "flex", gap: 6 }}>
-                          <button onClick={() => handleApproveGroup(items)} disabled={submitting} style={{ padding: "7px 14px", background: "#10b981", color: "white", border: "none", borderRadius: 6, cursor: "pointer", fontSize: FONT_SIZE.xs, fontWeight: 600, display: "flex", alignItems: "center", gap: 4, opacity: submitting ? 0.6 : 1 }}>
+                          <button onClick={() => handleApproveGroup(items)} disabled={submitting} style={{ padding: "7px 14px", background: "#059669", color: "white", border: "none", borderRadius: 6, cursor: "pointer", fontSize: FONT_SIZE.xs, fontWeight: 600, display: "flex", alignItems: "center", gap: 4, opacity: submitting ? 0.6 : 1 }}>
                             <Icon icon="mdi:check-circle" width={14} /> Approve all
                           </button>
                           <button onClick={() => { setDenialModalGroup(items); setDenialReason(""); setMessage("") }} disabled={submitting} style={{ padding: "7px 14px", background: "white", color: "#ef4444", border: "1.5px solid #ef4444", borderRadius: 6, cursor: "pointer", fontSize: FONT_SIZE.xs, fontWeight: 600, display: "flex", alignItems: "center", gap: 4 }}>
@@ -888,7 +888,7 @@ export default function Discounts() {
                           <td style={{ padding: "12px 16px" }}>
                             {adj.status === "Pending" && canEdit && (
                               <div style={{ display: "flex", gap: 6 }}>
-                                <button onClick={() => handleApprove(adj)} disabled={submitting} style={{ padding: "6px 10px", cursor: "pointer", borderRadius: 6, border: "1px solid #10b981", color: "#10b981", background: "#f0fdf4", fontSize: 12, fontWeight: 600, transition: "all 0.2s", minHeight: 32, display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 4 }}
+                                <button onClick={() => handleApprove(adj)} disabled={submitting} style={{ padding: "6px 10px", cursor: "pointer", borderRadius: 6, border: "1px solid #059669", color: "#059669", background: "#f0fdf4", fontSize: 12, fontWeight: 600, transition: "all 0.2s", minHeight: 32, display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 4 }}
                                   onMouseEnter={e => { e.currentTarget.style.background = "#dcfce7" }} onMouseLeave={e => { e.currentTarget.style.background = "#f0fdf4" }}>
                                   <Icon icon="mdi:check-circle" width={14} /> Approve
                                 </button>
@@ -943,7 +943,7 @@ export default function Discounts() {
                               <td rowSpan={items.length} style={{ padding: "12px 16px", verticalAlign: "top", borderBottom: "1px solid #f1f5f9" }}>
                                 {entry.status === "Pending" && canEdit && (
                                   <div style={{ display: "flex", gap: 6 }}>
-                                    <button onClick={() => handleApproveGroup(items)} disabled={submitting} style={{ padding: "6px 10px", cursor: "pointer", borderRadius: 6, border: "1px solid #10b981", color: "#10b981", background: "#f0fdf4", fontSize: 12, fontWeight: 600, transition: "all 0.2s", minHeight: 32, display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 4 }}
+                                    <button onClick={() => handleApproveGroup(items)} disabled={submitting} style={{ padding: "6px 10px", cursor: "pointer", borderRadius: 6, border: "1px solid #059669", color: "#059669", background: "#f0fdf4", fontSize: 12, fontWeight: 600, transition: "all 0.2s", minHeight: 32, display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 4 }}
                                       onMouseEnter={e => { e.currentTarget.style.background = "#dcfce7" }} onMouseLeave={e => { e.currentTarget.style.background = "#f0fdf4" }}>
                                       <Icon icon="mdi:check-circle" width={14} /> Approve all
                                     </button>

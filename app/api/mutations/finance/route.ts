@@ -78,15 +78,18 @@ function applyFilters(query: any, filters: Record<string, unknown>) {
   return query
 }
 
+function isBrokerOnly(roles: string[]) {
+  return roles.includes("Broker") &&
+    !roles.some(r => ["Admin", "SuperAdmin", "DeskOfficer", "Supervisor", "CreditManager", "StoreOfficer", "StoreSupervisor"].includes(r))
+}
+
 function enforceBrokerScope(
   table: string,
   action: string,
   filters: Record<string, unknown> | undefined,
   auth: { userId: string; roles: string[] },
 ) {
-  const brokerOnly = auth.roles.includes("Broker") &&
-    !auth.roles.some(r => ["Admin", "SuperAdmin", "DeskOfficer", "Supervisor", "CreditManager", "StoreOfficer", "StoreSupervisor"].includes(r))
-  if (!brokerOnly) return null
+  if (!isBrokerOnly(auth.roles)) return null
   if (table !== "store_sales") return null
   if (action !== "update" && action !== "delete") return null
   if (filters?.broker_id !== auth.userId) {
@@ -169,7 +172,7 @@ export async function POST(req: NextRequest) {
         if (!auth.roles.some(r => rolesForTable.includes(r))) {
           return buildError(`Access denied for ${sa.action} on ${sa.table}`, 403)
         }
-        if (sa.table === "credit_approvals" && sa.action !== "insert" && auth.roles.includes("Broker") && !auth.roles.includes("Admin")) {
+        if (sa.table === "credit_approvals" && sa.action !== "insert" && isBrokerOnly(auth.roles)) {
           return buildError("Brokers cannot modify or delete credit approvals", 403)
         }
         const brokerScopeError = enforceBrokerScope(sa.table, sa.action, sa.filters, auth)
@@ -375,7 +378,7 @@ export async function POST(req: NextRequest) {
     const rolesForTable = TABLE_ROLES[table] || ["Admin"]
     const auth = await requireRole(req, rolesForTable)
 
-    if (table === "credit_approvals" && action !== "insert" && auth.roles.includes("Broker") && !auth.roles.includes("Admin")) {
+    if (table === "credit_approvals" && action !== "insert" && isBrokerOnly(auth.roles)) {
       return buildError("Brokers cannot modify or delete credit approvals", 403)
     }
 
