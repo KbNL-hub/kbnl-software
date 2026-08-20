@@ -9,6 +9,7 @@ import { usePermissions } from "@/lib/PermissionContext"
 import { Role } from "@/lib/roles"
 import { usePagination } from "@/lib/hooks/usePagination"
 import PaginationControls from "@/components/PaginationControls"
+import { Icon } from "@iconify/react"
 
 type Truck = {
   plate_number: string
@@ -18,6 +19,7 @@ type Truck = {
   truck_size: string | null
   status: string
   engine_type: string
+  fuel_balance: number
 }
 
 type ViewMode = "card" | "table"
@@ -340,6 +342,12 @@ export default function ManageTrucks() {
                       </div>
                     </div>
 
+                    <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 14px", background: "#f0f7ff", borderRadius: 8, border: "1px solid #bfdbfe", marginTop: 12 }}>
+                      <Icon icon="mdi:gas-station" width={18} color="#0070f3" />
+                      <span style={{ color: "#0369a1", fontSize: FONT_SIZE.sm, fontWeight: 500 }}>Fuel Balance</span>
+                      <span style={{ marginLeft: "auto", color: "#0070f3", fontSize: FONT_SIZE.lg, fontWeight: 700 }}>{truck.fuel_balance}{truck.engine_type === "CNG" ? " bars" : "L"}</span>
+                    </div>
+
                     <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
                       <button
                         onClick={() => startEdit(truck)}
@@ -375,6 +383,7 @@ export default function ManageTrucks() {
                     <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: FONT_SIZE.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px" }}>Model</th>
                     <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: FONT_SIZE.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px" }}>Size (Tonnage)</th>
                     <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: FONT_SIZE.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px" }}>Capacity</th>
+                    <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: FONT_SIZE.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px" }}>Fuel</th>
                     <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: FONT_SIZE.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px" }}>Status</th>
                     <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: FONT_SIZE.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px", textAlign: "right" }}>Actions</th>
                   </tr>
@@ -391,6 +400,7 @@ export default function ManageTrucks() {
                         <td style={{ padding: "12px 16px", color: "#0f172a", fontSize: FONT_SIZE.base }}>{truck.truck_model}</td>
                         <td style={{ padding: "12px 16px", color: "#64748b", fontSize: FONT_SIZE.sm }}>{truck.truck_size || "—"}</td>
                         <td style={{ padding: "12px 16px", color: "#0f172a", fontSize: FONT_SIZE.base, fontWeight: 500 }}>{truck.capacity}</td>
+                        <td style={{ padding: "12px 16px", color: "#0070f3", fontSize: FONT_SIZE.base, fontWeight: 600 }}>{truck.fuel_balance}{truck.engine_type === "CNG" ? " bars" : "L"}</td>
                         <td style={{ padding: "12px 16px" }}>
                           <span style={{ padding: "6px 10px", borderRadius: 14, fontSize: FONT_SIZE.xs, fontWeight: 600, background: pill.bg, color: pill.color, border: `1.5px solid ${pill.border}` }}>
                             {truck.status}

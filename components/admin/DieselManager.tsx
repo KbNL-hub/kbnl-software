@@ -3,6 +3,7 @@
 import React from "react"
 import { FONT_SIZE } from "@/lib/constants"
 import { usePolling } from "@/lib/hooks/usePolling"
+import DieselConsumptionSection from "@/components/truck-admin/DieselConsumptionSection"
 
 import { useState, useEffect, useMemo } from "react"
 import ModernInput from "@/components/ModernInput"
@@ -123,8 +124,9 @@ export default function DieselManager() {
   const [deletingEstimateId, setDeletingEstimateId] = useState<string | null>(null)
   const [deleteEstLoading, setDeleteEstLoading] = useState(false)
 
-  const [stationsCollapsed, setStationsCollapsed] = useState(false)
-  const [estimatesCollapsed, setEstimatesCollapsed] = useState(false)
+  const [stationsCollapsed, setStationsCollapsed] = useState(true)
+  const [estimatesCollapsed, setEstimatesCollapsed] = useState(true)
+  const [activeSection, setActiveSection] = useState<"atf" | "consumption">("atf")
 
   const inputStyle: React.CSSProperties = {
     width: "100%", padding: "12px 14px", boxSizing: "border-box", borderRadius: 8,
@@ -606,6 +608,42 @@ export default function DieselManager() {
         )}
         </>)}
       </div>
+
+      {/* Section Switcher */}
+      <div style={{ display: "flex", background: "white", border: "1px solid #e2e8f0", borderRadius: 12, padding: 4, gap: 0, marginBottom: 24 }}>
+        <button
+          onClick={() => setActiveSection("atf")}
+          style={{
+            flex: 1, padding: "10px 16px",
+            background: activeSection === "atf" ? "#0070f3" : "transparent",
+            color: activeSection === "atf" ? "white" : "#64748b",
+            border: "none", borderRadius: 8,
+            cursor: "pointer", fontWeight: activeSection === "atf" ? 700 : 500,
+            fontSize: FONT_SIZE.sm,
+            transition: "all 0.2s ease",
+            minHeight: 40,
+          }}
+        >
+          ATF
+        </button>
+        <button
+          onClick={() => setActiveSection("consumption")}
+          style={{
+            flex: 1, padding: "10px 16px",
+            background: activeSection === "consumption" ? "#0070f3" : "transparent",
+            color: activeSection === "consumption" ? "white" : "#64748b",
+            border: "none", borderRadius: 8,
+            cursor: "pointer", fontWeight: activeSection === "consumption" ? 700 : 500,
+            fontSize: FONT_SIZE.sm,
+            transition: "all 0.2s ease",
+            minHeight: 40,
+          }}
+        >
+          Consumption
+        </button>
+      </div>
+
+      {activeSection === "atf" && (<>
       <div style={{ display: "flex", gap: 8, marginBottom: 24, flexWrap: "wrap", overflowX: "auto", paddingBottom: 4 }}>
         {filters.map(f => {
           const isActive = filter === f
@@ -760,6 +798,11 @@ export default function DieselManager() {
 
       {filteredATFs.length > 0 && (
         <PaginationControls page={page} totalPages={totalPages} totalItems={totalItems} onPageChange={setPage} />
+      )}
+      </>)}
+
+      {activeSection === "consumption" && (
+        <DieselConsumptionSection />
       )}
 
       {/* Deposit Modal */}

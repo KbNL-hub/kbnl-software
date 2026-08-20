@@ -122,6 +122,17 @@ const atfStatusColor = (status: string) => {
   }
 }
 
+const truckStatusPill = (status: string) => {
+  switch (status) {
+    case "Empty": return { bg: "#f0fdf4", color: "#16a34a", border: "#16a34a" }
+    case "Loaded": return { bg: "#eff6ff", color: "#0070f3", border: "#0070f3" }
+    case "To Plant": return { bg: "#f8f0ff", color: "#874cf5", border: "#874cf5" }
+    case "Undergoing Repairs": return { bg: "#fffbeb", color: "#f5a623", border: "#f5a623" }
+    case "Decommissioned": return { bg: "#fef2f2", color: "#ef4444", border: "#ef4444" }
+    default: return { bg: "#f8fafc", color: "#64748b", border: "#e2e8f0" }
+  }
+}
+
 export default function TruckOfficerDashboard() {
   const router = useRouter()
   const bp = useBreakpoint()
@@ -139,6 +150,7 @@ export default function TruckOfficerDashboard() {
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null)
   const [tab, setTab] = useState<"reports" | "fuel" | "atf" | "monitor">("reports")
   const [myTrucksView, setMyTrucksView] = useState<"monitor" | "manage">("monitor")
+  const [trucksCollapsed, setTrucksCollapsed] = useState(true)
   const [filter, setFilter] = useState("All")
 
   const [allDrivers, setAllDrivers] = useState<Driver[]>([])
@@ -582,27 +594,40 @@ export default function TruckOfficerDashboard() {
       <div style={{ padding: isMobile ? "16px" : "32px", maxWidth: 1200, margin: "0 auto" }}>
 
         {/* Assigned Trucks */}
-        <div style={{ background: "white", border: "1px solid #e2e8f0", borderRadius: 12, padding: isMobile ? 16 : 24, marginBottom: 24, boxShadow: "0 1px 3px rgba(0,0,0,0.05)" }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
-            <p style={{ margin: 0, fontWeight: 700, fontSize: FONT_SIZE.lg, color: "#0f172a" }}>My Trucks ({assignedTrucks.length})</p>
-            <button onClick={() => officer && fetchTrucks(officer.manager_id)} className="refresh-btn" style={{ padding: "6px 12px", fontSize: FONT_SIZE.xs, cursor: "pointer", borderRadius: 6, border: "1px solid #e2e8f0", background: "white", color: "#64748b", transition: "all 0.2s", fontWeight: 600 }}>
+        <div onClick={() => setTrucksCollapsed(c => !c)} style={{ background: "white", border: "1px solid #e2e8f0", borderRadius: 12, padding: isMobile ? 16 : 24, marginBottom: 24, boxShadow: "0 1px 3px rgba(0,0,0,0.05)", cursor: "pointer", userSelect: "none" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16, gap: 8 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, background: "none", border: "none", padding: 0, margin: 0 }}>
+              <Icon icon={trucksCollapsed ? "mdi:chevron-right" : "mdi:chevron-down"} width={20} color="#64748b" />
+              <p style={{ margin: 0, fontWeight: 700, fontSize: FONT_SIZE.lg, color: "#0f172a" }}>My Trucks ({assignedTrucks.length})</p>
+            </div>
+            <button onClick={(e) => { e.stopPropagation(); officer && fetchTrucks(officer.manager_id) }} className="refresh-btn" style={{ padding: "6px 12px", fontSize: FONT_SIZE.xs, cursor: "pointer", borderRadius: 6, border: "1px solid #e2e8f0", background: "white", color: "#64748b", transition: "all 0.2s", fontWeight: 600 }}>
               Refresh
             </button>
           </div>
-          {assignedTrucks.length === 0 && <p style={{ color: "#64748b", fontSize: FONT_SIZE.base, margin: 0 }}>No trucks assigned yet.</p>}
+          {!trucksCollapsed && assignedTrucks.length === 0 && <p style={{ color: "#64748b", fontSize: FONT_SIZE.base, margin: 0 }}>No trucks assigned yet.</p>}
+          {!trucksCollapsed && (
           <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-            {assignedTrucks.map(t => (
-              <div key={t.plate_number} className="truck-row" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "12px 14px", background: "#f8fafc", borderRadius: 10, border: "1px solid #e2e8f0", transition: "all 0.2s" }}>
-                <div>
-                  <p style={{ margin: 0, fontWeight: 700, fontSize: FONT_SIZE.base, color: "#0f172a" }}>{t.plate_number}</p>
-                  <p style={{ margin: "2px 0 0", fontSize: FONT_SIZE.xs, color: "#94a3b8" }}>{t.truck_model}{t.kbnl_truck_no ? ` · #${t.kbnl_truck_no}` : ""}</p>
+            {assignedTrucks.map(t => {
+              const pill = truckStatusPill(t.status)
+              return (
+                <div key={t.plate_number} className="truck-row" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "12px 14px", background: "#f8fafc", borderRadius: 10, border: "1px solid #e2e8f0", transition: "all 0.2s", gap: 12 }}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <p style={{ margin: 0, fontWeight: 700, fontSize: FONT_SIZE.base, color: "#0f172a" }}>{t.plate_number}</p>
+                    <p style={{ margin: "2px 0 0", fontSize: FONT_SIZE.xs, color: "#94a3b8" }}>{t.truck_model}{t.kbnl_truck_no ? ` · #${t.kbnl_truck_no}` : ""}</p>
+                  </div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
+                    <span style={{ padding: "4px 10px", borderRadius: 14, fontSize: FONT_SIZE.xs, fontWeight: 600, background: pill.bg, color: pill.color, border: `1.5px solid ${pill.border}`, whiteSpace: "nowrap" }}>
+                      {t.status}
+                    </span>
+                    <span style={{ fontSize: FONT_SIZE.sm, color: "#0070f3", fontWeight: 700, display: "flex", alignItems: "center", gap: 4, whiteSpace: "nowrap" }}>
+                      <Icon icon="mdi:gas-station" width={16} />{t.fuel_balance}{t.engine_type === "CNG" ? " bars" : "L"}
+                    </span>
+                  </div>
                 </div>
-                <span style={{ fontSize: FONT_SIZE.sm, color: "#0070f3", fontWeight: 700, display: "flex", alignItems: "center", gap: 4 }}>
-                  <Icon icon="mdi:gas-station" width={16} />{t.fuel_balance}{t.engine_type === "CNG" ? " bars" : "L"}
-                </span>
-              </div>
-            ))}
+              )
+            })}
           </div>
+          )}
         </div>
 
         {/* Section Tabs */}

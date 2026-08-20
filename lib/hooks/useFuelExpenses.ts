@@ -14,6 +14,7 @@ export interface FuelExpense {
   kbnl_truck_no?: string | null
   material_centre?: string | null
   product?: string | null
+  trip_created_at?: string | null
 }
 
 interface FuelExpensesFilter {
@@ -60,7 +61,7 @@ export function useFuelExpenses(filter?: FuelExpensesFilter) {
         const [officersResult, trucksResult, tripsResult] = await Promise.all([
           officerIds.length ? supabase.from("truck_officers").select("manager_id, full_name").in("manager_id", officerIds) : Promise.resolve({ data: [], error: null }),
           plates.length ? supabase.from("Trucks").select("plate_number, kbnl_truck_no").in("plate_number", plates) : Promise.resolve({ data: [], error: null }),
-          tripIds.length ? supabase.from("Trips").select("trip_id, material_centre, product").in("trip_id", tripIds) : Promise.resolve({ data: [], error: null }),
+          tripIds.length ? supabase.from("Trips").select("trip_id, material_centre, product, created_at").in("trip_id", tripIds) : Promise.resolve({ data: [], error: null }),
         ])
 
         if (cancelled || !mountedRef.current) return
@@ -78,6 +79,7 @@ export function useFuelExpenses(filter?: FuelExpensesFilter) {
           kbnl_truck_no: truckMap[r.plate_number] ?? null,
           material_centre: tripMap[r.trip_id]?.material_centre ?? null,
           product: tripMap[r.trip_id]?.product ?? null,
+          trip_created_at: tripMap[r.trip_id]?.created_at ?? null,
         }))
 
         setData(enriched)
