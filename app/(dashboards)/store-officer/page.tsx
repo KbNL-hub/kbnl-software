@@ -1706,7 +1706,7 @@ export default function StoreOfficerDashboard() {
                         type="text"
                         placeholder="Search driver…"
                         value={driverSearch}
-                        onChange={e => { setDriverSearch(e.target.value); setDriverDropOpen(true) }}
+                        onChange={e => { setDriverSearch(e.target.value); setSaleDriver(null); setDriverDropOpen(true) }}
                         onFocus={() => setDriverDropOpen(true)}
                         onBlur={() => setTimeout(() => setDriverDropOpen(false), 150)}
                         style={{ width: "100%", padding: "10px 12px", borderRadius: 6, border: "1px solid #e0e0e0", fontSize: FONT_SIZE.base, boxSizing: "border-box", minHeight: 44 }}
@@ -1716,12 +1716,14 @@ export default function StoreOfficerDashboard() {
                           {drivers
                             .filter(d => d.full_name.toLowerCase().includes(driverSearch.toLowerCase()))
                             .map(d => (
-                              <li
-                                key={d.driver_id}
-                                onMouseDown={() => { setSaleDriver(d); setDriverSearch(d.full_name); setDriverDropOpen(false); setSaleError("") }}
-                                style={{ padding: "10px 12px", cursor: "pointer", fontSize: FONT_SIZE.base, background: saleDriver?.driver_id === d.driver_id ? "#eff6ff" : "white", borderRadius: 6 }}
-                              >
-                                {d.full_name}
+                              <li key={d.driver_id} style={{ padding: "4px", borderRadius: 6, background: saleDriver?.driver_id === d.driver_id ? "#eff6ff" : "white" }}>
+                                <button
+                                  type="button"
+                                  onMouseDown={e => { e.preventDefault(); setSaleDriver(d); setDriverSearch(d.full_name); setDriverDropOpen(false); setSaleError("") }}
+                                  style={{ width: "100%", padding: "10px 12px", cursor: "pointer", fontSize: FONT_SIZE.base, background: "transparent", border: "none", textAlign: "left", fontWeight: saleDriver?.driver_id === d.driver_id ? 600 : 400, color: "#0f172a", borderRadius: 4 }}
+                                >
+                                  {d.full_name}
+                                </button>
                               </li>
                             ))}
                         </ul>
@@ -2076,7 +2078,7 @@ export default function StoreOfficerDashboard() {
                         type="text"
                         placeholder="Search driver…"
                         value={editDriverSearch}
-                        onChange={e => { setEditDriverSearch(e.target.value); setEditDriverDropOpen(true) }}
+                        onChange={e => { setEditDriverSearch(e.target.value); setEditDriver(null); setEditDriverDropOpen(true) }}
                         onFocus={() => setEditDriverDropOpen(true)}
                         onBlur={() => setTimeout(() => setEditDriverDropOpen(false), 150)}
                         style={{ width: "100%", padding: "10px 12px", borderRadius: 6, border: "1px solid #e0e0e0", fontSize: FONT_SIZE.base, boxSizing: "border-box", minHeight: 44 }}
@@ -2086,12 +2088,14 @@ export default function StoreOfficerDashboard() {
                           {drivers
                             .filter(d => d.full_name.toLowerCase().includes(editDriverSearch.toLowerCase()))
                             .map(d => (
-                              <li
-                                key={d.driver_id}
-                                onMouseDown={() => { setEditDriver(d); setEditDriverSearch(d.full_name); setEditDriverDropOpen(false); setEditError("") }}
-                                style={{ padding: "10px 12px", cursor: "pointer", fontSize: FONT_SIZE.base, background: editDriver?.driver_id === d.driver_id ? "#eff6ff" : "white", borderRadius: 6 }}
-                              >
-                                {d.full_name}
+                              <li key={d.driver_id} style={{ padding: "4px", borderRadius: 6, background: editDriver?.driver_id === d.driver_id ? "#eff6ff" : "white" }}>
+                                <button
+                                  type="button"
+                                  onMouseDown={e => { e.preventDefault(); setEditDriver(d); setEditDriverSearch(d.full_name); setEditDriverDropOpen(false); setEditError("") }}
+                                  style={{ width: "100%", padding: "10px 12px", cursor: "pointer", fontSize: FONT_SIZE.base, background: "transparent", border: "none", textAlign: "left", fontWeight: editDriver?.driver_id === d.driver_id ? 600 : 400, color: "#0f172a", borderRadius: 4 }}
+                                >
+                                  {d.full_name}
+                                </button>
                               </li>
                             ))}
                         </ul>
