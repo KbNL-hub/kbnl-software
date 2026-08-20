@@ -34,6 +34,8 @@ type StoreSale = {
   rejection_reason: string | null
   sale_type: string | null
   discount_status: string | null
+  driver_name?: string | null
+  kbnl_truck_no?: string | null
 }
 
 type GroupedSale = {
@@ -130,7 +132,7 @@ export default function StoreSales() {
   async function fetchSales() {
     const { data, error } = await supabase
       .from("store_sales")
-      .select("sale_id, store_name, product, quantity, price_per_bag, total_amount, customer_name, payment_mode, delivery_mode, tricycle_id, truck_plate, broker_id, sold_at, created_at, status, bank_name, depositor_name, rejection_reason, sale_type, discount_status")
+      .select("sale_id, store_name, product, quantity, price_per_bag, total_amount, customer_name, payment_mode, delivery_mode, tricycle_id, truck_plate, broker_id, sold_at, created_at, status, bank_name, depositor_name, rejection_reason, sale_type, discount_status, driver_name")
       .order("sold_at", { ascending: false })
 
     if (error) throw error
@@ -146,9 +148,21 @@ export default function StoreSales() {
       for (const b of brokers || []) brokerMap.set(b.broker_id, b.broker_name)
     }
 
+    // Fetch kbnl_truck_no for records with truck_plate
+    const truckPlates = [...new Set(data.map(s => s.truck_plate).filter(Boolean))]
+    const truckMap = new Map<string, string>()
+    if (truckPlates.length > 0) {
+      const { data: trucks } = await supabase
+        .from("Trucks")
+        .select("plate_number, kbnl_truck_no")
+        .in("plate_number", truckPlates)
+      for (const t of trucks || []) truckMap.set(t.plate_number, t.kbnl_truck_no || "")
+    }
+
     return data.map(s => ({
       ...s,
       broker_name: s.broker_id ? brokerMap.get(s.broker_id) ?? "Unknown" : null,
+      kbnl_truck_no: s.truck_plate ? truckMap.get(s.truck_plate) ?? null : null,
     }))
   }
 
@@ -630,6 +644,26 @@ export default function StoreSales() {
                           {sale.sale_type === "truck_load_out" && (
                             <span style={{ marginTop: 4, padding: "2px 8px", borderRadius: 6, background: "#fff7ed", color: "#ea580c", fontWeight: 600, fontSize: FONT_SIZE.xs, display: "inline-block" }}>Truck Load Out</span>
                           )}
+                          {sale.sale_type === "truck_load_out" && (
+                            <div style={{ marginTop: 8, display: "flex", flexDirection: "column", gap: 4 }}>
+                              {sale.driver_name && (
+                                <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                                  <Icon icon="mdi:account" width={14} color="#64748b" />
+                                  <span style={{ fontSize: FONT_SIZE.sm, color: "#475569" }}>
+                                    <span style={{ fontWeight: 600, color: "#0f172a" }}>Driver:</span> {sale.driver_name}
+                                  </span>
+                                </div>
+                              )}
+                              {sale.truck_plate && (
+                                <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                                  <Icon icon="mdi:truck" width={14} color="#64748b" />
+                                  <span style={{ fontSize: FONT_SIZE.sm, color: "#475569" }}>
+                                    <span style={{ fontWeight: 600, color: "#0f172a" }}>Truck:</span> {sale.truck_plate}{sale.kbnl_truck_no ? ` (KBNL #{sale.kbnl_truck_no})` : ""}
+                                  </span>
+                                </div>
+                              )}
+                            </div>
+                          )}
                           {sale.status === "Rejected" && sale.rejection_reason && (
                             <div style={{ display: "flex", gap: 10, alignItems: "flex-start", marginTop: 10, padding: 10, background: "#fef2f2", borderRadius: 8, border: "1px solid #fecaca" }}>
                               <div style={{ background: "#ef4444", color: "white", padding: 3, borderRadius: "50%", flexShrink: 0, marginTop: 1 }}>
@@ -733,7 +767,7 @@ export default function StoreSales() {
 
           {viewMode === "table" && (
             <div style={{ background: "white", borderRadius: 12, border: "1px solid #e2e8f0", boxShadow: "0 1px 3px rgba(0, 0, 0, 0.05)", overflowX: "auto" }}>
-              <table style={{ width: "100%", borderCollapse: "collapse", textAlign: "left", minWidth: 1050 }}>
+              <table style={{ width: "100%", borderCollapse: "collapse", textAlign: "left", minWidth: 1150 }}>
                 <thead>
                   <tr style={{ background: "#f8fafc", borderBottom: "1px solid #e2e8f0" }}>
                     <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: FONT_SIZE.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px" }}>Store</th>
@@ -745,6 +779,7 @@ export default function StoreSales() {
                     <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: FONT_SIZE.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px" }}>Depositor</th>
                     <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: FONT_SIZE.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px" }}>Payment</th>
                     <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: FONT_SIZE.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px" }}>Delivery</th>
+                    <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: FONT_SIZE.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px" }}>Driver</th>
                     <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: FONT_SIZE.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px" }}>Broker</th>
                     <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: FONT_SIZE.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px" }}>Status</th>
                     <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: FONT_SIZE.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px" }}>Sale Date</th>
@@ -754,7 +789,7 @@ export default function StoreSales() {
                   {paginatedItems.map((group) => (
                     <Fragment key={group.date}>
                       <tr>
-                        <td colSpan={12} style={{ padding: "10px 16px", background: "#f8fafc", fontWeight: 700, fontSize: FONT_SIZE.sm, color: "#0f172a", borderBottom: "2px solid #e2e8f0" }}>
+                        <td colSpan={13} style={{ padding: "10px 16px", background: "#f8fafc", fontWeight: 700, fontSize: FONT_SIZE.sm, color: "#0f172a", borderBottom: "2px solid #e2e8f0" }}>
                           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                             <Icon icon="mdi:calendar" width={16} color="#64748b" />
                             {new Date(group.date + "T00:00:00").toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" })}
@@ -777,7 +812,21 @@ export default function StoreSales() {
                           <td style={{ padding: "12px 16px", color: "#64748b", fontSize: FONT_SIZE.sm }}>{sale.customer_name || "—"}</td>
                           <td style={{ padding: "12px 16px", color: "#64748b", fontSize: FONT_SIZE.sm }}>{sale.depositor_name ? `${sale.depositor_name}${sale.bank_name ? ` (${sale.bank_name})` : ""}` : "—"}</td>
                           <td style={{ padding: "12px 16px", color: "#64748b", fontSize: FONT_SIZE.sm }}>{sale.payment_mode}</td>
-                          <td style={{ padding: "12px 16px", color: "#64748b", fontSize: FONT_SIZE.sm }}>{sale.delivery_mode}{sale.truck_plate ? ` (${sale.truck_plate})` : ""}</td>
+                          <td style={{ padding: "12px 16px", color: "#64748b", fontSize: FONT_SIZE.sm }}>
+                            {sale.delivery_mode}
+                            {sale.truck_plate && (
+                              <>
+                                <span> ({sale.truck_plate}</span>
+                                {sale.kbnl_truck_no && <span> · KBNL #{sale.kbnl_truck_no}</span>}
+                                <span>)</span>
+                              </>
+                            )}
+                          </td>
+                          <td style={{ padding: "12px 16px", color: "#64748b", fontSize: FONT_SIZE.sm }}>
+                            {sale.sale_type === "truck_load_out" && sale.driver_name
+                              ? <span style={{ fontWeight: 500 }}>{sale.driver_name}</span>
+                              : "—"}
+                          </td>
                           <td style={{ padding: "12px 16px", color: "#64748b", fontSize: FONT_SIZE.sm }}>{sale.broker_name || "—"}</td>
                           <td style={{ padding: "12px 16px" }}>
                             {(() => {

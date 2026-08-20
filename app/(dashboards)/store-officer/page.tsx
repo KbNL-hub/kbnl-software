@@ -60,6 +60,7 @@ type Sale = {
   bank_name: string | null
   depositor_name: string | null
   rejection_reason: string | null
+  driver_name: string | null
 }
 
 type GroupedSale = {
@@ -69,6 +70,7 @@ type GroupedSale = {
   delivery_mode: string
   tricycle_number: string | null
   truck_plate: string | null
+  driver_name: string | null
   sold_at: string
   broker_id: string | null
   broker_name?: string | null
@@ -146,6 +148,10 @@ export default function StoreOfficerDashboard() {
   const [brokerSearch, setBrokerSearch] = useState("")
   const [brokerDropOpen, setBrokerDropOpen] = useState(false)
   const [saleType, setSaleType] = useState<"direct" | "truck_load_out" | "broker">("direct")
+  const [drivers, setDrivers] = useState<{ driver_id: string; full_name: string }[]>([])
+  const [saleDriver, setSaleDriver] = useState<{ driver_id: string; full_name: string } | null>(null)
+  const [driverSearch, setDriverSearch] = useState("")
+  const [driverDropOpen, setDriverDropOpen] = useState(false)
   const [saleDate, setSaleDate] = useState(dayjs().format("YYYY-MM-DD"))
 
   const [editingGroup, setEditingGroup] = useState<GroupedSale | null>(null)
@@ -161,6 +167,9 @@ export default function StoreOfficerDashboard() {
   const [editTruckPlate, setEditTruckPlate] = useState("")
   const [editTruckSearch, setEditTruckSearch] = useState("")
   const [editTruckDropOpen, setEditTruckDropOpen] = useState(false)
+  const [editDriver, setEditDriver] = useState<{ driver_id: string; full_name: string } | null>(null)
+  const [editDriverSearch, setEditDriverSearch] = useState("")
+  const [editDriverDropOpen, setEditDriverDropOpen] = useState(false)
   const [editError, setEditError] = useState("")
   const [editLoading, setEditLoading] = useState(false)
 
@@ -213,6 +222,7 @@ export default function StoreOfficerDashboard() {
       fetchTricycles(),
       fetchTrucks(),
       fetchBrokers(),
+      fetchDrivers(),
     ])
     setLoading(false)
   }
@@ -272,7 +282,7 @@ export default function StoreOfficerDashboard() {
   async function fetchSales(storeName: string) {
     const { data } = await supabase
       .from("store_sales")
-      .select("sale_id, product, quantity, price_per_bag, total_amount, customer_name, payment_mode, delivery_mode, tricycle_id, truck_plate, sold_at, created_at, broker_id, status, bank_name, depositor_name, rejection_reason, sale_type")
+      .select("sale_id, product, quantity, price_per_bag, total_amount, customer_name, payment_mode, delivery_mode, tricycle_id, truck_plate, sold_at, created_at, broker_id, status, bank_name, depositor_name, rejection_reason, sale_type, driver_name")
       .eq("store_name", storeName)
       .order("sold_at", { ascending: false })
 
@@ -320,6 +330,15 @@ export default function StoreOfficerDashboard() {
       .select("broker_id, broker_name")
       .order("broker_name", { ascending: true })
     setBrokers(data || [])
+  }
+
+  async function fetchDrivers() {
+    const { data } = await supabase
+      .from("Drivers")
+      .select("driver_id, full_name")
+      .eq("status", "Active")
+      .order("full_name", { ascending: true })
+    setDrivers(data || [])
   }
 
   function addSupplyLine() {
@@ -472,6 +491,7 @@ export default function StoreOfficerDashboard() {
 
     if (saleType === "truck_load_out") {
       if (!saleTruckPlate) return setSaleError("Select the truck being loaded")
+      if (!saleDriver) return setSaleError("Select the driver")
     } else if (saleType === "broker") {
       if (!saleBroker) return setSaleError("Select a broker")
       if (!salePayment) return setSaleError("Select a payment mode")
@@ -524,6 +544,7 @@ export default function StoreOfficerDashboard() {
         sold_at: saleDateWithTime(saleDate),
         bank_name: salePayment === "Transfer" && saleType !== "truck_load_out" ? saleBank : null,
         depositor_name: salePayment === "Transfer" && saleType !== "truck_load_out" ? saleDepositor.trim() : null,
+        driver_name: saleType === "truck_load_out" ? saleDriver?.full_name ?? null : null,
       }))
 
       let saleErr: string | null = null
@@ -569,6 +590,8 @@ export default function StoreOfficerDashboard() {
       setSaleType("direct")
       setSaleBroker(null)
       setBrokerSearch("")
+      setSaleDriver(null)
+      setDriverSearch("")
       setSaleDate(new Date().toISOString().split("T")[0])
 
       await Promise.all([
@@ -601,6 +624,8 @@ export default function StoreOfficerDashboard() {
     setEditTricycleSearch(group.tricycle_number || "")
     setEditTruckPlate(group.truck_plate || "")
     setEditTruckSearch(group.truck_plate || "")
+    setEditDriver(group.driver_name ? { driver_id: "", full_name: group.driver_name } : null)
+    setEditDriverSearch(group.driver_name || "")
     setEditError("")
   }
 
@@ -618,6 +643,9 @@ export default function StoreOfficerDashboard() {
     setEditTruckPlate("")
     setEditTruckSearch("")
     setEditTruckDropOpen(false)
+    setEditDriver(null)
+    setEditDriverSearch("")
+    setEditDriverDropOpen(false)
     setEditError("")
     setEditLoading(false)
   }
@@ -639,6 +667,7 @@ export default function StoreOfficerDashboard() {
 
     if (saleType === "truck_load_out") {
       if (!editTruckPlate) return setEditError("Select the truck being loaded")
+      if (!editDriver) return setEditError("Select the driver")
     } else if (saleType === "broker") {
       if (!editPayment) return setEditError("Select a payment mode")
       if (editPayment === "Transfer") {
@@ -699,6 +728,7 @@ export default function StoreOfficerDashboard() {
             truck_plate: (saleType === "truck_load_out" || editDeliveryMode === "truck") ? editTruckPlate : null,
             bank_name: editPayment === "Transfer" && saleType !== "truck_load_out" ? editBank : null,
             depositor_name: editPayment === "Transfer" && saleType !== "truck_load_out" ? editDepositor.trim() : null,
+            driver_name: saleType === "truck_load_out" ? editDriver?.full_name ?? null : null,
             sold_at: editingGroup.sold_at,
             status: saleType === "broker" ? "Pending" : "Confirmed",
             rejection_reason: null,
@@ -780,6 +810,7 @@ export default function StoreOfficerDashboard() {
       delivery_mode: sale.delivery_mode,
       tricycle_number: sale.tricycle_number,
       truck_plate: sale.truck_plate,
+      driver_name: sale.driver_name,
       sold_at: sale.sold_at,
       broker_id: sale.broker_id,
       broker_name: sale.broker_name,
@@ -1444,6 +1475,8 @@ export default function StoreOfficerDashboard() {
           setSaleType("direct")
           setSaleBroker(null)
           setBrokerSearch("")
+          setSaleDriver(null)
+          setDriverSearch("")
           setSaleDate(new Date().toISOString().split("T")[0])
         }} style={{ position: "fixed", inset: 0, background: "rgba(15, 23, 42, 0.6)", backdropFilter: "blur(4px)", display: "flex", alignItems: isMobile ? "flex-end" : "center", justifyContent: "center", zIndex: 100, padding: isMobile ? 0 : 24 }}>
           <div onClick={e => e.stopPropagation()} style={{ background: "white", borderRadius: isMobile ? "20px 20px 0 0" : 12, padding: isMobile ? "28px 20px" : 32, width: "100%", maxWidth: 600, maxHeight: "90vh", overflowY: "auto", boxShadow: "0 25px 50px -12px rgba(0, 0, 0, 0.25)" }}>
@@ -1463,6 +1496,8 @@ export default function StoreOfficerDashboard() {
                 setSaleType("direct")
                 setSaleBroker(null)
                 setBrokerSearch("")
+                setSaleDriver(null)
+                setDriverSearch("")
               }} style={{ background: "none", border: "none", cursor: "pointer", color: "#94a3b8", padding: 4, display: "flex" }}>
                 <Icon icon="mdi:close" width={22} />
               </button>
@@ -1626,6 +1661,7 @@ export default function StoreOfficerDashboard() {
 
             {/* Delivery Mode / Truck Selection */}
             {saleType === "truck_load_out" ? (
+              <>
               <div style={{ marginBottom: 16 }}>
                 <label style={{ display: "block", fontWeight: 600, marginBottom: 6, fontSize: FONT_SIZE.sm, color: "#475569" }}>Truck Being Loaded *</label>
                 {trucks.length === 0
@@ -1660,6 +1696,46 @@ export default function StoreOfficerDashboard() {
                   )
                 }
               </div>
+              <div style={{ marginBottom: 16, position: "relative" }}>
+                <label style={{ display: "block", fontWeight: 600, marginBottom: 6, fontSize: FONT_SIZE.sm, color: "#475569" }}>Driver *</label>
+                {drivers.length === 0
+                  ? <p style={{ fontSize: FONT_SIZE.sm, color: "#94a3b8", margin: 0 }}>No drivers available.</p>
+                  : (
+                    <div style={{ position: "relative" }}>
+                      <ModernInput
+                        type="text"
+                        placeholder="Search driver…"
+                        value={driverSearch}
+                        onChange={e => { setDriverSearch(e.target.value); setDriverDropOpen(true) }}
+                        onFocus={() => setDriverDropOpen(true)}
+                        onBlur={() => setTimeout(() => setDriverDropOpen(false), 150)}
+                        style={{ width: "100%", padding: "10px 12px", borderRadius: 6, border: "1px solid #e0e0e0", fontSize: FONT_SIZE.base, boxSizing: "border-box", minHeight: 44 }}
+                      />
+                      {driverDropOpen && (
+                        <ul style={{ position: "absolute", top: "calc(100% + 4px)", left: 0, right: 0, background: "white", border: "1px solid #e2e8f0", borderRadius: 8, listStyle: "none", margin: 0, padding: 4, maxHeight: 200, overflowY: "auto", zIndex: 50, boxShadow: "0 4px 12px rgba(0,0,0,0.1)" }}>
+                          {drivers
+                            .filter(d => d.full_name.toLowerCase().includes(driverSearch.toLowerCase()))
+                            .map(d => (
+                              <li
+                                key={d.driver_id}
+                                onMouseDown={() => { setSaleDriver(d); setDriverSearch(d.full_name); setDriverDropOpen(false); setSaleError("") }}
+                                style={{ padding: "10px 12px", cursor: "pointer", fontSize: FONT_SIZE.base, background: saleDriver?.driver_id === d.driver_id ? "#eff6ff" : "white", borderRadius: 6 }}
+                              >
+                                {d.full_name}
+                              </li>
+                            ))}
+                        </ul>
+                      )}
+                    </div>
+                  )
+                }
+                {saleDriver && (
+                  <div style={{ marginTop: 8, padding: "8px 12px", background: "#eff6ff", borderRadius: 6, fontSize: FONT_SIZE.sm, color: "#0070f3", fontWeight: 500 }}>
+                    Selected: {saleDriver.full_name}
+                  </div>
+                )}
+              </div>
+              </>
             ) : (
               <>
                 <div style={{ marginBottom: 16 }}>
@@ -1955,6 +2031,7 @@ export default function StoreOfficerDashboard() {
 
             {/* Delivery Mode / Truck Selection */}
             {editingGroup.sale_type === "truck_load_out" ? (
+              <>
               <div style={{ marginBottom: 16 }}>
                 <label style={{ display: "block", fontWeight: 600, marginBottom: 6, fontSize: FONT_SIZE.sm, color: "#475569" }}>Truck Being Loaded *</label>
                 {trucks.length === 0
@@ -1989,6 +2066,46 @@ export default function StoreOfficerDashboard() {
                   )
                 }
               </div>
+              <div style={{ marginBottom: 16, position: "relative" }}>
+                <label style={{ display: "block", fontWeight: 600, marginBottom: 6, fontSize: FONT_SIZE.sm, color: "#475569" }}>Driver *</label>
+                {drivers.length === 0
+                  ? <p style={{ fontSize: FONT_SIZE.sm, color: "#94a3b8", margin: 0 }}>No drivers available.</p>
+                  : (
+                    <div style={{ position: "relative" }}>
+                      <ModernInput
+                        type="text"
+                        placeholder="Search driver…"
+                        value={editDriverSearch}
+                        onChange={e => { setEditDriverSearch(e.target.value); setEditDriverDropOpen(true) }}
+                        onFocus={() => setEditDriverDropOpen(true)}
+                        onBlur={() => setTimeout(() => setEditDriverDropOpen(false), 150)}
+                        style={{ width: "100%", padding: "10px 12px", borderRadius: 6, border: "1px solid #e0e0e0", fontSize: FONT_SIZE.base, boxSizing: "border-box", minHeight: 44 }}
+                      />
+                      {editDriverDropOpen && (
+                        <ul style={{ position: "absolute", top: "calc(100% + 4px)", left: 0, right: 0, background: "white", border: "1px solid #e2e8f0", borderRadius: 8, listStyle: "none", margin: 0, padding: 4, maxHeight: 200, overflowY: "auto", zIndex: 50, boxShadow: "0 4px 12px rgba(0,0,0,0.1)" }}>
+                          {drivers
+                            .filter(d => d.full_name.toLowerCase().includes(editDriverSearch.toLowerCase()))
+                            .map(d => (
+                              <li
+                                key={d.driver_id}
+                                onMouseDown={() => { setEditDriver(d); setEditDriverSearch(d.full_name); setEditDriverDropOpen(false); setEditError("") }}
+                                style={{ padding: "10px 12px", cursor: "pointer", fontSize: FONT_SIZE.base, background: editDriver?.driver_id === d.driver_id ? "#eff6ff" : "white", borderRadius: 6 }}
+                              >
+                                {d.full_name}
+                              </li>
+                            ))}
+                        </ul>
+                      )}
+                    </div>
+                  )
+                }
+                {editDriver && (
+                  <div style={{ marginTop: 8, padding: "8px 12px", background: "#eff6ff", borderRadius: 6, fontSize: FONT_SIZE.sm, color: "#0070f3", fontWeight: 500 }}>
+                    Selected: {editDriver.full_name}
+                  </div>
+                )}
+              </div>
+              </>
             ) : (
               <>
                 <div style={{ marginBottom: 16 }}>
