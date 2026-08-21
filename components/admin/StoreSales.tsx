@@ -201,6 +201,17 @@ export default function StoreSales() {
     return true
   })
 
+  // Sort rejected sales to top, then by date descending
+  filteredSales.sort((a, b) => {
+    const aRejected = a.status === "Rejected"
+    const bRejected = b.status === "Rejected"
+    if (aRejected && !bRejected) return -1
+    if (!aRejected && bRejected) return 1
+    const dateA = new Date(a.sold_at).getTime()
+    const dateB = new Date(b.sold_at).getTime()
+    return dateB - dateA
+  })
+
   const groupedByDate = filteredSales.reduce<GroupedSale[]>((groups, sale) => {
     const dateKey = sale.sold_at.slice(0, 10)
     const existing = groups.find(g => g.date === dateKey)
@@ -301,6 +312,23 @@ export default function StoreSales() {
         <div>
           <h1 style={{ margin: 0, color: "#0f172a", fontSize: isMobile ? FONT_SIZE["2xl"] : FONT_SIZE["3xl"], fontWeight: 700, letterSpacing: "-0.5px" }}>
             Store Sales
+            {filteredSales.length > 0 && filteredSales.some(s => s.status === "Rejected") && (
+              <span style={{
+                display: "inline-flex",
+                marginLeft: 6,
+                width: 8,
+                height: 8,
+                borderRadius: "50%",
+                background: "#ef4444",
+                color: "white",
+                fontSize: 10,
+                fontWeight: 700,
+                lineHeight: "18px",
+                justifyContent: "center",
+              }}>
+                {filteredSales.filter(s => s.status === "Rejected").length}
+              </span>
+            )}
           </h1>
           <p style={{ margin: "8px 0 0", color: "#64748b", fontSize: FONT_SIZE.base }}>
             View all sales recorded by store officers.

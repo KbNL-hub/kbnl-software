@@ -3,7 +3,6 @@
 import { FONT_SIZE } from "@/lib/constants"
 import { usePolling } from "@/lib/hooks/usePolling"
 import { usePagination } from "@/lib/hooks/usePagination"
-import BrokerDropdown from "@/components/BrokerDropdown"
 import CustomerSelector from "@/components/CustomerSelector"
 import { fetchStores } from "@/lib/stores"
 
@@ -77,6 +76,7 @@ type Trip = {
   isDD?: boolean
   recorded: boolean
   posted: boolean
+  route_points: string[] | null
 }
 
 type ResolveStopForm = {
@@ -332,6 +332,7 @@ export default function MonitorTrips() {
         completed_at: trip.trip_status === "Completed" ? trip.updated_at ?? null : null,
         recorded: trip.recorded ?? false,
         posted: trip.posted ?? false,
+        route_points: null,
       }
     })
 
@@ -341,7 +342,7 @@ export default function MonitorTrips() {
   async function fetchDdTrips() {
     const { data: ddTripsData, error } = await supabase
       .from("dd_trips")
-      .select("dd_trip_id, plate_number, driver_name, driver_phone, product, loading_point, loaded_quantity, trip_status, atc, order_no, child_order_no, created_at, recorded, posted, posted_at")
+      .select("dd_trip_id, plate_number, driver_name, driver_phone, product, loading_point, loaded_quantity, trip_status, atc, order_no, child_order_no, route_points, created_at, recorded, posted, posted_at")
       .order("created_at", { ascending: false })
 
     if (error || !ddTripsData) return []
@@ -489,6 +490,7 @@ export default function MonitorTrips() {
         isDD: true,
         recorded: ddTrip.recorded ?? false,
         posted: ddTrip.posted ?? false,
+        route_points: ddTrip.route_points ?? null,
       }
     })
 
@@ -586,7 +588,7 @@ async function fetchResolveData() {
     setResolvingStops(prev => prev.filter(s => s.tempId !== tempId))
   }
 
-  function updateResolveStop(tempId: string, field: keyof ResolveStopForm, value: any) {
+  function updateResolveStop(tempId: string, field: keyof ResolveStopForm, value: unknown) {
     setResolvingStops(prev => prev.map(s => 
       s.tempId === tempId ? { ...s, [field]: value } : s
     ))
@@ -1136,6 +1138,11 @@ async function fetchResolveData() {
                       ) : (
                         <p style={{ margin: 0, fontSize: FONT_SIZE.sm, color: "#475569" }}><span style={{ color: "#94a3b8", width: 70, display: "inline-block" }}>ATC:</span> {trip.atc || "N/A"}</p>
                       )}
+                      <p style={{ margin: 0, fontSize: FONT_SIZE.sm, color: "#475569" }}><span style={{ color: "#94a3b8", width: 70, display: "inline-block" }}>Route:</span> {trip.route_points && trip.route_points.length > 0 ? (
+                          <span style={{ color: "#0f172a", wordBreak: "break-word" }}>{trip.route_points.join(" → ")}</span>
+                        ) : (
+                          <span style={{ color: "#cbd5e1", fontStyle: "italic" }}>Not set</span>
+                        )}</p>
                       {trip.amount_charged && <p style={{ margin: 0, fontSize: FONT_SIZE.sm, color: "#475569" }}><span style={{ color: "#94a3b8", width: 70, display: "inline-block" }}>Charged:</span> ₦{trip.amount_charged.toLocaleString()}</p>}
                       {trip.payment_mode && <p style={{ margin: 0, fontSize: FONT_SIZE.sm, color: "#475569" }}><span style={{ color: "#94a3b8", width: 70, display: "inline-block" }}>Payment:</span> {trip.payment_mode}</p>}
                     </div>
@@ -1198,6 +1205,7 @@ async function fetchResolveData() {
                     <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: FONT_SIZE.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px" }}>Product</th>
                     <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: FONT_SIZE.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px" }}>Centre</th>
                     <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: FONT_SIZE.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px" }}>ATC / Order</th>
+                    <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: FONT_SIZE.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px" }}>Route</th>
                     <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: FONT_SIZE.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px" }}>Charged</th>
                     <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: FONT_SIZE.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px" }}>Payment</th>
                     <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: FONT_SIZE.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px" }}>Loaded</th>
@@ -1232,6 +1240,9 @@ async function fetchResolveData() {
                         <td style={{ padding: "12px 16px", color: "#0f172a", fontSize: FONT_SIZE.base }}>{trip.product}</td>
                         <td style={{ padding: "12px 16px", color: "#64748b", fontSize: FONT_SIZE.sm }}>{trip.material_centre}</td>
                         <td style={{ padding: "12px 16px", color: "#64748b", fontSize: FONT_SIZE.sm }}>{trip.order_no ? `${trip.order_no}${trip.child_order_no ? ` / ${trip.child_order_no}` : ""}` : trip.atc || "N/A"}</td>
+                        <td style={{ padding: "12px 16px", color: trip.route_points && trip.route_points.length > 0 ? "#0f172a" : "#cbd5e1", fontSize: FONT_SIZE.sm, fontStyle: trip.route_points && trip.route_points.length > 0 ? "normal" : "italic" }}>
+                          {trip.route_points && trip.route_points.length > 0 ? trip.route_points.join(" → ") : "Not set"}
+                        </td>
                         <td style={{ padding: "12px 16px", color: "#059669", fontSize: FONT_SIZE.base, fontWeight: 500 }}>{trip.amount_charged ? `₦${trip.amount_charged.toLocaleString()}` : "—"}</td>
                         <td style={{ padding: "12px 16px", color: "#64748b", fontSize: FONT_SIZE.sm }}>{trip.payment_mode || "—"}</td>
                         <td style={{ padding: "12px 16px", color: "#0f172a", fontSize: FONT_SIZE.base, fontWeight: 500 }}>{trip.loaded_quantity}</td>

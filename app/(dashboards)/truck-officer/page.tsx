@@ -600,7 +600,7 @@ export default function TruckOfficerDashboard() {
               <Icon icon={trucksCollapsed ? "mdi:chevron-right" : "mdi:chevron-down"} width={20} color="#64748b" />
               <p style={{ margin: 0, fontWeight: 700, fontSize: FONT_SIZE.lg, color: "#0f172a" }}>My Trucks ({assignedTrucks.length})</p>
             </div>
-            <button onClick={(e) => { e.stopPropagation(); officer && fetchTrucks(officer.manager_id) }} className="refresh-btn" style={{ padding: "6px 12px", fontSize: FONT_SIZE.xs, cursor: "pointer", borderRadius: 6, border: "1px solid #e2e8f0", background: "white", color: "#64748b", transition: "all 0.2s", fontWeight: 600 }}>
+            <button onClick={(e) => { e.stopPropagation(); if (officer) { fetchTrucks(officer.manager_id) } }} className="refresh-btn" style={{ padding: "6px 12px", fontSize: FONT_SIZE.xs, cursor: "pointer", borderRadius: 6, border: "1px solid #e2e8f0", background: "white", color: "#64748b", transition: "all 0.2s", fontWeight: 600 }}>
               Refresh
             </button>
           </div>
