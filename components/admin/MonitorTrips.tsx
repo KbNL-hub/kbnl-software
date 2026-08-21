@@ -79,6 +79,19 @@ type Trip = {
   posted: boolean
 }
 
+type ResolveStopForm = {
+  stop_type: "customer" | "store"
+  broker_id: string | null
+  customer_id: string | null
+  customer_name: string | null
+  store_name: string | null
+  quantity_offloaded: number
+  stop_location: string
+  stop_time: string
+  isOriginal: boolean
+  tempId: string
+}
+
 type ViewMode = "card" | "table"
 
 function useBreakpoint() {
@@ -149,25 +162,15 @@ export default function MonitorTrips() {
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null)
   const [postingTrip, setPostingTrip] = useState<string | null>(null)
   const [postLoading, setPostLoading] = useState(false)
-const [resolvingDisputeReason, setResolvingDisputeReason] = useState<string | null>(null)
-// Enhanced resolve modal state
-type ResolveStopForm = {
-  stop_type: "customer" | "store"
-  broker_id: string | null
-  customer_id: string | null
-  store_name: string | null
-  quantity_offloaded: number
-  stop_location: string
-  stop_time: string
-  isOriginal: boolean
-  tempId: string // for new stops
-}
-const [resolvingStops, setResolvingStops] = useState<ResolveStopForm[]>([])
-const [resolveSubmitting, setResolveSubmitting] = useState(false)
-const [resolveMessage, setResolveMessage] = useState("")
-const [allBrokers, setAllBrokers] = useState<{ broker_id: string; broker_name: string }[]>([])
-const [storeLocations, setStoreLocations] = useState<string[]>([])
-const [resolvingTripId, setResolvingTripId] = useState<string | null>(null)
+  const [resolvingDisputeReason, setResolvingDisputeReason] = useState<string | null>(null)
+  const [resolvingStops, setResolvingStops] = useState<ResolveStopForm[]>([])
+  const [resolveSubmitting, setResolveSubmitting] = useState(false)
+  const [resolveLoading, setResolveLoading] = useState(false)
+  const [resolveMessage, setResolveMessage] = useState("")
+  const [allBrokers, setAllBrokers] = useState<{ broker_id: string; broker_name: string }[]>([])
+  const [storeLocations, setStoreLocations] = useState<string[]>([])
+  const [resolvingTripId, setResolvingTripId] = useState<string | null>(null)
+  const [resolveOriginalQuantity, setResolveOriginalQuantity] = useState(0)
 
   async function fetchTrips() {
     const { data: tripsData, error } = await supabase
@@ -532,15 +535,17 @@ async function fetchResolveData() {
   }
 
   async function openResolveModal(stop: Stop, tripId: string) {
+    setResolveLoading(true)
     await fetchResolveData()
     setResolvingTripId(tripId)
     setResolvingDisputeReason(stop.dispute_reason)
-    
-    // Initialize with the original stop data
+    setResolveOriginalQuantity(stop.quantity_offloaded)
+
     const initialStop: ResolveStopForm = {
       stop_type: stop.stop_type,
       broker_id: stop.broker_id,
       customer_id: stop.customer_id,
+      customer_name: stop.customer_name,
       store_name: stop.store_name,
       quantity_offloaded: stop.quantity_offloaded,
       stop_location: stop.stop_location,
@@ -550,6 +555,7 @@ async function fetchResolveData() {
     }
     setResolvingStops([initialStop])
     setResolveMessage("")
+    setResolveLoading(false)
   }
 
   function closeResolveModal() {
@@ -565,12 +571,13 @@ async function fetchResolveData() {
       stop_type: "customer",
       broker_id: null,
       customer_id: null,
+      customer_name: null,
       store_name: null,
       quantity_offloaded: 0,
       stop_location: "",
       stop_time: new Date().toISOString(),
       isOriginal: false,
-      tempId: `temp-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+      tempId: `temp-${crypto.randomUUID()}`,
     }
     setResolvingStops(prev => [...prev, newStop])
   }
@@ -587,31 +594,30 @@ async function fetchResolveData() {
 
   // Calculate total quantity across all resolve stops
   const totalResolveQuantity = resolvingStops.reduce((sum, s) => sum + (s.quantity_offloaded || 0), 0)
-  const originalQuantity = resolvingStops.find(s => s.isOriginal)?.quantity_offloaded || 0
-  const isOverLimit = totalResolveQuantity > originalQuantity && originalQuantity > 0
+  const isOverLimit = totalResolveQuantity > resolveOriginalQuantity && resolveOriginalQuantity > 0
 
   async function handleResolveStops() {
     if (resolvingStops.length === 0) return
     if (isOverLimit) {
-      setResolveMessage(`Total quantity (${totalResolveQuantity}) cannot exceed original disputed quantity (${originalQuantity})`)
+      setResolveMessage(`Total quantity (${totalResolveQuantity}) cannot exceed original disputed quantity (${resolveOriginalQuantity})`)
       return
     }
-    // Validate each stop
-    for (const stop of resolvingStops) {
+    for (const [idx, stop] of resolvingStops.entries()) {
+      const label = stop.isOriginal ? "Original stop" : `Additional stop ${idx}`
       if (stop.quantity_offloaded <= 0) {
-        setResolveMessage("All stops must have quantity > 0")
+        setResolveMessage(`${label}: quantity must be greater than 0`)
         return
       }
       if (stop.stop_type === "customer" && !stop.broker_id) {
-        setResolveMessage("Customer stops require a broker")
+        setResolveMessage(`${label}: select a broker`)
         return
       }
       if (stop.stop_type === "customer" && !stop.stop_location.trim()) {
-        setResolveMessage("Customer stops require a location")
+        setResolveMessage(`${label}: enter a stop location`)
         return
       }
       if (stop.stop_type === "store" && !stop.store_name) {
-        setResolveMessage("Store stops require a store")
+        setResolveMessage(`${label}: select a store`)
         return
       }
     }
@@ -687,7 +693,8 @@ async function fetchResolveData() {
         })
 
         if (insertError) {
-          setResolveMessage(`Failed to create additional stop: ${insertError}`)
+          const msg = typeof insertError === "string" ? insertError : (insertError as { message?: string })?.message ?? "Unknown error"
+          setResolveMessage(`Failed to create additional stop: ${msg}`)
           return
         }
       }
@@ -1504,15 +1511,20 @@ async function fetchResolveData() {
               </button>
             </div>
 
-            {resolvingDisputeReason && (
+            {resolveLoading && (
+              <div style={{ display: "flex", justifyContent: "center", padding: "32px 0" }}>
+                <div style={{ width: 32, height: 32, borderRadius: "50%", border: "3px solid #e2e8f0", borderTopColor: "#0070f3", animation: "spin 1s linear infinite" }} />
+              </div>
+            )}
+
+            {!resolveLoading && resolvingDisputeReason && (
               <div style={{ padding: "10px 14px", background: "#fef2f2", border: "1px solid #fecaca", borderRadius: 8, marginBottom: 20 }}>
                 <p style={{ margin: "0 0 4px 0", fontSize: FONT_SIZE.xs, color: "#ef4444", fontWeight: 600 }}>Dispute Reason</p>
                 <p style={{ margin: 0, fontSize: FONT_SIZE.sm, color: "#7f1d1d" }}>{resolvingDisputeReason}</p>
               </div>
             )}
 
-            {resolvingStops.map((rs, idx) => {
-              const isOverForStop = totalResolveQuantity > originalQuantity && originalQuantity > 0
+            {!resolveLoading && resolvingStops.map((rs, idx) => {
               return (
                 <div key={rs.tempId} style={{ border: `1.5px solid ${rs.isOriginal ? "#e2e8f0" : "#c7d2fe"}`, borderRadius: 10, padding: 16, marginBottom: 16, background: rs.isOriginal ? "#f8fafc" : "#f5f3ff" }}>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
@@ -1566,7 +1578,7 @@ async function fetchResolveData() {
                         <label style={{ display: "block", fontWeight: 600, fontSize: FONT_SIZE.xs, color: "#475569", marginBottom: 4 }}>Customer</label>
                         <CustomerSelector
                           onSelect={(c) => updateResolveStop(rs.tempId, "customer_id", c.customer_id || null)}
-                          initialValue={""}
+                          initialValue={rs.customer_name || ""}
                         />
                       </div>
                       <div style={{ marginBottom: 12 }}>
@@ -1622,13 +1634,13 @@ async function fetchResolveData() {
             <div style={{ padding: "10px 14px", background: isOverLimit ? "#fef2f2" : "#f0fdf4", border: `1.5px solid ${isOverLimit ? "#fecaca" : "#bbf7d0"}`, borderRadius: 8, marginBottom: 12, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
               <span style={{ fontSize: FONT_SIZE.sm, color: isOverLimit ? "#b91c1c" : "#15803d", fontWeight: 500 }}>Total Bags</span>
               <span style={{ fontSize: FONT_SIZE.base, fontWeight: 700, color: isOverLimit ? "#b91c1c" : "#15803d" }}>
-                {totalResolveQuantity} / {originalQuantity}
+                {totalResolveQuantity} / {resolveOriginalQuantity}
               </span>
             </div>
             {isOverLimit && (
               <div style={{ padding: "8px 14px", background: "#fef2f2", border: "1px solid #fecaca", borderRadius: 8, marginBottom: 12 }}>
                 <p style={{ margin: 0, fontSize: FONT_SIZE.xs, color: "#b91c1c", fontWeight: 600 }}>
-                  Total quantity ({totalResolveQuantity}) cannot exceed original disputed quantity ({originalQuantity})
+                  Total quantity ({totalResolveQuantity}) cannot exceed original disputed quantity ({resolveOriginalQuantity})
                 </p>
               </div>
             )}
@@ -1658,11 +1670,11 @@ async function fetchResolveData() {
             )}
 
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-              <button onClick={closeResolveModal} disabled={resolveSubmitting} style={{ padding: "12px 16px", background: "white", color: "#475569", border: "1px solid #cbd5e1", borderRadius: 8, cursor: "pointer", fontWeight: 600, fontSize: FONT_SIZE.md, minHeight: 44 }}>
+              <button onClick={closeResolveModal} disabled={resolveSubmitting || resolveLoading} style={{ padding: "12px 16px", background: "white", color: "#475569", border: "1px solid #cbd5e1", borderRadius: 8, cursor: "pointer", fontWeight: 600, fontSize: FONT_SIZE.md, minHeight: 44 }}>
                 Cancel
               </button>
-              <button onClick={handleResolveStops} disabled={resolveSubmitting || isOverLimit} style={{ padding: "12px 16px", background: resolveSubmitting || isOverLimit ? "#94a3b8" : "#0070f3", color: "white", border: "none", borderRadius: 8, cursor: resolveSubmitting || isOverLimit ? "not-allowed" : "pointer", fontWeight: 600, fontSize: FONT_SIZE.md, minHeight: 44, display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
-                {resolveSubmitting ? "Saving..." : "Save & Resolve"}
+              <button onClick={handleResolveStops} disabled={resolveSubmitting || resolveLoading || isOverLimit} style={{ padding: "12px 16px", background: resolveSubmitting || resolveLoading || isOverLimit ? "#94a3b8" : "#0070f3", color: "white", border: "none", borderRadius: 8, cursor: resolveSubmitting || resolveLoading || isOverLimit ? "not-allowed" : "pointer", fontWeight: 600, fontSize: FONT_SIZE.md, minHeight: 44, display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
+                {resolveLoading ? "Loading..." : resolveSubmitting ? "Saving..." : "Save & Resolve"}
               </button>
             </div>
           </div>

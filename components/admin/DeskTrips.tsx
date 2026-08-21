@@ -123,7 +123,6 @@ export default function DeskTrips() {
       .from("Trips")
       .select("trip_id, plate_number, driver_id, product, material_centre, loaded_quantity, trip_status, ATC, order_no, child_order_no, amount_charged, payment_mode, created_at, recorded, posted")
       .eq("recorded", true)
-      .eq("posted", false)
       .order("created_at", { ascending: false })
 
     if (error || !tripsData) return []
@@ -287,7 +286,6 @@ export default function DeskTrips() {
       .from("dd_trips")
       .select("dd_trip_id, plate_number, driver_name, driver_phone, product, loading_point, loaded_quantity, trip_status, atc, order_no, child_order_no, created_at, recorded, posted")
       .eq("recorded", true)
-      .eq("posted", false)
       .order("created_at", { ascending: false })
 
     if (error || !ddTripsData) return []

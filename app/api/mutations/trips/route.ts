@@ -31,7 +31,7 @@ const TABLE_ROLES: Record<string, string[]> = {
   Stop_Confirmations: ["Broker", "Admin", "SuperAdmin"],
   trip_load_more: ["Driver", "Admin", "SuperAdmin"],
   trip_discrepancies: ["Driver", "Admin", "SuperAdmin"],
-  dd_trips: ["Driver", "Admin", "SuperAdmin", "ATCOfficer"],
+  dd_trips: ["Driver", "Admin", "SuperAdmin", "ATCOfficer", "DeskOfficer"],
   price_adjustments: ["Broker", "Admin", "SuperAdmin", "DeskOfficer", "CreditManager"],
   credit_approvals: ["Broker", "Admin", "SuperAdmin", "DeskOfficer", "CreditManager"],
 }
@@ -79,7 +79,7 @@ export async function POST(req: NextRequest) {
       if (!sub_actions || !Array.isArray(sub_actions) || sub_actions.length === 0) {
         return buildError("sub_actions array is required for transaction", 400)
       }
-      const auth = await requireRole(req, ["Driver", "Broker", "TruckOfficer", "Admin", "SuperAdmin", "ATCOfficer"])
+      const auth = await requireRole(req, ["Driver", "Broker", "TruckOfficer", "Admin", "SuperAdmin", "ATCOfficer", "DeskOfficer"])
       for (const sa of sub_actions || []) {
         const rolesForTable = TABLE_ROLES[sa.table] || ["Admin"]
         if (!auth.roles.some(r => rolesForTable.includes(r))) {
