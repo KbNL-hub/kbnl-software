@@ -3,6 +3,9 @@
 import { FONT_SIZE } from "@/lib/constants"
 import { usePolling } from "@/lib/hooks/usePolling"
 import { usePagination } from "@/lib/hooks/usePagination"
+import BrokerDropdown from "@/components/BrokerDropdown"
+import CustomerSelector from "@/components/CustomerSelector"
+import { fetchStores } from "@/lib/stores"
 
 import { useState, useEffect, useCallback } from "react"
 import PaginationControls from "@/components/PaginationControls"
@@ -16,6 +19,7 @@ type Stop = {
   stop_type: "customer" | "store"
   broker_id: string | null
   broker_name: string | null
+  customer_id: string | null
   customer_name: string | null
   quantity_offloaded: number
   latitude: number
@@ -145,16 +149,25 @@ export default function MonitorTrips() {
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null)
   const [postingTrip, setPostingTrip] = useState<string | null>(null)
   const [postLoading, setPostLoading] = useState(false)
-  const [editingQuantity, setEditingQuantity] = useState<{ stopId: string; value: number } | null>(null)
-  const [quantitySaving, setQuantitySaving] = useState(false)
-  const [quantityMessage, setQuantityMessage] = useState<{ stopId: string; text: string; type: "success" | "error" } | null>(null)
-  const [resolvingStop, setResolvingStop] = useState<Stop | null>(null)
-  const [resolveBags, setResolveBags] = useState("")
-  const [resolveLocation, setResolveLocation] = useState("")
-  const [resolveBrokerId, setResolveBrokerId] = useState("")
-  const [resolveSubmitting, setResolveSubmitting] = useState(false)
-  const [resolveMessage, setResolveMessage] = useState("")
-  const [allBrokers, setAllBrokers] = useState<{ broker_id: string; broker_name: string }[]>([])
+const [resolvingDisputeReason, setResolvingDisputeReason] = useState<string | null>(null)
+// Enhanced resolve modal state
+type ResolveStopForm = {
+  stop_type: "customer" | "store"
+  broker_id: string | null
+  customer_id: string | null
+  store_name: string | null
+  quantity_offloaded: number
+  stop_location: string
+  stop_time: string
+  isOriginal: boolean
+  tempId: string // for new stops
+}
+const [resolvingStops, setResolvingStops] = useState<ResolveStopForm[]>([])
+const [resolveSubmitting, setResolveSubmitting] = useState(false)
+const [resolveMessage, setResolveMessage] = useState("")
+const [allBrokers, setAllBrokers] = useState<{ broker_id: string; broker_name: string }[]>([])
+const [storeLocations, setStoreLocations] = useState<string[]>([])
+const [resolvingTripId, setResolvingTripId] = useState<string | null>(null)
 
   async function fetchTrips() {
     const { data: tripsData, error } = await supabase
@@ -268,6 +281,7 @@ export default function MonitorTrips() {
           stop_type: stop.stop_type,
           broker_id: stop.broker_id ?? null,
           broker_name,
+          customer_id: stop.customer_id ?? null,
           customer_name,
           quantity_offloaded: stop.quantity_offloaded,
           latitude: stop.latitude,
@@ -422,6 +436,7 @@ export default function MonitorTrips() {
           stop_type: stop.stop_type,
           broker_id: stop.broker_id ?? null,
           broker_name,
+          customer_id: stop.customer_id ?? null,
           customer_name,
           quantity_offloaded: stop.quantity_offloaded,
           latitude: stop.latitude,
@@ -504,78 +519,177 @@ export default function MonitorTrips() {
     setPostingTrip(selectedTrip.trip_id)
   }
 
-  async function handleSaveQuantity() {
-    if (!editingQuantity) return
-    setQuantitySaving(true)
-    setQuantityMessage(null)
-
-    const { error } = await apiMutate("trips", {
-      action: "update",
-      table: "Stops",
-      data: { quantity_offloaded: editingQuantity.value },
-      filters: { stop_id: editingQuantity.stopId },
-    })
-
-    if (error) {
-      setQuantityMessage({ stopId: editingQuantity.stopId, text: "Failed to update quantity", type: "error" })
-    } else {
-      setQuantityMessage({ stopId: editingQuantity.stopId, text: "Updated", type: "success" })
-      setSelectedStops((prev) => prev ? prev.map((s) => s.stop_id === editingQuantity.stopId ? { ...s, quantity_offloaded: editingQuantity.value } : s) : prev)
-      setTimeout(() => setQuantityMessage(null), 2000)
-      loadAll()
-    }
-    setEditingQuantity(null)
-    setQuantitySaving(false)
-  }
-
-  async function openResolveModal(stop: Stop) {
-    setResolvingStop(stop)
-    setResolveBags(String(stop.quantity_offloaded))
-    setResolveLocation(stop.stop_location)
-    setResolveBrokerId(stop.broker_id ?? "")
-    setResolveMessage("")
-
+  // Fetch brokers and stores for the resolve modal
+async function fetchResolveData() {
     if (allBrokers.length === 0) {
       const { data } = await supabase.from("Brokers").select("broker_id, broker_name").order("broker_name")
       setAllBrokers(data || [])
     }
+    if (storeLocations.length === 0) {
+      const stores = await fetchStores()
+      setStoreLocations(stores)
+    }
   }
 
-  function closeResolveModal() {
-    setResolvingStop(null)
-    setResolveBags("")
-    setResolveLocation("")
-    setResolveBrokerId("")
+  async function openResolveModal(stop: Stop, tripId: string) {
+    await fetchResolveData()
+    setResolvingTripId(tripId)
+    setResolvingDisputeReason(stop.dispute_reason)
+    
+    // Initialize with the original stop data
+    const initialStop: ResolveStopForm = {
+      stop_type: stop.stop_type,
+      broker_id: stop.broker_id,
+      customer_id: stop.customer_id,
+      store_name: stop.store_name,
+      quantity_offloaded: stop.quantity_offloaded,
+      stop_location: stop.stop_location,
+      stop_time: stop.stop_time,
+      isOriginal: true,
+      tempId: stop.stop_id,
+    }
+    setResolvingStops([initialStop])
     setResolveMessage("")
   }
 
-  async function handleResolveStop() {
-    if (!resolvingStop) return
+  function closeResolveModal() {
+    setResolvingStops([])
+    setResolveMessage("")
+    setResolvingTripId(null)
+    setResolvingDisputeReason(null)
+  }
+
+  function addResolveStop() {
+    // Add a new empty stop form for splitting
+    const newStop: ResolveStopForm = {
+      stop_type: "customer",
+      broker_id: null,
+      customer_id: null,
+      store_name: null,
+      quantity_offloaded: 0,
+      stop_location: "",
+      stop_time: new Date().toISOString(),
+      isOriginal: false,
+      tempId: `temp-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+    }
+    setResolvingStops(prev => [...prev, newStop])
+  }
+
+  function removeResolveStop(tempId: string) {
+    setResolvingStops(prev => prev.filter(s => s.tempId !== tempId))
+  }
+
+  function updateResolveStop(tempId: string, field: keyof ResolveStopForm, value: any) {
+    setResolvingStops(prev => prev.map(s => 
+      s.tempId === tempId ? { ...s, [field]: value } : s
+    ))
+  }
+
+  // Calculate total quantity across all resolve stops
+  const totalResolveQuantity = resolvingStops.reduce((sum, s) => sum + (s.quantity_offloaded || 0), 0)
+  const originalQuantity = resolvingStops.find(s => s.isOriginal)?.quantity_offloaded || 0
+  const isOverLimit = totalResolveQuantity > originalQuantity && originalQuantity > 0
+
+  async function handleResolveStops() {
+    if (resolvingStops.length === 0) return
+    if (isOverLimit) {
+      setResolveMessage(`Total quantity (${totalResolveQuantity}) cannot exceed original disputed quantity (${originalQuantity})`)
+      return
+    }
+    // Validate each stop
+    for (const stop of resolvingStops) {
+      if (stop.quantity_offloaded <= 0) {
+        setResolveMessage("All stops must have quantity > 0")
+        return
+      }
+      if (stop.stop_type === "customer" && !stop.broker_id) {
+        setResolveMessage("Customer stops require a broker")
+        return
+      }
+      if (stop.stop_type === "customer" && !stop.stop_location.trim()) {
+        setResolveMessage("Customer stops require a location")
+        return
+      }
+      if (stop.stop_type === "store" && !stop.store_name) {
+        setResolveMessage("Store stops require a store")
+        return
+      }
+    }
+
     setResolveSubmitting(true)
     setResolveMessage("")
 
     try {
-      const parsedBags = parseInt(resolveBags)
-      const safeBags = Number.isNaN(parsedBags) || parsedBags < 0 ? resolvingStop.quantity_offloaded : parsedBags
+      const originalStop = resolvingStops.find(s => s.isOriginal)
+      if (!originalStop) throw new Error("Original stop not found")
 
-      const { error } = await apiMutate("trips", {
+      // Update the original stop
+      const originalUpdateData: Record<string, unknown> = {
+        disputed: false,
+        dispute_reason: null,
+        disputed_by: null,
+        confirmed: false,
+        quantity_offloaded: originalStop.quantity_offloaded,
+        stop_type: originalStop.stop_type,
+        stop_location: originalStop.stop_type === "store" ? originalStop.store_name : originalStop.stop_location,
+        stop_time: originalStop.stop_time,
+      }
+
+      if (originalStop.stop_type === "customer") {
+        originalUpdateData.broker_id = originalStop.broker_id
+        originalUpdateData.customer_id = originalStop.customer_id
+        originalUpdateData.store_name = null
+      } else {
+        originalUpdateData.broker_id = null
+        originalUpdateData.customer_id = null
+        originalUpdateData.store_name = originalStop.store_name
+      }
+
+      const { error: updateError } = await apiMutate("trips", {
         action: "update",
         table: "Stops",
-        data: {
-          disputed: false,
-          dispute_reason: null,
-          disputed_by: null,
-          confirmed: false,
-          quantity_offloaded: safeBags,
-          stop_location: resolveLocation || resolvingStop.stop_location,
-          broker_id: resolveBrokerId || resolvingStop.broker_id,
-        },
-        filters: { stop_id: resolvingStop.stop_id },
+        data: originalUpdateData,
+        filters: { stop_id: originalStop.tempId },
       })
 
-      if (error) {
-        setResolveMessage("Failed to resolve dispute")
+      if (updateError) {
+        setResolveMessage("Failed to update original stop")
         return
+      }
+
+      // Create additional stops
+      const additionalStops = resolvingStops.filter(s => !s.isOriginal)
+      if (!resolvingTripId) throw new Error("Trip ID not found")
+      
+      for (const stop of additionalStops) {
+        const newStopData: Record<string, unknown> = {
+          trip_id: resolvingTripId,
+          stop_type: stop.stop_type,
+          quantity_offloaded: stop.quantity_offloaded,
+          stop_location: stop.stop_type === "store" ? stop.store_name : stop.stop_location,
+          stop_time: stop.stop_time,
+        }
+
+        if (stop.stop_type === "customer") {
+          newStopData.broker_id = stop.broker_id
+          newStopData.customer_id = stop.customer_id
+          newStopData.store_name = null
+        } else {
+          newStopData.broker_id = null
+          newStopData.customer_id = null
+          newStopData.store_name = stop.store_name
+        }
+
+        const { error: insertError } = await apiMutate("trips", {
+          action: "insert",
+          table: "Stops",
+          data: newStopData,
+        })
+
+        if (insertError) {
+          setResolveMessage(`Failed to create additional stop: ${insertError}`)
+          return
+        }
       }
 
       closeResolveModal()
@@ -1253,40 +1367,11 @@ export default function MonitorTrips() {
 
                             <div style={{ marginBottom: 10 }}>
                               <p style={{ margin: "0 0 6px 0", fontSize: FONT_SIZE.xs, fontWeight: 600, color: "#0f172a" }}>Bags Offloaded:</p>
-                              {editingQuantity?.stopId === stop.stop_id ? (
-                                <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
-                                  <input
-                                    type="number"
-                                    min={0}
-                                    value={editingQuantity.value}
-                                    onChange={(e) => setEditingQuantity({ ...editingQuantity, value: parseInt(e.target.value) || 0 })}
-                                    style={{ width: 80, padding: "6px 8px", border: "1px solid #fecaca", borderRadius: 4, fontSize: FONT_SIZE.sm }}
-                                    autoFocus
-                                  />
-                                  <button onClick={handleSaveQuantity} disabled={quantitySaving} style={{ padding: "6px 12px", background: "#16a34a", color: "white", border: "none", borderRadius: 4, fontSize: FONT_SIZE.xs, cursor: quantitySaving ? "not-allowed" : "pointer", opacity: quantitySaving ? 0.7 : 1 }}>
-                                    {quantitySaving ? "..." : "Save"}
-                                  </button>
-                                  <button onClick={() => setEditingQuantity(null)} disabled={quantitySaving} style={{ padding: "6px 12px", background: "white", color: "#64748b", border: "1px solid #e2e8f0", borderRadius: 4, fontSize: FONT_SIZE.xs, cursor: "pointer" }}>
-                                    Cancel
-                                  </button>
-                                </div>
-                              ) : (
-                                <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                                  <span style={{ fontSize: FONT_SIZE.sm, color: "#0f172a" }}>{stop.quantity_offloaded} bags</span>
-                                  {canEdit && (
-                                    <button onClick={() => setEditingQuantity({ stopId: stop.stop_id, value: stop.quantity_offloaded })} style={{ padding: "4px 10px", background: "white", color: "#0070f3", border: "1px solid #0070f3", borderRadius: 4, fontSize: FONT_SIZE.xs, cursor: "pointer" }}>
-                                      Edit
-                                    </button>
-                                  )}
-                                </div>
-                              )}
-                              {quantityMessage?.stopId === stop.stop_id && (
-                                <p style={{ margin: "4px 0 0", fontSize: FONT_SIZE.xs, color: quantityMessage.type === "success" ? "#16a34a" : "#ef4444" }}>{quantityMessage.text}</p>
-                              )}
+                              <span style={{ fontSize: FONT_SIZE.sm, color: "#0f172a" }}>{stop.quantity_offloaded} bags</span>
                             </div>
 
                             <button
-                              onClick={() => openResolveModal(stop)}
+                              onClick={() => openResolveModal(stop, selectedTrip?.trip_id || "")}
                               disabled={!canEdit}
                               style={{
                                 width: "100%", padding: "8px 0", marginTop: 10,
@@ -1405,62 +1490,168 @@ export default function MonitorTrips() {
         </div>
       )}
 
-      {resolvingStop && (
+      {resolvingStops.length > 0 && (
         <div onClick={closeResolveModal} style={{ position: "fixed", inset: 0, background: "rgba(15, 23, 42, 0.6)", backdropFilter: "blur(4px)", display: "flex", alignItems: isMobile ? "flex-end" : "center", justifyContent: "center", zIndex: 200, padding: isMobile ? 0 : 24, animation: "fadeIn 0.2s ease-out" }}>
-          <div onClick={e => e.stopPropagation()} style={{ background: "white", borderRadius: isMobile ? "20px 20px 0 0" : 12, padding: isMobile ? "28px 20px" : 32, width: "100%", maxWidth: 480, maxHeight: isMobile ? "90vh" : "85vh", overflowY: "auto", boxShadow: "0 25px 50px -12px rgba(0, 0, 0, 0.25)", animation: "slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1)" }}>
+          <div onClick={e => e.stopPropagation()} style={{ background: "white", borderRadius: isMobile ? "20px 20px 0 0" : 12, padding: isMobile ? "28px 20px" : 32, width: "100%", maxWidth: 560, maxHeight: isMobile ? "90vh" : "85vh", overflowY: "auto", boxShadow: "0 25px 50px -12px rgba(0, 0, 0, 0.25)", animation: "slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1)" }}>
+
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
               <div>
                 <h3 style={{ margin: "0 0 4px 0", color: "#0f172a", fontSize: FONT_SIZE.xl, fontWeight: 700 }}>Resolve Dispute</h3>
-                <p style={{ margin: 0, color: "#94a3b8", fontSize: FONT_SIZE.sm }}>{resolvingStop.stop_location}</p>
+                <p style={{ margin: 0, color: "#94a3b8", fontSize: FONT_SIZE.sm }}>Edit and split stops as needed</p>
               </div>
               <button onClick={closeResolveModal} style={{ background: "none", border: "none", color: "#94a3b8", cursor: "pointer", padding: 0, width: 32, height: 32, display: "flex", alignItems: "center", justifyContent: "center" }}>
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
               </button>
             </div>
 
-            {resolvingStop.dispute_reason && (
+            {resolvingDisputeReason && (
               <div style={{ padding: "10px 14px", background: "#fef2f2", border: "1px solid #fecaca", borderRadius: 8, marginBottom: 20 }}>
                 <p style={{ margin: "0 0 4px 0", fontSize: FONT_SIZE.xs, color: "#ef4444", fontWeight: 600 }}>Dispute Reason</p>
-                <p style={{ margin: 0, fontSize: FONT_SIZE.sm, color: "#7f1d1d" }}>{resolvingStop.dispute_reason}</p>
+                <p style={{ margin: 0, fontSize: FONT_SIZE.sm, color: "#7f1d1d" }}>{resolvingDisputeReason}</p>
               </div>
             )}
 
-            <div style={{ marginBottom: 16 }}>
-              <label style={{ display: "block", fontWeight: 600, fontSize: FONT_SIZE.sm, color: "#475569", marginBottom: 6 }}>Bags Offloaded</label>
-              <input
-                type="number"
-                min={0}
-                value={resolveBags}
-                onChange={e => setResolveBags(e.target.value)}
-                style={{ width: "100%", padding: "10px 12px", border: "1.5px solid #e2e8f0", borderRadius: 8, fontSize: FONT_SIZE.base, boxSizing: "border-box" }}
-              />
-            </div>
+            {resolvingStops.map((rs, idx) => {
+              const isOverForStop = totalResolveQuantity > originalQuantity && originalQuantity > 0
+              return (
+                <div key={rs.tempId} style={{ border: `1.5px solid ${rs.isOriginal ? "#e2e8f0" : "#c7d2fe"}`, borderRadius: 10, padding: 16, marginBottom: 16, background: rs.isOriginal ? "#f8fafc" : "#f5f3ff" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+                    <span style={{ fontWeight: 700, fontSize: FONT_SIZE.sm, color: "#0f172a" }}>
+                      {rs.isOriginal ? "Original Stop" : `Additional Stop ${idx}`}
+                    </span>
+                    {!rs.isOriginal && (
+                      <button onClick={() => removeResolveStop(rs.tempId)} style={{ background: "none", border: "none", color: "#ef4444", cursor: "pointer", padding: 4, display: "flex", alignItems: "center", fontSize: FONT_SIZE.xs, fontWeight: 600 }}>
+                        <Icon icon="mdi:close-circle" width={18} /> Remove
+                      </button>
+                    )}
+                  </div>
 
-            <div style={{ marginBottom: 16 }}>
-              <label style={{ display: "block", fontWeight: 600, fontSize: FONT_SIZE.sm, color: "#475569", marginBottom: 6 }}>Stop Location</label>
-              <input
-                type="text"
-                value={resolveLocation}
-                onChange={e => setResolveLocation(e.target.value)}
-                style={{ width: "100%", padding: "10px 12px", border: "1.5px solid #e2e8f0", borderRadius: 8, fontSize: FONT_SIZE.base, boxSizing: "border-box" }}
-              />
-            </div>
+                  {/* Stop Type Toggle */}
+                  <div style={{ display: "flex", gap: 6, marginBottom: 14 }}>
+                    {(["customer", "store"] as const).map((type) => (
+                      <button
+                        key={type}
+                        onClick={() => updateResolveStop(rs.tempId, "stop_type", type)}
+                        style={{
+                          flex: 1, padding: "8px 0", borderRadius: 6, cursor: "pointer",
+                          border: `1.5px solid ${rs.stop_type === type ? "#0070f3" : "#e2e8f0"}`,
+                          fontSize: FONT_SIZE.xs, fontWeight: rs.stop_type === type ? 700 : 500,
+                          background: rs.stop_type === type ? "#0070f3" : "white",
+                          color: rs.stop_type === type ? "white" : "#475569",
+                          transition: "all 0.15s"
+                        }}
+                      >
+                        {type === "customer" ? "Customer" : "Store"}
+                      </button>
+                    ))}
+                  </div>
 
-            <div style={{ marginBottom: 20 }}>
-              <label style={{ display: "block", fontWeight: 600, fontSize: FONT_SIZE.sm, color: "#475569", marginBottom: 6 }}>Broker</label>
-              <select
-                value={resolveBrokerId}
-                onChange={e => setResolveBrokerId(e.target.value)}
-                style={{ width: "100%", padding: "10px 12px", border: "1.5px solid #e2e8f0", borderRadius: 8, fontSize: FONT_SIZE.base, boxSizing: "border-box", background: "white" }}
-              >
-                {allBrokers.map(b => (
-                  <option key={b.broker_id} value={b.broker_id}>{b.broker_name}</option>
-                ))}
-              </select>
+                  {/* Customer stop fields */}
+                  {rs.stop_type === "customer" && (
+                    <>
+                      <div style={{ marginBottom: 12 }}>
+                        <label style={{ display: "block", fontWeight: 600, fontSize: FONT_SIZE.xs, color: "#475569", marginBottom: 4 }}>Broker *</label>
+                        <select
+                          value={rs.broker_id || ""}
+                          onChange={e => updateResolveStop(rs.tempId, "broker_id", e.target.value || null)}
+                          style={{ width: "100%", padding: "8px 10px", border: "1.5px solid #e2e8f0", borderRadius: 6, fontSize: FONT_SIZE.sm, boxSizing: "border-box", background: "white" }}
+                        >
+                          <option value="">Select broker...</option>
+                          {allBrokers.map(b => (
+                            <option key={b.broker_id} value={b.broker_id}>{b.broker_name}</option>
+                          ))}
+                        </select>
+                      </div>
+                      <div style={{ marginBottom: 12 }}>
+                        <label style={{ display: "block", fontWeight: 600, fontSize: FONT_SIZE.xs, color: "#475569", marginBottom: 4 }}>Customer</label>
+                        <CustomerSelector
+                          onSelect={(c) => updateResolveStop(rs.tempId, "customer_id", c.customer_id || null)}
+                          initialValue={""}
+                        />
+                      </div>
+                      <div style={{ marginBottom: 12 }}>
+                        <label style={{ display: "block", fontWeight: 600, fontSize: FONT_SIZE.xs, color: "#475569", marginBottom: 4 }}>Stop Location *</label>
+                        <input
+                          type="text"
+                          value={rs.stop_location}
+                          onChange={e => updateResolveStop(rs.tempId, "stop_location", e.target.value)}
+                          placeholder="e.g. Aba Road, beside GTBank"
+                          style={{ width: "100%", padding: "8px 10px", border: "1.5px solid #e2e8f0", borderRadius: 6, fontSize: FONT_SIZE.sm, boxSizing: "border-box" }}
+                        />
+                      </div>
+                    </>
+                  )}
+
+                  {/* Store stop fields */}
+                  {rs.stop_type === "store" && (
+                    <div style={{ marginBottom: 12 }}>
+                      <label style={{ display: "block", fontWeight: 600, fontSize: FONT_SIZE.xs, color: "#475569", marginBottom: 4 }}>Store *</label>
+                      <select
+                        value={rs.store_name || ""}
+                        onChange={e => updateResolveStop(rs.tempId, "store_name", e.target.value || null)}
+                        style={{ width: "100%", padding: "8px 10px", border: "1.5px solid #e2e8f0", borderRadius: 6, fontSize: FONT_SIZE.sm, boxSizing: "border-box", background: "white" }}
+                      >
+                        <option value="">Select store...</option>
+                        {storeLocations.map(loc => (
+                          <option key={loc} value={loc}>{loc}</option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
+
+                  {/* Quantity */}
+                  <div style={{ marginBottom: 0 }}>
+                    <label style={{ display: "block", fontWeight: 600, fontSize: FONT_SIZE.xs, color: "#475569", marginBottom: 4 }}>Bags Offloaded *</label>
+                    <input
+                      type="number"
+                      min={1}
+                      value={rs.quantity_offloaded || ""}
+                      onChange={e => {
+                        const val = parseInt(e.target.value) || 0
+                        updateResolveStop(rs.tempId, "quantity_offloaded", val)
+                      }}
+                      placeholder="e.g. 200"
+                      style={{ width: "100%", padding: "8px 10px", border: "1.5px solid #e2e8f0", borderRadius: 6, fontSize: FONT_SIZE.sm, boxSizing: "border-box" }}
+                    />
+                  </div>
+                </div>
+              )
+            })}
+
+            {/* Quantity summary */}
+            <div style={{ padding: "10px 14px", background: isOverLimit ? "#fef2f2" : "#f0fdf4", border: `1.5px solid ${isOverLimit ? "#fecaca" : "#bbf7d0"}`, borderRadius: 8, marginBottom: 12, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <span style={{ fontSize: FONT_SIZE.sm, color: isOverLimit ? "#b91c1c" : "#15803d", fontWeight: 500 }}>Total Bags</span>
+              <span style={{ fontSize: FONT_SIZE.base, fontWeight: 700, color: isOverLimit ? "#b91c1c" : "#15803d" }}>
+                {totalResolveQuantity} / {originalQuantity}
+              </span>
             </div>
+            {isOverLimit && (
+              <div style={{ padding: "8px 14px", background: "#fef2f2", border: "1px solid #fecaca", borderRadius: 8, marginBottom: 12 }}>
+                <p style={{ margin: 0, fontSize: FONT_SIZE.xs, color: "#b91c1c", fontWeight: 600 }}>
+                  Total quantity ({totalResolveQuantity}) cannot exceed original disputed quantity ({originalQuantity})
+                </p>
+              </div>
+            )}
+
+            {/* Add Another Stop */}
+            <button
+              onClick={addResolveStop}
+              style={{
+                width: "100%", padding: "10px 0", marginBottom: 16,
+                background: "white", color: "#0070f3", border: "1.5px dashed #0070f3",
+                borderRadius: 8, cursor: "pointer", fontWeight: 600, fontSize: FONT_SIZE.sm,
+                display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
+                transition: "all 0.15s"
+              }}
+              onMouseEnter={e => { e.currentTarget.style.background = "#eff6ff" }}
+              onMouseLeave={e => { e.currentTarget.style.background = "white" }}
+            >
+              <Icon icon="mdi:plus-circle" width={18} />
+              Add Another Stop
+            </button>
 
             {resolveMessage && (
-              <div style={{ display: "flex", alignItems: "center", gap: 6, color: "#ef4444", marginBottom: 14, fontSize: FONT_SIZE.sm }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 6, color: "#ef4444", marginBottom: 14, fontSize: FONT_SIZE.sm, padding: "8px 12px", background: "#fef2f2", borderRadius: 6, border: "1px solid #fecaca" }}>
                 <Icon icon="mdi:alert-circle" width={16} />
                 {resolveMessage}
               </div>
@@ -1470,8 +1661,8 @@ export default function MonitorTrips() {
               <button onClick={closeResolveModal} disabled={resolveSubmitting} style={{ padding: "12px 16px", background: "white", color: "#475569", border: "1px solid #cbd5e1", borderRadius: 8, cursor: "pointer", fontWeight: 600, fontSize: FONT_SIZE.md, minHeight: 44 }}>
                 Cancel
               </button>
-              <button onClick={handleResolveStop} disabled={resolveSubmitting} style={{ padding: "12px 16px", background: resolveSubmitting ? "#94a3b8" : "#0070f3", color: "white", border: "none", borderRadius: 8, cursor: resolveSubmitting ? "not-allowed" : "pointer", fontWeight: 600, fontSize: FONT_SIZE.md, minHeight: 44, display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
-                {resolveSubmitting ? "Resolving..." : "Resolve & Send Back"}
+              <button onClick={handleResolveStops} disabled={resolveSubmitting || isOverLimit} style={{ padding: "12px 16px", background: resolveSubmitting || isOverLimit ? "#94a3b8" : "#0070f3", color: "white", border: "none", borderRadius: 8, cursor: resolveSubmitting || isOverLimit ? "not-allowed" : "pointer", fontWeight: 600, fontSize: FONT_SIZE.md, minHeight: 44, display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
+                {resolveSubmitting ? "Saving..." : "Save & Resolve"}
               </button>
             </div>
           </div>
