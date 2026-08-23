@@ -15,6 +15,11 @@ export interface FuelExpense {
   material_centre?: string | null
   product?: string | null
   trip_created_at?: string | null
+  status: string
+  rejection_reason: string | null
+  approved_by: string | null
+  approved_at: string | null
+  approval_notes: string | null
 }
 
 interface FuelExpensesFilter {
@@ -41,7 +46,7 @@ export function useFuelExpenses(filter?: FuelExpensesFilter) {
       try {
         let query = supabase
           .from("truck_fuel_expenses")
-          .select("expense_id, manager_id, plate_number, trip_id, litres, notes, location, logged_at")
+          .select("expense_id, manager_id, plate_number, trip_id, litres, notes, location, logged_at, status, rejection_reason, approved_by, approved_at, approval_notes")
           .order("logged_at", { ascending: false })
 
         if (filter?.manager_id) {

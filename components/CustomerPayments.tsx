@@ -19,6 +19,7 @@ type Payment = {
   depositor_name: string | null
   customer_id: string | null
   customer_name: string | null
+  phone_number: string | null
   amount: number
   status: "Pending" | "Posted"
   posted_by: string | null
@@ -61,7 +62,18 @@ export default function CustomerPayments({ brokerId }: { brokerId: string }) {
       .select("*")
       .eq("broker_id", brokerId)
       .order("created_at", { ascending: false })
-    if (!error && data) setPayments(data)
+    if (!error && data) {
+      const customerIds = [...new Set(data.map(p => p.customer_id).filter(Boolean))]
+      const phoneMap: Record<string, string> = {}
+      if (customerIds.length > 0) {
+        const { data: customers } = await supabase
+          .from("Customers")
+          .select("customer_id, phone_number")
+          .in("customer_id", customerIds)
+        for (const c of customers || []) if (c.phone_number) phoneMap[c.customer_id] = c.phone_number
+      }
+      setPayments(data.map(p => ({ ...p, phone_number: p.customer_id ? (phoneMap[p.customer_id] ?? null) : null })))
+    }
     setLoading(false)
   }
 
@@ -221,7 +233,7 @@ export default function CustomerPayments({ brokerId }: { brokerId: string }) {
               >
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 12 }}>
                   <div>
-                    <h3 style={{ margin: "0 0 4px 0", fontSize: fontSize.lg, color: "#0f172a", fontWeight: 600 }}>{p.customer_name}</h3>
+                    <h3 style={{ margin: "0 0 4px 0", fontSize: fontSize.lg, color: "#0f172a", fontWeight: 600 }}>{p.customer_name}{p.phone_number ? ` (${p.phone_number})` : ""}</h3>
                     <p style={{ margin: 0, fontSize: fontSize.sm, color: "#64748b" }}>{p.bank_name} &bull; {new Date(p.payment_date).toLocaleDateString()}</p>
                   </div>
                   <span style={{ padding: "4px 10px", borderRadius: 6, fontSize: fontSize.xs, fontWeight: 500, background: ss.bg, color: ss.color, border: `1px solid ${ss.border}`, flexShrink: 0 }}>
@@ -280,7 +292,7 @@ export default function CustomerPayments({ brokerId }: { brokerId: string }) {
                     onMouseEnter={e => e.currentTarget.style.background = "#f8fafc"}
                     onMouseLeave={e => e.currentTarget.style.background = "transparent"}
                   >
-                    <td style={{ padding: "12px 16px", color: "#0f172a", fontSize: fontSize.base, fontWeight: 500 }}>{p.customer_name}</td>
+                    <td style={{ padding: "12px 16px", color: "#0f172a", fontSize: fontSize.base, fontWeight: 500 }}>{p.customer_name}{p.phone_number ? ` (${p.phone_number})` : ""}</td>
                     <td style={{ padding: "12px 16px", color: "#475569", fontSize: fontSize.sm }}>{p.bank_name}</td>
                     <td style={{ padding: "12px 16px", textAlign: "right", color: "#0f172a", fontSize: fontSize.base, fontWeight: 600 }}>₦{p.amount.toLocaleString()}</td>
                     <td style={{ padding: "12px 16px", color: "#64748b", fontSize: fontSize.sm }}>{new Date(p.payment_date).toLocaleDateString()}</td>

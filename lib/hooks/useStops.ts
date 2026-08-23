@@ -25,6 +25,7 @@ export interface EnrichedStop {
   child_order_no?: string | null
   product?: string
   customer_name?: string
+  customer_phone?: string | null
   driver_name?: string
   driver_id?: string | null
 }
@@ -81,7 +82,7 @@ export function useStops(filter?: StopsFilter) {
 
         const [tripsResult, customersResult] = await Promise.all([
           tripIds.length ? supabase.from("Trips").select("trip_id, plate_number, material_centre, ATC, order_no, child_order_no, product, driver_id, driver_name").in("trip_id", tripIds) : Promise.resolve({ data: [] }),
-          customerIds.length ? supabase.from("Customers").select("customer_id, full_name").in("customer_id", customerIds) : Promise.resolve({ data: [] }),
+          customerIds.length ? supabase.from("Customers").select("customer_id, full_name, phone_number").in("customer_id", customerIds) : Promise.resolve({ data: [] }),
         ])
 
         if (cancelled || !mountedRef.current) return
@@ -89,6 +90,7 @@ export function useStops(filter?: StopsFilter) {
         const trips = tripsResult.data || []
         const tripMap = Object.fromEntries(trips.map(t => [t.trip_id, t]))
         const customerMap = Object.fromEntries((customersResult.data || []).map(c => [c.customer_id, c.full_name]))
+        const customerPhoneMap = Object.fromEntries((customersResult.data || []).map(c => [c.customer_id, c.phone_number ?? null]))
 
         const driverIds = [...new Set(trips.map(t => t.driver_id).filter(Boolean))]
         const { data: drivers } = driverIds.length
@@ -111,6 +113,7 @@ export function useStops(filter?: StopsFilter) {
             child_order_no: trip?.child_order_no ?? null,
             product: trip?.product ?? "",
             customer_name: s.customer_id ? (customerMap[s.customer_id] ?? "Not provided") : "Not provided",
+            customer_phone: s.customer_id ? (customerPhoneMap[s.customer_id] ?? null) : null,
             driver_name: trip?.driver_id ? (driverMap[trip.driver_id] ?? driverNameFromTrip ?? "Unknown") : (driverNameFromTrip ?? "Unknown"),
             driver_id: trip?.driver_id ?? null,
           }

@@ -19,6 +19,7 @@ type CreditApproval = {
   credit_manager_id: string
   credit_manager_name: string | null
   customer_name: string | null
+  phone_number: string | null
   area: string
   product: string
   quantity: number | null
@@ -148,6 +149,7 @@ export default function CreditApprovals() {
 
       const discountMap: Record<string, boolean> = {}
       const customerMap: Record<string, string> = {}
+      const customerPhoneMap: Record<string, string | null> = {}
 
       if (stopSourceIds.length > 0) {
         const { data: stops } = await supabase
@@ -158,11 +160,17 @@ export default function CreditApprovals() {
         if (stopCustomerIds.length > 0) {
           const { data: customers } = await supabase
             .from("Customers")
-            .select("customer_id, full_name")
+            .select("customer_id, full_name, phone_number")
             .in("customer_id", stopCustomerIds)
           const custMap: Record<string, string> = {}
-          for (const c of customers || []) custMap[c.customer_id] = c.full_name
-          for (const s of stops || []) customerMap[`stop:${s.stop_id}`] = s.customer_id ? (custMap[s.customer_id] ?? "") : ""
+          const phoneMap: Record<string, string | null> = {}
+          for (const c of customers || []) { custMap[c.customer_id] = c.full_name; phoneMap[c.customer_id] = c.phone_number ?? null }
+          for (const s of stops || []) {
+            if (s.customer_id) {
+              customerMap[`stop:${s.stop_id}`] = custMap[s.customer_id] ?? ""
+              customerPhoneMap[`stop:${s.stop_id}`] = phoneMap[s.customer_id] ?? null
+            }
+          }
         }
 
         const { data: adjustments } = await supabase
@@ -200,6 +208,7 @@ export default function CreditApprovals() {
           broker_name: brokerMap[a.broker_id] || "Unknown",
           credit_manager_name: managerMap[a.credit_manager_id] || "Unknown",
           customer_name: customerMap[`${a.source_type}:${a.source_id}`] || "",
+          phone_number: customerPhoneMap[`${a.source_type}:${a.source_id}`] ?? null,
           has_discount: discountMap[`${a.source_type}:${a.source_id}`] || false,
           credit_limit: brokerLimitMap[a.broker_id] ?? null,
           active_credit_total: activeTotal,
@@ -529,7 +538,7 @@ export default function CreditApprovals() {
                     <h3 style={{ margin: "0 0 4px", color: "#0f172a", fontSize: FONT_SIZE.lg, fontWeight: 700 }}>{approval.broker_name}</h3>
                     <p style={{ margin: "0 0 2px", color: "#64748b", fontSize: FONT_SIZE.sm }}>{approval.product} · {approval.area}</p>
                     {approval.customer_name && (
-                      <p style={{ margin: "0 0 10px", color: "#0f172a", fontSize: FONT_SIZE.sm, fontWeight: 500 }}>Customer: {approval.customer_name}</p>
+                      <p style={{ margin: "0 0 10px", color: "#0f172a", fontSize: FONT_SIZE.sm, fontWeight: 500 }}>Customer: {approval.customer_name}{approval.phone_number ? ` (${approval.phone_number})` : ""}</p>
                     )}
                     {!approval.customer_name && <p style={{ margin: "0 0 10px" }} />}
 

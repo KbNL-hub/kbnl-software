@@ -17,6 +17,7 @@ type Stop = {
   trip_id: string
   customer_id: string | null
   customer_name: string
+  customer_phone: string | null
   quantity_offloaded: number
   stop_location: string
   stop_time: string
@@ -63,7 +64,7 @@ export default function MyStops() {
     confirmed: boolean; disputed: boolean; discount_status: string | null;
     on_credit: boolean; credit_approval_id: string | null;
     Trips: { plate_number: string; material_centre: string; ATC: string | null; order_no: string | null; child_order_no: string | null; product: string } | null;
-    Customers: { full_name: string } | null;
+    Customers: { full_name: string; phone_number: string | null } | null;
   }
 
   const fetchStops = useCallback(async (bId: string) => {
@@ -72,7 +73,7 @@ export default function MyStops() {
       .select(`
         stop_id, trip_id, customer_id, quantity_offloaded, stop_location, stop_time, confirmed, disputed, discount_status, on_credit, credit_approval_id,
         Trips!inner(plate_number, material_centre, ATC, order_no, child_order_no, product),
-        Customers(full_name)
+        Customers(full_name, phone_number)
       `)
       .eq("broker_id", bId)
       .order("stop_time", { ascending: false })
@@ -111,6 +112,7 @@ export default function MyStops() {
       child_order_no: stop.Trips?.child_order_no ?? null,
       product: stop.Trips?.product ?? "",
       customer_name: stop.Customers?.full_name ?? "Not provided",
+      customer_phone: stop.Customers?.phone_number ?? null,
     }))
 
     const returnedStops = enriched.filter(s => s.discount_status === "returned" || s.credit_approval_status === "Rejected")
@@ -339,7 +341,7 @@ export default function MyStops() {
                     <p style={{ margin: 0, fontWeight: 700, fontSize: isMobile ? 15 : 14, color: "#0f172a" }}>{stop.plate_number}</p>
                     <span style={{ padding: "2px 8px", borderRadius: 10, fontSize: 11, fontWeight: 600, background: statusColor.bg, color: statusColor.text, border: `1px solid ${statusColor.border}` }}>{statusColor.label}</span>
                   </div>
-                  <p style={{ margin: "2px 0 0", fontSize: 12, color: "#64748b", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{stop.stop_location} &middot; {stop.customer_name}</p>
+                  <p style={{ margin: "2px 0 0", fontSize: 12, color: "#64748b", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{stop.stop_location} &middot; {stop.customer_name}{stop.customer_phone ? ` (${stop.customer_phone})` : ""}</p>
                 </div>
               </div>
               <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0, paddingLeft: 8 }}>
@@ -355,7 +357,7 @@ export default function MyStops() {
               <div style={{ padding: "0 20px 16px", borderTop: "1px solid #f1f5f9" }}>
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, padding: "12px 0" }}>
                   <div><p style={{ margin: 0, fontSize: 11, color: "#94a3b8" }}>Bags</p><p style={{ margin: "2px 0 0", fontWeight: 700, fontSize: 14, color: "#0f172a" }}>{stop.quantity_offloaded}</p></div>
-                  <div><p style={{ margin: 0, fontSize: 11, color: "#94a3b8" }}>Customer</p><p style={{ margin: "2px 0 0", fontSize: 13, color: "#0f172a", fontWeight: 500 }}>{stop.customer_name}</p></div>
+                  <div><p style={{ margin: 0, fontSize: 11, color: "#94a3b8" }}>Customer</p><p style={{ margin: "2px 0 0", fontSize: 13, color: "#0f172a", fontWeight: 500 }}>{stop.customer_name}{stop.customer_phone ? ` (${stop.customer_phone})` : ""}</p></div>
                   <div><p style={{ margin: 0, fontSize: 11, color: "#94a3b8" }}>Loading Point</p><p style={{ margin: "2px 0 0", fontSize: 12, color: "#475569" }}>{stop.material_centre}</p></div>
                   {stop.order_no ? (
                     <>
@@ -472,7 +474,7 @@ export default function MyStops() {
                     onMouseLeave={e => e.currentTarget.style.background = "transparent"}
                   >
                     <td style={{ padding: "12px 16px", color: "#0f172a", fontSize: 14, fontWeight: 500 }}>{stop.plate_number}</td>
-                    <td style={{ padding: "12px 16px", color: "#475569", fontSize: 13 }}>{stop.customer_name}</td>
+                    <td style={{ padding: "12px 16px", color: "#475569", fontSize: 13 }}>{stop.customer_name}{stop.customer_phone ? ` (${stop.customer_phone})` : ""}</td>
                     <td style={{ padding: "12px 16px", textAlign: "right", color: "#0f172a", fontSize: 14, fontWeight: 600 }}>{stop.quantity_offloaded}</td>
                     <td style={{ padding: "12px 16px", color: "#64748b", fontSize: 13 }}>{stop.stop_location}</td>
                     <td style={{ padding: "12px 16px", color: "#64748b", fontSize: 13 }}>{new Date(stop.stop_time).toLocaleDateString("en-NG", { day: "numeric", month: "short" })}</td>

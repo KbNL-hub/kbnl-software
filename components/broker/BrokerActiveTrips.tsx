@@ -13,6 +13,7 @@ type Stop = {
   stop_type: "customer" | "store"
   broker_name: string | null
   customer_name: string | null
+  customer_phone: string | null
   quantity_offloaded: number
   stop_time: string
   stop_location: string
@@ -141,6 +142,7 @@ export default function BrokerActiveTrips() {
             (s || []).map(async (stop) => {
               let broker_name = null
               let customer_name = null
+              let customer_phone = null
 
               if (stop.stop_type === "customer") {
                 const { data: broker } = await supabase
@@ -153,10 +155,11 @@ export default function BrokerActiveTrips() {
                 if (stop.customer_id) {
                   const { data: customerData } = await supabase
                     .from("Customers")
-                    .select("full_name")
+                    .select("full_name, phone_number")
                     .eq("customer_id", stop.customer_id)
                     .single()
                   customer_name = customerData?.full_name ?? "Not provided"
+                  customer_phone = customerData?.phone_number ?? null
                 } else {
                   customer_name = "Not provided"
                 }
@@ -173,6 +176,7 @@ export default function BrokerActiveTrips() {
                 stop_type: stop.stop_type,
                 broker_name,
                 customer_name,
+                customer_phone,
                 quantity_offloaded: stop.quantity_offloaded,
                 stop_time: stop.stop_time,
                 stop_location: stop.stop_location,
@@ -266,6 +270,7 @@ export default function BrokerActiveTrips() {
             (s || []).map(async (stop) => {
               let broker_name = null
               let customer_name = null
+              let customer_phone = null
 
               if (stop.stop_type === "customer") {
                 const { data: broker } = await supabase
@@ -278,10 +283,11 @@ export default function BrokerActiveTrips() {
                 if (stop.customer_id) {
                   const { data: customerData } = await supabase
                     .from("Customers")
-                    .select("full_name")
+                    .select("full_name, phone_number")
                     .eq("customer_id", stop.customer_id)
                     .single()
                   customer_name = customerData?.full_name ?? "Not provided"
+                  customer_phone = customerData?.phone_number ?? null
                 } else {
                   customer_name = "Not provided"
                 }
@@ -298,6 +304,7 @@ export default function BrokerActiveTrips() {
                 stop_type: stop.stop_type,
                 broker_name,
                 customer_name,
+                customer_phone,
                 quantity_offloaded: stop.quantity_offloaded,
                 stop_time: stop.stop_time,
                 stop_location: stop.stop_location,
@@ -674,7 +681,7 @@ export default function BrokerActiveTrips() {
                     {stop.stop_type === "customer" && (
                       <>
                         <p style={{ margin: "6px 0", color: "#475569", fontSize: fontSize.sm }}><strong>Broker:</strong> <span style={{ color: "#0f172a" }}>{stop.broker_name}</span></p>
-                        <p style={{ margin: "6px 0", color: "#475569", fontSize: fontSize.sm }}><strong>Customer:</strong> <span style={{ color: "#0f172a" }}>{stop.customer_name}</span></p>
+                        <p style={{ margin: "6px 0", color: "#475569", fontSize: fontSize.sm }}><strong>Customer:</strong> <span style={{ color: "#0f172a" }}>{stop.customer_name}{stop.customer_phone ? ` (${stop.customer_phone})` : ""}</span></p>
                       </>
                     )}
 

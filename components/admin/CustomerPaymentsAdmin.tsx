@@ -89,7 +89,18 @@ export default function CustomerPaymentsAdmin() {
 
   async function fetchPayments() {
     const { data } = await supabase.from("customer_payments").select("*").order("created_at", { ascending: false })
-    if (data) setPayments(data)
+    if (data) {
+      const customerIds = [...new Set(data.map(p => p.customer_id).filter(Boolean))]
+      const phoneMap: Record<string, string> = {}
+      if (customerIds.length > 0) {
+        const { data: customers } = await supabase
+          .from("Customers")
+          .select("customer_id, phone_number")
+          .in("customer_id", customerIds)
+        for (const c of customers || []) if (c.phone_number) phoneMap[c.customer_id] = c.phone_number
+      }
+      setPayments(data.map(p => ({ ...p, phone_number: p.customer_id ? (phoneMap[p.customer_id] ?? null) : null })))
+    }
     setLoading(false)
   }
 
@@ -370,7 +381,7 @@ export default function CustomerPaymentsAdmin() {
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, padding: "12px 0", borderTop: "1px solid #f1f5f9", borderBottom: "1px solid #f1f5f9" }}>
                 <div>
                   <p style={{ margin: "0 0 4px 0", color: "#94a3b8", fontSize: FONT_SIZE.xs }}>Customer</p>
-                  <p style={{ margin: 0, color: "#0f172a", fontSize: FONT_SIZE.base, fontWeight: 500 }}>{p.customer_name}</p>
+                  <p style={{ margin: 0, color: "#0f172a", fontSize: FONT_SIZE.base, fontWeight: 500 }}>{p.customer_name}{p.phone_number ? ` (${p.phone_number})` : ""}</p>
                   {!p.customer_id && <span style={{ fontSize: FONT_SIZE.xs, padding: "2px 6px", background: "#fef3c7", color: "#92400e", borderRadius: 4, fontWeight: "bold", marginTop: 4, display: "inline-block" }}>NEW</span>}
                 </div>
                 <div>
@@ -420,7 +431,7 @@ export default function CustomerPaymentsAdmin() {
                   <td style={{ padding: "12px 16px", color: "#0f172a", fontSize: FONT_SIZE.sm }}>{new Date(p.payment_date).toLocaleDateString()}</td>
                   <td style={{ padding: "12px 16px", color: "#0f172a", fontSize: FONT_SIZE.base, fontWeight: 500 }}>{profilesMap[p.broker_id] || "Unknown"}</td>
                   <td style={{ padding: "12px 16px" }}>
-                    <div style={{ color: "#0f172a", fontSize: FONT_SIZE.base, fontWeight: 500 }}>{p.customer_name}</div>
+                    <div style={{ color: "#0f172a", fontSize: FONT_SIZE.base, fontWeight: 500 }}>{p.customer_name}{p.phone_number ? ` (${p.phone_number})` : ""}</div>
                     {!p.customer_id && <span style={{ fontSize: FONT_SIZE.xs, padding: "2px 6px", background: "#fef3c7", color: "#92400e", borderRadius: 4, fontWeight: "bold", marginTop: 2, display: "inline-block" }}>NEW</span>}
                   </td>
                   <td style={{ padding: "12px 16px", color: "#475569", fontSize: FONT_SIZE.sm }}>{p.depositor_name || "—"}</td>
@@ -475,7 +486,7 @@ export default function CustomerPaymentsAdmin() {
                 </div>
                 <div>
                   <p style={{ margin: "0 0 4px 0", color: "#94a3b8", fontSize: FONT_SIZE.xs }}>Customer</p>
-                  <p style={{ margin: 0, fontSize: FONT_SIZE.base, fontWeight: 600, color: "#0f172a" }}>{selectedPayment.customer_name}</p>
+                  <p style={{ margin: 0, fontSize: FONT_SIZE.base, fontWeight: 600, color: "#0f172a" }}>{selectedPayment.customer_name}{selectedPayment.phone_number ? ` (${selectedPayment.phone_number})` : ""}</p>
                 </div>
                 <div>
                   <p style={{ margin: "0 0 4px 0", color: "#94a3b8", fontSize: FONT_SIZE.xs }}>Depositor</p>

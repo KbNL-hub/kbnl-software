@@ -17,7 +17,7 @@ const supabaseAdmin = createClient(
 )
 
 const ALLOWED_TABLES = ["fuel_requests", "fuel_companies", "fuel_deposits", "truck_fuel_expenses"] as const
-const ALLOWED_RPCS = ["confirm_fuel_receipt", "add_fuel_deposit", "invalidate_atf"] as const
+const ALLOWED_RPCS = ["confirm_fuel_receipt", "add_fuel_deposit", "invalidate_atf", "approve_fuel_expense", "reject_fuel_expense", "log_fuel_expense"] as const
 
 const TABLE_ROLES: Record<string, string[]> = {
   fuel_requests: ["TruckOfficer", "TruckAdmin", "Admin", "SuperAdmin"],
@@ -30,12 +30,18 @@ const RPC_ROLES: Record<string, string[]> = {
   confirm_fuel_receipt: ["Driver", "Admin", "SuperAdmin"],
   add_fuel_deposit: ["Admin", "SuperAdmin"],
   invalidate_atf: ["TruckAdmin", "Admin", "SuperAdmin"],
+  approve_fuel_expense: ["TruckAdmin", "Admin", "SuperAdmin"],
+  reject_fuel_expense: ["TruckAdmin", "Admin", "SuperAdmin"],
+  log_fuel_expense: ["TruckOfficer", "Admin", "SuperAdmin"],
 }
 
 const RPC_PARAM_SCHEMAS: Record<string, string[]> = {
   confirm_fuel_receipt: ["p_request_id", "p_driver_id", "p_rate"],
   add_fuel_deposit: ["p_company_id", "p_amount", "p_note"],
   invalidate_atf: ["p_request_id", "p_reason", "p_status_filter"],
+  approve_fuel_expense: ["p_expense_id", "p_admin_id", "p_notes"],
+  reject_fuel_expense: ["p_expense_id", "p_admin_id", "p_reason"],
+  log_fuel_expense: ["p_manager_id", "p_plate_number", "p_trip_id", "p_litres", "p_notes", "p_location"],
 }
 
 function buildError(msg: string, status: number) {
@@ -123,6 +129,22 @@ export async function POST(req: NextRequest) {
         }
         if (result.data?.success && company) {
           notifyTruckAdminFuelTopUp(company.company_name, amount).catch(console.error)
+        }
+        return NextResponse.json({ data: result.data })
+      }
+
+      if (fnName === "approve_fuel_expense" || fnName === "reject_fuel_expense") {
+        const result = await supabaseAdmin.rpc(fnName, safeParams)
+        if (result.error) {
+          return buildError(result.error.message || "RPC failed", 500)
+        }
+        return NextResponse.json({ data: result.data })
+      }
+
+      if (fnName === "log_fuel_expense") {
+        const result = await supabaseAdmin.rpc(fnName, safeParams)
+        if (result.error) {
+          return buildError(result.error.message || "RPC failed", 500)
         }
         return NextResponse.json({ data: result.data })
       }

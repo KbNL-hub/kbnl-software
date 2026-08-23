@@ -40,6 +40,40 @@ function buildError(msg: string, status: number) {
   return NextResponse.json({ error: msg }, { status })
 }
 
+// Trip Payment feature constants
+const SC_RATE_PER_BAG = 600
+
+/**
+ * Creates the trip_payments row for a newly started trip.
+ * - SC: value is computed immediately as SC_RATE_PER_BAG x quantity_loaded.
+ * - MDD: value/payment_expected stay null until an admin selects a location.
+ * Failures are logged but never block the trip from starting.
+ */
+async function createTripPaymentRecord(row: Record<string, unknown>) {
+  try {
+    const tripId = row.trip_id as string
+    const plate = row.plate_number as string
+    if (!tripId || !plate) return
+    const tripType = row.trip_type === "MDD" ? "MDD" : "SC"
+    const quantityLoaded = Math.max(0, Math.round(Number(row.loaded_quantity) || 0))
+
+    const { data: truck } = await supabaseAdmin
+      .from("Trucks").select("tonnage").eq("plate_number", plate).single()
+
+    const { error } = await supabaseAdmin.from("trip_payments").insert({
+      trip_id: tripId,
+      trip_type: tripType,
+      plate_number: plate,
+      tonnage: Number(truck?.tonnage) || 0,
+      quantity_loaded: quantityLoaded,
+      value: tripType === "SC" ? SC_RATE_PER_BAG * quantityLoaded : null,
+    })
+    if (error) console.error("Failed to create trip payment record", error)
+  } catch (err) {
+    console.error("Failed to create trip payment record", err)
+  }
+}
+
 function isBrokerOnly(roles: string[]) {
   return roles.includes("Broker") &&
     !roles.some(r => ["Admin", "SuperAdmin", "DeskOfficer", "Supervisor", "CreditManager", "StoreOfficer", "StoreSupervisor"].includes(r))
@@ -102,6 +136,7 @@ export async function POST(req: NextRequest) {
         // Trip Started
         if (table === "Trips" && result?.[0]) {
           const row = result[0] as Record<string, unknown>
+          createTripPaymentRecord(row).catch(console.error)
           if (row.trip_status === "In transit" && row.material_centre) {
             const tripId = row.trip_id as string
             const plate = row.plate_number as string

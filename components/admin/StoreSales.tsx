@@ -36,6 +36,7 @@ type StoreSale = {
   discount_status: string | null
   driver_name?: string | null
   kbnl_truck_no?: string | null
+  is_credit_approved?: boolean
 }
 
 type GroupedSale = {
@@ -159,10 +160,24 @@ export default function StoreSales() {
       for (const t of trucks || []) truckMap.set(t.plate_number, t.kbnl_truck_no || "")
     }
 
+    // Fetch approved credit approvals for these sales
+    const saleIds = data.map(s => s.sale_id)
+    const creditApprovedSet = new Set<string>()
+    if (saleIds.length > 0) {
+      const { data: creditApprovals } = await supabase
+        .from("credit_approvals")
+        .select("source_id")
+        .eq("status", "Approved")
+        .eq("source_type", "store_sale")
+        .in("source_id", saleIds)
+      for (const ca of creditApprovals || []) creditApprovedSet.add(ca.source_id)
+    }
+
     return data.map(s => ({
       ...s,
       broker_name: s.broker_id ? brokerMap.get(s.broker_id) ?? "Unknown" : null,
       kbnl_truck_no: s.truck_plate ? truckMap.get(s.truck_plate) ?? null : null,
+      is_credit_approved: creditApprovedSet.has(s.sale_id),
     }))
   }
 
@@ -712,6 +727,9 @@ export default function StoreSales() {
                           {sale.sale_type !== "truck_load_out" && (
                             <>
                               <p style={{ margin: 0, fontSize: FONT_SIZE.sm, color: "#475569" }}><span style={{ color: "#94a3b8", minWidth: 80, display: "inline-block" }}>Price/bag:</span> <span style={{ fontWeight: 500 }}>{sale.price_per_bag ? formatAmount(sale.price_per_bag) : "—"}</span></p>
+                              {sale.sale_type !== "truck_load_out" && sale.is_credit_approved && sale.broker_id && (
+                                <span style={{ display: "inline-block", marginTop: 4, marginBottom: 2, padding: "4px 12px", borderRadius: 6, fontSize: FONT_SIZE.xs, fontWeight: 600, background: "#eff6ff", color: "#0070f3", border: "1px solid #93c5fd" }}>Credit</span>
+                              )}
                               <p style={{ margin: 0, fontSize: FONT_SIZE.sm, color: "#475569" }}><span style={{ color: "#94a3b8", minWidth: 80, display: "inline-block" }}>Total:</span> <span style={{ fontWeight: 600, color: "#10b981" }}>{sale.total_amount ? formatAmount(sale.total_amount) : "—"}</span></p>
                             </>
                           )}
@@ -835,7 +853,12 @@ export default function StoreSales() {
                           </td>
                           <td style={{ padding: "12px 16px", color: "#0f172a", fontSize: FONT_SIZE.base }}>{sale.product}</td>
                           <td style={{ padding: "12px 16px", color: "#0f172a", fontSize: FONT_SIZE.base, fontWeight: 500 }}>{sale.quantity}</td>
-                          <td style={{ padding: "12px 16px", color: "#64748b", fontSize: FONT_SIZE.sm }}>{sale.sale_type === "truck_load_out" ? "—" : formatAmount(sale.price_per_bag)}</td>
+                          <td style={{ padding: "12px 16px", color: "#64748b", fontSize: FONT_SIZE.sm }}>
+                            {sale.sale_type === "truck_load_out" ? "—" : formatAmount(sale.price_per_bag)}
+                            {sale.sale_type !== "truck_load_out" && sale.is_credit_approved && sale.broker_id && (
+                              <span style={{ display: "block", marginTop: 4, padding: "3px 10px", borderRadius: 6, fontSize: 10, fontWeight: 600, background: "#eff6ff", color: "#0070f3", border: "1px solid #93c5fd" }}>Credit</span>
+                            )}
+                          </td>
                           <td style={{ padding: "12px 16px", color: "#10b981", fontSize: FONT_SIZE.base, fontWeight: 600 }}>{sale.sale_type === "truck_load_out" ? "—" : formatAmount(sale.total_amount)}</td>
                           <td style={{ padding: "12px 16px", color: "#64748b", fontSize: FONT_SIZE.sm }}>{sale.customer_name || "—"}</td>
                           <td style={{ padding: "12px 16px", color: "#64748b", fontSize: FONT_SIZE.sm }}>{sale.depositor_name ? `${sale.depositor_name}${sale.bank_name ? ` (${sale.bank_name})` : ""}` : "—"}</td>

@@ -48,6 +48,7 @@ const SECTION_IMPORTS = {
   "side-trips": () => import("@/components/admin/SideTrips"),
   "our-stores": () => import("@/components/admin/OurStores"),
   "trips": () => import("@/components/admin/DeskTrips"),
+  "trip-payment": () => import("@/components/admin/TripPayment"),
 } as const
 
 type SectionKey = keyof typeof SECTION_IMPORTS
@@ -87,6 +88,7 @@ const NAV_ITEMS: NavItemConfig[] = [
   { label: "Monitor Trips",     key: "monitor-trips",       icon: "streamline-ultimate:trip-road-bold" },
   { label: "Trips",              key: "trips",               icon: "mdi:map-marker-path" },
   { label: "Side Trips",        key: "side-trips",           icon: "mdi:road-variant" },
+  { label: "Trip Payment",      key: "trip-payment",         icon: "mdi:hand-coin-outline" },
   { label: "Diesel Manager",    key: "diesel-manager",      icon: "mdi:gas-station" },
   { label: "Store Sales",       key: "store-sales",         icon: "mdi:storefront-outline" },
   { label: "Discounts",         key: "discounts",            icon: "mdi:tag-minus-outline" },

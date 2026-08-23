@@ -17,6 +17,7 @@ type Stop = {
   broker_id: string | null
   broker_name: string | null
   customer_name: string | null
+  customer_phone: string | null
   quantity_offloaded: number
   latitude: number
   longitude: number
@@ -163,11 +164,11 @@ export default function DeskTrips() {
     }
 
     const customerIds = [...new Set(allStops.filter(s => s.stop_type === "customer" && s.customer_id).map(s => s.customer_id).filter(Boolean))]
-    const customerMap = new Map<string, { full_name: string }>()
+    const customerMap = new Map<string, { full_name: string; phone_number: string | null }>()
     if (customerIds.length > 0) {
       const { data: customersData } = await supabase
         .from("Customers")
-        .select("customer_id, full_name")
+        .select("customer_id, full_name, phone_number")
         .in("customer_id", customerIds)
       for (const c of customersData || []) customerMap.set(c.customer_id, c)
     }
@@ -211,6 +212,7 @@ export default function DeskTrips() {
       const stops: Stop[] = stopsRaw.map((stop) => {
         let broker_name = null
         let customer_name = null
+        let customer_phone = null
 
         if (stop.stop_type === "customer") {
           const broker = brokerMap.get(stop.broker_id)
@@ -219,6 +221,7 @@ export default function DeskTrips() {
           if (stop.customer_id) {
             const customer = customerMap.get(stop.customer_id)
             customer_name = customer?.full_name ?? "Not provided"
+            customer_phone = customer?.phone_number ?? null
           } else {
             customer_name = "Not provided"
           }
@@ -232,6 +235,7 @@ export default function DeskTrips() {
           broker_id: stop.broker_id ?? null,
           broker_name,
           customer_name,
+          customer_phone,
           quantity_offloaded: stop.quantity_offloaded,
           latitude: stop.latitude,
           longitude: stop.longitude,
@@ -316,11 +320,11 @@ export default function DeskTrips() {
     }
 
     const customerIds = [...new Set(allStops.filter(s => s.stop_type === "customer" && s.customer_id).map(s => s.customer_id).filter(Boolean))]
-    const customerMap = new Map<string, { full_name: string }>()
+    const customerMap = new Map<string, { full_name: string; phone_number: string | null }>()
     if (customerIds.length > 0) {
       const { data: customersData } = await supabase
         .from("Customers")
-        .select("customer_id, full_name")
+        .select("customer_id, full_name, phone_number")
         .in("customer_id", customerIds)
       for (const c of customersData || []) customerMap.set(c.customer_id, c)
     }
@@ -363,6 +367,7 @@ export default function DeskTrips() {
       const stops: Stop[] = stopsRaw.map((stop) => {
         let broker_name = null
         let customer_name = null
+        let customer_phone = null
 
         if (stop.stop_type === "customer") {
           const broker = brokerMap.get(stop.broker_id)
@@ -371,6 +376,7 @@ export default function DeskTrips() {
           if (stop.customer_id) {
             const customer = customerMap.get(stop.customer_id)
             customer_name = customer?.full_name ?? "Not provided"
+            customer_phone = customer?.phone_number ?? null
           } else {
             customer_name = "Not provided"
           }
@@ -384,6 +390,7 @@ export default function DeskTrips() {
           broker_id: stop.broker_id ?? null,
           broker_name,
           customer_name,
+          customer_phone,
           quantity_offloaded: stop.quantity_offloaded,
           latitude: stop.latitude,
           longitude: stop.longitude,
@@ -1086,7 +1093,7 @@ export default function DeskTrips() {
                         {stop.stop_type === "customer" && (
                           <>
                             <p style={{ margin: "6px 0", color: "#475569", fontSize: FONT_SIZE.sm }}><strong>Broker:</strong> <span style={{ color: "#0f172a" }}>{stop.broker_name}</span></p>
-                            <p style={{ margin: "6px 0", color: "#475569", fontSize: FONT_SIZE.sm }}><strong>Customer:</strong> <span style={{ color: "#0f172a" }}>{stop.customer_name}</span></p>
+                            <p style={{ margin: "6px 0", color: "#475569", fontSize: FONT_SIZE.sm }}><strong>Customer:</strong> <span style={{ color: "#0f172a" }}>{stop.customer_name}{stop.customer_phone ? ` (${stop.customer_phone})` : ""}</span></p>
                           </>
                         )}
 

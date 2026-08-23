@@ -3,10 +3,11 @@
 import { Icon } from "@iconify/react"
 import { FONT_SIZE } from "@/lib/constants"
 import { formatDateTime, formatDate } from "@/lib/date-utils"
-import { useFuelExpenses } from "@/lib/hooks/useFuelExpenses"
+import { useFuelExpenses, FuelExpense } from "@/lib/hooks/useFuelExpenses"
 import { useState } from "react"
 import { usePagination } from "@/lib/hooks/usePagination"
 import { useBreakpoint } from "@/app/hooks/useBreakpoint"
+import { apiMutate } from "@/lib/api-mutation"
 import { supabase } from "@/lib/supabase"
 import PaginationControls from "@/components/PaginationControls"
 
@@ -33,7 +34,7 @@ type TripDetail = {
 export default function DieselConsumptionSection() {
   const bp = useBreakpoint()
   const isMobile = bp === "mobile"
-  const { data: fuelExpenses, loading } = useFuelExpenses()
+  const { data: fuelExpenses, loading, refetch } = useFuelExpenses()
   const [viewMode, setViewMode] = useState<ViewMode>("card")
   const { page, setPage, totalPages, paginatedItems, totalItems } = usePagination(fuelExpenses)
 
@@ -41,6 +42,49 @@ export default function DieselConsumptionSection() {
 
   const [selectedTrip, setSelectedTrip] = useState<TripDetail | null>(null)
   const [tripLoading, setTripLoading] = useState(false)
+
+  const [rejectModalExpense, setRejectModalExpense] = useState<FuelExpense | null>(null)
+  const [rejectReason, setRejectReason] = useState("")
+  const [actionLoading, setActionLoading] = useState(false)
+
+  async function handleApprove(expense: FuelExpense) {
+    setActionLoading(true)
+    try {
+      const { error } = await apiMutate("fuel", {
+        action: "rpc",
+        function: "approve_fuel_expense",
+        params: { p_expense_id: expense.expense_id, p_admin_id: null },
+      })
+      if (!error) {
+        refetch()
+      }
+    } finally {
+      setActionLoading(false)
+    }
+  }
+
+  async function handleReject() {
+    if (!rejectModalExpense || !rejectReason.trim()) return
+    setActionLoading(true)
+    try {
+      const { error } = await apiMutate("fuel", {
+        action: "rpc",
+        function: "reject_fuel_expense",
+        params: {
+          p_expense_id: rejectModalExpense.expense_id,
+          p_admin_id: null,
+          p_reason: rejectReason.trim(),
+        },
+      })
+      if (!error) {
+        setRejectModalExpense(null)
+        setRejectReason("")
+        refetch()
+      }
+    } finally {
+      setActionLoading(false)
+    }
+  }
 
   async function handleTripClick(tripId: string | null) {
     if (!tripId) return
@@ -190,6 +234,8 @@ export default function DieselConsumptionSection() {
                 <th style={{ textAlign: "left", padding: "10px 12px", borderBottom: "2px solid #e2e8f0", color: "#475569", fontWeight: 600, fontSize: FONT_SIZE.xs, textTransform: "uppercase", letterSpacing: 0.5 }}>Trip</th>
                 <th style={{ textAlign: "left", padding: "10px 12px", borderBottom: "2px solid #e2e8f0", color: "#475569", fontWeight: 600, fontSize: FONT_SIZE.xs, textTransform: "uppercase", letterSpacing: 0.5 }}>Trip Date</th>
                 <th style={{ textAlign: "left", padding: "10px 12px", borderBottom: "2px solid #e2e8f0", color: "#475569", fontWeight: 600, fontSize: FONT_SIZE.xs, textTransform: "uppercase", letterSpacing: 0.5 }}>Logged At</th>
+                <th style={{ textAlign: "left", padding: "10px 12px", borderBottom: "2px solid #e2e8f0", color: "#475569", fontWeight: 600, fontSize: FONT_SIZE.xs, textTransform: "uppercase", letterSpacing: 0.5 }}>Status</th>
+                <th style={{ textAlign: "right", padding: "10px 12px", borderBottom: "2px solid #e2e8f0", color: "#475569", fontWeight: 600, fontSize: FONT_SIZE.xs, textTransform: "uppercase", letterSpacing: 0.5 }}>Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -223,6 +269,48 @@ export default function DieselConsumptionSection() {
                   <td style={{ padding: "10px 12px", borderBottom: "1px solid #e2e8f0", color: "#94a3b8", fontSize: FONT_SIZE.xs }}>
                     {formatDateTime(expense.logged_at)}
                   </td>
+                  <td style={{ padding: "10px 12px", borderBottom: "1px solid #e2e8f0" }}>
+                    <span style={{
+                      padding: "2px 8px", borderRadius: 12, fontSize: FONT_SIZE.xs, fontWeight: 600,
+                      background: expense.status === "Approved" ? "#dcfce7" : expense.status === "Rejected" ? "#fee2e2" : "#fef3c7",
+                      color: expense.status === "Approved" ? "#166534" : expense.status === "Rejected" ? "#991b1b" : "#92400e",
+                    }}>
+                      {expense.status}
+                    </span>
+                  </td>
+                  <td style={{ padding: "10px 12px", borderBottom: "1px solid #e2e8f0", textAlign: "right" }}>
+                    {expense.status === "Pending" && (
+                      <div style={{ display: "flex", gap: 4, justifyContent: "flex-end" }}>
+                        <button
+                          onClick={() => handleApprove(expense)}
+                          disabled={actionLoading}
+                          style={{
+                            padding: "4px 10px", borderRadius: 6, border: "1px solid #bbf7d0", background: "#dcfce7",
+                            color: "#166534", fontSize: FONT_SIZE.xs, fontWeight: 600, cursor: "pointer",
+                            opacity: actionLoading ? 0.5 : 1,
+                          }}
+                        >
+                          Approve
+                        </button>
+                        <button
+                          onClick={() => { setRejectModalExpense(expense); setRejectReason("") }}
+                          disabled={actionLoading}
+                          style={{
+                            padding: "4px 10px", borderRadius: 6, border: "1px solid #fecaca", background: "#fee2e2",
+                            color: "#991b1b", fontSize: FONT_SIZE.xs, fontWeight: 600, cursor: "pointer",
+                            opacity: actionLoading ? 0.5 : 1,
+                          }}
+                        >
+                          Reject
+                        </button>
+                      </div>
+                    )}
+                    {expense.status === "Rejected" && expense.rejection_reason && (
+                      <span style={{ fontSize: FONT_SIZE.xs, color: "#dc2626", fontStyle: "italic" }}>
+                        {expense.rejection_reason}
+                      </span>
+                    )}
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -241,7 +329,16 @@ export default function DieselConsumptionSection() {
                   {expense.location && <p style={{ margin: "2px 0 0", fontSize: FONT_SIZE.xs, color: "#64748b" }}>📍 {expense.location}</p>}
                   <p style={{ margin: "2px 0 0", fontSize: FONT_SIZE.xs, color: "#94a3b8" }}>By {expense.officer_name}</p>
                 </div>
-                <span style={{ padding: "4px 10px", borderRadius: 20, fontSize: FONT_SIZE.sm, background: "#f0f7ff", color: "#0070f3", fontWeight: 700, border: "1px solid #bfdbfe", flexShrink: 0 }}>{expense.litres}L</span>
+                <div style={{ display: "flex", gap: 8, alignItems: "center", flexShrink: 0 }}>
+                  <span style={{
+                    padding: "4px 10px", borderRadius: 12, fontSize: FONT_SIZE.xs, fontWeight: 600,
+                    background: expense.status === "Approved" ? "#dcfce7" : expense.status === "Rejected" ? "#fee2e2" : "#fef3c7",
+                    color: expense.status === "Approved" ? "#166534" : expense.status === "Rejected" ? "#991b1b" : "#92400e",
+                  }}>
+                    {expense.status}
+                  </span>
+                  <span style={{ padding: "4px 10px", borderRadius: 20, fontSize: FONT_SIZE.sm, background: "#f0f7ff", color: "#0070f3", fontWeight: 700, border: "1px solid #bfdbfe" }}>{expense.litres}L</span>
+                </div>
               </div>
               {expense.trip_id && expense.material_centre && expense.product && (
                 <p style={{ margin: "4px 0 0", fontSize: FONT_SIZE.xs, color: "#64748b" }}>
@@ -249,6 +346,9 @@ export default function DieselConsumptionSection() {
                 </p>
               )}
               {expense.notes && <p style={{ margin: "4px 0 0", fontSize: FONT_SIZE.xs, color: "#64748b" }}>Notes: {expense.notes}</p>}
+              {expense.status === "Rejected" && expense.rejection_reason && (
+                <p style={{ margin: "4px 0 0", fontSize: FONT_SIZE.xs, color: "#dc2626", fontStyle: "italic" }}>Reason: {expense.rejection_reason}</p>
+              )}
               <div style={{ display: "flex", gap: 12, marginTop: 6, flexWrap: "wrap", alignItems: "center" }}>
                 {expense.trip_created_at && (
                   <span style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: FONT_SIZE.xs, color: "#94a3b8" }}>
@@ -259,6 +359,32 @@ export default function DieselConsumptionSection() {
                   <Icon icon="mdi:clock-outline" width={14} /> Logged: {formatDateTime(expense.logged_at)}
                 </span>
               </div>
+              {expense.status === "Pending" && (
+                <div style={{ display: "flex", gap: 8, marginTop: 10, borderTop: "1px solid #f1f5f9", paddingTop: 10 }}>
+                  <button
+                    onClick={() => handleApprove(expense)}
+                    disabled={actionLoading}
+                    style={{
+                      flex: 1, padding: "8px 12px", borderRadius: 8, border: "1px solid #bbf7d0",
+                      background: "#dcfce7", color: "#166534", fontSize: FONT_SIZE.sm, fontWeight: 600,
+                      cursor: "pointer", opacity: actionLoading ? 0.5 : 1,
+                    }}
+                  >
+                    Approve
+                  </button>
+                  <button
+                    onClick={() => { setRejectModalExpense(expense); setRejectReason("") }}
+                    disabled={actionLoading}
+                    style={{
+                      flex: 1, padding: "8px 12px", borderRadius: 8, border: "1px solid #fecaca",
+                      background: "#fee2e2", color: "#991b1b", fontSize: FONT_SIZE.sm, fontWeight: 600,
+                      cursor: "pointer", opacity: actionLoading ? 0.5 : 1,
+                    }}
+                  >
+                    Reject
+                  </button>
+                </div>
+              )}
             </div>
           ))}
         </div>
@@ -366,6 +492,90 @@ export default function DieselConsumptionSection() {
                 </button>
               </>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* Reject Reason Modal */}
+      {rejectModalExpense && (
+        <div
+          onClick={() => { if (!actionLoading) { setRejectModalExpense(null); setRejectReason("") } }}
+          style={{
+            position: "fixed", inset: 0, background: "rgba(15, 23, 42, 0.6)", backdropFilter: "blur(4px)",
+            display: "flex", alignItems: isMobile ? "flex-end" : "center", justifyContent: "center",
+            zIndex: 101, padding: isMobile ? 0 : 24, animation: "fadeIn 0.2s ease-out"
+          }}
+        >
+          <div
+            onClick={e => e.stopPropagation()}
+            style={{
+              background: "white", borderRadius: isMobile ? "20px 20px 0 0" : 12,
+              padding: isMobile ? "28px 20px" : 32, width: "100%", maxWidth: 440,
+              boxShadow: "0 25px 50px -12px rgba(0, 0, 0, 0.25)",
+              animation: "slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1)"
+            }}
+          >
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 20 }}>
+              <div>
+                <h3 style={{ margin: 0, color: "#0f172a", fontSize: FONT_SIZE.lg, fontWeight: 700 }}>Reject Expense</h3>
+                <p style={{ margin: "4px 0 0", fontSize: FONT_SIZE.sm, color: "#64748b" }}>
+                  {rejectModalExpense.plate_number} — {rejectModalExpense.litres}L
+                </p>
+              </div>
+              <button
+                onClick={() => { setRejectModalExpense(null); setRejectReason("") }}
+                disabled={actionLoading}
+                style={{ background: "none", border: "none", color: "#94a3b8", cursor: "pointer", padding: 0, width: 32, height: 32, display: "flex", alignItems: "center", justifyContent: "center" }}
+              >
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+              </button>
+            </div>
+
+            <div style={{ marginBottom: 20 }}>
+              <label style={{ display: "block", fontSize: FONT_SIZE.sm, fontWeight: 600, color: "#475569", marginBottom: 6 }}>
+                Reason for rejection <span style={{ color: "#dc2626" }}>*</span>
+              </label>
+              <textarea
+                value={rejectReason}
+                onChange={e => setRejectReason(e.target.value)}
+                placeholder="Enter reason for rejection..."
+                rows={3}
+                disabled={actionLoading}
+                style={{
+                  width: "100%", padding: "10px 12px", borderRadius: 8, border: "1px solid #e2e8f0",
+                  fontSize: FONT_SIZE.sm, resize: "vertical", outline: "none",
+                  opacity: actionLoading ? 0.5 : 1,
+                }}
+                onFocus={e => e.currentTarget.style.borderColor = "#0070f3"}
+                onBlur={e => e.currentTarget.style.borderColor = "#e2e8f0"}
+              />
+            </div>
+
+            <div style={{ display: "flex", gap: 12 }}>
+              <button
+                onClick={() => { setRejectModalExpense(null); setRejectReason("") }}
+                disabled={actionLoading}
+                style={{
+                  flex: 1, padding: "12px 16px", background: "white", color: "#475569",
+                  border: "1px solid #cbd5e1", borderRadius: 8, cursor: "pointer",
+                  fontWeight: 600, fontSize: FONT_SIZE.sm, opacity: actionLoading ? 0.5 : 1,
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleReject}
+                disabled={actionLoading || !rejectReason.trim()}
+                style={{
+                  flex: 1, padding: "12px 16px", background: "#dc2626", color: "white",
+                  border: "none", borderRadius: 8, cursor: "pointer",
+                  fontWeight: 600, fontSize: FONT_SIZE.sm,
+                  opacity: actionLoading || !rejectReason.trim() ? 0.5 : 1,
+                }}
+              >
+                {actionLoading ? "Rejecting..." : "Reject"}
+              </button>
+            </div>
           </div>
         </div>
       )}

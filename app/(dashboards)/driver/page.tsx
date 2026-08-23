@@ -183,6 +183,7 @@ export default function DriverDashboard() {
   const [mySideTrips, setMySideTrips] = useState<{ id: string; plate_number: string; item_description: string; created_at: string }[]>([])
 
   // Start trip
+  const [tripType, setTripType] = useState<"SC" | "MDD" | "">("")
   const [truckSize, setTruckSize] = useState("")
   const [plateNumber, setPlateNumber] = useState("")
   const [loadingPointCategory, setLoadingPointCategory] = useState("")
@@ -461,6 +462,7 @@ export default function DriverDashboard() {
   const availableLocations = LOADING_POINT_MAP[loadingPointCategory] || []
 
   async function handleStartTrip() {
+    if (!tripType) return setMessage("Select a trip type")
     if (!truckSize) return setMessage("Select a truck size")
     if (!plateNumber) return setMessage("Select a plate number")
     if (!loadingPointCategory) return setMessage("Select a loading point type")
@@ -478,7 +480,7 @@ export default function DriverDashboard() {
       action: "insert",
       table: "Trips",
       data: {
-        driver_id: driver?.driver_id, plate_number: plateNumber, product,
+        driver_id: driver?.driver_id, trip_type: tripType, plate_number: plateNumber, product,
         material_centre: loadingPointName, loaded_quantity: parseInt(loadedQuantity),
         ATC: showATC ? atc.trim() : null,
         order_no: showHbmOrderFields ? orderNo.trim() : null,
@@ -494,7 +496,7 @@ export default function DriverDashboard() {
       await apiMutate("trips", { action: "update", table: "Trucks", data: { status: "Loaded" }, filters: { plate_number: plateNumber } })
     }
     setActiveTrip(data[0]); setRemaining(parseInt(loadedQuantity)); setOffloadedSoFar(0); setStops([]); setLoadMoreEntries([])
-    setSubmitting(false); setShowEndConfirm(false); setMessage(""); navigateTo("active-trip")
+    setTripType(""); setSubmitting(false); setShowEndConfirm(false); setMessage(""); navigateTo("active-trip")
   }
 
   async function handleEndTrip() {
@@ -1141,6 +1143,17 @@ export default function DriverDashboard() {
             <h2 style={{ marginBottom: 24, color: "#0070f3", fontSize: isMobile ? FONT_SIZE["2xl"] : FONT_SIZE.xl, fontWeight: 700 }}>Start a Trip</h2>
 
             <div style={{ maxWidth: 480 }}>
+              <div style={{ marginBottom: 16 }}>
+                <label style={labelStyle}>Trip Type *</label>
+                <div style={{ position: "relative" }}>
+                  <ModernInput as="select" value={tripType} onChange={e => { setTripType(e.target.value as "SC" | "MDD"); setMessage("") }} style={inputStyle}>
+                    <option value="">Select trip type</option>
+                    <option value="SC">SC — Self Collect</option>
+                    <option value="MDD">MDD — Modified Direct Delivery</option>
+                  </ModernInput>
+                </div>
+              </div>
+
               <div style={{ marginBottom: 16 }}>
                 <label style={labelStyle}>Truck Size *</label>
                 <div style={{ position: "relative" }}>

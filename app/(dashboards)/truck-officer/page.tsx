@@ -364,37 +364,19 @@ export default function TruckOfficerDashboard() {
 
     setFuelLoading(true)
 
-    const { data: freshTruck } = await supabase
-      .from("Trucks")
-      .select("fuel_balance")
-      .eq("plate_number", fuelPlate)
-      .single()
+    const location = fuelUseCustom ? (fuelLocation.trim() || null) : estimate?.location ?? null
 
-    const freshBalance = freshTruck?.fuel_balance ?? 0
-    if (litres > freshBalance) {
-      setFuelError(`Only ${freshBalance}${truck.engine_type === "CNG" ? " bars" : "L"} available for this truck`)
-      setFuelLoading(false)
-      return
-    }
-
-    const { error: expenseError } = await apiMutate("fuel", {
-      action: "insert",
-      table: "truck_fuel_expenses",
-      data: {
-        manager_id: officer?.manager_id, plate_number: fuelPlate, trip_id: fuelTripId,
-        litres, notes,
-        location: fuelUseCustom ? (fuelLocation.trim() || null) : estimate?.location ?? null,
-      },
+    const { data: result, error: rpcError } = await supabase.rpc("log_fuel_expense", {
+      p_manager_id: officer?.manager_id,
+      p_plate_number: fuelPlate,
+      p_trip_id: fuelTripId,
+      p_litres: litres,
+      p_notes: notes,
+      p_location: location,
     })
-    if (expenseError) { setFuelError("Failed to log fuel expense"); setFuelLoading(false); return }
 
-    const { error: truckError } = await apiMutate("trips", {
-      action: "update", table: "Trucks",
-      data: { fuel_balance: freshBalance - litres },
-      filters: { plate_number: fuelPlate },
-    })
-    if (truckError) {
-      setFuelError("Expense logged but truck balance update failed. Contact support.")
+    if (rpcError || !result?.success) {
+      setFuelError(result?.error || "Failed to log fuel expense")
       setFuelLoading(false)
       return
     }

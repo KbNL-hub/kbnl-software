@@ -20,6 +20,7 @@ type Stop = {
   broker_name: string | null
   customer_id: string | null
   customer_name: string | null
+  customer_phone: string | null
   quantity_offloaded: number
   latitude: number
   longitude: number
@@ -31,6 +32,7 @@ type Stop = {
   dispute_reason: string | null
   price_per_bag: number | null
   discount_status: string | null
+  is_credit_approved: boolean
 }
 
 type Discrepancy = {
@@ -216,23 +218,32 @@ export default function MonitorTrips() {
     }
 
     const customerIds = [...new Set(allStops.filter(s => s.stop_type === "customer" && s.customer_id).map(s => s.customer_id).filter(Boolean))]
-    const customerMap = new Map<string, { full_name: string }>()
+    const customerMap = new Map<string, { full_name: string; phone_number: string | null }>()
     if (customerIds.length > 0) {
       const { data: customersData } = await supabase
         .from("Customers")
-        .select("customer_id, full_name")
+        .select("customer_id, full_name, phone_number")
         .in("customer_id", customerIds)
       for (const c of customersData || []) customerMap.set(c.customer_id, c)
     }
 
     const stopIds = allStops.map(s => s.stop_id).filter(Boolean)
     const confirmationMap = new Map<string, { price_per_bag: number }>()
+    const creditApprovedStopSet = new Set<string>()
     if (stopIds.length > 0) {
       const { data: confirmationsData } = await supabase
         .from("Stop_Confirmations")
         .select("stop_id, price_per_bag")
         .in("stop_id", stopIds)
       for (const c of confirmationsData || []) confirmationMap.set(c.stop_id, c)
+
+      const { data: creditApprovals } = await supabase
+        .from("credit_approvals")
+        .select("source_id")
+        .eq("status", "Approved")
+        .eq("source_type", "stop")
+        .in("source_id", stopIds)
+      for (const ca of creditApprovals || []) creditApprovedStopSet.add(ca.source_id)
     }
 
     const discByTrip = new Map<string, Discrepancy[]>()
@@ -264,6 +275,7 @@ export default function MonitorTrips() {
       const stops: Stop[] = stopsRaw.map((stop) => {
         let broker_name = null
         let customer_name = null
+        let customer_phone = null
 
         if (stop.stop_type === "customer") {
           const broker = brokerMap.get(stop.broker_id)
@@ -272,6 +284,7 @@ export default function MonitorTrips() {
           if (stop.customer_id) {
             const customer = customerMap.get(stop.customer_id)
             customer_name = customer?.full_name ?? "Not provided"
+            customer_phone = customer?.phone_number ?? null
           } else {
             customer_name = "Not provided"
           }
@@ -286,6 +299,7 @@ export default function MonitorTrips() {
           broker_name,
           customer_id: stop.customer_id ?? null,
           customer_name,
+          customer_phone,
           quantity_offloaded: stop.quantity_offloaded,
           latitude: stop.latitude,
           longitude: stop.longitude,
@@ -297,6 +311,7 @@ export default function MonitorTrips() {
           dispute_reason: stop.dispute_reason,
           price_per_bag: confirmation?.price_per_bag ?? null,
           discount_status: stop.discount_status ?? "none",
+          is_credit_approved: creditApprovedStopSet.has(stop.stop_id),
         }
       })
 
@@ -373,23 +388,32 @@ export default function MonitorTrips() {
     }
 
     const customerIds = [...new Set(allStops.filter(s => s.stop_type === "customer" && s.customer_id).map(s => s.customer_id).filter(Boolean))]
-    const customerMap = new Map<string, { full_name: string }>()
+    const customerMap = new Map<string, { full_name: string; phone_number: string | null }>()
     if (customerIds.length > 0) {
       const { data: customersData } = await supabase
         .from("Customers")
-        .select("customer_id, full_name")
+        .select("customer_id, full_name, phone_number")
         .in("customer_id", customerIds)
       for (const c of customersData || []) customerMap.set(c.customer_id, c)
     }
 
     const stopIds = allStops.map(s => s.stop_id).filter(Boolean)
     const confirmationMap = new Map<string, { price_per_bag: number }>()
+    const creditApprovedStopSet = new Set<string>()
     if (stopIds.length > 0) {
       const { data: confirmationsData } = await supabase
         .from("Stop_Confirmations")
         .select("stop_id, price_per_bag")
         .in("stop_id", stopIds)
       for (const c of confirmationsData || []) confirmationMap.set(c.stop_id, c)
+
+      const { data: creditApprovals } = await supabase
+        .from("credit_approvals")
+        .select("source_id")
+        .eq("status", "Approved")
+        .eq("source_type", "stop")
+        .in("source_id", stopIds)
+      for (const ca of creditApprovals || []) creditApprovedStopSet.add(ca.source_id)
     }
 
     const ddDiscByTrip = new Map<string, Discrepancy[]>()
@@ -420,6 +444,7 @@ export default function MonitorTrips() {
       const stops: Stop[] = stopsRaw.map((stop) => {
         let broker_name = null
         let customer_name = null
+        let customer_phone = null
 
         if (stop.stop_type === "customer") {
           const broker = brokerMap.get(stop.broker_id)
@@ -428,6 +453,7 @@ export default function MonitorTrips() {
           if (stop.customer_id) {
             const customer = customerMap.get(stop.customer_id)
             customer_name = customer?.full_name ?? "Not provided"
+            customer_phone = customer?.phone_number ?? null
           } else {
             customer_name = "Not provided"
           }
@@ -442,6 +468,7 @@ export default function MonitorTrips() {
           broker_name,
           customer_id: stop.customer_id ?? null,
           customer_name,
+          customer_phone,
           quantity_offloaded: stop.quantity_offloaded,
           latitude: stop.latitude,
           longitude: stop.longitude,
@@ -453,6 +480,7 @@ export default function MonitorTrips() {
           dispute_reason: stop.dispute_reason,
           price_per_bag: confirmation?.price_per_bag ?? null,
           discount_status: stop.discount_status ?? "none",
+          is_credit_approved: creditApprovedStopSet.has(stop.stop_id),
         }
       })
 
@@ -1367,7 +1395,7 @@ async function fetchResolveData() {
                         {stop.stop_type === "customer" && (
                           <>
                             <p style={{ margin: "6px 0", color: "#475569", fontSize: FONT_SIZE.sm }}><strong>Broker:</strong> <span style={{ color: "#0f172a" }}>{stop.broker_name}</span></p>
-                            <p style={{ margin: "6px 0", color: "#475569", fontSize: FONT_SIZE.sm }}><strong>Customer:</strong> <span style={{ color: "#0f172a" }}>{stop.customer_name}</span></p>
+                            <p style={{ margin: "6px 0", color: "#475569", fontSize: FONT_SIZE.sm }}><strong>Customer:</strong> <span style={{ color: "#0f172a" }}>{stop.customer_name}{stop.customer_phone ? ` (${stop.customer_phone})` : ""}</span></p>
                           </>
                         )}
 
@@ -1377,6 +1405,9 @@ async function fetchResolveData() {
 
                         <p style={{ margin: "6px 0", color: "#475569", fontSize: FONT_SIZE.sm }}><strong>Offloaded:</strong> <span style={{ color: "#0f172a" }}>{stop.quantity_offloaded} bags</span></p>
                         {stop.confirmed && stop.price_per_bag && <p style={{ margin: "6px 0", color: "#475569", fontSize: FONT_SIZE.sm }}><strong>Price:</strong> <span style={{ color: "#0f172a" }}>₦{stop.price_per_bag.toLocaleString()}/bag</span></p>}
+                        {stop.stop_type === "customer" && (
+                          <span style={{ display: "inline-block", marginTop: 4, padding: "4px 12px", borderRadius: 6, fontSize: FONT_SIZE.xs, fontWeight: 600, background: stop.is_credit_approved ? "#eff6ff" : "#f0fdf4", color: stop.is_credit_approved ? "#0070f3" : "#16a34a", border: stop.is_credit_approved ? "1px solid #93c5fd" : "1px solid #86efac" }}>{stop.is_credit_approved ? "Credit" : "Cash"}</span>
+                        )}
 
                         {stop.disputed && stop.dispute_reason && (
                           <div style={{ marginTop: 10, padding: 12, background: "#fff5f5", borderRadius: 6, border: "1px solid #fecaca" }}>

@@ -17,6 +17,7 @@ type Stop = {
   trip_id: string
   customer_id: string | null
   customer_name: string
+  customer_phone: string | null
   quantity_offloaded: number
   stop_location: string
   stop_time: string
@@ -90,7 +91,7 @@ export default function BrokerConfirmModal({ isOpen, onClose, brokerId, isMobile
 
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(() =>
     stop?.customer_id
-      ? { customer_id: stop.customer_id, full_name: stop.customer_name, phone_number: "" }
+      ? { customer_id: stop.customer_id, full_name: stop.customer_name, phone_number: stop.customer_phone || "" }
       : saleGroup?.customer_name
         ? { customer_id: "", full_name: saleGroup.customer_name, phone_number: "" }
         : null
@@ -542,7 +543,7 @@ export default function BrokerConfirmModal({ isOpen, onClose, brokerId, isMobile
               ) : stop!.atc ? (
                 <div><p style={{ margin: 0, fontSize: 11, color: "#aaa" }}>ATC</p><p style={{ margin: "2px 0 0", fontSize: 13, color: "#171717" }}>{stop!.atc}</p></div>
               ) : null}
-              <div><p style={{ margin: 0, fontSize: 11, color: "#aaa" }}>Driver&apos;s Customer</p><p style={{ margin: "2px 0 0", fontSize: 13, color: "#171717" }}>{stop!.customer_name}</p></div>
+              <div><p style={{ margin: 0, fontSize: 11, color: "#aaa" }}>Driver&apos;s Customer</p><p style={{ margin: "2px 0 0", fontSize: 13, color: "#171717" }}>{stop!.customer_name}{stop!.customer_phone ? ` (${stop!.customer_phone})` : ""}</p></div>
             </div>
           </div>
         ) : (

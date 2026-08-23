@@ -14,6 +14,7 @@ type CreditEntry = {
   broker_id: string
   customer_name: string
   customer_id: string | null
+  customer_phone: string | null
   amount: number
   status: "Active" | "Cleared"
   created_at: string
@@ -66,7 +67,18 @@ export default function BrokerCreditsView() {
         .order("customer_name", { ascending: true })
 
       if (queryError) { setError(queryError.message); setLoading(false); return }
-      if (data) setCredits(data as CreditEntry[])
+      if (data) {
+        const customerIds = [...new Set((data as CreditEntry[]).map(c => c.customer_id).filter(Boolean))]
+        const customerMap = new Map<string, string>()
+        if (customerIds.length > 0) {
+          const { data: customers } = await supabase
+            .from("Customers")
+            .select("customer_id, phone_number")
+            .in("customer_id", customerIds)
+          for (const c of customers || []) customerMap.set(c.customer_id, c.phone_number ?? "")
+        }
+        setCredits((data as CreditEntry[]).map(c => ({ ...c, customer_phone: c.customer_id ? customerMap.get(c.customer_id) ?? null : null })))
+      }
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Failed to load credits")
     } finally {
@@ -202,7 +214,7 @@ export default function BrokerCreditsView() {
           {paginatedItems.map(c => (
             <div key={c.credit_id} style={{ background: "white", borderRadius: 12, padding: "16px 18px", border: "1px solid #e5e7eb", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
               <div style={{ minWidth: 0, flex: 1 }}>
-                <span style={{ fontSize: fontSize.base, fontWeight: 600, color: "#171717" }}>{c.customer_name}</span>
+                <span style={{ fontSize: fontSize.base, fontWeight: 600, color: "#171717" }}>{c.customer_name}{c.customer_phone ? ` (${c.customer_phone})` : ""}</span>
                 <div style={{ display: "flex", gap: 16, marginTop: 4, fontSize: fontSize.sm, color: "#6b7280" }}>
                   <span>₦{formatAmount(String(c.amount))}</span>
                   <span>{new Date(c.created_at).toLocaleDateString()}</span>
@@ -236,7 +248,7 @@ export default function BrokerCreditsView() {
             <tbody>
               {paginatedItems.map((c, idx) => (
                 <tr key={c.credit_id} style={{ borderBottom: idx === displayedCredits.length - 1 ? "none" : "1px solid #e2e8f0" }}>
-                  <td style={{ padding: "12px 16px", color: "#0f172a", fontSize: fontSize.base, fontWeight: 500 }}>{c.customer_name}</td>
+                  <td style={{ padding: "12px 16px", color: "#0f172a", fontSize: fontSize.base, fontWeight: 500 }}>{c.customer_name}{c.customer_phone ? ` (${c.customer_phone})` : ""}</td>
                   <td style={{ padding: "12px 16px", textAlign: "right", color: "#475569", fontSize: fontSize.sm, fontWeight: 600 }}>₦{formatAmount(String(c.amount))}</td>
                   <td style={{ padding: "12px 16px", textAlign: "right", color: "#64748b", fontSize: fontSize.sm }}>{c.age_of_credit != null ? `${c.age_of_credit} days` : "—"}</td>
                   <td style={{ padding: "12px 16px", textAlign: "right", color: "#64748b", fontSize: fontSize.sm }}>{new Date(c.created_at).toLocaleDateString()}</td>

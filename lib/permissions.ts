@@ -31,6 +31,7 @@ export const ALL_SECTIONS = [
   'side-trips',
   'our-stores',
   'trips',
+  'trip-payment',
   'credit-approvals',
 ] as const
 
@@ -101,7 +102,7 @@ export const ROLES: { [key: string]: RoleConfig | undefined } & Partial<Record<R
       'manage-drivers', 'monitor-trips',
       'monitor-trucks', 'manage-trucks', 'truck-officers',
       'tricycles', 'diesel-manager', 'reports', 'side-trips',
-      'company-prices',
+      'company-prices', 'trip-payment',
     ],
     access: 'write',
     label: 'ATC Officer',
