@@ -1,0 +1,704 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>KbNL — Your Building Partner | Get a Quote</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --blue:#0070f3;
+    --blue-dark:#0058c4;
+    --ink:#171717;
+    --ink-soft:#3d3d3d;
+    --concrete:#eeece6;
+    --concrete-dark:#e1ded5;
+    --steel:#52565c;
+    --steel-light:#8a8d93;
+    --paper:#fbfaf8;
+    --white:#ffffff;
+    --live:#0f9d58;
+    --line:rgba(23,23,23,0.1);
+    --radius:2px;
+    --maxw:1180px;
+  }
+  *{box-sizing:border-box;}
+  html{scroll-behavior:smooth;}
+  body{
+    margin:0;
+    font-family:'IBM Plex Sans',sans-serif;
+    color:var(--ink);
+    background:var(--paper);
+    line-height:1.55;
+    -webkit-font-smoothing:antialiased;
+  }
+  h1,h2,h3,.display{
+    font-family:'Space Grotesk',sans-serif;
+    font-weight:600;
+    letter-spacing:-0.01em;
+    margin:0;
+  }
+  .mono{font-family:'IBM Plex Mono',monospace;}
+  a{color:inherit;text-decoration:none;}
+  img{max-width:100%;display:block;}
+  .wrap{max-width:var(--maxw);margin:0 auto;padding:0 24px;}
+  section{padding:88px 0;}
+  @media (max-width:720px){ section{padding:56px 0;} }
+
+  :focus-visible{outline:2px solid var(--blue);outline-offset:3px;}
+  @media (prefers-reduced-motion: reduce){
+    *{animation-duration:0.01ms !important; animation-iteration-count:1 !important; transition-duration:0.01ms !important; scroll-behavior:auto !important;}
+  }
+
+  /* ---------- Nav ---------- */
+  header{
+    position:sticky; top:0; z-index:50;
+    background:rgba(251,250,248,0.92);
+    backdrop-filter:blur(8px);
+    border-bottom:1px solid var(--line);
+  }
+  nav.wrap{display:flex; align-items:center; justify-content:space-between; height:72px;}
+  .logo{font-family:'Space Grotesk',sans-serif; font-weight:700; font-size:20px; letter-spacing:-0.02em;}
+  .logo span{color:var(--blue);}
+  .nav-links{display:flex; gap:32px; align-items:center;}
+  .nav-links a{font-size:14px; font-weight:500; color:var(--ink-soft);}
+  .nav-links a:hover{color:var(--ink);}
+  .btn{
+    display:inline-flex; align-items:center; justify-content:center; gap:8px;
+    padding:13px 24px; border-radius:var(--radius); font-weight:600; font-size:14.5px;
+    border:1.5px solid transparent; cursor:pointer; transition:transform .15s ease, background .15s ease;
+    white-space:nowrap;
+  }
+  .btn:hover{transform:translateY(-1px);}
+  .btn-primary{background:var(--blue); color:#fff;}
+  .btn-primary:hover{background:var(--blue-dark);}
+  .btn-ghost{background:transparent; border-color:var(--ink); color:var(--ink);}
+  .btn-ghost:hover{background:var(--ink); color:#fff;}
+  .btn-wa{background:#1c1c1c; color:#fff;}
+  .btn-wa:hover{background:#000;}
+  .nav-cta{display:none;}
+  @media (min-width:860px){ .nav-cta{display:inline-flex;} .nav-links{display:flex;} }
+  @media (max-width:859px){ .nav-links{display:none;} }
+
+  /* ---------- Hero ---------- */
+  .hero{padding-top:64px; padding-bottom:0;}
+  .hero-grid{display:grid; grid-template-columns:1.05fr 0.95fr; gap:56px; align-items:center;}
+  @media (max-width:960px){ .hero-grid{grid-template-columns:1fr; gap:40px;} }
+  .eyebrow{
+    display:inline-flex; align-items:center; gap:8px;
+    font-family:'IBM Plex Mono',monospace; font-size:12.5px; font-weight:500;
+    color:var(--steel); text-transform:uppercase; letter-spacing:0.06em;
+    background:var(--concrete); border:1px solid var(--line);
+    padding:6px 12px; border-radius:100px; margin-bottom:22px;
+  }
+  .eyebrow .dot{width:6px; height:6px; border-radius:50%; background:var(--live); box-shadow:0 0 0 3px rgba(15,157,88,0.15);}
+  h1.hero-h{font-size:clamp(34px,4.6vw,56px); line-height:1.05; max-width:600px;}
+  h1.hero-h em{font-style:normal; color:var(--blue);}
+  .hero-sub{font-size:17.5px; color:var(--ink-soft); max-width:520px; margin:20px 0 32px;}
+  .hero-actions{display:flex; gap:14px; flex-wrap:wrap; margin-bottom:28px;}
+  .hero-note{font-size:13px; color:var(--steel-light);}
+  .partner-strip{display:flex; align-items:center; gap:22px; flex-wrap:wrap; margin-top:36px; padding-top:28px; border-top:1px solid var(--line);}
+  .partner-strip .label{font-size:12px; color:var(--steel-light); font-family:'IBM Plex Mono',monospace;}
+  .partner-strip .marks{display:flex; gap:20px; flex-wrap:wrap;}
+  .partner-strip .marks span{font-family:'Space Grotesk',sans-serif; font-weight:600; font-size:15px; color:var(--ink-soft);}
+
+  /* --- Signature: dispatch ticker --- */
+  .ticker-card{
+    background:var(--ink); color:#fff; border-radius:6px; padding:26px 24px;
+    box-shadow:0 24px 60px -20px rgba(23,23,23,0.35);
+  }
+  .ticker-head{display:flex; align-items:center; justify-content:space-between; margin-bottom:20px;}
+  .ticker-title{font-family:'IBM Plex Mono',monospace; font-size:12px; color:#a8abb1; text-transform:uppercase; letter-spacing:0.08em;}
+  .ticker-live{display:flex; align-items:center; gap:6px; font-family:'IBM Plex Mono',monospace; font-size:11.5px; color:var(--live);}
+  .ticker-live .dot{width:6px;height:6px;border-radius:50%; background:var(--live); animation:pulse 1.6s ease-in-out infinite;}
+  @keyframes pulse{0%,100%{opacity:1;} 50%{opacity:.35;}}
+  .stop{display:flex; gap:14px; padding:14px 0; border-top:1px solid rgba(255,255,255,0.08);}
+  .stop:first-of-type{border-top:none;}
+  .stop-marker{width:22px; display:flex; flex-direction:column; align-items:center; flex-shrink:0;}
+  .stop-marker .circ{width:10px; height:10px; border-radius:50%; border:2px solid #5b5f66;}
+  .stop-marker .circ.done{background:var(--blue); border-color:var(--blue);}
+  .stop-marker .circ.active{background:var(--live); border-color:var(--live);}
+  .stop-marker .bar{flex:1; width:1.5px; background:#3a3d42; margin-top:2px;}
+  .stop-body{flex:1; padding-bottom:2px;}
+  .stop-title{font-size:14px; font-weight:500;}
+  .stop-time{font-family:'IBM Plex Mono',monospace; font-size:12px; color:#8a8d93; margin-top:2px;}
+  .stop.dim .stop-title{color:#6b6e74;}
+  .stop.dim .stop-time{color:#54575c;}
+  .ticker-foot{margin-top:18px; padding-top:16px; border-top:1px solid rgba(255,255,255,0.08); font-size:12.5px; color:#9a9da3;}
+  .ticker-foot b{color:#fff;}
+
+  /* ---------- Section headers ---------- */
+  .sec-eyebrow{font-family:'IBM Plex Mono',monospace; font-size:12.5px; color:var(--blue); text-transform:uppercase; letter-spacing:0.08em; margin-bottom:12px; font-weight:500;}
+  .sec-h{font-size:clamp(26px,3.2vw,38px); max-width:620px; line-height:1.15;}
+  .sec-sub{font-size:16px; color:var(--ink-soft); max-width:600px; margin-top:14px;}
+
+  /* ---------- Problem ---------- */
+  .problem{background:var(--concrete);}
+  .problem-grid{display:grid; grid-template-columns:repeat(3,1fr); gap:1px; background:var(--line); margin-top:44px; border:1px solid var(--line);}
+  @media (max-width:760px){ .problem-grid{grid-template-columns:1fr;} }
+  .problem-card{background:var(--paper); padding:30px 26px;}
+  .problem-card .num{font-family:'IBM Plex Mono',monospace; color:var(--steel-light); font-size:13px;}
+  .problem-card h3{font-size:18px; margin:14px 0 8px;}
+  .problem-card p{font-size:14.5px; color:var(--ink-soft); margin:0;}
+
+  /* ---------- Compare ---------- */
+  .compare-grid{display:grid; grid-template-columns:repeat(3,1fr); gap:16px; margin-top:44px;}
+  @media (max-width:820px){ .compare-grid{grid-template-columns:1fr;} }
+  .compare-card{border:1px solid var(--line); border-radius:6px; padding:26px; background:var(--paper);}
+  .compare-card.win{border-color:var(--blue); background:#fff; box-shadow:0 16px 40px -24px rgba(0,112,243,0.4); position:relative;}
+  .compare-card.win::before{
+    content:"KbNL"; position:absolute; top:-11px; left:24px; background:var(--blue); color:#fff;
+    font-family:'IBM Plex Mono',monospace; font-size:11px; padding:3px 10px; border-radius:100px; letter-spacing:0.04em;
+  }
+  .compare-card h3{font-size:16px; margin-bottom:16px; color:var(--steel);}
+  .compare-card.win h3{color:var(--ink); visibility:hidden; height:0;}
+  .compare-card ul{margin:0; padding:0; list-style:none;}
+  .compare-card li{display:flex; gap:10px; font-size:14px; padding:7px 0; color:var(--ink-soft);}
+  .compare-card.win li{color:var(--ink); font-weight:500;}
+  .compare-card li .ico{flex-shrink:0; margin-top:2px;}
+
+  /* ---------- Moat ---------- */
+  .moat{background:var(--ink); color:#fff;}
+  .moat .sec-eyebrow{color:#5ea6ff;}
+  .moat .sec-sub{color:#b7b9be;}
+  .moat-grid{display:grid; grid-template-columns:1fr 1fr; gap:52px; margin-top:52px; align-items:center;}
+  @media (max-width:900px){ .moat-grid{grid-template-columns:1fr;} }
+  .stat-row{display:grid; grid-template-columns:1fr 1fr; gap:24px; margin-bottom:8px;}
+  .stat{border-top:1px solid #33353a; padding-top:16px;}
+  .stat .n{font-family:'Space Grotesk',sans-serif; font-size:clamp(28px,3.4vw,40px); font-weight:700; color:#fff;}
+  .stat .l{font-size:13px; color:#9a9da3; margin-top:4px;}
+  .moat-copy p{color:#c7c9cd; font-size:15.5px; margin:16px 0 0;}
+  .moat-panel{background:#1f2024; border:1px solid #34363b; border-radius:6px; padding:22px; font-family:'IBM Plex Mono',monospace; font-size:13px;}
+  .moat-panel .line{display:flex; justify-content:space-between; padding:9px 0; border-bottom:1px dashed #34363b; color:#c7c9cd;}
+  .moat-panel .line:last-child{border-bottom:none;}
+  .moat-panel .line .k{color:#8a8d93;}
+  .moat-panel .line .v{color:var(--live);}
+
+  /* ---------- Proof ---------- */
+  .proof-grid{display:grid; grid-template-columns:repeat(3,1fr); gap:20px; margin-top:44px;}
+  @media (max-width:860px){ .proof-grid{grid-template-columns:1fr;} }
+  .quote-card{background:var(--paper); border:1px solid var(--line); border-radius:6px; padding:26px;}
+  .quote-card p{font-size:15px; color:var(--ink); margin:0 0 18px; line-height:1.5;}
+  .quote-who{display:flex; align-items:center; gap:10px;}
+  .avatar{width:38px; height:38px; border-radius:50%; background:var(--concrete-dark); display:flex; align-items:center; justify-content:center; font-family:'Space Grotesk',sans-serif; font-weight:600; font-size:13px; color:var(--steel);}
+  .quote-name{font-size:13.5px; font-weight:600;}
+  .quote-role{font-size:12.5px; color:var(--steel-light);}
+  .placeholder-tag{display:inline-block; font-family:'IBM Plex Mono',monospace; font-size:10.5px; color:#b45309; background:#fef3c7; padding:2px 7px; border-radius:3px; margin-bottom:10px;}
+
+  .stat-strip{display:grid; grid-template-columns:repeat(4,1fr); gap:1px; background:var(--line); border:1px solid var(--line); margin-top:60px;}
+  @media (max-width:760px){ .stat-strip{grid-template-columns:repeat(2,1fr);} }
+  .stat-strip div{background:var(--paper); padding:26px 20px; text-align:center;}
+  .stat-strip .n{font-family:'Space Grotesk',sans-serif; font-size:30px; font-weight:700; color:var(--blue);}
+  .stat-strip .l{font-size:12.5px; color:var(--steel); margin-top:6px;}
+
+  /* ---------- Process ---------- */
+  .process{background:var(--concrete);}
+  .process-list{margin-top:48px; display:grid; grid-template-columns:repeat(4,1fr); gap:24px;}
+  @media (max-width:900px){ .process-list{grid-template-columns:1fr 1fr;} }
+  @media (max-width:560px){ .process-list{grid-template-columns:1fr;} }
+  .p-step{position:relative; padding-top:8px;}
+  .p-step .idx{font-family:'IBM Plex Mono',monospace; font-size:13px; color:var(--blue); margin-bottom:14px; display:block;}
+  .p-step h3{font-size:16.5px; margin-bottom:8px;}
+  .p-step p{font-size:14px; color:var(--ink-soft); margin:0;}
+
+  /* ---------- Quote form ---------- */
+  .quote-sec{padding-bottom:100px;}
+  .quote-box{
+    background:var(--ink); border-radius:10px; padding:56px; color:#fff;
+    display:grid; grid-template-columns:0.9fr 1.1fr; gap:52px;
+  }
+  @media (max-width:900px){ .quote-box{grid-template-columns:1fr; padding:34px 26px;} }
+  .quote-left h2{font-size:clamp(24px,3vw,32px); line-height:1.15;}
+  .quote-left p{color:#b7b9be; font-size:15px; margin-top:14px; max-width:380px;}
+  .coverage{margin-top:28px; display:flex; flex-wrap:wrap; gap:8px;}
+  .coverage span{font-family:'IBM Plex Mono',monospace; font-size:11.5px; color:#c7c9cd; border:1px solid #34363b; padding:5px 10px; border-radius:100px;}
+  .wa-inline{margin-top:30px; display:flex; align-items:center; gap:12px; padding:16px; background:#1f2024; border:1px solid #34363b; border-radius:6px;}
+  .wa-inline p{margin:0; font-size:13.5px; color:#c7c9cd;}
+  .wa-inline strong{color:#fff; display:block; font-size:14px; margin-bottom:2px;}
+
+  form{display:grid; gap:14px;}
+  .frow{display:grid; grid-template-columns:1fr 1fr; gap:14px;}
+  @media (max-width:520px){ .frow{grid-template-columns:1fr;} }
+  label{font-size:12.5px; color:#c7c9cd; margin-bottom:6px; display:block; font-weight:500;}
+  input, select{
+    width:100%; background:#1f2024; border:1px solid #34363b; color:#fff;
+    padding:12px 14px; border-radius:5px; font-family:'IBM Plex Sans',sans-serif; font-size:14.5px;
+  }
+  input::placeholder{color:#6b6e74;}
+  input:focus, select:focus{border-color:var(--blue);}
+  .submit-btn{
+    margin-top:6px; background:var(--blue); color:#fff; border:none; padding:15px 24px;
+    border-radius:5px; font-weight:600; font-size:15px; cursor:pointer; transition:background .15s;
+  }
+  .submit-btn:hover{background:var(--blue-dark);}
+  .form-note{font-size:12px; color:#8a8d93; margin-top:4px;}
+
+  /* ---------- About ---------- */
+  .about{background:var(--paper);}
+  .about-grid{display:grid; grid-template-columns:1.1fr 0.9fr; gap:52px; margin-top:44px; align-items:start;}
+  @media (max-width:900px){ .about-grid{grid-template-columns:1fr;} }
+  .about-copy p{font-size:15.5px; color:var(--ink-soft); margin:0 0 16px;}
+  .badge-row{display:flex; flex-wrap:wrap; gap:10px; margin-top:22px;}
+  .id-badge{
+    display:flex; align-items:center; gap:8px; border:1px solid var(--line); background:var(--concrete);
+    padding:9px 14px; border-radius:6px; font-size:13px; color:var(--ink-soft);
+  }
+  .id-badge b{color:var(--ink); font-weight:600;}
+  .id-badge .ico{color:var(--blue); font-size:14px;}
+  .about-cred{border:1px solid var(--line); border-radius:8px; padding:26px; background:var(--concrete);}
+  .about-cred .row{display:flex; justify-content:space-between; padding:13px 0; border-bottom:1px solid var(--line); font-size:14px;}
+  .about-cred .row:last-child{border-bottom:none;}
+  .about-cred .row .k{color:var(--steel);}
+  .about-cred .row .v{font-weight:600; color:var(--ink); text-align:right;}
+
+  /* ---------- Staff ---------- */
+  .staff{background:var(--concrete);}
+  .staff-grid{display:grid; grid-template-columns:repeat(4,1fr); gap:20px; margin-top:44px;}
+  @media (max-width:900px){ .staff-grid{grid-template-columns:repeat(2,1fr);} }
+  @media (max-width:520px){ .staff-grid{grid-template-columns:1fr;} }
+  .staff-card{background:var(--paper); border:1px solid var(--line); border-radius:8px; overflow:hidden;}
+  .staff-photo{
+    aspect-ratio:1/1; background:repeating-linear-gradient(135deg, var(--concrete-dark), var(--concrete-dark) 10px, var(--paper) 10px, var(--paper) 20px);
+    display:flex; align-items:center; justify-content:center; color:var(--steel-light);
+    font-family:'IBM Plex Mono',monospace; font-size:11.5px; text-align:center; padding:12px;
+  }
+  .staff-body{padding:16px 18px;}
+  .staff-name{font-size:15px; font-weight:600; font-family:'Space Grotesk',sans-serif;}
+  .staff-role{font-size:12.5px; color:var(--steel); margin-top:2px;}
+
+  /* ---------- Gallery ---------- */
+  .gallery-grid{display:grid; grid-template-columns:repeat(3,1fr); gap:14px; margin-top:44px;}
+  @media (max-width:760px){ .gallery-grid{grid-template-columns:1fr 1fr;} }
+  @media (max-width:480px){ .gallery-grid{grid-template-columns:1fr;} }
+  .g-item{
+    aspect-ratio:4/3; border:1.5px dashed var(--steel-light); border-radius:6px;
+    display:flex; align-items:center; justify-content:center; text-align:center; padding:16px;
+    color:var(--steel); font-size:12.5px; font-family:'IBM Plex Mono',monospace; background:var(--concrete);
+  }
+  .g-item.tall{grid-row:span 2; aspect-ratio:auto;}
+
+  /* ---------- Contact ---------- */
+  .contact{background:var(--ink); color:#fff;}
+  .contact .sec-eyebrow{color:#5ea6ff;}
+  .contact .sec-sub{color:#b7b9be;}
+  .contact-grid{display:grid; grid-template-columns:0.85fr 1.15fr; gap:52px; margin-top:44px; align-items:stretch;}
+  @media (max-width:900px){ .contact-grid{grid-template-columns:1fr;} }
+  .contact-list{display:flex; flex-direction:column; gap:22px;}
+  .c-item .l{font-family:'IBM Plex Mono',monospace; font-size:11.5px; color:#8a8d93; text-transform:uppercase; letter-spacing:0.06em; margin-bottom:6px;}
+  .c-item .v{font-size:15.5px; color:#fff;}
+  .c-item .v small{display:block; font-size:13px; color:#9a9da3; margin-top:2px; font-weight:400;}
+  .map-block{
+    border:1px solid #34363b; border-radius:8px; min-height:260px; background:#1f2024;
+    display:flex; align-items:center; justify-content:center; color:#8a8d93;
+    font-family:'IBM Plex Mono',monospace; font-size:12.5px; text-align:center; padding:20px;
+  }
+
+  /* ---------- Footer ---------- */
+  footer{border-top:1px solid var(--line); padding:44px 0;}
+  .foot-grid{display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:16px;}
+  .foot-grid .logo{font-size:16px;}
+  .foot-links{display:flex; gap:22px; font-size:13.5px; color:var(--steel);}
+  .foot-copy{font-size:12.5px; color:var(--steel-light); margin-top:20px;}
+</style>
+</head>
+<body>
+
+<header>
+  <nav class="wrap">
+    <a href="#" class="logo">Kb<span>NL</span></a>
+    <div class="nav-links">
+      <a href="#about">About</a>
+      <a href="#staff">Staff</a>
+      <a href="#gallery">Gallery</a>
+      <a href="#contact">Contact</a>
+    </div>
+    <a href="#quote" class="btn btn-primary nav-cta">Get a Quote</a>
+  </nav>
+</header>
+
+<section class="hero">
+  <div class="wrap hero-grid">
+    <div>
+      <div class="eyebrow"><span class="dot"></span> [X]× Top Distributor of the Year</div>
+      <h1 class="hero-h">Cement and building materials delivered to your site — on schedule, every time.</h1>
+      <p class="hero-sub">We source, deliver and track your order in real time, from the plant to your site — so you always know when it's arriving, without having to call and ask.</p>
+      <div class="hero-actions">
+        <a href="#quote" class="btn btn-primary">Get a Quote</a>
+        <a href="#" class="btn btn-wa">Chat on WhatsApp</a>
+      </div>
+      <p class="hero-note">No account needed. Quotes typically returned same day.</p>
+      <div class="partner-strip">
+        <span class="label">MATERIALS FROM</span>
+        <div class="marks">
+          <span>Dangote Cement</span>
+          <span>BUA Cement</span>
+          <span>HBM (Lafarge)</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="ticker-card">
+      <div class="ticker-head">
+        <span class="ticker-title">Order #KB-4471 · Site Delivery</span>
+        <span class="ticker-live"><span class="dot"></span> LIVE</span>
+      </div>
+      <div class="stop">
+        <div class="stop-marker"><div class="circ done"></div><div class="bar"></div></div>
+        <div class="stop-body"><div class="stop-title">Order confirmed</div><div class="stop-time">08:12:03</div></div>
+      </div>
+      <div class="stop">
+        <div class="stop-marker"><div class="circ done"></div><div class="bar"></div></div>
+        <div class="stop-body"><div class="stop-title">Truck loaded — plant depot</div><div class="stop-time">08:14:47</div></div>
+      </div>
+      <div class="stop">
+        <div class="stop-marker"><div class="circ active"></div><div class="bar"></div></div>
+        <div class="stop-body"><div class="stop-title">In transit — 22km from site</div><div class="stop-time">Updated 6 sec ago</div></div>
+      </div>
+      <div class="stop dim">
+        <div class="stop-marker"><div class="circ"></div></div>
+        <div class="stop-body"><div class="stop-title">Delivered &amp; confirmed</div><div class="stop-time">Pending</div></div>
+      </div>
+      <div class="ticker-foot">You'll get a status update within seconds of any change — from loading to arrival.</div>
+    </div>
+  </div>
+</section>
+
+<section class="about" id="about">
+  <div class="wrap">
+    <div class="sec-eyebrow">About us</div>
+    <h2 class="sec-h">A registered logistics company with a physical office, a real team, and a track record you can check.</h2>
+    <div class="about-grid">
+      <div class="about-copy">
+        <p>[Placeholder — replace with your real founding story: when KbNL started, why, and how it grew into a multi-state distribution operation. Keep it plain and factual; this audience trusts specifics over slogans.]</p>
+        <p>Today, KbNL is an authorized distribution partner for Dangote Cement, BUA Cement and HBM (formerly Lafarge), moving materials to builders and institutions across [X] states — with consecutive Top Distributor recognition from our manufacturing partners.</p>
+        <div class="badge-row">
+          <div class="id-badge"><span class="ico">✓</span> CAC Registered — <b>RC [XXXXXX]</b></div>
+          <div class="id-badge"><span class="ico">✓</span> <b>[X] years</b> in operation</div>
+          <div class="id-badge"><span class="ico">✓</span> Authorized distributor status</div>
+        </div>
+      </div>
+      <div class="about-cred">
+        <div class="row"><span class="k">Company name</span><span class="v">Kpaksbuddy Nigeria Limited</span></div>
+        <div class="row"><span class="k">Registration</span><span class="v">RC [XXXXXX]</span></div>
+        <div class="row"><span class="k">Head office</span><span class="v">[City, State]</span></div>
+        <div class="row"><span class="k">Coverage</span><span class="v">Multi-state, expanding nationwide</span></div>
+        <div class="row"><span class="k">Recognition</span><span class="v">[X]× Top Distributor</span></div>
+        <div class="row"><span class="k">Manufacturer partners</span><span class="v">Dangote, BUA, HBM</span></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="problem" id="why">
+  <div class="wrap">
+    <div class="sec-eyebrow">The problem with distribution</div>
+    <h2 class="sec-h">You shouldn't have to call five times a day to know where your cement is.</h2>
+    <p class="sec-sub">Most distributors are only reachable at the two ends of a delivery — when you order, and when the truck (eventually) shows up. Everything in between is a guess.</p>
+    <div class="problem-grid">
+      <div class="problem-card">
+        <div class="num">01</div>
+        <h3>Site work stalls waiting on materials</h3>
+        <p>Labour is idle, timelines slip, and nobody can tell you why — or when it'll arrive.</p>
+      </div>
+      <div class="problem-card">
+        <div class="num">02</div>
+        <h3>No accountability after dispatch</h3>
+        <p>Once the truck leaves the plant, most distributors lose visibility too. You're both waiting blind.</p>
+      </div>
+      <div class="problem-card">
+        <div class="num">03</div>
+        <h3>Institutions can't plan around a phone call</h3>
+        <p>Multi-site projects need dependable status you can build a schedule on — not a promise.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <div class="sec-eyebrow">Why a logistics partner, not a middleman</div>
+    <h2 class="sec-h">Going direct or hiring a random truck both leave you exposed the moment materials leave the plant.</h2>
+    <div class="compare-grid">
+      <div class="compare-card">
+        <h3>Buying direct from the plant</h3>
+        <ul>
+          <li><span class="ico">✕</span> You arrange your own haulage</li>
+          <li><span class="ico">✕</span> No delivery accountability</li>
+          <li><span class="ico">✕</span> Minimum order volumes</li>
+        </ul>
+      </div>
+      <div class="compare-card win">
+        <h3>KbNL</h3>
+        <ul>
+          <li><span class="ico">✓</span> One partner, plant to site</li>
+          <li><span class="ico">✓</span> Live status on every order</li>
+          <li><span class="ico">✓</span> Multi-state, award-winning track record</li>
+          <li><span class="ico">✓</span> Right-sized for one site or many</li>
+        </ul>
+      </div>
+      <div class="compare-card">
+        <h3>Hiring independent truck owners</h3>
+        <ul>
+          <li><span class="ico">✕</span> No tracking once loaded</li>
+          <li><span class="ico">✕</span> Inconsistent reliability</li>
+          <li><span class="ico">✕</span> You absorb the risk</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="moat">
+  <div class="wrap">
+    <div class="sec-eyebrow">The KbNL difference</div>
+    <h2 class="sec-h">Real-time order tracking, powered by our own operations system.</h2>
+    <p class="sec-sub">Every distributor claims reliability. Here's what actually backs ours: a proprietary operations platform, built in-house, that every driver, dispatcher and store officer uses on every single order.</p>
+
+    <div class="moat-grid">
+      <div class="moat-copy">
+        <div class="stat-row">
+          <div class="stat"><div class="n">Seconds</div><div class="l">from action to visibility, plant to site</div></div>
+          <div class="stat"><div class="n">Multi-state</div><div class="l">coverage today, expanding nationwide</div></div>
+        </div>
+        <p>The moment a truck is loaded, a checkpoint is passed, or a delivery is confirmed — it's visible to everyone who needs to know, immediately. No end-of-day reconciliation. No "let me check and call you back."</p>
+        <p>This isn't a marketing line. It's the same dashboard our own operations team runs on, every day, on every route.</p>
+      </div>
+      <div class="moat-panel">
+        <div class="line"><span class="k">plant_dispatch.status</span><span class="v">confirmed</span></div>
+        <div class="line"><span class="k">truck.checkpoint</span><span class="v">passed · 3s ago</span></div>
+        <div class="line"><span class="k">eta.site_arrival</span><span class="v">14:32</span></div>
+        <div class="line"><span class="k">client.notified</span><span class="v">true</span></div>
+        <div class="line"><span class="k">delivery.confirmation</span><span class="v">pending</span></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="staff" id="staff">
+  <div class="wrap">
+    <div class="sec-eyebrow">The people behind it</div>
+    <h2 class="sec-h">The people who handle your orders.</h2>
+    <p class="sec-sub">You can reach any of these team members directly for updates on your delivery.</p>
+    <div class="staff-grid">
+      <div class="staff-card">
+        <div class="staff-photo">Photo —<br>Founder / CEO</div>
+        <div class="staff-body"><div class="staff-name">[Name]</div><div class="staff-role">Founder &amp; CEO</div></div>
+      </div>
+      <div class="staff-card">
+        <div class="staff-photo">Photo —<br>Operations Lead</div>
+        <div class="staff-body"><div class="staff-name">[Name]</div><div class="staff-role">Head of Operations</div></div>
+      </div>
+      <div class="staff-card">
+        <div class="staff-photo">Photo —<br>Logistics Manager</div>
+        <div class="staff-body"><div class="staff-name">[Name]</div><div class="staff-role">Logistics Manager</div></div>
+      </div>
+      <div class="staff-card">
+        <div class="staff-photo">Photo —<br>Client Relations</div>
+        <div class="staff-body"><div class="staff-name">[Name]</div><div class="staff-role">Client Relations</div></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="gallery" id="gallery">
+  <div class="wrap">
+    <div class="sec-eyebrow">Gallery</div>
+    <h2 class="sec-h">Our fleet, depot and deliveries.</h2>
+    <div class="gallery-grid">
+      <div class="g-item tall">Fleet at depot<br>(vertical shot)</div>
+      <div class="g-item">Loading — plant</div>
+      <div class="g-item">Site delivery</div>
+      <div class="g-item">Warehouse / store</div>
+      <div class="g-item">Dispatch team</div>
+    </div>
+  </div>
+</section>
+
+<section id="proof">
+  <div class="wrap">
+    <div class="sec-eyebrow">Track record</div>
+    <h2 class="sec-h">Consecutive Top Distributor honours, and the builders and institutions who'll say why.</h2>
+
+    <div class="proof-grid">
+      <div class="quote-card">
+        <span class="placeholder-tag">Add real testimonial</span>
+        <p>"[Placeholder — drop in a specific quote: what the delay used to cost them, and what changed once KbNL took over logistics.]"</p>
+        <div class="quote-who">
+          <div class="avatar">??</div>
+          <div><div class="quote-name">Client name</div><div class="quote-role">Project / company</div></div>
+        </div>
+      </div>
+      <div class="quote-card">
+        <span class="placeholder-tag">Add real testimonial</span>
+        <p>"[Placeholder — a quote from an institutional client on multi-site coordination and reliability.]"</p>
+        <div class="quote-who">
+          <div class="avatar">??</div>
+          <div><div class="quote-name">Client name</div><div class="quote-role">Project / company</div></div>
+        </div>
+      </div>
+      <div class="quote-card">
+        <span class="placeholder-tag">Add real testimonial</span>
+        <p>"[Placeholder — a quote on being able to plan site schedules around confirmed delivery times.]"</p>
+        <div class="quote-who">
+          <div class="avatar">??</div>
+          <div><div class="quote-name">Client name</div><div class="quote-role">Project / company</div></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="stat-strip">
+      <div><div class="n">[X]×</div><div class="l">Top Distributor Award</div></div>
+      <div><div class="n">[X]+</div><div class="l">States covered</div></div>
+      <div><div class="n">[X]+</div><div class="l">Tons delivered</div></div>
+      <div><div class="n">[X]%</div><div class="l">On-schedule delivery</div></div>
+    </div>
+  </div>
+</section>
+
+<section class="process" id="how">
+  <div class="wrap">
+    <div class="sec-eyebrow">How it works</div>
+    <h2 class="sec-h">From quote to delivered, in four steps you can actually see.</h2>
+    <div class="process-list">
+      <div class="p-step">
+        <span class="idx">01</span>
+        <h3>Tell us what you need</h3>
+        <p>Material, quantity, and site location — takes under two minutes.</p>
+      </div>
+      <div class="p-step">
+        <span class="idx">02</span>
+        <h3>Get a transparent quote</h3>
+        <p>Pricing and delivery window back the same day, no hidden fees.</p>
+      </div>
+      <div class="p-step">
+        <span class="idx">03</span>
+        <h3>Track dispatch live</h3>
+        <p>From plant to site, status updates reach you in real time.</p>
+      </div>
+      <div class="p-step">
+        <span class="idx">04</span>
+        <h3>Delivered on schedule</h3>
+        <p>Confirmed on arrival — your site schedule stays intact.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="contact" id="contact">
+  <div class="wrap">
+    <div class="sec-eyebrow">Contact</div>
+    <h2 class="sec-h">Reach us directly — no ticket number required.</h2>
+    <div class="contact-grid">
+      <div class="contact-list">
+        <div class="c-item">
+          <div class="l">Head office</div>
+          <div class="v">[Street address, City, State]<small>Open Mon–Sat, [hours]</small></div>
+        </div>
+        <div class="c-item">
+          <div class="l">Phone</div>
+          <div class="v">[+234 XXX XXX XXXX]<small>[Landline, if applicable]</small></div>
+        </div>
+        <div class="c-item">
+          <div class="l">Email</div>
+          <div class="v">[sales@kbnl.example]</div>
+        </div>
+        <div class="c-item">
+          <div class="l">WhatsApp</div>
+          <div class="v">[+234 XXX XXX XXXX]<small>Fastest response during business hours</small></div>
+        </div>
+      </div>
+      <div class="map-block">Map embed — insert Google Maps location for head office</div>
+    </div>
+  </div>
+</section>
+
+<section class="quote-sec" id="quote">
+  <div class="wrap">
+    <div class="quote-box">
+      <div class="quote-left">
+        <h2>Get a quote for your project</h2>
+        <p>Tell us what you're building and where. We'll come back with pricing and a delivery window the same day.</p>
+        <div class="coverage">
+          <span>Rivers</span><span>Lagos</span><span>Delta</span><span>Bayelsa</span><span>Abia</span><span>+ more states</span>
+        </div>
+        <div class="wa-inline">
+          <div>
+            <strong>Prefer to talk it through?</strong>
+            <p>Skip the form and chat with our team on WhatsApp directly.</p>
+          </div>
+        </div>
+        <a href="#" class="btn btn-wa" style="margin-top:14px; width:100%;">Chat on WhatsApp →</a>
+      </div>
+
+      <form onsubmit="event.preventDefault(); alert('Form wiring pending — connect to your backend or form handler.');">
+        <div class="frow">
+          <div>
+            <label for="name">Full name</label>
+            <input id="name" type="text" placeholder="e.g. Chidi Okafor" required>
+          </div>
+          <div>
+            <label for="phone">Phone number</label>
+            <input id="phone" type="tel" placeholder="e.g. 080X XXX XXXX" required>
+          </div>
+        </div>
+        <div class="frow">
+          <div>
+            <label for="org">Company / project name</label>
+            <input id="org" type="text" placeholder="Optional">
+          </div>
+          <div>
+            <label for="state">Delivery state</label>
+            <select id="state" required>
+              <option value="">Select state</option>
+              <option>Rivers</option>
+              <option>Lagos</option>
+              <option>Delta</option>
+              <option>Bayelsa</option>
+              <option>Abia</option>
+              <option>Other</option>
+            </select>
+          </div>
+        </div>
+        <div class="frow">
+          <div>
+            <label for="material">Material needed</label>
+            <select id="material" required>
+              <option value="">Select material</option>
+              <option>Cement — Dangote</option>
+              <option>Cement — BUA</option>
+              <option>Cement — HBM (Lafarge)</option>
+              <option>Mixed building materials</option>
+            </select>
+          </div>
+          <div>
+            <label for="qty">Estimated quantity</label>
+            <input id="qty" type="text" placeholder="e.g. 500 bags">
+          </div>
+        </div>
+        <button type="submit" class="submit-btn">Get My Quote</button>
+        <p class="form-note">We typically respond within a few hours during business days.</p>
+      </form>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    <div class="foot-grid">
+      <a href="#" class="logo">Kb<span>NL</span></a>
+      <div class="foot-links">
+        <a href="#about">About</a>
+        <a href="#staff">Staff</a>
+        <a href="#gallery">Gallery</a>
+        <a href="#contact">Contact</a>
+        <a href="#quote">Get a Quote</a>
+      </div>
+    </div>
+    <p class="foot-copy">© 2026 Kpaksbuddy Nigeria Limited. Multi-state building materials distribution and logistics.</p>
+  </div>
+</footer>
+
+</body>
+</html>

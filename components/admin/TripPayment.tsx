@@ -18,6 +18,8 @@ const BAGS_PER_TONNE = 20
 
 type Tab = "SC" | "MDD"
 
+type ViewMode = "card" | "table"
+
 type Notice = { type: "error" | "info" | "success"; text: string }
 
 type TripPaymentRow = {
@@ -102,6 +104,7 @@ export default function TripPayment() {
   const [loading, setLoading] = useState(true)
   const [notice, setNotice] = useState<Notice | null>(null)
   const [search, setSearch] = useState("")
+  const [viewMode, setViewMode] = useState<ViewMode>(isMobile ? "card" : "table")
 
   // MDD pending edits: payment row id -> newly selected location id
   const [mddEdits, setMddEdits] = useState<Record<string, string>>({})
@@ -321,9 +324,13 @@ export default function TripPayment() {
         </p>
       </div>
 
-      {/* Summary cards */}
-      <div style={{ display: "grid", gridTemplateColumns: `repeat(auto-fit, minmax(${isMobile ? "100%" : "190px"}, 1fr))`, gap: 12, marginBottom: 20 }}>
-        {statCards.map(card => <StatCard key={card.label} {...card} />)}
+      {/* Summary cards: value card full-width on top, trips + bags side-by-side below */}
+      <div style={{ display: "flex", flexDirection: "column", gap: 12, marginBottom: 20 }}>
+        <StatCard {...statCards[2]} />
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+          <StatCard {...statCards[0]} />
+          <StatCard {...statCards[1]} />
+        </div>
       </div>
 
       {/* Trip type switcher */}
@@ -362,7 +369,7 @@ export default function TripPayment() {
 
       {/* Toolbar */}
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 12, marginBottom: 16 }}>
-        <div style={{ position: "relative", width: "100%", maxWidth: 320 }}>
+        <div style={{ position: "relative", width: "100%", maxWidth: isMobile ? "none" : 320 }}>
           <Icon icon="mdi:magnify" width={18} color="#94a3b8" style={{ position: "absolute", left: 10, top: "50%", transform: "translateY(-50%)" }} />
           <input
             type="text"
@@ -379,11 +386,63 @@ export default function TripPayment() {
           )}
         </div>
 
-        {canEdit && (
-          <button onClick={openLocationsModal} className="btn-hover-opacity-8" style={{ display: "flex", alignItems: "center", gap: 6, padding: "10px 14px", background: "#f5a623", color: "white", border: "none", borderRadius: 8, cursor: "pointer", fontWeight: 700, fontSize: FONT_SIZE.sm, minHeight: 40 }}>
-            <Icon icon="mdi:map-marker-radius" width={16} /> Manage Locations
-          </button>
-        )}
+        {/* Desktop: grouped on the right · Mobile: own row, toggle left / CTA right */}
+        <div style={{ display: "flex", alignItems: "center", flexWrap: "wrap", gap: 12, marginLeft: "auto", ...(isMobile ? { width: "100%", justifyContent: "space-between" } : {}) }}>
+          {!loading && paginatedItems.length > 0 && (
+            <div style={{ display: "flex", background: "white", border: "1px solid #e2e8f0", borderRadius: 8, padding: 4, gap: 0, flexShrink: 0 }}>
+              <button
+                onClick={() => setViewMode("card")}
+                style={{
+                  padding: "8px 12px",
+                  background: viewMode === "card" ? "#0070f3" : "transparent",
+                  color: viewMode === "card" ? "white" : "#64748b",
+                  border: "none",
+                  borderRadius: 6,
+                  cursor: "pointer",
+                  fontSize: FONT_SIZE.xs,
+                  fontWeight: 600,
+                  minWidth: 44,
+                  height: 40,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  transition: "all 0.2s"
+                }}
+                title="Card view"
+              >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M3 3h8v8H3V3zm10 0h8v8h-8V3zM3 13h8v8H3v-8zm10 0h8v8h-8v-8z"/></svg>
+              </button>
+              <button
+                onClick={() => setViewMode("table")}
+                style={{
+                  padding: "8px 12px",
+                  background: viewMode === "table" ? "#0070f3" : "transparent",
+                  color: viewMode === "table" ? "white" : "#64748b",
+                  border: "none",
+                  borderRadius: 6,
+                  cursor: "pointer",
+                  fontSize: FONT_SIZE.xs,
+                  fontWeight: 600,
+                  minWidth: 44,
+                  height: 40,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  transition: "all 0.2s"
+                }}
+                title="Table view"
+              >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M3 4h18v2H3V4zm0 7h18v2H3v-2zm0 7h18v2H3v-2z"/></svg>
+              </button>
+            </div>
+          )}
+
+          {canEdit && (
+            <button onClick={openLocationsModal} className="btn-hover-opacity-8" style={{ display: "flex", alignItems: "center", gap: 6, padding: "10px 14px", background: "#f5a623", color: "white", border: "none", borderRadius: 8, cursor: "pointer", fontWeight: 700, fontSize: FONT_SIZE.sm, minHeight: 40 }}>
+              <Icon icon="mdi:map-marker-radius" width={16} /> Manage Locations
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Notice */}
@@ -404,6 +463,108 @@ export default function TripPayment() {
         />
       ) : (
         <>
+          {/* Card View */}
+          {viewMode === "card" && (
+            <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(auto-fill, minmax(340px, 1fr))", gap: 16 }}>
+              {paginatedItems.map(row => {
+                const status = row.Trips?.trip_status || ""
+                const s = STATUS_STYLES[status] || { color: "#64748b", bg: "#f1f5f9" }
+                const editedLocationId = mddEdits[row.id]
+                const effectiveLocationId = editedLocationId ?? row.location_id ?? ""
+                const hasUnsavedPick = editedLocationId != null && editedLocationId !== row.location_id
+                const savedLocation = locations.find(l => l.id === row.location_id)
+                const preview = previewExpected(row)
+                const saving = savingIds.has(row.id)
+
+                return (
+                  <div key={row.id} style={{ background: "white", borderRadius: 12, padding: 20, border: "1px solid #e2e8f0", boxShadow: "0 1px 3px rgba(0,0,0,0.05)", transition: "all 0.2s ease" }} onMouseEnter={e => !isMobile && (e.currentTarget.style.boxShadow = "0 4px 12px rgba(0,0,0,0.08)", e.currentTarget.style.borderColor = "#cbd5e1")} onMouseLeave={e => !isMobile && (e.currentTarget.style.boxShadow = "0 1px 3px rgba(0,0,0,0.05)", e.currentTarget.style.borderColor = "#e2e8f0")}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 14 }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                        <h3 style={{ margin: 0, color: "#0f172a", fontSize: FONT_SIZE.lg, fontWeight: 700 }}>{row.plate_number}</h3>
+                        <span style={{ fontSize: 10, padding: "2px 8px", borderRadius: 12, background: tab === "SC" ? "#e0f2fe" : "#f3e5f5", color: tab === "SC" ? "#0369a1" : "#7c3aed", fontWeight: 700, border: `1px solid ${tab === "SC" ? "#7dd3fc" : "#d8b4fe"}` }}>{tab}</span>
+                      </div>
+                      <span style={{ padding: "4px 10px", borderRadius: 999, background: s.bg, color: s.color, fontSize: FONT_SIZE.xs, fontWeight: 700, whiteSpace: "nowrap" }}>
+                        {status || "—"}
+                      </span>
+                    </div>
+
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 16 }}>
+                      <div style={{ background: "#f8fafc", borderRadius: 8, padding: "10px 12px" }}>
+                        <p style={{ margin: 0, fontSize: FONT_SIZE.xs, color: "#64748b" }}>Tonnage</p>
+                        <p style={{ margin: "2px 0 0", fontWeight: 600, color: "#0f172a", fontSize: FONT_SIZE.md }}>{row.tonnage != null && row.tonnage > 0 ? `${Number(row.tonnage).toLocaleString()} T` : "—"}</p>
+                      </div>
+                      <div style={{ background: "#f8fafc", borderRadius: 8, padding: "10px 12px" }}>
+                        <p style={{ margin: 0, fontSize: FONT_SIZE.xs, color: "#64748b" }}>{tab === "SC" ? "Quantity Loaded" : "No. of Bags"}</p>
+                        <p style={{ margin: "2px 0 0", fontWeight: 600, color: "#0f172a", fontSize: FONT_SIZE.md }}>{`${row.quantity_loaded.toLocaleString()} bags`}</p>
+                      </div>
+                    </div>
+
+                    {tab === "SC" ? (
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: 8, padding: "10px 12px", marginBottom: 14 }}>
+                        <span style={{ fontSize: FONT_SIZE.xs, color: "#16a34a", fontWeight: 600 }}>Value (₦600 × Bags)</span>
+                        <span style={{ fontWeight: 700, color: "#15803d", fontSize: FONT_SIZE.md }}>{formatMoney(row.value)}</span>
+                      </div>
+                    ) : (
+                      <>
+                        <div style={{ marginBottom: 12 }}>
+                          <p style={{ margin: "0 0 6px", fontSize: FONT_SIZE.xs, color: "#94a3b8", fontWeight: 500 }}>Location</p>
+                          {!canEdit ? (
+                            savedLocation
+                              ? <p style={{ margin: 0, fontSize: FONT_SIZE.sm, fontWeight: 600, color: "#0f172a" }}>{savedLocation.location} <span style={{ fontWeight: 400, color: "#94a3b8" }}>· ₦{Number(savedLocation.cost_per_ton).toLocaleString()}/ton</span></p>
+                              : <p style={{ margin: 0, fontSize: FONT_SIZE.sm, color: "#94a3b8" }}>—</p>
+                          ) : locations.length === 0 ? (
+                            <button onClick={openLocationsModal} className="btn-hover-opacity-8" style={{ display: "flex", alignItems: "center", gap: 4, padding: "8px 12px", borderRadius: 8, border: "1px dashed #cbd5e1", background: "white", color: "#0070f3", cursor: "pointer", fontWeight: 600, fontSize: FONT_SIZE.xs }}>
+                              <Icon icon="mdi:plus" width={13} /> Add locations
+                            </button>
+                          ) : (
+                            <select
+                              className="tp-focus"
+                              value={effectiveLocationId}
+                              onChange={e => handleSelectLocation(row.id, e.target.value)}
+                              style={{ ...selectStyle, minWidth: 0 }}
+                            >
+                              <option value="">Select location…</option>
+                              {locations.map(l => <option key={l.id} value={l.id}>{l.location} · ₦{Number(l.cost_per_ton).toLocaleString()}/ton</option>)}
+                            </select>
+                          )}
+                        </div>
+
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8, background: preview == null && !hasUnsavedPick ? "#fffbeb" : "#f0fdf4", border: `1px solid ${preview == null && !hasUnsavedPick ? "#fde68a" : "#bbf7d0"}`, borderRadius: 8, padding: "10px 12px", marginBottom: 14 }}>
+                          <span style={{ fontSize: FONT_SIZE.xs, color: preview == null && !hasUnsavedPick ? "#b45309" : "#16a34a", fontWeight: 600 }}>Payment Expected</span>
+                          {preview == null && !hasUnsavedPick ? (
+                            <span style={{ padding: "4px 10px", borderRadius: 999, background: "white", color: "#b45309", fontSize: FONT_SIZE.xs, fontWeight: 700 }}>Awaiting location</span>
+                          ) : (
+                            <span title={hasUnsavedPick ? "Unsaved — click Update" : undefined} style={{ fontWeight: 700, color: hasUnsavedPick ? "#0070f3" : "#15803d", fontSize: FONT_SIZE.md }}>{formatMoney(preview)}</span>
+                          )}
+                        </div>
+
+                        {canEdit && hasUnsavedPick && (
+                          <button
+                            onClick={() => handleUpdateExpected(row)}
+                            disabled={saving}
+                            aria-label={`Update payment expected for ${row.plate_number}`}
+                            className="btn-hover-opacity-8"
+                            style={{ width: "100%", justifyContent: "center", marginBottom: 14, padding: "9px 12px", borderRadius: 8, border: "none", background: saving ? "#93c5fd" : "#0070f3", color: "white", cursor: saving ? "not-allowed" : "pointer", fontWeight: 700, fontSize: FONT_SIZE.sm, display: "flex", alignItems: "center", gap: 6 }}
+                          >
+                            {saving
+                              ? <><Icon icon="mdi:loading" width={14} className="tp-spin" /> Saving…</>
+                              : <><Icon icon="mdi:check" width={14} /> Update Payment Expected</>}
+                          </button>
+                        )}
+                      </>
+                    )}
+
+                    <div style={{ borderTop: "1px solid #f1f5f9", paddingTop: 10 }}>
+                      <span style={{ fontSize: FONT_SIZE.xs, color: "#94a3b8" }}>{formatDateTime(row.created_at)}</span>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+
+          {/* Table View */}
+          {viewMode === "table" && (
           <div style={{ overflowX: "auto", background: "white", border: "1px solid #e2e8f0", borderRadius: 12, boxShadow: "0 1px 3px rgba(0,0,0,0.05)" }}>
             <table style={{ width: "100%", borderCollapse: "collapse", minWidth: tab === "MDD" ? 900 : 780 }}>
               <thead>
@@ -438,7 +599,7 @@ export default function TripPayment() {
                   return (
                     <tr key={row.id} className="tp-row" style={{ borderBottom: "1px solid #f1f5f9", transition: "background 0.15s ease" }}>
                       <td style={{ ...tdStyle, fontWeight: 700, color: "#0f172a", whiteSpace: "nowrap" }}>{row.plate_number}</td>
-                      <td style={tdRight}>{row.tonnage != null && row.tonnage > 0 ? `${Number(row.tonnage).toLocaleString()} t` : "—"}</td>
+                      <td style={tdRight}>{row.tonnage != null && row.tonnage > 0 ? `${Number(row.tonnage).toLocaleString()} T` : "—"}</td>
                       <td style={tdRight}>{`${row.quantity_loaded.toLocaleString()} bags`}</td>
                       {tab === "SC" ? (
                         <td style={tdRight}>{formatMoney(row.value)}</td>
@@ -526,6 +687,7 @@ export default function TripPayment() {
               </tfoot>
             </table>
           </div>
+          )}
           <PaginationControls page={page} totalPages={totalPages} totalItems={totalItems} onPageChange={setPage} />
         </>
       )}
