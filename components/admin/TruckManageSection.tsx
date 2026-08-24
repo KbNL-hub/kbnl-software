@@ -2,7 +2,8 @@
 
 import { FONT_SIZE } from "@/lib/constants"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
+import { Icon } from "@iconify/react"
 import { apiMutate } from "@/lib/api-mutation"
 
 type Truck = {
@@ -14,6 +15,8 @@ type Truck = {
 }
 
 type ViewMode = "card" | "table"
+
+const TRUCK_STATUSES = ["Empty", "Loaded", "Undergoing Repairs", "To Plant", "At Plant", "To Refuel", "Decommissioned"]
 
 const getPillStyle = (filter: string, isActive: boolean) => {
   if (!isActive) {
@@ -28,6 +31,10 @@ const getPillStyle = (filter: string, isActive: boolean) => {
     return { bg: "#eff6ff", textColor: "#0070f3", borderColor: "#0070f3" }
   } else if (filter === "To Plant") {
     return { bg: "#f0f0ff", textColor: "#874cf5", borderColor: "#874cf5" }
+  } else if (filter === "At Plant") {
+    return { bg: "#eef2ff", textColor: "#6366f1", borderColor: "#6366f1" }
+  } else if (filter === "To Refuel") {
+    return { bg: "#ecfeff", textColor: "#0891b2", borderColor: "#0891b2" }
   } else if (filter === "Undergoing Repairs") {
     return { bg: "#fffbeb", textColor: "#f5a623", borderColor: "#f5a623" }
   } else if (filter === "Decommissioned") {
@@ -35,6 +42,52 @@ const getPillStyle = (filter: string, isActive: boolean) => {
   }
 
   return { bg: "white", textColor: "#64748b", borderColor: "#e2e8f0" }
+}
+
+type StatusMenuProps = {
+  current: string
+  isUpdating: boolean
+  onSelect: (status: string) => void
+}
+
+function StatusMenu({ current, isUpdating, onSelect }: StatusMenuProps) {
+  return (
+    <div style={{
+      position: "absolute", top: "calc(100% + 6px)", right: 0, zIndex: 30, minWidth: 220,
+      background: "white", border: "1px solid #e2e8f0", borderRadius: 10,
+      boxShadow: "0 8px 24px rgba(0,0,0,0.12)", overflow: "hidden",
+    }}>
+      <p style={{ margin: 0, padding: "10px 14px 6px", fontSize: FONT_SIZE.xs, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.5px", color: "#94a3b8" }}>
+        Select status
+      </p>
+      {TRUCK_STATUSES.map((s, idx) => {
+        const pill = getPillStyle(s, true)
+        const isCurrent = s === current
+        return (
+          <button
+            key={s}
+            disabled={isCurrent || isUpdating}
+            onClick={() => onSelect(s)}
+            style={{
+              display: "flex", alignItems: "center", gap: 10, width: "100%",
+              padding: "10px 14px", background: "transparent", border: "none",
+              borderTop: idx === 0 ? "none" : "1px solid #f1f5f9",
+              cursor: isCurrent || isUpdating ? "default" : "pointer", textAlign: "left",
+              fontSize: FONT_SIZE.sm, fontWeight: 500,
+              color: isCurrent ? "#94a3b8" : "#0f172a",
+              transition: "background 0.15s",
+            }}
+            onMouseEnter={e => { if (!isCurrent && !isUpdating) e.currentTarget.style.background = "#f8fafc" }}
+            onMouseLeave={e => { e.currentTarget.style.background = "transparent" }}
+          >
+            <span style={{ width: 8, height: 8, borderRadius: 999, background: pill.textColor, flexShrink: 0 }} />
+            <span style={{ flex: 1 }}>{s}</span>
+            {isCurrent && <Icon icon="mdi:check" width={16} color="#16a34a" />}
+          </button>
+        )
+      })}
+    </div>
+  )
 }
 
 type Props = {
@@ -46,10 +99,19 @@ export default function TruckManageSection({ trucks, onRefresh }: Props) {
   const [viewMode, setViewMode] = useState<ViewMode>("card")
   const [filterStatus, setFilterStatus] = useState("All")
   const [updatingPlate, setUpdatingPlate] = useState<string | null>(null)
+  const [statusMenuPlate, setStatusMenuPlate] = useState<string | null>(null)
   const [message, setMessage] = useState("")
   const [messageType, setMessageType] = useState<"success" | "error">("success")
 
-  const filterOptions = ["All", "Empty", "Loaded", "To Plant", "Undergoing Repairs", "Decommissioned"]
+  useEffect(() => {
+    if (!statusMenuPlate) return
+    const handleClickOutside = (e: MouseEvent) => {
+      const target = e.target as HTMLElement | null
+      if (!target?.closest("[data-status-menu]")) setStatusMenuPlate(null)
+    }
+    document.addEventListener("mousedown", handleClickOutside)
+    return () => document.removeEventListener("mousedown", handleClickOutside)
+  }, [statusMenuPlate])
 
   const filteredTrucks = filterStatus === "All"
     ? trucks
@@ -84,6 +146,38 @@ export default function TruckManageSection({ trucks, onRefresh }: Props) {
       setUpdatingPlate(null)
     }
   }
+
+  const renderStatusControl = (truck: Truck, isUpdating: boolean, compact = false) => (
+    <div data-status-menu style={{ position: "relative", display: "inline-block" }}>
+      <button
+        onClick={() => setStatusMenuPlate(statusMenuPlate === truck.plate_number ? null : truck.plate_number)}
+        disabled={isUpdating}
+        style={{
+          display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 6,
+          padding: compact ? "6px 10px" : "8px 14px",
+          minWidth: compact ? undefined : "100%",
+          minHeight: compact ? 32 : 40,
+          cursor: isUpdating ? "not-allowed" : "pointer",
+          borderRadius: 6, border: "1px solid #e2e8f0", background: "white",
+          color: isUpdating ? "#94a3b8" : "#334155",
+          fontSize: compact ? FONT_SIZE.xs : FONT_SIZE.sm, fontWeight: 600,
+          transition: "all 0.2s", opacity: isUpdating ? 0.7 : 1, whiteSpace: "nowrap",
+        }}
+        onMouseEnter={e => { if (!isUpdating) { e.currentTarget.style.background = "#f8fafc"; e.currentTarget.style.borderColor = "#cbd5e1" } }}
+        onMouseLeave={e => { e.currentTarget.style.background = "white"; e.currentTarget.style.borderColor = "#e2e8f0" }}
+      >
+        {isUpdating ? "Updating..." : "Set status"}
+        <Icon icon="mdi:chevron-down" width={compact ? 14 : 16} />
+      </button>
+      {statusMenuPlate === truck.plate_number && (
+        <StatusMenu
+          current={truck.status}
+          isUpdating={isUpdating}
+          onSelect={s => { setStatusMenuPlate(null); updateTruckStatus(truck.plate_number, s) }}
+        />
+      )}
+    </div>
+  )
 
   const statusPillColor = (status: string) => {
     const pill = getPillStyle(status, true)
@@ -152,7 +246,7 @@ export default function TruckManageSection({ trucks, onRefresh }: Props) {
 
       {/* Filter Pills */}
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 24 }}>
-        {filterOptions.map(option => {
+        {["All", ...TRUCK_STATUSES].map(option => {
           const isActive = filterStatus === option
           const pill = getPillStyle(option, isActive)
           return (
@@ -219,61 +313,8 @@ export default function TruckManageSection({ trucks, onRefresh }: Props) {
                       </div>
                     </div>
 
-                    <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
-                      {truck.status !== "To Plant" && (
-                        <button
-                          onClick={() => updateTruckStatus(truck.plate_number, "To Plant")}
-                          disabled={isUpdating}
-                          style={{
-                            flex: 1, padding: "8px 12px", cursor: isUpdating ? "not-allowed" : "pointer",
-                            borderRadius: 6, border: "1.5px solid #874cf5",
-                            color: isUpdating ? "#94a3b8" : "#874cf5",
-                            background: isUpdating ? "#e2e8f0" : "#f0f0ff",
-                            fontSize: FONT_SIZE.sm, fontWeight: 600, transition: "all 0.2s",
-                            opacity: isUpdating ? 0.7 : 1,
-                          }}
-                          onMouseEnter={e => { if (!isUpdating) e.currentTarget.style.background = "#e0e0ff" }}
-                          onMouseLeave={e => { if (!isUpdating) e.currentTarget.style.background = "#f0f0ff" }}
-                        >
-                          {isUpdating ? "Updating..." : "To Plant"}
-                        </button>
-                      )}
-                      {truck.status !== "Undergoing Repairs" && (
-                        <button
-                          onClick={() => updateTruckStatus(truck.plate_number, "Undergoing Repairs")}
-                          disabled={isUpdating}
-                          style={{
-                            flex: 1, padding: "8px 12px", cursor: isUpdating ? "not-allowed" : "pointer",
-                            borderRadius: 6, border: "1.5px solid #f5a623",
-                            color: isUpdating ? "#94a3b8" : "#f5a623",
-                            background: isUpdating ? "#e2e8f0" : "#fffbeb",
-                            fontSize: FONT_SIZE.sm, fontWeight: 600, transition: "all 0.2s",
-                            opacity: isUpdating ? 0.7 : 1,
-                          }}
-                          onMouseEnter={e => { if (!isUpdating) e.currentTarget.style.background = "#fff3cd" }}
-                          onMouseLeave={e => { if (!isUpdating) e.currentTarget.style.background = "#fffbeb" }}
-                        >
-                          {isUpdating ? "Updating..." : "Undergoing Repairs"}
-                        </button>
-                      )}
-                      {(truck.status === "To Plant" || truck.status === "Undergoing Repairs") && (
-                        <button
-                          onClick={() => updateTruckStatus(truck.plate_number, "Empty")}
-                          disabled={isUpdating}
-                          style={{
-                            flex: 1, padding: "8px 12px", cursor: isUpdating ? "not-allowed" : "pointer",
-                            borderRadius: 6, border: "1px solid #e2e8f0",
-                            color: isUpdating ? "#94a3b8" : "#64748b",
-                            background: isUpdating ? "#e2e8f0" : "white",
-                            fontSize: FONT_SIZE.sm, fontWeight: 500, transition: "all 0.2s",
-                            opacity: isUpdating ? 0.7 : 1,
-                          }}
-                          onMouseEnter={e => { if (!isUpdating) { e.currentTarget.style.background = "#f8fafc"; e.currentTarget.style.borderColor = "#cbd5e1" } }}
-                          onMouseLeave={e => { if (!isUpdating) { e.currentTarget.style.background = "white"; e.currentTarget.style.borderColor = "#e2e8f0" } }}
-                        >
-                          {isUpdating ? "Updating..." : "Set Empty"}
-                        </button>
-                      )}
+                    <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 12 }}>
+                      {renderStatusControl(truck, isUpdating)}
                     </div>
                   </div>
                 )
@@ -315,65 +356,7 @@ export default function TruckManageSection({ trucks, onRefresh }: Props) {
                           </span>
                         </td>
                         <td style={{ padding: "12px 16px" }}>
-                          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                            {truck.status !== "To Plant" && (
-                              <button
-                                onClick={() => updateTruckStatus(truck.plate_number, "To Plant")}
-                                disabled={isUpdating}
-                                style={{
-                                  padding: "6px 10px", cursor: isUpdating ? "not-allowed" : "pointer",
-                                  borderRadius: 6, border: "1.5px solid #874cf5",
-                                  color: isUpdating ? "#94a3b8" : "#874cf5",
-                                  background: isUpdating ? "#e2e8f0" : "#f0f0ff",
-                                  fontSize: FONT_SIZE.xs, fontWeight: 600, transition: "all 0.2s",
-                                  minHeight: 32, display: "inline-flex", alignItems: "center", justifyContent: "center",
-                                  opacity: isUpdating ? 0.7 : 1,
-                                }}
-                                onMouseEnter={e => { if (!isUpdating) e.currentTarget.style.background = "#e0e0ff" }}
-                                onMouseLeave={e => { if (!isUpdating) e.currentTarget.style.background = "#f0f0ff" }}
-                              >
-                                To Plant
-                              </button>
-                            )}
-                            {truck.status !== "Undergoing Repairs" && (
-                              <button
-                                onClick={() => updateTruckStatus(truck.plate_number, "Undergoing Repairs")}
-                                disabled={isUpdating}
-                                style={{
-                                  padding: "6px 10px", cursor: isUpdating ? "not-allowed" : "pointer",
-                                  borderRadius: 6, border: "1.5px solid #f5a623",
-                                  color: isUpdating ? "#94a3b8" : "#f5a623",
-                                  background: isUpdating ? "#e2e8f0" : "#fffbeb",
-                                  fontSize: FONT_SIZE.xs, fontWeight: 600, transition: "all 0.2s",
-                                  minHeight: 32, display: "inline-flex", alignItems: "center", justifyContent: "center",
-                                  opacity: isUpdating ? 0.7 : 1,
-                                }}
-                                onMouseEnter={e => { if (!isUpdating) e.currentTarget.style.background = "#fff3cd" }}
-                                onMouseLeave={e => { if (!isUpdating) e.currentTarget.style.background = "#fffbeb" }}
-                              >
-                                Repairs
-                              </button>
-                            )}
-                            {(truck.status === "To Plant" || truck.status === "Undergoing Repairs") && (
-                              <button
-                                onClick={() => updateTruckStatus(truck.plate_number, "Empty")}
-                                disabled={isUpdating}
-                                style={{
-                                  padding: "6px 10px", cursor: isUpdating ? "not-allowed" : "pointer",
-                                  borderRadius: 6, border: "1px solid #e2e8f0",
-                                  color: isUpdating ? "#94a3b8" : "#64748b",
-                                  background: isUpdating ? "#e2e8f0" : "white",
-                                  fontSize: FONT_SIZE.xs, fontWeight: 500, transition: "all 0.2s",
-                                  minHeight: 32, display: "inline-flex", alignItems: "center", justifyContent: "center",
-                                  opacity: isUpdating ? 0.7 : 1,
-                                }}
-                                onMouseEnter={e => { if (!isUpdating) { e.currentTarget.style.background = "#f8fafc"; e.currentTarget.style.borderColor = "#cbd5e1" } }}
-                                onMouseLeave={e => { if (!isUpdating) { e.currentTarget.style.background = "white"; e.currentTarget.style.borderColor = "#e2e8f0" } }}
-                              >
-                                Set Empty
-                              </button>
-                            )}
-                          </div>
+                          {renderStatusControl(truck, isUpdating, true)}
                         </td>
                       </tr>
                     )

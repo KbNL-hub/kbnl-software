@@ -302,12 +302,12 @@ export default function TripPayment() {
   const statCards = tab === "SC"
     ? [
         { icon: "mdi:truck-outline", tintBg: "#eff6ff", tintFg: "#0369a1", label: "Trips", value: totals.trips.toLocaleString(), sub: undefined as { text: string; color?: string } | undefined },
-        { icon: "mdi:package-variant", tintBg: "#fffbeb", tintFg: "#b45309", label: "Bags Loaded", value: totals.bags.toLocaleString(), sub: undefined },
+        { icon: "mdi:package-variant", tintBg: "#fffbeb", tintFg: "#b45309", label: "Bags", value: totals.bags.toLocaleString(), sub: undefined },
         { icon: "mdi:currency-ngn", tintBg: "#f0fdf4", tintFg: "#16a34a", label: "Total Value @ ₦600/bag", value: formatMoney(totals.scValue), sub: undefined },
       ]
     : [
         { icon: "mdi:truck-outline", tintBg: "#eff6ff", tintFg: "#0369a1", label: "Trips", value: totals.trips.toLocaleString(), sub: undefined as { text: string; color?: string } | undefined },
-        { icon: "mdi:package-variant", tintBg: "#fffbeb", tintFg: "#b45309", label: "No. of Bags", value: totals.bags.toLocaleString(), sub: undefined },
+        { icon: "mdi:package-variant", tintBg: "#fffbeb", tintFg: "#b45309", label: "Bags", value: totals.bags.toLocaleString(), sub: undefined },
         {
           icon: "mdi:currency-ngn", tintBg: "#f0fdf4", tintFg: "#16a34a", label: "Total Payment Expected", value: formatMoney(totals.mddExpected),
           sub: totals.mddPending > 0 ? { text: `${totals.mddPending} awaiting location`, color: "#b45309" } : { text: "All locations assigned", color: "#15803d" },

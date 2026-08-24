@@ -78,8 +78,15 @@ export default function ManageTruckOfficers() {
   const phoneRef = useRef<HTMLInputElement>(null)
   const emailRef = useRef<HTMLInputElement>(null)
   const editPhoneRef = useRef<HTMLInputElement>(null)
+  const assignModalRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => { fetchManagers() }, [])
+
+  useEffect(() => {
+    if (assignError && assignModalRef.current) {
+      assignModalRef.current.scrollTo({ top: 0, behavior: "smooth" })
+    }
+  }, [assignError])
 
   async function fetchManagers() {
     setLoading(true)
@@ -439,7 +446,7 @@ export default function ManageTruckOfficers() {
       {(showInviteModal || editingManager || deletingId || assigningManager) && (
         <div style={{ position: "fixed", inset: 0, background: "rgba(15, 23, 42, 0.6)", backdropFilter: "blur(4px)", display: "flex", alignItems: isMobile ? "flex-end" : "center", justifyContent: "center", zIndex: 100, padding: isMobile ? 0 : 24, animation: "fadeIn 0.2s ease-out" }}>
           <style>{`@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } } @keyframes slideUp { from { transform: translateY(20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }`}</style>
-          <div style={{ background: "white", borderRadius: isMobile ? "20px 20px 0 0" : 12, padding: isMobile ? "28px 20px" : 32, width: "100%", maxWidth: assigningManager ? 540 : 420, maxHeight: "90vh", overflowY: "auto", boxShadow: "0 25px 50px -12px rgba(0, 0, 0, 0.25)", animation: "slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1)" }}>
+          <div ref={assignModalRef} style={{ background: "white", borderRadius: isMobile ? "20px 20px 0 0" : 12, padding: isMobile ? "28px 20px" : 32, width: "100%", maxWidth: assigningManager ? 540 : 420, maxHeight: "90vh", overflowY: "auto", boxShadow: "0 25px 50px -12px rgba(0, 0, 0, 0.25)", animation: "slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1)" }}>
 
             {showInviteModal && (
               <>

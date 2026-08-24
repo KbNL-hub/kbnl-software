@@ -32,6 +32,8 @@ const TRUCK_STATUS_CARDS: { status: string; icon: string; color: string }[] = [
   { status: "Loaded", icon: "mdi:truck", color: "#0070f3" },
   { status: "Empty", icon: "mdi:truck-outline", color: "#10b981" },
   { status: "To Plant", icon: "mdi:factory", color: "#8b5cf6" },
+  { status: "At Plant", icon: "mdi:factory-outline", color: "#6366f1" },
+  { status: "To Refuel", icon: "mdi:gas-station", color: "#0891b2" },
   { status: "Undergoing Repairs", icon: "mdi:wrench", color: "#f59e0b" },
   { status: "Decommissioned", icon: "mdi:truck-remove", color: "#ef4444" },
 ]

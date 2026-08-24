@@ -26,7 +26,7 @@ type ViewMode = "card" | "table"
 
 const TRUCK_SIZES = ["20", "40/45", "Dina", "Tricycle"]
 const ENGINE_TYPES = ["Diesel Engine", "CNG"]
-const truckStatuses = ["Empty", "Loaded", "To Plant", "Undergoing Repairs", "Decommissioned"]
+const truckStatuses = ["Empty", "Loaded", "Undergoing Repairs", "To Plant", "At Plant", "To Refuel", "Decommissioned"]
 
 function useBreakpoint() {
   const [isDesktop, setIsDesktop] = useState(false)
@@ -61,6 +61,10 @@ const getPillStyle = (filter: string, isActive: boolean) => {
     return { bg: "#eff6ff", textColor: "#0070f3", borderColor: "#0070f3" }
   } else if (filter === "To Plant") {
     return { bg: "#f8f0ff", textColor: "#874cf5", borderColor: "#874cf5" }
+  } else if (filter === "At Plant") {
+    return { bg: "#eef2ff", textColor: "#6366f1", borderColor: "#6366f1" }
+  } else if (filter === "To Refuel") {
+    return { bg: "#ecfeff", textColor: "#0891b2", borderColor: "#0891b2" }
   } else if (filter === "Undergoing Repairs") {
     return { bg: "#fffbeb", textColor: "#f5a623", borderColor: "#f5a623" }
   } else if (filter === "Decommissioned") {
@@ -108,7 +112,7 @@ export default function ManageTrucks() {
    
   useEffect(() => { fetchTrucks() }, [])
 
-  const filterOptions = ["All", "Empty", "Loaded", "To Plant", "Undergoing Repairs", "Decommissioned"]
+  const filterOptions = ["All", ...truckStatuses]
   const filteredTrucks = filterStatus === "All" ? trucks : trucks.filter((t) => t.status === filterStatus)
   const { page, setPage, totalPages, paginatedItems, totalItems } = usePagination(filteredTrucks)
 

@@ -7,7 +7,7 @@ import { usePermissions } from "@/lib/PermissionContext"
 
 const TRUCK_SIZES = ["20", "40/45", "Dina", "Tricycle"]
 const ENGINE_TYPES = ["Diesel Engine", "CNG"]
-const truckStatuses = ["Empty", "Loaded", "To Plant", "Undergoing Repairs", "Decommissioned"]
+const truckStatuses = ["Empty", "Loaded", "Undergoing Repairs", "To Plant", "At Plant", "To Refuel", "Decommissioned"]
 
 export default function AddTruck() {
   const { getAccess } = usePermissions()

@@ -127,6 +127,8 @@ const truckStatusPill = (status: string) => {
     case "Empty": return { bg: "#f0fdf4", color: "#16a34a", border: "#16a34a" }
     case "Loaded": return { bg: "#eff6ff", color: "#0070f3", border: "#0070f3" }
     case "To Plant": return { bg: "#f8f0ff", color: "#874cf5", border: "#874cf5" }
+    case "At Plant": return { bg: "#eef2ff", color: "#6366f1", border: "#6366f1" }
+    case "To Refuel": return { bg: "#ecfeff", color: "#0891b2", border: "#0891b2" }
     case "Undergoing Repairs": return { bg: "#fffbeb", color: "#f5a623", border: "#f5a623" }
     case "Decommissioned": return { bg: "#fef2f2", color: "#ef4444", border: "#ef4444" }
     default: return { bg: "#f8fafc", color: "#64748b", border: "#e2e8f0" }
