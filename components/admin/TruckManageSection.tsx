@@ -2,7 +2,8 @@
 
 import { FONT_SIZE } from "@/lib/constants"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef, useCallback } from "react"
+import { createPortal } from "react-dom"
 import { Icon } from "@iconify/react"
 import { apiMutate } from "@/lib/api-mutation"
 
@@ -48,15 +49,35 @@ type StatusMenuProps = {
   current: string
   isUpdating: boolean
   onSelect: (status: string) => void
+  position: { top: number; right: number }
+  onClose: () => void
 }
 
-function StatusMenu({ current, isUpdating, onSelect }: StatusMenuProps) {
-  return (
-    <div style={{
-      position: "absolute", top: "calc(100% + 6px)", right: 0, zIndex: 30, minWidth: 220,
-      background: "white", border: "1px solid #e2e8f0", borderRadius: 10,
-      boxShadow: "0 8px 24px rgba(0,0,0,0.12)", overflow: "hidden",
-    }}>
+function StatusMenu({ current, isUpdating, onSelect, position, onClose }: StatusMenuProps) {
+  const menuRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (!menuRef.current) return
+    const menu = menuRef.current
+    const rect = menu.getBoundingClientRect()
+    const viewportH = window.innerHeight
+    if (rect.bottom > viewportH - 8) {
+      menu.style.top = "auto"
+      menu.style.bottom = `${viewportH - position.top + 6}px`
+      menu.style.right = `${position.right}px`
+    }
+  }, [position])
+
+  return createPortal(
+    <div
+      ref={menuRef}
+      data-status-menu
+      style={{
+        position: "fixed", top: position.top, right: position.right, zIndex: 9999, minWidth: 220,
+        background: "white", border: "1px solid #e2e8f0", borderRadius: 10,
+        boxShadow: "0 8px 24px rgba(0,0,0,0.12)", overflow: "hidden",
+      }}
+    >
       <p style={{ margin: 0, padding: "10px 14px 6px", fontSize: FONT_SIZE.xs, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.5px", color: "#94a3b8" }}>
         Select status
       </p>
@@ -86,7 +107,8 @@ function StatusMenu({ current, isUpdating, onSelect }: StatusMenuProps) {
           </button>
         )
       })}
-    </div>
+    </div>,
+    document.body
   )
 }
 
@@ -103,8 +125,19 @@ export default function TruckManageSection({ trucks, onRefresh }: Props) {
   const [message, setMessage] = useState("")
   const [messageType, setMessageType] = useState<"success" | "error">("success")
 
+  const triggerRefs = useRef<Map<string, HTMLButtonElement>>(new Map())
+  const [menuPosition, setMenuPosition] = useState<{ top: number; right: number } | null>(null)
+
+  const measureAndOpen = useCallback((plateNumber: string) => {
+    const btn = triggerRefs.current.get(plateNumber)
+    if (!btn) return
+    const rect = btn.getBoundingClientRect()
+    setMenuPosition({ top: rect.bottom + 6, right: window.innerWidth - rect.right })
+    setStatusMenuPlate(plateNumber)
+  }, [])
+
   useEffect(() => {
-    if (!statusMenuPlate) return
+    if (!statusMenuPlate) { setMenuPosition(null); return }
     const handleClickOutside = (e: MouseEvent) => {
       const target = e.target as HTMLElement | null
       if (!target?.closest("[data-status-menu]")) setStatusMenuPlate(null)
@@ -148,35 +181,36 @@ export default function TruckManageSection({ trucks, onRefresh }: Props) {
   }
 
   const renderStatusControl = (truck: Truck, isUpdating: boolean, compact = false) => (
-    <div data-status-menu style={{ position: "relative", display: "inline-block" }}>
-      <button
-        onClick={() => setStatusMenuPlate(statusMenuPlate === truck.plate_number ? null : truck.plate_number)}
-        disabled={isUpdating}
-        style={{
-          display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 6,
-          padding: compact ? "6px 10px" : "8px 14px",
-          minWidth: compact ? undefined : "100%",
-          minHeight: compact ? 32 : 40,
-          cursor: isUpdating ? "not-allowed" : "pointer",
-          borderRadius: 6, border: "1px solid #e2e8f0", background: "white",
-          color: isUpdating ? "#94a3b8" : "#334155",
-          fontSize: compact ? FONT_SIZE.xs : FONT_SIZE.sm, fontWeight: 600,
-          transition: "all 0.2s", opacity: isUpdating ? 0.7 : 1, whiteSpace: "nowrap",
-        }}
-        onMouseEnter={e => { if (!isUpdating) { e.currentTarget.style.background = "#f8fafc"; e.currentTarget.style.borderColor = "#cbd5e1" } }}
-        onMouseLeave={e => { e.currentTarget.style.background = "white"; e.currentTarget.style.borderColor = "#e2e8f0" }}
-      >
-        {isUpdating ? "Updating..." : "Set status"}
-        <Icon icon="mdi:chevron-down" width={compact ? 14 : 16} />
-      </button>
-      {statusMenuPlate === truck.plate_number && (
+    <button
+      ref={el => { if (el) triggerRefs.current.set(truck.plate_number, el) }}
+      onClick={() => { statusMenuPlate === truck.plate_number ? setStatusMenuPlate(null) : measureAndOpen(truck.plate_number) }}
+      disabled={isUpdating}
+      style={{
+        display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 6,
+        padding: compact ? "6px 10px" : "8px 14px",
+        minWidth: compact ? undefined : "100%",
+        minHeight: compact ? 32 : 40,
+        cursor: isUpdating ? "not-allowed" : "pointer",
+        borderRadius: 6, border: "1px solid #e2e8f0", background: "white",
+        color: isUpdating ? "#94a3b8" : "#334155",
+        fontSize: compact ? FONT_SIZE.xs : FONT_SIZE.sm, fontWeight: 600,
+        transition: "all 0.2s", opacity: isUpdating ? 0.7 : 1, whiteSpace: "nowrap",
+      }}
+      onMouseEnter={e => { if (!isUpdating) { e.currentTarget.style.background = "#f8fafc"; e.currentTarget.style.borderColor = "#cbd5e1" } }}
+      onMouseLeave={e => { e.currentTarget.style.background = "white"; e.currentTarget.style.borderColor = "#e2e8f0" }}
+    >
+      {isUpdating ? "Updating..." : "Set status"}
+      <Icon icon="mdi:chevron-down" width={compact ? 14 : 16} />
+      {statusMenuPlate === truck.plate_number && menuPosition && (
         <StatusMenu
           current={truck.status}
           isUpdating={isUpdating}
+          position={menuPosition}
+          onClose={() => setStatusMenuPlate(null)}
           onSelect={s => { setStatusMenuPlate(null); updateTruckStatus(truck.plate_number, s) }}
         />
       )}
-    </div>
+    </button>
   )
 
   const statusPillColor = (status: string) => {
