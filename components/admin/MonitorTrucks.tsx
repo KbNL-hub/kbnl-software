@@ -139,6 +139,20 @@ export default function MonitorTrucks({ viewOnly = false }: { viewOnly?: boolean
   const [ddStopOffloaded, setDdStopOffloaded] = useState(0)
   const [ddEndConfirmTrip, setDdEndConfirmTrip] = useState<DDTrip | null>(null)
 
+  // Discrepancy reporting
+  const [showDiscModal, setShowDiscModal] = useState(false)
+  const [discTripId, setDiscTripId] = useState<string | null>(null)
+  const [discTripLabel, setDiscTripLabel] = useState("")
+  const [discTripRemaining, setDiscTripRemaining] = useState(0)
+  const [discType, setDiscType] = useState<'shortage' | 'caked'>('shortage')
+  const [discShortage, setDiscShortage] = useState("")
+  const [discCaked, setDiscCaked] = useState("")
+  const [discNotes, setDiscNotes] = useState("")
+  const [discError, setDiscError] = useState("")
+  const [discSubmitting, setDiscSubmitting] = useState(false)
+  const [discSuccess, setDiscSuccess] = useState("")
+  const discCloseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
   async function fetchActiveTrucks() {
     const { data: trips, error } = await supabase.rpc("get_active_mdd_trucks_remaining")
     if (error) {
@@ -397,6 +411,84 @@ export default function MonitorTrucks({ viewOnly = false }: { viewOnly?: boolean
     setDdOrderNo("")
     setDdChildOrderNo("")
     setDdMessage("")
+  }
+
+  function openDiscModal(tripId: string, label: string, remaining: number) {
+    if (discCloseTimerRef.current) { clearTimeout(discCloseTimerRef.current); discCloseTimerRef.current = null }
+    setDiscTripId(tripId)
+    setDiscTripLabel(label)
+    setDiscTripRemaining(remaining)
+    setDiscType("shortage")
+    setDiscShortage("")
+    setDiscCaked("")
+    setDiscNotes("")
+    setDiscError("")
+    setDiscSuccess("")
+    setDiscSubmitting(false)
+    setShowDiscModal(true)
+  }
+
+  function closeDiscModal() {
+    if (discSubmitting) return
+    if (discCloseTimerRef.current) { clearTimeout(discCloseTimerRef.current); discCloseTimerRef.current = null }
+    setShowDiscModal(false)
+    setDiscTripId(null)
+    setDiscType("shortage")
+    setDiscShortage("")
+    setDiscCaked("")
+    setDiscNotes("")
+    setDiscError("")
+    setDiscSuccess("")
+    setDiscSubmitting(false)
+  }
+
+  async function handleReportDiscrepancy() {
+    const shortage = parseInt(discShortage) || 0
+    const caked = parseInt(discCaked) || 0
+
+    if (discType === 'shortage') {
+      if (shortage === 0) return setDiscError("Enter shortage bags count")
+      if (shortage < 0) return setDiscError("Values cannot be negative")
+      if (shortage > discTripRemaining) return setDiscError(`Shortage cannot exceed remaining bags (${discTripRemaining})`)
+    } else {
+      if (caked === 0) return setDiscError("Enter caked bags count")
+      if (caked < 0) return setDiscError("Values cannot be negative")
+    }
+
+    setDiscSubmitting(true)
+    setDiscError("")
+
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) {
+      setDiscError("Not authenticated")
+      setDiscSubmitting(false)
+      return
+    }
+
+    const result = await apiMutate("trips", {
+      action: "insert",
+      table: "trip_discrepancies",
+      data: {
+        trip_id: discTripId,
+        driver_id: user.id,
+        shortage: discType === 'shortage' ? shortage : 0,
+        caked_bags: discType === 'caked' ? caked : 0,
+        discrepancy_type: discType,
+        notes: discNotes.trim() || null,
+      },
+    })
+
+    if (result.error) {
+      setDiscSubmitting(false)
+      setDiscError(result.error || "Failed to submit report")
+      return
+    }
+
+    setDiscSuccess("Discrepancy reported successfully!")
+    discCloseTimerRef.current = setTimeout(() => {
+      discCloseTimerRef.current = null
+      setShowDiscModal(false)
+    }, 1500)
   }
 
   async function ddHandleSubmit() {
@@ -712,7 +804,7 @@ export default function MonitorTrucks({ viewOnly = false }: { viewOnly?: boolean
                           disabled={!canEdit}
                           style={{
                             width: "100%", padding: "10px 14px", background: !canEdit ? "#94a3b8" : "#0070f3", color: "white",
-                            border: "none", borderRadius: 8, cursor: !canEdit ? "not-allowed" : "pointer", fontSize: FONT_SIZE.md,
+                            border: "none", borderRadius: 8, cursor: !canEdit ? "not-allowed" : "pointer", fontSize: FONT_SIZE.sm,
                             fontWeight: 600, transition: "all 0.2s", minHeight: 40
                           }}
                           onMouseEnter={e => { if (canEdit) e.currentTarget.style.opacity = "0.9" }}
@@ -771,11 +863,12 @@ export default function MonitorTrucks({ viewOnly = false }: { viewOnly?: boolean
                               <button
                                 onClick={() => openRouteEditor(truck)}
                                 disabled={!canEdit}
+                                title={truck.route_points.length > 0 ? "Edit route" : "Set route"}
                                 style={{
                                   padding: "6px 10px", cursor: !canEdit ? "not-allowed" : "pointer", borderRadius: 6, border: "1.5px solid #0070f3",
                                   color: !canEdit ? "#94a3b8" : "#0070f3", background: !canEdit ? "#e2e8f0" : "#f0f7ff", fontSize: FONT_SIZE.sm, fontWeight: 500,
-                                  transition: "all 0.2s", minHeight: 32, minWidth: 32,
-                                  display: "inline-flex", alignItems: "center", justifyContent: "center"
+                                  transition: "all 0.2s", minHeight: 32,
+                                  display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 4
                                 }}
                                 onMouseEnter={e => { if (canEdit) e.currentTarget.style.background = "#e0efff" }}
                                 onMouseLeave={e => { if (canEdit) e.currentTarget.style.background = "#f0f7ff" }}
@@ -1036,14 +1129,28 @@ export default function MonitorTrucks({ viewOnly = false }: { viewOnly?: boolean
                       Created: {new Date(trip.created_at).toLocaleDateString()}
                     </p>
                     {!viewOnly && trip.trip_status !== "Completed" && (
-                      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, borderTop: "1px solid #f1f5f9", paddingTop: 12, marginTop: 4 }}>
+                        <button
+                          onClick={() => openDiscModal(trip.dd_trip_id, `${trip.plate_number} — ${trip.driver_name}`, trip.remaining)}
+                          disabled={!canEdit}
+                          style={{
+                            padding: "10px 12px", background: !canEdit ? "#e2e8f0" : "white", color: !canEdit ? "#94a3b8" : "#f5a623",
+                            border: "1.5px solid #f5a623", borderRadius: 8, cursor: !canEdit ? "not-allowed" : "pointer",
+                            fontSize: FONT_SIZE.sm, fontWeight: 600, minHeight: 40,
+                            display: "flex", alignItems: "center", justifyContent: "center", gap: 6, transition: "all 0.2s"
+                          }}
+                          onMouseEnter={e => { if (canEdit) e.currentTarget.style.background = "#fffbeb" }}
+                          onMouseLeave={e => { if (canEdit) e.currentTarget.style.background = "white" }}
+                        >
+                          <Icon icon="mdi:alert-outline" width={16} /> Discrepancy
+                        </button>
                         <button
                           onClick={() => openDdStopForm(trip)}
                           disabled={!canEdit}
                           style={{
-                            flex: 1, padding: "10px 14px", background: !canEdit ? "#94a3b8" : "#8b5cf6", color: "white",
-                            border: "none", borderRadius: 8, cursor: !canEdit ? "not-allowed" : "pointer", fontSize: FONT_SIZE.xs,
-                            fontWeight: 600, minHeight: 36, transition: "opacity 0.2s"
+                            padding: "10px 12px", background: !canEdit ? "#94a3b8" : "#8b5cf6", color: "white",
+                            border: "none", borderRadius: 8, cursor: !canEdit ? "not-allowed" : "pointer", fontSize: FONT_SIZE.sm,
+                            fontWeight: 600, minHeight: 40, transition: "opacity 0.2s"
                           }}
                           onMouseEnter={e => { if (canEdit) e.currentTarget.style.opacity = "0.9" }}
                           onMouseLeave={e => { if (canEdit) e.currentTarget.style.opacity = "1" }}
@@ -1054,9 +1161,9 @@ export default function MonitorTrucks({ viewOnly = false }: { viewOnly?: boolean
                           onClick={() => openDdRouteEditor(trip)}
                           disabled={!canEdit}
                           style={{
-                            flex: 1, padding: "10px 14px", background: !canEdit ? "#94a3b8" : "#0070f3", color: "white",
-                            border: "none", borderRadius: 8, cursor: !canEdit ? "not-allowed" : "pointer", fontSize: FONT_SIZE.xs,
-                            fontWeight: 600, minHeight: 36, transition: "opacity 0.2s"
+                            padding: "10px 12px", background: !canEdit ? "#94a3b8" : "#0070f3", color: "white",
+                            border: "none", borderRadius: 8, cursor: !canEdit ? "not-allowed" : "pointer", fontSize: FONT_SIZE.sm,
+                            fontWeight: 600, minHeight: 40, transition: "opacity 0.2s"
                           }}
                           onMouseEnter={e => { if (canEdit) e.currentTarget.style.opacity = "0.9" }}
                           onMouseLeave={e => { if (canEdit) e.currentTarget.style.opacity = "1" }}
@@ -1067,9 +1174,9 @@ export default function MonitorTrucks({ viewOnly = false }: { viewOnly?: boolean
                           onClick={() => updateDdTripStatus(trip.dd_trip_id, "Completed")}
                           disabled={!canEdit}
                           style={{
-                            flex: 1, padding: "10px 14px", background: !canEdit ? "#94a3b8" : "#10b981", color: "white",
-                            border: "none", borderRadius: 8, cursor: !canEdit ? "not-allowed" : "pointer", fontSize: FONT_SIZE.xs,
-                            fontWeight: 600, minHeight: 36, transition: "opacity 0.2s"
+                            padding: "10px 12px", background: !canEdit ? "#94a3b8" : "#10b981", color: "white",
+                            border: "none", borderRadius: 8, cursor: !canEdit ? "not-allowed" : "pointer", fontSize: FONT_SIZE.sm,
+                            fontWeight: 600, minHeight: 40, transition: "opacity 0.2s"
                           }}
                           onMouseEnter={e => { if (canEdit) e.currentTarget.style.opacity = "0.9" }}
                           onMouseLeave={e => { if (canEdit) e.currentTarget.style.opacity = "1" }}
@@ -1127,15 +1234,18 @@ export default function MonitorTrucks({ viewOnly = false }: { viewOnly?: boolean
                           <td style={{ padding: "12px 16px", textAlign: "right" }}>
                             {trip.trip_status !== "Completed" && (
                             <div style={{ display: "flex", gap: 6, justifyContent: "flex-end" }}>
-                              <button onClick={() => openDdStopForm(trip)} disabled={!canEdit} style={{ padding: "6px 10px", cursor: !canEdit ? "not-allowed" : "pointer", borderRadius: 6, border: "1.5px solid #8b5cf6", color: !canEdit ? "#94a3b8" : "#8b5cf6", background: !canEdit ? "#e2e8f0" : "#f5f3ff", fontSize: FONT_SIZE.xs, fontWeight: 500, transition: "all 0.2s", minHeight: 32, whiteSpace: "nowrap" }}
+                              <button onClick={() => openDiscModal(trip.dd_trip_id, `${trip.plate_number} — ${trip.driver_name}`, trip.remaining)} disabled={!canEdit} title="Report shortage or caked bags" style={{ padding: "6px 10px", cursor: !canEdit ? "not-allowed" : "pointer", borderRadius: 6, border: "1.5px solid #f5a623", color: !canEdit ? "#94a3b8" : "#f5a623", background: !canEdit ? "#e2e8f0" : "#fffbeb", fontSize: FONT_SIZE.xs, fontWeight: 600, transition: "all 0.2s", minHeight: 32, whiteSpace: "nowrap", display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 4 }}
+                                onMouseEnter={e => { if (canEdit) e.currentTarget.style.background = "#fef3c7" }}
+                                onMouseLeave={e => { if (canEdit) e.currentTarget.style.background = "#fffbeb" }}><Icon icon="mdi:alert-outline" width={14} /> Disc</button>
+                              <button onClick={() => openDdStopForm(trip)} disabled={!canEdit} title="Log stop" style={{ padding: "6px 10px", cursor: !canEdit ? "not-allowed" : "pointer", borderRadius: 6, border: "1.5px solid #8b5cf6", color: !canEdit ? "#94a3b8" : "#8b5cf6", background: !canEdit ? "#e2e8f0" : "#f5f3ff", fontSize: FONT_SIZE.xs, fontWeight: 600, transition: "all 0.2s", minHeight: 32, whiteSpace: "nowrap", display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 4 }}
                                 onMouseEnter={e => { if (canEdit) e.currentTarget.style.background = "#ede9fe" }}
-                                onMouseLeave={e => { if (canEdit) e.currentTarget.style.background = "#f5f3ff" }}>Stop</button>
-                              <button onClick={() => openDdRouteEditor(trip)} disabled={!canEdit} style={{ padding: "6px 10px", cursor: !canEdit ? "not-allowed" : "pointer", borderRadius: 6, border: "1.5px solid #0070f3", color: !canEdit ? "#94a3b8" : "#0070f3", background: !canEdit ? "#e2e8f0" : "#f0f7ff", fontSize: FONT_SIZE.xs, fontWeight: 500, transition: "all 0.2s", minHeight: 32, whiteSpace: "nowrap" }}
+                                onMouseLeave={e => { if (canEdit) e.currentTarget.style.background = "#f5f3ff" }}><Icon icon="mdi:map-marker-plus" width={14} /> Stop</button>
+                              <button onClick={() => openDdRouteEditor(trip)} disabled={!canEdit} title="Edit route" style={{ padding: "6px 10px", cursor: !canEdit ? "not-allowed" : "pointer", borderRadius: 6, border: "1.5px solid #0070f3", color: !canEdit ? "#94a3b8" : "#0070f3", background: !canEdit ? "#e2e8f0" : "#f0f7ff", fontSize: FONT_SIZE.xs, fontWeight: 600, transition: "all 0.2s", minHeight: 32, whiteSpace: "nowrap", display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 4 }}
                                 onMouseEnter={e => { if (canEdit) e.currentTarget.style.background = "#e0efff" }}
-                                onMouseLeave={e => { if (canEdit) e.currentTarget.style.background = "#f0f7ff" }}>Route</button>
-                              <button onClick={() => updateDdTripStatus(trip.dd_trip_id, "Completed")} disabled={!canEdit} style={{ padding: "6px 10px", cursor: !canEdit ? "not-allowed" : "pointer", borderRadius: 6, border: "1.5px solid #10b981", color: !canEdit ? "#94a3b8" : "#10b981", background: !canEdit ? "#e2e8f0" : "#f0fdf4", fontSize: FONT_SIZE.xs, fontWeight: 500, transition: "all 0.2s", minHeight: 32, whiteSpace: "nowrap" }}
+                                onMouseLeave={e => { if (canEdit) e.currentTarget.style.background = "#f0f7ff" }}><Icon icon="mdi:map-marker-outline" width={14} /> Route</button>
+                              <button onClick={() => updateDdTripStatus(trip.dd_trip_id, "Completed")} disabled={!canEdit} title="Mark completed" style={{ padding: "6px 10px", cursor: !canEdit ? "not-allowed" : "pointer", borderRadius: 6, border: "1.5px solid #10b981", color: !canEdit ? "#94a3b8" : "#10b981", background: !canEdit ? "#e2e8f0" : "#f0fdf4", fontSize: FONT_SIZE.xs, fontWeight: 600, transition: "all 0.2s", minHeight: 32, whiteSpace: "nowrap", display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 4 }}
                                 onMouseEnter={e => { if (canEdit) e.currentTarget.style.background = "#dcfce7" }}
-                                onMouseLeave={e => { if (canEdit) e.currentTarget.style.background = "#f0fdf4" }}>Complete</button>
+                                onMouseLeave={e => { if (canEdit) e.currentTarget.style.background = "#f0fdf4" }}><Icon icon="mdi:check-circle-outline" width={14} /> Done</button>
                             </div>
                             )}
                           </td>
@@ -1390,6 +1500,72 @@ export default function MonitorTrucks({ viewOnly = false }: { viewOnly?: boolean
                 style={{ padding: "12px 16px", background: "white", border: "1px solid #cbd5e1", color: "#475569", borderRadius: 8, cursor: "pointer", fontWeight: 700, fontSize: FONT_SIZE.md, minHeight: 44 }}
               >
                 Not Yet
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Discrepancy Report Modal */}
+      {showDiscModal && (
+        <div onClick={discSubmitting ? undefined : closeDiscModal} style={{ position: "fixed", inset: 0, background: "rgba(15, 23, 42, 0.6)", backdropFilter: "blur(4px)", display: "flex", alignItems: isMobile ? "flex-end" : "center", justifyContent: "center", zIndex: 100, padding: isMobile ? 0 : 24, animation: "fadeIn 0.2s ease-out" }}>
+          <style>{`@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } } @keyframes slideUp { from { transform: translateY(20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }`}</style>
+          <div onClick={e => e.stopPropagation()} style={{ background: "white", borderRadius: isMobile ? "20px 20px 0 0" : 12, padding: isMobile ? "28px 20px" : 32, width: "100%", maxWidth: 440, maxHeight: "90vh", overflowY: "auto", boxShadow: "0 25px 50px -12px rgba(0, 0, 0, 0.25)", animation: "slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1)" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 24 }}>
+              <div>
+                <h3 style={{ margin: "0 0 4px 0", color: "#0f172a", fontSize: FONT_SIZE.xl, fontWeight: 700 }}>Report Discrepancy</h3>
+                <p style={{ margin: 0, color: "#94a3b8", fontSize: FONT_SIZE.sm }}>
+                  {discTripLabel}
+                </p>
+                <p style={{ margin: "4px 0 0", color: "#64748b", fontSize: FONT_SIZE.sm }}>
+                  Remaining: <strong style={{ color: "#0f172a" }}>{discTripRemaining} bags</strong>
+                </p>
+              </div>
+              <button onClick={closeDiscModal} disabled={discSubmitting} style={{ background: "none", border: "none", color: discSubmitting ? "#e2e8f0" : "#94a3b8", cursor: discSubmitting ? "not-allowed" : "pointer", padding: 0, width: 32, height: 32, display: "flex", alignItems: "center", justifyContent: "center", transition: "color 0.2s", flexShrink: 0 }}
+                onMouseEnter={e => { if (!discSubmitting) e.currentTarget.style.color = "#64748b" }}
+                onMouseLeave={e => { if (!discSubmitting) e.currentTarget.style.color = "#94a3b8" }}>
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+              </button>
+            </div>
+
+            <div style={{ marginBottom: 20 }}>
+              <label style={labelStyle}>Discrepancy Type *</label>
+              <div style={{ position: "relative" }}>
+                <ModernInput as="select" value={discType} onChange={e => { setDiscType(e.target.value as 'shortage' | 'caked'); setDiscError("") }} style={{ padding: "12px 14px", borderRadius: 8, border: "1px solid #e0e0e0", fontSize: FONT_SIZE.base, background: "white", color: "#171717", minHeight: 40, width: "100%", boxSizing: "border-box" }}>
+                  <option value="shortage">Shortage (Missing Bags)</option>
+                  <option value="caked">Caked Bags</option>
+                </ModernInput>
+              </div>
+            </div>
+
+            {discType === 'shortage' && (
+              <div style={{ marginBottom: 20 }}>
+                <label style={labelStyle}>Shortage (bags) *</label>
+                <p style={{ margin: "0 0 6px", fontSize: FONT_SIZE.xs, color: "#94a3b8" }}>Will be deducted from remaining</p>
+                <ModernInput type="number" placeholder="0" value={discShortage} onChange={e => { setDiscShortage(e.target.value); setDiscError("") }} style={{ padding: "12px 14px", borderRadius: 8, border: "1px solid #e0e0e0", fontSize: FONT_SIZE.base, background: "white", color: "#171717", minHeight: 40, width: "100%", boxSizing: "border-box" }} />
+              </div>
+            )}
+
+            {discType === 'caked' && (
+              <div style={{ marginBottom: 16 }}>
+                <label style={labelStyle}>No. of Caked Bags *</label>
+                <ModernInput type="number" placeholder="0" value={discCaked} onChange={e => { setDiscCaked(e.target.value); setDiscError("") }} style={{ padding: "12px 14px", borderRadius: 8, border: "1px solid #e0e0e0", fontSize: FONT_SIZE.base, background: "white", color: "#171717", minHeight: 40, width: "100%", boxSizing: "border-box" }} />
+              </div>
+            )}
+
+            <div style={{ marginBottom: 20 }}>
+              <label style={labelStyle}>Notes (optional)</label>
+              <ModernInput as="textarea" placeholder="Any additional context…" value={discNotes} onChange={e => setDiscNotes(e.target.value)} rows={3} style={{ padding: "12px 14px", borderRadius: 8, border: "1px solid #e0e0e0", fontSize: FONT_SIZE.base, background: "white", color: "#171717", minHeight: 100, width: "100%", boxSizing: "border-box", resize: "none" }} />
+            </div>
+
+            {discError && <div style={{ padding: 12, background: "#fef2f2", borderLeft: "4px solid #ef4444", borderRadius: 4, marginBottom: 16, color: "#b91c1c", fontSize: FONT_SIZE.sm, fontWeight: 600 }}>{discError}</div>}
+
+            {discSuccess && <div style={{ padding: 12, background: "#f0fff4", borderLeft: "4px solid #10b981", borderRadius: 4, marginBottom: 16, color: "#166534", fontSize: FONT_SIZE.sm, fontWeight: 600 }}>{discSuccess}</div>}
+
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+              <button onClick={closeDiscModal} disabled={discSubmitting} style={{ padding: "12px 16px", background: "white", border: "1px solid #cbd5e1", color: discSubmitting ? "#cbd5e1" : "#475569", borderRadius: 8, cursor: discSubmitting ? "not-allowed" : "pointer", fontSize: FONT_SIZE.md, minHeight: 44, fontWeight: 700 }}>Cancel</button>
+              <button onClick={handleReportDiscrepancy} disabled={discSubmitting} style={{ padding: "12px 16px", background: discSubmitting ? "#94a3b8" : "#f5a623", color: "white", border: "none", borderRadius: 8, cursor: discSubmitting ? "not-allowed" : "pointer", fontWeight: 700, fontSize: FONT_SIZE.md, minHeight: 44, opacity: discSubmitting ? 0.7 : 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
+                {discSubmitting ? <><Icon icon="mdi:loading" width={16} style={{ animation: "spin 1s linear infinite" }} /> Submitting…</> : "Submit Report"}
               </button>
             </div>
           </div>

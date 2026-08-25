@@ -30,7 +30,7 @@ const TABLE_ROLES: Record<string, string[]> = {
   Stops: ["Driver", "Broker", "StoreOfficer", "Admin", "SuperAdmin", "TruckAdmin", "ATCOfficer", "Supervisor", "CreditManager"],
   Stop_Confirmations: ["Broker", "Admin", "SuperAdmin"],
   trip_load_more: ["Driver", "Admin", "SuperAdmin"],
-  trip_discrepancies: ["Driver", "Admin", "SuperAdmin"],
+  trip_discrepancies: ["Driver", "Admin", "SuperAdmin", "TruckOfficer", "ATCOfficer"],
   dd_trips: ["Driver", "Admin", "SuperAdmin", "ATCOfficer", "DeskOfficer"],
   price_adjustments: ["Broker", "Admin", "SuperAdmin", "DeskOfficer", "CreditManager"],
   credit_approvals: ["Broker", "Admin", "SuperAdmin", "DeskOfficer", "CreditManager"],

@@ -18,8 +18,8 @@ CREATE UNIQUE INDEX IF NOT EXISTS sc_prices_singleton_idx ON sc_prices ((true));
 
 -- 4. RLS
 ALTER TABLE sc_prices ENABLE ROW LEVEL SECURITY;
-DROP POLICY IF EXISTS "Allow authenticated read on sc_prices" ON sc_prices;
-CREATE POLICY "Allow authenticated read on sc_prices"
+DROP POLICY IF EXISTS "Select_all" ON sc_prices;
+CREATE POLICY "Select_all"
   ON sc_prices FOR SELECT TO authenticated USING (true);
 
 -- 5. Store the applied SC rate on each trip_payments row so the UI never
