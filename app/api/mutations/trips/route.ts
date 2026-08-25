@@ -41,12 +41,12 @@ function buildError(msg: string, status: number) {
 }
 
 // Trip Payment feature constants
-const SC_RATE_PER_BAG = 600
+const SC_RATE_FALLBACK = 600
 const BAGS_PER_TONNE = 20
 
 /**
  * Creates the trip_payments row for a newly started trip.
- * - SC: value is computed immediately as SC_RATE_PER_BAG x quantity_loaded.
+ * - SC: value is computed as current SC rate × quantity_loaded (rate fetched from sc_prices).
  * - MDD: value/payment_expected stay null until an admin selects a location.
  * Tonnage is derived from quantity_loaded (20 bags = 1 tonne).
  * Failures are logged but never block the trip from starting.
@@ -59,13 +59,20 @@ async function createTripPaymentRecord(row: Record<string, unknown>) {
     const tripType = row.trip_type === "MDD" ? "MDD" : "SC"
     const quantityLoaded = Math.max(0, Math.round(Number(row.loaded_quantity) || 0))
 
+    let scRate = SC_RATE_FALLBACK
+    if (tripType === "SC") {
+      const { data } = await supabaseAdmin.from("sc_prices").select("rate_per_bag").limit(1).single()
+      if (data?.rate_per_bag) scRate = Number(data.rate_per_bag)
+    }
+
     const { error } = await supabaseAdmin.from("trip_payments").insert({
       trip_id: tripId,
       trip_type: tripType,
       plate_number: plate,
       tonnage: Math.round(quantityLoaded / BAGS_PER_TONNE),
       quantity_loaded: quantityLoaded,
-      value: tripType === "SC" ? SC_RATE_PER_BAG * quantityLoaded : null,
+      value: tripType === "SC" ? scRate * quantityLoaded : null,
+      sc_rate: tripType === "SC" ? scRate : null,
     })
     if (error) console.error("Failed to create trip payment record", error)
   } catch (err) {

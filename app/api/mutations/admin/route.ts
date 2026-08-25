@@ -17,7 +17,7 @@ const supabaseAdmin = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!,
 )
 
-const ALLOWED_TABLES = ["Trucks", "tricycles", "reports", "driver_complaints", "truck_officers", "truck_admins", "cash_officers", "store_officers", "Brokers", "Profiles", "Drivers", "station_managers", "desk_officers", "atc_officers", "company_prices", "company_price_history", "side_trips", "fuel_estimates", "stores", "trip_payments", "locations"] as const
+const ALLOWED_TABLES = ["Trucks", "tricycles", "reports", "driver_complaints", "truck_officers", "truck_admins", "cash_officers", "store_officers", "Brokers", "Profiles", "Drivers", "station_managers", "desk_officers", "atc_officers", "company_prices", "company_price_history", "side_trips", "fuel_estimates", "stores", "trip_payments", "locations", "sc_prices"] as const
 
 const TABLE_ROLES: Record<string, string[]> = {
   Trucks: ["TruckAdmin", "TruckOfficer", "Admin", "SuperAdmin", "ATCOfficer", "Broker", "DeskOfficer", "Supervisor"],
@@ -41,6 +41,7 @@ const TABLE_ROLES: Record<string, string[]> = {
   stores: ["Admin", "SuperAdmin"],
   trip_payments: ["Admin", "SuperAdmin", "ATCOfficer"],
   locations: ["Admin", "SuperAdmin", "ATCOfficer"],
+  sc_prices: ["Admin", "SuperAdmin", "ATCOfficer"],
 }
 
 function buildError(msg: string, status: number) {
@@ -68,6 +69,11 @@ export async function POST(req: NextRequest) {
 
     const rolesForTable = TABLE_ROLES[table] || ["Admin"]
     await requireRole(req, rolesForTable)
+
+    // sc_prices is a singleton config table — only update is permitted
+    if (table === "sc_prices" && action !== "update") {
+      return buildError("sc_prices can only be updated", 400)
+    }
 
     switch (action) {
       case "insert": {

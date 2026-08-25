@@ -61,3 +61,18 @@ ALTER TABLE trip_payments ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "Allow authenticated read on trip_payments" ON trip_payments;
 CREATE POLICY "Allow authenticated read on trip_payments"
   ON trip_payments FOR SELECT TO authenticated USING (true);
+
+-- 6. SC price per bag — single-row config table.
+--    Defaults to 600; admins update this via the "Update Price" CTA.
+CREATE TABLE IF NOT EXISTS sc_prices (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  rate_per_bag numeric NOT NULL DEFAULT 600 CHECK (rate_per_bag > 0),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+
+INSERT INTO sc_prices (rate_per_bag) VALUES (600);
+
+ALTER TABLE sc_prices ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Allow authenticated read on sc_prices" ON sc_prices;
+CREATE POLICY "Allow authenticated read on sc_prices"
+  ON sc_prices FOR SELECT TO authenticated USING (true);
