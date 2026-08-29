@@ -107,7 +107,7 @@ export async function POST(req: NextRequest) {
     await requireRole(req, EDIT_ROLES)
 
     const body = await req.json()
-    const { action, userId, roles, companyId, storeName, storeNames, officeName, assignedOffice } = body as {
+    const { action, userId, roles, companyId, storeName, storeNames, officeName, assignedOffices } = body as {
       action: "deactivate" | "activate" | "reassign-roles"
       userId: string
       roles?: string[]
@@ -115,7 +115,7 @@ export async function POST(req: NextRequest) {
       storeName?: string
       storeNames?: string[]
       officeName?: string
-      assignedOffice?: string
+      assignedOffices?: string[]
     }
 
     if (!userId) {
@@ -150,6 +150,17 @@ export async function POST(req: NextRequest) {
           return NextResponse.json({ error: "At least one role is required" }, { status: 400 })
         }
 
+        // Validate CashAuthorizer requires assignedOffices before any DB writes
+        if (roles.includes("CashAuthorizer")) {
+          if (!assignedOffices || !Array.isArray(assignedOffices) || assignedOffices.length === 0) {
+            return NextResponse.json({ error: "At least one assigned office is required for Cash Authorizer" }, { status: 400 })
+          }
+          const unique = new Set(assignedOffices)
+          if (unique.size !== assignedOffices.length) {
+            return NextResponse.json({ error: "Duplicate offices are not allowed for Cash Authorizer" }, { status: 400 })
+          }
+        }
+
         const [{ data: currentRoles }, { data: profile }] = await Promise.all([
           supabaseAdmin.from("UserRoles").select("role").eq("user_id", userId),
           supabaseAdmin.from("Profiles").select("full_name, phone_number").eq("user_id", userId).single(),
@@ -169,14 +180,14 @@ export async function POST(req: NextRequest) {
 
         const addedRoles = roles.filter(r => !oldRoles.has(r))
         const removedRoles = [...oldRoles].filter(r => !newRoles.has(r))
-        const unchangedRolesWithExtraData = roles.filter(r => oldRoles.has(r) && hasExtraDataForRole(r))
+        const unchangedRolesWithExtraData = roles.filter(r => oldRoles.has(r) && (hasExtraDataForRole(r) || r === "CashAuthorizer"))
 
         const extraData: Record<string, unknown> = {}
         if (companyId) extraData.company_id = companyId
         if (storeName) extraData.store_name = storeName
         if (storeNames && Array.isArray(storeNames) && storeNames.length > 0) extraData.store_names = storeNames
         if (officeName) extraData.office_name = officeName
-        if (assignedOffice) extraData.assigned_office = assignedOffice
+        if (assignedOffices && Array.isArray(assignedOffices) && assignedOffices.length > 0) extraData.assigned_offices = assignedOffices
 
         const hasExtraData = Object.keys(extraData).length > 0
 

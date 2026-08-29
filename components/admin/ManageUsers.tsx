@@ -72,6 +72,7 @@ export default function ManageUsers() {
   const [storeName, setStoreName] = useState("")
   const [officeName, setOfficeName] = useState("")
   const [cashAuthOffice, setCashAuthOffice] = useState("")
+  const [cashAuthOffices, setCashAuthOffices] = useState<Set<string>>(new Set())
   const [storeNames, setStoreNames] = useState<Set<string>>(new Set())
   const [companies, setCompanies] = useState<FuelCompany[]>([])
   const [storeLocations, setStoreLocations] = useState<string[]>([])
@@ -178,8 +179,8 @@ export default function ManageUsers() {
     }
     if (user.roles.includes("CashAuthorizer")) {
       queries.push(
-        Promise.resolve(supabase.from("cash_authorizers").select("assigned_office").eq("authorizer_id", user.user_id).single()
-          .then(({ data }) => { if (data?.assigned_office) setCashAuthOffice(data.assigned_office) }))
+        Promise.resolve(supabase.from("cash_authorizer_offices").select("office_name").eq("authorizer_id", user.user_id)
+          .then(({ data }) => { if (data && data.length > 0) setCashAuthOffices(new Set(data.map(d => d.office_name))) }))
       )
     }
     if (user.roles.includes("StoreSupervisor")) {
@@ -223,8 +224,8 @@ export default function ManageUsers() {
       setRoleSaveError("Select an office for Cash Officer")
       return
     }
-    if (needsField("cashAuthOffice") && !cashAuthOffice) {
-      setRoleSaveError("Select an assigned office for Cash Authorizer")
+    if (needsField("cashAuthOffice") && cashAuthOffices.size === 0) {
+      setRoleSaveError("Select at least one office for Cash Authorizer")
       return
     }
     setRoleSaveLoading(true)
@@ -245,7 +246,7 @@ export default function ManageUsers() {
           storeName: storeName || undefined,
           storeNames: storeNames.size > 0 ? [...storeNames] : undefined,
           officeName: officeName || undefined,
-          assignedOffice: cashAuthOffice || undefined,
+          assignedOffices: cashAuthOffices.size > 0 ? [...cashAuthOffices] : undefined,
         }),
       })
       const data = await res.json()
@@ -263,6 +264,7 @@ export default function ManageUsers() {
       setStoreName("")
       setOfficeName("")
       setCashAuthOffice("")
+      setCashAuthOffices(new Set())
       setStoreNames(new Set())
       await fetchUsers()
     } catch {
@@ -623,7 +625,7 @@ export default function ManageUsers() {
       {/* Role Assignment Modal */}
       {editingUser && (
         <div
-          onClick={() => { setEditingUser(null); setSelectedRoles(new Set()); setRoleSaveError(""); setCompanyId(""); setStoreName(""); setOfficeName(""); setCashAuthOffice(""); setStoreNames(new Set()) }}
+          onClick={() => { setEditingUser(null); setSelectedRoles(new Set()); setRoleSaveError(""); setCompanyId(""); setStoreName(""); setOfficeName(""); setCashAuthOffice(""); setCashAuthOffices(new Set()); setStoreNames(new Set()) }}
           style={{
             position: "fixed", inset: 0, background: "rgba(15, 23, 42, 0.6)",
             backdropFilter: "blur(4px)",
@@ -649,7 +651,7 @@ export default function ManageUsers() {
                 </p>
               </div>
               <button
-                onClick={() => { setEditingUser(null); setSelectedRoles(new Set()); setRoleSaveError(""); setCompanyId(""); setStoreName(""); setOfficeName(""); setCashAuthOffice(""); setStoreNames(new Set()) }}
+                onClick={() => { setEditingUser(null); setSelectedRoles(new Set()); setRoleSaveError(""); setCompanyId(""); setStoreName(""); setOfficeName(""); setCashAuthOffice(""); setCashAuthOffices(new Set()); setStoreNames(new Set()) }}
                 style={{ background: "none", border: "none", cursor: "pointer", color: "#94a3b8", padding: 4 }}
               >
                 <Icon icon="mdi:close" width={20} />
@@ -788,21 +790,55 @@ export default function ManageUsers() {
 
             {needsField("cashAuthOffice") && (
               <div style={{ marginBottom: 16 }}>
-                <label style={labelStyle}>Assigned Office (for Cash Authorizer) *</label>
-                <select
-                  value={cashAuthOffice}
-                  onChange={e => setCashAuthOffice(e.target.value)}
-                  style={{
-                    ...inputStyle,
-                    appearance: "none",
-                    background: "#f9f9f9 url(\"data:image/svg+xml,%3Csvg width='12' height='8' viewBox='0 0 12 8' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M1 1.5L6 6.5L11 1.5' stroke='%23999' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E\") no-repeat right 14px center",
-                  }}
-                >
-                  <option value="">Select office...</option>
-                  {OFFICE_LOCATIONS.map(o => (
-                    <option key={o} value={o}>{o}</option>
-                  ))}
-                </select>
+                <label style={labelStyle}>Assigned Offices (for Cash Authorizer) *</label>
+                <div style={{ display: "flex", gap: 12, alignItems: "stretch" }}>
+                  {/* Available offices */}
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontSize: 11, fontWeight: 600, color: "#64748b", textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 6 }}>Available</div>
+                    <div style={{ border: "1.5px solid #e5e5e5", borderRadius: 8, background: "#f9f9f9", minHeight: 80, maxHeight: 160, overflowY: "auto" }}>
+                      {OFFICE_LOCATIONS.filter(o => !cashAuthOffices.has(o)).length === 0 ? (
+                        <div style={{ padding: "12px 14px", color: "#94a3b8", fontSize: 13, fontStyle: "italic" }}>All offices assigned</div>
+                      ) : (
+                        OFFICE_LOCATIONS.filter(o => !cashAuthOffices.has(o)).map(o => (
+                          <button
+                            key={o}
+                            type="button"
+                            onClick={() => setCashAuthOffices(prev => new Set([...prev, o]))}
+                            style={{ padding: "8px 14px", cursor: "pointer", fontSize: 13, borderBottom: "1px solid #e5e5e5", display: "flex", alignItems: "center", justifyContent: "space-between", transition: "background 0.15s", width: "100%", background: "transparent", border: "none", textAlign: "left", fontFamily: "inherit" }}
+                            onMouseEnter={e => e.currentTarget.style.background = "#e2e8f0"}
+                            onMouseLeave={e => e.currentTarget.style.background = "transparent"}
+                          >
+                            <span>{o}</span>
+                            <span style={{ color: "#3b82f6", fontWeight: 600, fontSize: 16 }}>+</span>
+                          </button>
+                        ))
+                      )}
+                    </div>
+                  </div>
+                  {/* Selected offices */}
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontSize: 11, fontWeight: 600, color: "#16a34a", textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 6 }}>Assigned</div>
+                    <div style={{ border: "1.5px solid #bbf7d0", borderRadius: 8, background: "#f0fdf4", minHeight: 80, maxHeight: 160, overflowY: "auto" }}>
+                      {cashAuthOffices.size === 0 ? (
+                        <div style={{ padding: "12px 14px", color: "#94a3b8", fontSize: 13, fontStyle: "italic" }}>No offices selected</div>
+                      ) : (
+                        [...cashAuthOffices].map(o => (
+                          <button
+                            key={o}
+                            type="button"
+                            onClick={() => setCashAuthOffices(prev => { const next = new Set(prev); next.delete(o); return next })}
+                            style={{ padding: "8px 14px", cursor: "pointer", fontSize: 13, borderBottom: "1px solid #bbf7d0", display: "flex", alignItems: "center", justifyContent: "space-between", transition: "background 0.15s", width: "100%", background: "transparent", border: "none", textAlign: "left", fontFamily: "inherit" }}
+                            onMouseEnter={e => e.currentTarget.style.background = "#dcfce7"}
+                            onMouseLeave={e => e.currentTarget.style.background = "transparent"}
+                          >
+                            <span style={{ fontWeight: 500 }}>{o}</span>
+                            <span style={{ color: "#ef4444", fontWeight: 600, fontSize: 16 }}>&times;</span>
+                          </button>
+                        ))
+                      )}
+                    </div>
+                  </div>
+                </div>
               </div>
             )}
 
@@ -819,7 +855,7 @@ export default function ManageUsers() {
 
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
               <button
-                onClick={() => { setEditingUser(null); setSelectedRoles(new Set()); setRoleSaveError(""); setCompanyId(""); setStoreName(""); setOfficeName(""); setCashAuthOffice(""); setStoreNames(new Set()) }}
+                onClick={() => { setEditingUser(null); setSelectedRoles(new Set()); setRoleSaveError(""); setCompanyId(""); setStoreName(""); setOfficeName(""); setCashAuthOffice(""); setCashAuthOffices(new Set()); setStoreNames(new Set()) }}
                 style={{
                   padding: "12px 16px", background: "white",
                   border: "1px solid #cbd5e1", color: "#475569",

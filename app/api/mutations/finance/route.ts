@@ -24,7 +24,7 @@ const supabaseAdmin = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!,
 )
 
-const ALLOWED_TABLES = ["customer_payments", "broker_credits", "store_sales", "store_supply_confirmations", "store_supply_lines", "cash_expenses", "cash_expense_items", "cash_offices", "cash_deposits", "admin_office_assignments", "Customers", "Brokers", "store_stock", "store_officers", "stock_verifications", "price_adjustments", "credit_approvals"] as const
+const ALLOWED_TABLES = ["customer_payments", "broker_credits", "store_sales", "store_supply_confirmations", "store_supply_lines", "cash_expenses", "cash_expense_items", "cash_offices", "cash_deposits", "admin_office_assignments", "Customers", "Brokers", "store_stock", "store_officers", "stock_verifications", "price_adjustments", "credit_approvals", "customer_charts"] as const
 const ALLOWED_RPCS = ["decrement_store_stock", "add_cash_deposit", "authorise_cash_expense", "create_transaction"] as const
 
 const TABLE_ROLES: Record<string, string[]> = {
@@ -46,6 +46,7 @@ const TABLE_ROLES: Record<string, string[]> = {
   stock_verifications: ["StoreSupervisor", "Admin", "SuperAdmin"],
   price_adjustments: ["Broker", "Admin", "SuperAdmin", "DeskOfficer", "CreditManager"],
   credit_approvals: ["Broker", "Admin", "SuperAdmin", "DeskOfficer", "CreditManager"],
+  customer_charts: ["Admin", "SuperAdmin", "Broker", "DeskOfficer"],
 }
 
 const RPC_ROLES: Record<string, string[]> = {
@@ -90,7 +91,7 @@ function enforceBrokerScope(
   auth: { userId: string; roles: string[] },
 ) {
   if (!isBrokerOnly(auth.roles)) return null
-  if (table !== "store_sales") return null
+  if (table !== "store_sales" && table !== "customer_charts") return null
   if (action !== "update" && action !== "delete") return null
   if (filters?.broker_id !== auth.userId) {
     return `Access denied for ${action} on ${table}`
@@ -174,6 +175,9 @@ export async function POST(req: NextRequest) {
         }
         if (sa.table === "credit_approvals" && sa.action !== "insert" && isBrokerOnly(auth.roles)) {
           return buildError("Brokers cannot modify or delete credit approvals", 403)
+        }
+        if (sa.table === "customer_charts" && sa.action !== "insert" && !auth.roles.some(r => ["Admin", "SuperAdmin"].includes(r))) {
+          return buildError("Only admins can modify or delete chart records", 403)
         }
         const brokerScopeError = enforceBrokerScope(sa.table, sa.action, sa.filters, auth)
         if (brokerScopeError) {
@@ -380,6 +384,10 @@ export async function POST(req: NextRequest) {
 
     if (table === "credit_approvals" && action !== "insert" && isBrokerOnly(auth.roles)) {
       return buildError("Brokers cannot modify or delete credit approvals", 403)
+    }
+
+    if (table === "customer_charts" && action !== "insert" && !auth.roles.some(r => ["Admin", "SuperAdmin"].includes(r))) {
+      return buildError("Only admins can modify or delete chart records", 403)
     }
 
     const brokerScopeError = enforceBrokerScope(table, action, filters, auth)

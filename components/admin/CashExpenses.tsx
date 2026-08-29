@@ -81,7 +81,7 @@ export default function CashExpenses() {
   const { canAuthorize } = getAccess("cash-expenses")
   const { isMobile } = useBreakpoint()
   const [selectedOffice, setSelectedOffice] = useState<string>("Calabar")
-  const [assignedOffice, setAssignedOffice] = useState<string | null>(null)
+  const [assignedOffices, setAssignedOffices] = useState<string[]>([])
   const [isCashAuthorizer, setIsCashAuthorizer] = useState(false)
   const [adminUser, setAdminUser] = useState<User | null>(null)
   const [officeBalance, setOfficeBalance] = useState<number>(0)
@@ -142,16 +142,16 @@ export default function CashExpenses() {
         setIsCashAuthorizer(isAuth)
 
         if (isAuth) {
-          // Fetch assigned office from cash_authorizers table
-          const { data: authorizer } = await supabase
-            .from("cash_authorizers")
-            .select("assigned_office")
+          // Fetch assigned offices from junction table
+          const { data: authorizerOffices } = await supabase
+            .from("cash_authorizer_offices")
+            .select("office_name")
             .eq("authorizer_id", user.id)
-            .maybeSingle()
           
-          if (authorizer?.assigned_office) {
-            setAssignedOffice(authorizer.assigned_office)
-            setSelectedOffice(authorizer.assigned_office)
+          const offices = authorizerOffices?.map(a => a.office_name) || []
+          setAssignedOffices(offices)
+          if (offices.length > 0) {
+            setSelectedOffice(offices[0])
           }
         }
       }
@@ -329,7 +329,7 @@ export default function CashExpenses() {
       setSubmitting(false)
     }
   }
-  const isAssigned = isCashAuthorizer ? Boolean(assignedOffice && selectedOffice === assignedOffice) : true
+  const isAssigned = isCashAuthorizer ? assignedOffices.includes(selectedOffice) : true
 
   const filteredExpenses = expenses.filter(e => {
     if (filter === "All") return true
@@ -417,9 +417,9 @@ export default function CashExpenses() {
           <h1 style={{ margin: 0, color: "#0f172a", fontSize: isMobile ? FONT_SIZE["2xl"] : FONT_SIZE["3xl"], fontWeight: 700, letterSpacing: "-0.5px" }}>
             Cash Expenses
           </h1>
-          {assignedOffice ? (
+          {assignedOffices.length > 0 ? (
             <p style={{ margin: "8px 0 0", color: "#64748b", fontSize: FONT_SIZE.base, display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-              Your assigned office: <strong style={{ color: "#0f172a" }}>{assignedOffice}</strong>
+              Your assigned offices: <strong style={{ color: "#0f172a" }}>{assignedOffices.join(", ")}</strong>
             </p>
           ) : (
             <p style={{ margin: "8px 0 0", color: "#ef4444", fontSize: FONT_SIZE.base, display: "flex", alignItems: "center", gap: 6, fontWeight: 500 }}>

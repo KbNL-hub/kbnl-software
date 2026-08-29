@@ -180,18 +180,18 @@ function AdminPanelContent({ userProfile }: Props) {
 
   const fetchUnauthorizedExpenses = useCallback(async () => {
     try {
-      const { data: authorizer } = await supabase
-        .from("cash_authorizers")
-        .select("assigned_office")
+      const { data: authorizerOffices } = await supabase
+        .from("cash_authorizer_offices")
+        .select("office_name")
         .eq("authorizer_id", userProfile.user_id)
-        .maybeSingle()
 
-      if (authorizer?.assigned_office) {
+      const offices = authorizerOffices?.map(a => a.office_name) || []
+      if (offices.length > 0) {
         const { count } = await supabase
           .from("cash_expenses")
           .select("*", { count: "exact", head: true })
           .eq("status", "Pending")
-          .eq("office_name", authorizer.assigned_office)
+          .in("office_name", offices)
         setUnauthorizedExpenses(count || 0)
       } else {
         setUnauthorizedExpenses(0)

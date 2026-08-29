@@ -25,7 +25,7 @@ export const ROLE_TABLE_META: Record<string, RoleTableEntry | null> = {
   CashOfficer: { table: "cash_officers", pkColumn: "clerk_id", nameColumn: "full_name", extraFields: ["office_name"] },
   DeskOfficer: { table: "desk_officers", pkColumn: "officer_id", nameColumn: "full_name" },
   ATCOfficer: { table: "atc_officers", pkColumn: "officer_id", nameColumn: "full_name" },
-  CashAuthorizer: { table: "cash_authorizers", pkColumn: "authorizer_id", nameColumn: "full_name", extraFields: ["assigned_office"] },
+  CashAuthorizer: { table: "cash_authorizers", pkColumn: "authorizer_id", nameColumn: "full_name" },
   StoreSupervisor: { table: "store_supervisors", pkColumn: "supervisor_id", nameColumn: "full_name", extraFields: ["store_names"] },
   CreditManager: { table: "credit_managers", pkColumn: "manager_id", nameColumn: "full_name" },
 }
@@ -62,7 +62,31 @@ export async function createRoleEntry(
     .from(meta.table)
     .upsert(row, { onConflict: meta.pkColumn })
 
-  return error?.message || null
+  if (error) return error.message
+
+  // Handle junction table for CashAuthorizer assigned offices
+  if (role === "CashAuthorizer" && extraData?.assigned_offices && Array.isArray(extraData.assigned_offices)) {
+    const offices = [...new Set(extraData.assigned_offices as string[])]
+
+    // Insert/upsert new assignments first (safe even if already present)
+    if (offices.length > 0) {
+      const rows = offices.map(office => ({ authorizer_id: userId, office_name: office }))
+      const { error: insErr } = await supabaseAdmin
+        .from("cash_authorizer_offices")
+        .upsert(rows, { onConflict: "authorizer_id, office_name" })
+      if (insErr) return insErr.message
+    }
+
+    // Delete stale assignments (offices no longer in the list)
+    const { error: delErr } = await supabaseAdmin
+      .from("cash_authorizer_offices")
+      .delete()
+      .eq("authorizer_id", userId)
+      .not("office_name", "in", `(${offices.map(o => `"${o}"`).join(",")})`)
+    if (delErr) return delErr.message
+  }
+
+  return null
 }
 
 export async function deleteRoleEntry(
@@ -71,6 +95,14 @@ export async function deleteRoleEntry(
 ): Promise<string | null> {
   const meta = ROLE_TABLE_META[role]
   if (!meta) return null
+
+  // Delete junction table entries for CashAuthorizer
+  if (role === "CashAuthorizer") {
+    await supabaseAdmin
+      .from("cash_authorizer_offices")
+      .delete()
+      .eq("authorizer_id", userId)
+  }
 
   const { error } = await supabaseAdmin
     .from(meta.table)

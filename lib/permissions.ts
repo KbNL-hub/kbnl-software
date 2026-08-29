@@ -33,6 +33,7 @@ export const ALL_SECTIONS = [
   'trips',
   'trip-payment',
   'credit-approvals',
+  'chart',
 ] as const
 
 export type SectionKey = (typeof ALL_SECTIONS)[number]
@@ -71,7 +72,7 @@ export const ROLES: { [key: string]: RoleConfig | undefined } & Partial<Record<R
       'monitor-trucks', 'manage-trucks', 'manage-drivers',
       'monitor-trips', 'complaints', 'diesel-manager',
       'tricycles', 'cash-expenses', 'customer-payments',
-      'credit', 'reports', 'invite-users',
+      'credit', 'reports', 'invite-users', 'chart',
     ],
     access: 'write',
     label: 'Broker',
@@ -89,7 +90,7 @@ export const ROLES: { [key: string]: RoleConfig | undefined } & Partial<Record<R
     sections: [
       'customer-payments', 'credit',
       'reports', 'complaints', 'store-sales', 'our-stores',
-      'desk-expenses', 'trips',
+      'desk-expenses', 'trips', 'chart',
     ],
     access: 'write',
     label: 'Desk Officer',

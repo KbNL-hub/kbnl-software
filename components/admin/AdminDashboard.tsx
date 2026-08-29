@@ -616,22 +616,26 @@ export default function AdminDashboard({ effectiveRole, fullName }: Props) {
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return
 
-    const { data: authorizer } = await supabase
-      .from("cash_authorizers")
-      .select("assigned_office")
+    const { data: authorizerOffices } = await supabase
+      .from("cash_authorizer_offices")
+      .select("office_name")
       .eq("authorizer_id", user.id)
-      .maybeSingle()
 
-    const query = supabase
+    const offices = authorizerOffices?.map(a => a.office_name) || []
+
+    // Fail closed: unassigned authorizers see zero, not the global count
+    if (offices.length === 0) {
+      setStats([
+        { key: "expenses", icon: "mdi:cash-register", label: "Pending Expenses", value: 0, color: "#8b5cf6" },
+      ])
+      return
+    }
+
+    const { count } = await supabase
       .from("cash_expenses")
       .select("expense_id", { count: "exact", head: true })
       .eq("status", "Pending")
-
-    if (authorizer?.assigned_office) {
-      query.eq("office_name", authorizer.assigned_office)
-    }
-
-    const { count } = await query
+      .in("office_name", offices)
 
     setStats([
       { key: "expenses", icon: "mdi:cash-register", label: "Pending Expenses", value: count || 0, color: "#8b5cf6" },
