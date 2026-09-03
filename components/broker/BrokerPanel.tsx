@@ -13,6 +13,7 @@ import NavBadge from "@/components/NavBadge"
 import { useBreakpoint } from "@/app/hooks/useBreakpoint"
 import { Role } from "@/lib/roles"
 import ReportModal from "@/components/ReportModal"
+import NewBookingsExplainer from "@/components/broker/NewBookingsExplainer"
 import { PermissionProvider } from "@/lib/PermissionContext"
 
 const BrokerDashboard = dynamic(() => import("@/components/broker/BrokerDashboard"))
@@ -26,6 +27,7 @@ const SECTION_IMPORTS = {
   prices: () => import("@/components/broker/BrokerPrices"),
   expenses: () => import("@/components/CashOfficerPanel"),
   "monitor-trucks": () => import("@/components/admin/MonitorTrucks"),
+  "new-bookings": () => import("@/components/broker/NewBookings"),
 } as const
 
 type SectionKey = keyof typeof SECTION_IMPORTS
@@ -40,6 +42,7 @@ const BASE_NAV_ITEMS = [
   { label: "Dashboard",          key: "__dashboard__",   icon: "mdi:view-dashboard" },
   { label: "Active Trips",        key: "trips",    icon: "mdi:truck-fast" },
   { label: "My Stops",            key: "stops",    icon: "mdi:truck-delivery" },
+  { label: "New Bookings",        key: "new-bookings", icon: "mdi:book-plus" },
   { label: "Customer Payments",   key: "payments", icon: "mdi:cash-register" },
   { label: "My Credits",          key: "credits",  icon: "mdi:credit-card" },
   { label: "Store Sales",         key: "store-sales", icon: "mdi:store" },
@@ -72,7 +75,7 @@ export default function BrokerPanel({ userProfile }: Props) {
   const [active, setActive] = useState<SectionKey | "__dashboard__">(() => {
     const params = new URLSearchParams(window.location.search)
     const section = params.get('section')
-    return section && ["__dashboard__", "trips", "stops", "payments", "credits", "store-sales", "prices", "expenses", "monitor-trucks"].includes(section)
+    return section && ["__dashboard__", "trips", "stops", "payments", "credits", "store-sales", "prices", "expenses", "monitor-trucks", "new-bookings"].includes(section)
       ? section as SectionKey
       : "__dashboard__"
   })
@@ -113,6 +116,7 @@ export default function BrokerPanel({ userProfile }: Props) {
   const [pendingSales, setPendingSales] = useState(0)
   const [returnedStops, setReturnedStops] = useState(0)
   const [returnedSales, setReturnedSales] = useState(0)
+  const [awaitingBookings, setAwaitingBookings] = useState(0)
 
    
   useEffect(() => {
@@ -132,13 +136,14 @@ export default function BrokerPanel({ userProfile }: Props) {
     async function fetchBadges() {
       try {
         const bId = userProfile.user_id
-        const [stopsResult, disputedResult, paymentsResult, salesResult, returnedStopsResult, returnedSalesResult] = await Promise.all([
+        const [stopsResult, disputedResult, paymentsResult, salesResult, returnedStopsResult, returnedSalesResult, bookingsResult] = await Promise.all([
           supabase.from("Stops").select("*", { count: "exact", head: true }).eq("broker_id", bId).eq("confirmed", false).eq("disputed", false).neq("discount_status", "returned").neq("discount_status", "pending"),
           supabase.from("Stops").select("*", { count: "exact", head: true }).eq("broker_id", bId).eq("disputed", true),
           supabase.from("customer_payments").select("*", { count: "exact", head: true }).eq("broker_id", bId).eq("status", "Pending"),
           supabase.from("store_sales").select("*", { count: "exact", head: true }).eq("broker_id", bId).eq("status", "Pending").neq("discount_status", "returned"),
           supabase.from("Stops").select("*", { count: "exact", head: true }).eq("broker_id", bId).eq("discount_status", "returned"),
           supabase.from("store_sales").select("*", { count: "exact", head: true }).eq("broker_id", bId).eq("discount_status", "returned"),
+          supabase.from("new_bookings").select("*", { count: "exact", head: true }).eq("broker_id", bId).eq("status", "awaiting_review"),
         ])
         setPendingStops(stopsResult.count || 0)
         setDisputedStops(disputedResult.count || 0)
@@ -146,6 +151,7 @@ export default function BrokerPanel({ userProfile }: Props) {
         setPendingSales(salesResult.count || 0)
         setReturnedStops(returnedStopsResult.count || 0)
         setReturnedSales(returnedSalesResult.count || 0)
+        setAwaitingBookings(bookingsResult.count || 0)
       } catch (err) {
         console.error("Error fetching badge counts:", err)
       }
@@ -156,13 +162,14 @@ export default function BrokerPanel({ userProfile }: Props) {
   usePolling(async () => {
     try {
       const bId = userProfile.user_id
-      const [stopsResult, disputedResult, paymentsResult, salesResult, returnedStopsResult, returnedSalesResult] = await Promise.all([
+      const [stopsResult, disputedResult, paymentsResult, salesResult, returnedStopsResult, returnedSalesResult, bookingsResult] = await Promise.all([
         supabase.from("Stops").select("*", { count: "exact", head: true }).eq("broker_id", bId).eq("confirmed", false).eq("disputed", false).neq("discount_status", "returned").neq("discount_status", "pending"),
         supabase.from("Stops").select("*", { count: "exact", head: true }).eq("broker_id", bId).eq("disputed", true),
         supabase.from("customer_payments").select("*", { count: "exact", head: true }).eq("broker_id", bId).eq("status", "Pending"),
         supabase.from("store_sales").select("*", { count: "exact", head: true }).eq("broker_id", bId).eq("status", "Pending").neq("discount_status", "returned"),
         supabase.from("Stops").select("*", { count: "exact", head: true }).eq("broker_id", bId).eq("discount_status", "returned"),
         supabase.from("store_sales").select("*", { count: "exact", head: true }).eq("broker_id", bId).eq("discount_status", "returned"),
+        supabase.from("new_bookings").select("*", { count: "exact", head: true }).eq("broker_id", bId).eq("status", "awaiting_review"),
       ])
       setPendingStops(stopsResult.count || 0)
       setDisputedStops(disputedResult.count || 0)
@@ -170,6 +177,7 @@ export default function BrokerPanel({ userProfile }: Props) {
       setPendingSales(salesResult.count || 0)
       setReturnedStops(returnedStopsResult.count || 0)
       setReturnedSales(returnedSalesResult.count || 0)
+      setAwaitingBookings(bookingsResult.count || 0)
     } catch (err) {
       console.error("Error fetching badge counts:", err)
     }
@@ -304,6 +312,7 @@ export default function BrokerPanel({ userProfile }: Props) {
       item.key === "trips" && disputedStops > 0 ? { count: disputedStops, color: "#ef4444" } :
       item.key === "stops" && returnedStops > 0 ? { count: returnedStops, color: "#ef4444" } :
       item.key === "stops" && pendingStops > 0 ? { count: pendingStops, color: "#f5a623" } :
+      item.key === "new-bookings" && awaitingBookings > 0 ? { count: awaitingBookings, color: "#0070f3" } :
       item.key === "payments" && pendingPayments > 0 ? { count: pendingPayments, color: "#f5a623" } :
       item.key === "store-sales" && returnedSales > 0 ? { count: returnedSales, color: "#ef4444" } :
       item.key === "store-sales" && pendingSales > 0 ? { count: pendingSales, color: "#f5a623" } :
@@ -682,6 +691,9 @@ export default function BrokerPanel({ userProfile }: Props) {
         userId={userProfile.user_id}
         userRole={Role.Broker}
       />
+
+      {/* One-time New Bookings explainer */}
+      <NewBookingsExplainer userId={userProfile.user_id} />
 
       {/* Profile Picture Upload Modal */}
       {showPictureModal && (

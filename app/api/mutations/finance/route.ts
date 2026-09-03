@@ -24,7 +24,7 @@ const supabaseAdmin = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!,
 )
 
-const ALLOWED_TABLES = ["customer_payments", "broker_credits", "store_sales", "store_supply_confirmations", "store_supply_lines", "cash_expenses", "cash_expense_items", "cash_offices", "cash_deposits", "admin_office_assignments", "Customers", "Brokers", "store_stock", "store_officers", "stock_verifications", "price_adjustments", "credit_approvals", "customer_charts"] as const
+const ALLOWED_TABLES = ["customer_payments", "broker_credits", "store_sales", "store_supply_confirmations", "store_supply_lines", "cash_expenses", "cash_expense_items", "cash_offices", "cash_deposits", "admin_office_assignments", "Customers", "Brokers", "store_stock", "store_officers", "stock_verifications", "price_adjustments", "credit_approvals", "customer_charts", "new_bookings"] as const
 const ALLOWED_RPCS = ["decrement_store_stock", "add_cash_deposit", "authorise_cash_expense", "create_transaction"] as const
 
 const TABLE_ROLES: Record<string, string[]> = {
@@ -47,6 +47,7 @@ const TABLE_ROLES: Record<string, string[]> = {
   price_adjustments: ["Broker", "Admin", "SuperAdmin", "DeskOfficer", "CreditManager"],
   credit_approvals: ["Broker", "Admin", "SuperAdmin", "DeskOfficer", "CreditManager"],
   customer_charts: ["Admin", "SuperAdmin", "Broker", "DeskOfficer"],
+  new_bookings: ["Broker", "Admin", "SuperAdmin", "ATCOfficer"],
 }
 
 const RPC_ROLES: Record<string, string[]> = {
@@ -88,14 +89,57 @@ function enforceBrokerScope(
   table: string,
   action: string,
   filters: Record<string, unknown> | undefined,
+  data: Record<string, unknown> | undefined,
   auth: { userId: string; roles: string[] },
 ) {
   if (!isBrokerOnly(auth.roles)) return null
+
+  if (table === "new_bookings") {
+    if (action === "insert") {
+      if (data) data.broker_id = auth.userId
+      return null
+    }
+    if (action !== "update" && action !== "delete") return null
+    if (filters?.broker_id !== auth.userId) {
+      return `Access denied for ${action} on ${table}`
+    }
+    return null
+  }
+
   if (table !== "store_sales" && table !== "customer_charts") return null
   if (action !== "update" && action !== "delete") return null
   if (filters?.broker_id !== auth.userId) {
     return `Access denied for ${action} on ${table}`
   }
+  return null
+}
+
+function enforceBookingAuthorization(
+  data: Record<string, unknown> | undefined,
+  auth: { userId: string; roles: string[] },
+) {
+  if (!data) return null
+  const isAdmin = auth.roles.some(r => ["Admin", "SuperAdmin"].includes(r))
+  const isATC = auth.roles.includes("ATCOfficer") && !isAdmin
+  const isBrokerOnly_ = isBrokerOnly(auth.roles)
+
+  if (isBrokerOnly_) {
+    const forbidden = ["status", "reviewed_by", "reviewed_at", "supplied_by", "supply_date", "broker_id"]
+    for (const f of forbidden) {
+      if (f in data) return `Brokers cannot set ${f}`
+    }
+  }
+
+  if (isATC) {
+    if ("status" in data && data.status !== "supplied") {
+      return "ATC Officers can only mark bookings as supplied"
+    }
+    const allowed = ["status", "supply_date", "supplied_by"]
+    for (const key of Object.keys(data)) {
+      if (!allowed.includes(key)) return "ATC Officers can only update supply fields"
+    }
+  }
+
   return null
 }
 
@@ -179,9 +223,15 @@ export async function POST(req: NextRequest) {
         if (sa.table === "customer_charts" && sa.action !== "insert" && !auth.roles.some(r => ["Admin", "SuperAdmin"].includes(r))) {
           return buildError("Only admins can modify or delete chart records", 403)
         }
-        const brokerScopeError = enforceBrokerScope(sa.table, sa.action, sa.filters, auth)
+        const brokerScopeError = enforceBrokerScope(sa.table, sa.action, sa.filters, sa.data, auth)
         if (brokerScopeError) {
           return buildError(brokerScopeError, 403)
+        }
+        if (sa.table === "new_bookings" && (sa.action === "update" || sa.action === "insert")) {
+          const bookingAuthError = enforceBookingAuthorization(sa.data, auth)
+          if (bookingAuthError) {
+            return buildError(bookingAuthError, 403)
+          }
         }
       }
 
@@ -390,9 +440,16 @@ export async function POST(req: NextRequest) {
       return buildError("Only admins can modify or delete chart records", 403)
     }
 
-    const brokerScopeError = enforceBrokerScope(table, action, filters, auth)
+    const brokerScopeError = enforceBrokerScope(table, action, filters, data, auth)
     if (brokerScopeError) {
       return buildError(brokerScopeError, 403)
+    }
+
+    if (table === "new_bookings" && (action === "update" || action === "insert")) {
+      const bookingAuthError = enforceBookingAuthorization(data, auth)
+      if (bookingAuthError) {
+        return buildError(bookingAuthError, 403)
+      }
     }
 
     switch (action) {

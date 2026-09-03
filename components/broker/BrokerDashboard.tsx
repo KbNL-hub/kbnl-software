@@ -24,7 +24,12 @@ function getCurrentMonthRange() {
   const now = new Date()
   const from = new Date(now.getFullYear(), now.getMonth(), 1).toISOString()
   const to = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999).toISOString()
-  return { from, to }
+  const y = now.getFullYear()
+  const m = String(now.getMonth() + 1).padStart(2, "0")
+  const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate()
+  const paymentFrom = `${y}-${m}-01`
+  const paymentTo = `${y}-${m}-${String(lastDay).padStart(2, "0")}`
+  return { from, to, paymentFrom, paymentTo }
 }
 
 function formatValue(card: StatCard) {
@@ -224,7 +229,7 @@ export default function BrokerDashboard({ userId, fullName }: Props) {
   async function fetchStats() {
     setLoading(true)
     try {
-      const { from, to } = getCurrentMonthRange()
+      const { from, to, paymentFrom, paymentTo } = getCurrentMonthRange()
 
       const [
         stopsResult,
@@ -252,8 +257,8 @@ export default function BrokerDashboard({ userId, fullName }: Props) {
           .select("amount")
           .eq("broker_id", userId)
           .eq("status", "Posted")
-          .gte("created_at", from)
-          .lte("created_at", to),
+          .gte("payment_date", paymentFrom)
+          .lte("payment_date", paymentTo),
         supabase
           .from("broker_credits")
           .select("amount")

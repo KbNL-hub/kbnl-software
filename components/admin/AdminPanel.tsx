@@ -49,6 +49,7 @@ const SECTION_IMPORTS = {
   "our-stores": () => import("@/components/admin/OurStores"),
   "trips": () => import("@/components/admin/DeskTrips"),
   "trip-payment": () => import("@/components/admin/TripPayment"),
+  "new-bookings": () => import("@/components/admin/NewBookingsAdmin"),
 } as const
 
 type SectionKey = keyof typeof SECTION_IMPORTS
@@ -99,6 +100,7 @@ const NAV_ITEMS: NavItemConfig[] = [
   { label: "Transactions",      key: "transactions",        icon: "mdi:bank-transfer" },
   { label: "Cash Movement Register", key: "desk-expenses",  icon: "mdi:cash-check" },
   { label: "Company Prices",    key: "company-prices",      icon: "mdi:currency-ngn" },
+  { label: "New Bookings",      key: "new-bookings",        icon: "mdi:book-plus" },
   { label: "Complaints",        key: "complaints",          icon: "mdi:alert-circle" },
   { label: "Reports",           key: "reports",             icon: "mdi:chart-bar" },
 ]
@@ -172,6 +174,9 @@ function AdminPanelContent({ userProfile }: Props) {
   const [unpostedExpenses, setUnpostedExpenses] = useState(0)
   const [pendingDeskTrips, setPendingDeskTrips] = useState(0)
   const [pendingCreditApprovals, setPendingCreditApprovals] = useState(0)
+  const [pendingBookings, setPendingBookings] = useState(0)
+  const [bookingToasts, setBookingToasts] = useState<{ id: string; customer_name: string; product: string; location: string; number_of_bags: number; total_amount: number; created_at: string }[]>([])
+  const toastedBookingIdsRef = useRef<Set<string>>(new Set())
   const [lowBalanceCompanies, setLowBalanceCompanies] = useState<LowBalanceCompany[]>([])
   const [dismissedAlerts, setDismissedAlerts] = useState<Set<string>>(() => {
     const stored = localStorage.getItem("dismissedFuelAlerts")
@@ -275,6 +280,12 @@ function AdminPanelContent({ userProfile }: Props) {
           setPendingCreditApprovals(count || 0)
         }
 
+        if (getAccess("new-bookings").canView) {
+          const { count } = await supabase
+            .from("new_bookings").select("*", { count: "exact", head: true }).eq("status", "awaiting_review")
+          setPendingBookings(count || 0)
+        }
+
         if (canViewFuel) {
           const { data } = await supabase
             .from("fuel_companies").select("company_id, company_name, current_balance, low_balance_threshold")
@@ -349,6 +360,29 @@ function AdminPanelContent({ userProfile }: Props) {
             .from("credit_approvals").select("*", { count: "exact", head: true }).eq("status", "Pending")
           setPendingCreditApprovals(count || 0)
         }
+        if (getAccess("new-bookings").canView) {
+          const { count } = await supabase
+            .from("new_bookings").select("*", { count: "exact", head: true }).eq("status", "awaiting_review")
+          setPendingBookings(count || 0)
+
+          const { data } = await supabase
+            .from("new_bookings")
+            .select("id, customer_name, product, location, number_of_bags, total_amount, created_at")
+            .eq("status", "awaiting_review")
+            .order("created_at", { ascending: false })
+            .limit(20)
+          if (data && data.length > 0) {
+            setBookingToasts(prev => {
+              const existing = new Set(prev.map(t => t.id))
+              const fresh = data.filter(b => !existing.has(b.id) && !toastedBookingIdsRef.current.has(b.id))
+              if (fresh.length > 0) {
+                fresh.forEach(b => toastedBookingIdsRef.current.add(b.id))
+                return [...fresh, ...prev]
+              }
+              return prev
+            })
+          }
+        }
         if (canViewFuel) {
           const { data } = await supabase
             .from("fuel_companies").select("company_id, company_name, current_balance, low_balance_threshold")
@@ -370,6 +404,15 @@ function AdminPanelContent({ userProfile }: Props) {
     const updated = new Set(dismissedAlerts).add(company_id)
     setDismissedAlerts(updated)
     localStorage.setItem("dismissedFuelAlerts", JSON.stringify([...updated]))
+  }
+
+  function dismissBookingToast(id: string) {
+    setBookingToasts(prev => prev.filter(t => t.id !== id))
+  }
+
+  function openBookingToast(id: string) {
+    dismissBookingToast(id)
+    navigate("new-bookings")
   }
 
   const visibleAlerts = lowBalanceCompanies.filter(c => !dismissedAlerts.has(c.company_id))
@@ -502,6 +545,7 @@ function AdminPanelContent({ userProfile }: Props) {
       item.key === "desk-expenses" && unpostedExpenses > 0 ? { count: unpostedExpenses, color: "#f5a623" } :
       item.key === "trips" && pendingDeskTrips > 0 ? { count: pendingDeskTrips, color: "#f5a623" } :
       item.key === "credit-approvals" && pendingCreditApprovals > 0 ? { count: pendingCreditApprovals, color: "#f5a623" } :
+      item.key === "new-bookings" && pendingBookings > 0 ? { count: pendingBookings, color: "#0070f3" } :
       null
 
     return (
@@ -564,6 +608,7 @@ function AdminPanelContent({ userProfile }: Props) {
         ::-webkit-scrollbar-thumb { background: rgba(0, 0, 0, 0.2); border-radius: 5px; border: 2px solid transparent; background-clip: padding-box; }
         ::-webkit-scrollbar-thumb:hover { background: rgba(0, 0, 0, 0.35); background-clip: padding-box; }
         * { scrollbar-width: thin; scrollbar-color: rgba(0, 0, 0, 0.2) transparent; }
+        @keyframes bookingToastSlideIn { from { transform: translateX(30px); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
       `}</style>
 
       <div style={{ display: "flex", flexDirection: "column", fontFamily: "'Inter', sans-serif", background: "#f5f5f7", height: "100dvh", overflow: "hidden" }}>
@@ -966,6 +1011,74 @@ function AdminPanelContent({ userProfile }: Props) {
               </button>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* New Booking Alert Toasts */}
+      {bookingToasts.length > 0 && (
+        <div style={{
+          position: "fixed",
+          bottom: isMobile ? 16 : 24,
+          right: isMobile ? 12 : 24,
+          left: isMobile ? 12 : undefined,
+          zIndex: 200,
+          display: "flex",
+          flexDirection: "column",
+          gap: 10,
+          maxWidth: isMobile ? undefined : 380,
+        }}>
+          {bookingToasts.map(toast => (
+            <div
+              key={toast.id}
+              onClick={() => openBookingToast(toast.id)}
+              style={{
+                background: "white",
+                borderLeft: "3px solid #0070f3",
+                borderRadius: 12,
+                padding: "14px 16px",
+                boxShadow: "0 10px 30px rgba(0, 0, 0, 0.12)",
+                display: "flex",
+                alignItems: "flex-start",
+                gap: 12,
+                cursor: "pointer",
+                animation: "bookingToastSlideIn 0.3s ease-out",
+              }}
+              onMouseEnter={e => e.currentTarget.style.background = "#f8fafc"}
+              onMouseLeave={e => e.currentTarget.style.background = "white"}
+            >
+              <div style={{ width: 36, height: 36, borderRadius: 10, background: "#eff6ff", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                <Icon icon="mdi:book-plus" width={20} color="#0070f3" />
+              </div>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <p style={{ margin: "0 0 3px 0", fontSize: 13, fontWeight: 700, color: "#0070f3" }}>New Booking — Awaiting Review</p>
+                <p style={{ margin: "0 0 2px 0", fontSize: 14, fontWeight: 600, color: "#171717", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                  {toast.customer_name} <span style={{ color: "#94a3b8", fontWeight: 400 }}>•</span> {toast.product}
+                </p>
+                <p style={{ margin: 0, fontSize: 12, color: "#64748b", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                  {toast.number_of_bags} bags • ₦{(toast.total_amount || 0).toLocaleString()}
+                </p>
+              </div>
+              <button
+                onClick={e => { e.stopPropagation(); dismissBookingToast(toast.id) }}
+                style={{
+                  background: "transparent",
+                  border: "none",
+                  cursor: "pointer",
+                  color: "#94a3b8",
+                  padding: 2,
+                  flexShrink: 0,
+                  display: "flex",
+                  alignItems: "center",
+                  transition: "color 0.2s",
+                }}
+                onMouseEnter={e => e.currentTarget.style.color = "#ef4444"}
+                onMouseLeave={e => e.currentTarget.style.color = "#94a3b8"}
+                aria-label="Dismiss notification"
+              >
+                <Icon icon="mdi:close" width={16} />
+              </button>
+            </div>
+          ))}
         </div>
       )}
     </>

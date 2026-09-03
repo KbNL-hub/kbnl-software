@@ -116,3 +116,27 @@ export interface Sale {
   tricycle_number?: string | null
   broker_name?: string | null
 }
+
+export interface NewBooking {
+  id: string
+  broker_id: string
+  customer_id: string | null
+  customer_name: string | null
+  area: string
+  product: string
+  location: string
+  number_of_bags: number
+  rate_per_bag: number
+  total_amount: number
+  payment_date: string
+  status: "pending" | "awaiting_review" | "rejected" | "supplied"
+  price_reason: string | null
+  supply_date: string | null
+  supplied_by: string | null
+  rejection_reason: string | null
+  reviewed_by: string | null
+  reviewed_at: string | null
+  created_at: string
+  updated_at: string
+  broker_name?: string
+}
