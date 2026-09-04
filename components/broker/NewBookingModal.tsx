@@ -173,6 +173,7 @@ export default function NewBookingModal({ isOpen, onClose, brokerId, isMobile, c
         payment_date: paymentDate,
         status,
         price_reason: hasDiff ? priceReason.trim() : (forceReview ? "No company price configured" : null),
+        company_price: companyPrice || null,
         rejection_reason: null,
         reviewed_by: null,
         reviewed_at: null,
@@ -186,67 +187,13 @@ export default function NewBookingModal({ isOpen, onClose, brokerId, isMobile, c
           filters: { id: editBooking.id },
         })
         if (error) { setMessage("Failed to update booking. Try again."); return }
-
-        if (hasDiff) {
-          const adjResult = await apiMutate("finance", {
-            action: "upsert",
-            table: "price_adjustments",
-            conflict: "source_type,source_id",
-            data: {
-              source_type: "new_booking",
-              source_id: editBooking.id,
-              broker_id: brokerId,
-              area,
-              product,
-              company_price: companyPrice,
-              adjusted_price: rate,
-              price_reason: priceReason.trim(),
-              status: "Pending",
-            },
-          })
-          if (adjResult.error) { setMessage("Booking saved but price adjustment failed. Contact admin."); return }
-        } else {
-          await apiMutate("finance", {
-            action: "delete",
-            table: "price_adjustments",
-            filters: { source_type: "new_booking", source_id: editBooking.id },
-          })
-        }
       } else {
-        const { data, error } = await apiMutate<NewBooking[]>("finance", {
+        const { error } = await apiMutate("finance", {
           action: "insert",
           table: "new_bookings",
           data: bookingData,
         })
-        if (error || !data?.[0]) { setMessage("Failed to create booking. Try again."); return }
-
-        if (hasDiff) {
-          const adjResult = await apiMutate("finance", {
-            action: "upsert",
-            table: "price_adjustments",
-            conflict: "source_type,source_id",
-            data: {
-              source_type: "new_booking",
-              source_id: data[0].id,
-              broker_id: brokerId,
-              area,
-              product,
-              company_price: companyPrice,
-              adjusted_price: rate,
-              price_reason: priceReason.trim(),
-              status: "Pending",
-            },
-          })
-          if (adjResult.error) {
-            await apiMutate("finance", {
-              action: "delete",
-              table: "new_bookings",
-              filters: { id: data[0].id },
-            })
-            setMessage("Failed to save price adjustment. Booking discarded. Try again.")
-            return
-          }
-        }
+        if (error) { setMessage("Failed to create booking. Try again."); return }
       }
 
       onSaved()

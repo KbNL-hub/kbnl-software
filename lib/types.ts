@@ -131,6 +131,7 @@ export interface NewBooking {
   payment_date: string
   status: "pending" | "awaiting_review" | "rejected" | "supplied"
   price_reason: string | null
+  company_price: number | null
   supply_date: string | null
   supplied_by: string | null
   rejection_reason: string | null

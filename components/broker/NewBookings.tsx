@@ -291,8 +291,29 @@ export default function NewBookings() {
                       )}
                     </div>
 
-                    {/* Price reason */}
-                    {booking.price_reason && (
+                    {/* Price comparison */}
+                    {booking.company_price != null && booking.company_price > 0 && booking.price_reason && (
+                      <div style={{ padding: "10px 12px", borderRadius: 8, background: "#f0f7ff", border: "1px solid #bfdbfe", marginBottom: 12 }}>
+                        <p style={{ margin: "0 0 6px", color: "#0369a1", fontSize: FONT_SIZE.xs, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.5px" }}>Price comparison</p>
+                        <div style={{ display: "flex", gap: 16, marginBottom: 6 }}>
+                          <div>
+                            <p style={{ margin: 0, fontSize: 11, color: "#94a3b8" }}>Company</p>
+                            <p style={{ margin: "2px 0 0", fontWeight: 600, fontSize: FONT_SIZE.sm, color: "#0f172a" }}>₦{booking.company_price.toLocaleString()}</p>
+                          </div>
+                          <div>
+                            <p style={{ margin: 0, fontSize: 11, color: "#94a3b8" }}>Your rate</p>
+                            <p style={{ margin: "2px 0 0", fontWeight: 600, fontSize: FONT_SIZE.sm, color: "#0f172a" }}>₦{booking.rate_per_bag.toLocaleString()}</p>
+                          </div>
+                          <div>
+                            <p style={{ margin: 0, fontSize: 11, color: booking.rate_per_bag > booking.company_price ? "#059669" : "#854d0e" }}>{booking.rate_per_bag > booking.company_price ? "Premium" : "Discount"}</p>
+                            <p style={{ margin: "2px 0 0", fontWeight: 700, fontSize: FONT_SIZE.sm, color: booking.rate_per_bag > booking.company_price ? "#059669" : "#854d0e" }}>₦{Math.abs(booking.rate_per_bag - booking.company_price).toLocaleString()}</p>
+                          </div>
+                        </div>
+                        <p style={{ margin: 0, fontSize: 11, color: "#64748b" }}>&ldquo;{booking.price_reason}&rdquo;</p>
+                      </div>
+                    )}
+
+                    {booking.company_price == null && booking.price_reason && (
                       <div style={{ padding: "10px 12px", borderRadius: 8, background: "#f0f7ff", border: "1px solid #bfdbfe", marginBottom: 12 }}>
                         <p style={{ margin: "0 0 2px", color: "#0369a1", fontSize: FONT_SIZE.xs, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.5px" }}>Price reason</p>
                         <p style={{ margin: 0, color: "#0f172a", fontSize: FONT_SIZE.sm }}>{booking.price_reason}</p>

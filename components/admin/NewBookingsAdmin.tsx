@@ -103,23 +103,11 @@ export default function NewBookingsAdmin() {
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) return
 
-      const now = new Date().toISOString()
       const { error } = await apiMutate("finance", {
-        action: "transaction",
-        sub_actions: [
-          {
-            action: "update",
-            table: "new_bookings",
-            data: { status: "pending", reviewed_by: user.id, reviewed_at: now },
-            filters: { id: booking.id },
-          },
-          {
-            action: "update",
-            table: "price_adjustments",
-            data: { status: "Approved", reviewed_by: user.id, reviewed_at: now },
-            filters: { source_type: "new_booking", source_id: booking.id },
-          },
-        ],
+        action: "update",
+        table: "new_bookings",
+        data: { status: "pending", reviewed_by: user.id, reviewed_at: new Date().toISOString() },
+        filters: { id: booking.id },
       })
       if (error) { setMessage("Failed to approve. Try again."); return }
 
@@ -145,28 +133,16 @@ export default function NewBookingsAdmin() {
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) return
 
-      const now = new Date().toISOString()
       const { error } = await apiMutate("finance", {
-        action: "transaction",
-        sub_actions: [
-          {
-            action: "update",
-            table: "new_bookings",
-            data: {
-              status: "rejected",
-              rejection_reason: rejectReason.trim(),
-              reviewed_by: user.id,
-              reviewed_at: now,
-            },
-            filters: { id: rejectModal.id },
-          },
-          {
-            action: "update",
-            table: "price_adjustments",
-            data: { status: "Denied", denial_reason: rejectReason.trim(), reviewed_by: user.id, reviewed_at: now },
-            filters: { source_type: "new_booking", source_id: rejectModal.id },
-          },
-        ],
+        action: "update",
+        table: "new_bookings",
+        data: {
+          status: "rejected",
+          rejection_reason: rejectReason.trim(),
+          reviewed_by: user.id,
+          reviewed_at: new Date().toISOString(),
+        },
+        filters: { id: rejectModal.id },
       })
       if (error) { setMessage("Failed to reject. Try again."); return }
 
@@ -407,12 +383,35 @@ export default function NewBookingsAdmin() {
                       </div>
                     )}
 
-                    {/* Awaiting review note */}
-                    {booking.status === "awaiting_review" && booking.price_reason && (
+                    {/* Price comparison */}
+                    {booking.status === "awaiting_review" && booking.company_price != null && booking.company_price > 0 && (
+                      <div style={{ padding: "10px 12px", borderRadius: 8, background: "#fffbeb", border: "1px solid #fcd34d", marginBottom: 12 }}>
+                        <p style={{ margin: "0 0 6px", color: "#d97706", fontSize: FONT_SIZE.xs, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.5px" }}>
+                          <Icon icon="mdi:alert-circle-outline" width={14} style={{ verticalAlign: "middle", marginRight: 4 }} />
+                          Price differs from company rate
+                        </p>
+                        <div style={{ display: "flex", gap: 16 }}>
+                          <div>
+                            <p style={{ margin: 0, fontSize: 11, color: "#92400e" }}>Company</p>
+                            <p style={{ margin: "2px 0 0", fontWeight: 600, fontSize: FONT_SIZE.sm, color: "#92400e" }}>₦{booking.company_price.toLocaleString()}</p>
+                          </div>
+                          <div>
+                            <p style={{ margin: 0, fontSize: 11, color: "#92400e" }}>Broker rate</p>
+                            <p style={{ margin: "2px 0 0", fontWeight: 600, fontSize: FONT_SIZE.sm, color: "#92400e" }}>₦{booking.rate_per_bag.toLocaleString()}</p>
+                          </div>
+                          <div>
+                            <p style={{ margin: 0, fontSize: 11, color: "#92400e" }}>{booking.rate_per_bag > booking.company_price ? "Premium" : "Discount"}</p>
+                            <p style={{ margin: "2px 0 0", fontWeight: 700, fontSize: FONT_SIZE.sm, color: "#92400e" }}>₦{Math.abs(booking.rate_per_bag - booking.company_price).toLocaleString()}</p>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {booking.status === "awaiting_review" && booking.company_price == null && booking.price_reason && (
                       <div style={{ padding: "10px 12px", borderRadius: 8, background: "#fffbeb", border: "1px solid #fcd34d", marginBottom: 12 }}>
                         <p style={{ margin: 0, color: "#d97706", fontSize: FONT_SIZE.sm, fontWeight: 600 }}>
                           <Icon icon="mdi:alert-circle-outline" width={14} style={{ verticalAlign: "middle", marginRight: 4 }} />
-                          This booking uses a price different from the company rate — review it.
+                          No company price configured — review this rate.
                         </p>
                       </div>
                     )}
