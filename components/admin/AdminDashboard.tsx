@@ -434,7 +434,7 @@ export default function AdminDashboard({ effectiveRole, fullName }: Props) {
         .lte("stop_time", to),
       supabase
         .from("store_sales")
-        .select("quantity, total_amount")
+        .select("total_quantity, total_amount")
         .eq("status", "Confirmed")
         .neq("sale_type", "truck_load_out")
         .gte("sold_at", from)
@@ -471,7 +471,7 @@ export default function AdminDashboard({ effectiveRole, fullName }: Props) {
       (sum, s) => sum + (s.quantity_offloaded || 0), 0
     )
     const bagsFromStoreSales = (storeSalesResult.data || []).reduce(
-      (sum, s) => sum + (s.quantity || 0), 0
+      (sum, s) => sum + (s.total_quantity || 0), 0
     )
     const bagsSold = bagsFromStops + bagsFromStoreSales
     setCreditTotal(

@@ -50,10 +50,9 @@ type StatusMenuProps = {
   isUpdating: boolean
   onSelect: (status: string) => void
   position: { top: number; right: number }
-  onClose: () => void
 }
 
-function StatusMenu({ current, isUpdating, onSelect, position, onClose }: StatusMenuProps) {
+function StatusMenu({ current, isUpdating, onSelect, position }: StatusMenuProps) {
   const menuRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -137,10 +136,13 @@ export default function TruckManageSection({ trucks, onRefresh }: Props) {
   }, [])
 
   useEffect(() => {
-    if (!statusMenuPlate) { setMenuPosition(null); return }
+    if (!statusMenuPlate) return
     const handleClickOutside = (e: MouseEvent) => {
       const target = e.target as HTMLElement | null
-      if (!target?.closest("[data-status-menu]")) setStatusMenuPlate(null)
+      if (!target?.closest("[data-status-menu]")) {
+        setStatusMenuPlate(null)
+        setMenuPosition(null)
+      }
     }
     document.addEventListener("mousedown", handleClickOutside)
     return () => document.removeEventListener("mousedown", handleClickOutside)
@@ -183,7 +185,7 @@ export default function TruckManageSection({ trucks, onRefresh }: Props) {
   const renderStatusControl = (truck: Truck, isUpdating: boolean, compact = false) => (
     <button
       ref={el => { if (el) triggerRefs.current.set(truck.plate_number, el) }}
-      onClick={() => { statusMenuPlate === truck.plate_number ? setStatusMenuPlate(null) : measureAndOpen(truck.plate_number) }}
+      onClick={() => { if (statusMenuPlate === truck.plate_number) { setStatusMenuPlate(null); setMenuPosition(null) } else { measureAndOpen(truck.plate_number) } }}
       disabled={isUpdating}
       style={{
         display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 6,
@@ -206,8 +208,7 @@ export default function TruckManageSection({ trucks, onRefresh }: Props) {
           current={truck.status}
           isUpdating={isUpdating}
           position={menuPosition}
-          onClose={() => setStatusMenuPlate(null)}
-          onSelect={s => { setStatusMenuPlate(null); updateTruckStatus(truck.plate_number, s) }}
+          onSelect={s => { setStatusMenuPlate(null); setMenuPosition(null); updateTruckStatus(truck.plate_number, s) }}
         />
       )}
     </button>

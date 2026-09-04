@@ -5,20 +5,27 @@ import { FONT_SIZE } from "@/lib/constants"
 import { usePolling } from "@/lib/hooks/usePolling"
 import { usePagination } from "@/lib/hooks/usePagination"
 
-import { useState, useEffect, useCallback, Fragment } from "react"
+import { useState, useEffect, useCallback } from "react"
 import { Icon } from "@iconify/react"
 import { supabase } from "@/lib/supabase"
 import { fetchStores } from "@/lib/stores"
 import ModernInput from "@/components/ModernInput"
 import PaginationControls from "@/components/PaginationControls"
 
-type StoreSale = {
-  sale_id: string
-  store_name: string
+type SaleItem = {
   product: string
   quantity: number
   price_per_bag: number | null
+  company_price?: number | null
+  price_reason?: string | null
+}
+
+type StoreSale = {
+  sale_id: string
+  store_name: string
+  items: SaleItem[]
   total_amount: number | null
+  total_quantity: number
   customer_name: string | null
   payment_mode: string
   delivery_mode: string
@@ -37,11 +44,6 @@ type StoreSale = {
   driver_name?: string | null
   kbnl_truck_no?: string | null
   is_credit_approved?: boolean
-}
-
-type GroupedSale = {
-  date: string
-  sales: StoreSale[]
 }
 
 type ViewMode = "card" | "table"
@@ -133,7 +135,7 @@ export default function StoreSales() {
   async function fetchSales() {
     const { data, error } = await supabase
       .from("store_sales")
-      .select("sale_id, store_name, product, quantity, price_per_bag, total_amount, customer_name, payment_mode, delivery_mode, tricycle_id, truck_plate, broker_id, sold_at, created_at, status, bank_name, depositor_name, rejection_reason, sale_type, discount_status, driver_name")
+      .select("sale_id, store_name, items, total_amount, total_quantity, customer_name, payment_mode, delivery_mode, tricycle_id, truck_plate, broker_id, sold_at, created_at, status, bank_name, depositor_name, rejection_reason, sale_type, discount_status, driver_name")
       .order("sold_at", { ascending: false })
 
     if (error) throw error
@@ -204,7 +206,7 @@ export default function StoreSales() {
 
   const filteredSales = sales.filter(s => {
     if (filterStatus !== "All" && s.status !== filterStatus) return false
-    if (filterProduct && s.product !== filterProduct) return false
+    if (filterProduct && !s.items.some(item => item.product === filterProduct)) return false
     if (filterStore && s.store_name !== filterStore) return false
     const soldDate = s.sold_at.slice(0, 10)
     if (dateMode === "single") {
@@ -227,15 +229,7 @@ export default function StoreSales() {
     return dateB - dateA
   })
 
-  const groupedByDate = filteredSales.reduce<GroupedSale[]>((groups, sale) => {
-    const dateKey = sale.sold_at.slice(0, 10)
-    const existing = groups.find(g => g.date === dateKey)
-    if (existing) { existing.sales.push(sale); return groups }
-    groups.push({ date: dateKey, sales: [sale] })
-    return groups
-  }, [])
-
-  const { page, setPage, totalPages, paginatedItems, totalItems } = usePagination(groupedByDate)
+  const { page, setPage, totalPages, paginatedItems, totalItems } = usePagination(filteredSales)
 
   function formatAmount(val: number | null | undefined): string {
     if (val == null) return "—"
@@ -656,155 +650,152 @@ export default function StoreSales() {
       ) : (
         <>
           {viewMode === "card" && (
-            <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
-              {paginatedItems.map((group) => (
-                <div key={group.date}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
-                    <Icon icon="mdi:calendar" width={18} color="#64748b" />
-                    <h3 style={{ margin: 0, color: "#0f172a", fontSize: FONT_SIZE.lg, fontWeight: 700 }}>
-                      {new Date(group.date + "T00:00:00").toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" })}
-                    </h3>
-                    <span style={{ padding: "2px 8px", borderRadius: 10, fontSize: FONT_SIZE.xs, fontWeight: 600, background: "#f1f5f9", color: "#64748b" }}>
-                      {group.sales.length} sale{group.sales.length !== 1 ? "s" : ""}
-                    </span>
-                  </div>
-                  <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(auto-fill, minmax(340px, 1fr))", gap: 16 }}>
-                    {group.sales.map((sale) => (
-                      <div key={sale.sale_id} style={{ background: "white", borderRadius: 12, padding: 20, border: "1px solid #e2e8f0", boxShadow: "0 1px 3px rgba(0, 0, 0, 0.05)", transition: "all 0.2s ease" }} onMouseEnter={e => !isMobile && (e.currentTarget.style.boxShadow = "0 4px 12px rgba(0, 0, 0, 0.08)", e.currentTarget.style.borderColor = "#cbd5e1")} onMouseLeave={e => !isMobile && (e.currentTarget.style.boxShadow = "0 1px 3px rgba(0, 0, 0, 0.05)", e.currentTarget.style.borderColor = "#e2e8f0")}>
-                        <div style={{ marginBottom: 16 }}>
-                          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 6, gap: 8 }}>
-                            <h3 style={{ margin: 0, color: "#0f172a", fontSize: FONT_SIZE.lg, fontWeight: 700 }}>{sale.store_name}</h3>
-                            {(() => {
-                              const { label: displayStatus, bg: statusBg, color: statusColor, border: statusBorder } = getSaleStatusStyle(sale)
-                              return (
-                                <span style={{ padding: "6px 12px", borderRadius: 16, fontSize: FONT_SIZE.xs, fontWeight: 600, background: statusBg, color: statusColor, border: `1.5px solid ${statusBorder}`, whiteSpace: "nowrap", flexShrink: 0 }}>
-                                  {displayStatus}
-                                </span>
-                              )
-                            })()}
-                          </div>
-                          <p style={{ margin: 0, color: "#64748b", fontSize: FONT_SIZE.sm }}>{sale.product}</p>
-                          {sale.sale_type === "truck_load_out" && (
-                            <span style={{ marginTop: 4, padding: "2px 8px", borderRadius: 6, background: "#fff7ed", color: "#ea580c", fontWeight: 600, fontSize: FONT_SIZE.xs, display: "inline-block" }}>Truck Load Out</span>
-                          )}
-                          {sale.sale_type === "truck_load_out" && (
-                            <div style={{ marginTop: 8, display: "flex", flexDirection: "column", gap: 4 }}>
-                              {sale.driver_name && (
-                                <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                                  <Icon icon="mdi:account" width={14} color="#64748b" />
-                                  <span style={{ fontSize: FONT_SIZE.sm, color: "#475569" }}>
-                                    <span style={{ fontWeight: 600, color: "#0f172a" }}>Driver:</span> {sale.driver_name}
-                                  </span>
-                                </div>
-                              )}
-                              {sale.truck_plate && (
-                                <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                                  <Icon icon="mdi:truck" width={14} color="#64748b" />
-                                  <span style={{ fontSize: FONT_SIZE.sm, color: "#475569" }}>
-                                    <span style={{ fontWeight: 600, color: "#0f172a" }}>Truck:</span> {sale.truck_plate}{sale.kbnl_truck_no ? ` (KBNL #{sale.kbnl_truck_no})` : ""}
-                                  </span>
-                                </div>
-                              )}
-                            </div>
-                          )}
-                          {sale.status === "Rejected" && sale.rejection_reason && (
-                            <div style={{ display: "flex", gap: 10, alignItems: "flex-start", marginTop: 10, padding: 10, background: "#fef2f2", borderRadius: 8, border: "1px solid #fecaca" }}>
-                              <div style={{ background: "#ef4444", color: "white", padding: 3, borderRadius: "50%", flexShrink: 0, marginTop: 1 }}>
-                                <Icon icon="mdi:close" width={12} height={12} />
-                              </div>
-                              <div>
-                                <p style={{ margin: "0 0 4px 0", color: "#ef4444", fontSize: FONT_SIZE.xs, fontWeight: 600 }}>Rejection reason</p>
-                                <div style={{ padding: "8px 10px", background: "white", borderRadius: 6, border: "1px solid #fecaca", color: "#7f1d1d", fontSize: FONT_SIZE.xs, fontStyle: "italic" }}>
-                                  &ldquo;{sale.rejection_reason}&rdquo;
-                                </div>
-                              </div>
-                            </div>
-                          )}
-                        </div>
-
-                        <div style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 16, paddingBottom: 16, borderBottom: "1px solid #f1f5f9" }}>
-                          <p style={{ margin: 0, fontSize: FONT_SIZE.sm, color: "#475569" }}><span style={{ color: "#94a3b8", minWidth: 80, display: "inline-block" }}>Qty:</span> <span style={{ fontWeight: 500 }}>{sale.quantity} bags</span></p>
-                          {sale.sale_type !== "truck_load_out" && (
-                            <>
-                              <p style={{ margin: 0, fontSize: FONT_SIZE.sm, color: "#475569" }}><span style={{ color: "#94a3b8", minWidth: 80, display: "inline-block" }}>Price/bag:</span> <span style={{ fontWeight: 500 }}>{sale.price_per_bag ? formatAmount(sale.price_per_bag) : "—"}</span></p>
-                              {sale.sale_type !== "truck_load_out" && sale.is_credit_approved && sale.broker_id && (
-                                <span style={{ display: "inline-block", marginTop: 4, marginBottom: 2, padding: "4px 12px", borderRadius: 6, fontSize: FONT_SIZE.xs, fontWeight: 600, background: "#eff6ff", color: "#0070f3", border: "1px solid #93c5fd" }}>Credit</span>
-                              )}
-                              <p style={{ margin: 0, fontSize: FONT_SIZE.sm, color: "#475569" }}><span style={{ color: "#94a3b8", minWidth: 80, display: "inline-block" }}>Total:</span> <span style={{ fontWeight: 600, color: "#10b981" }}>{sale.total_amount ? formatAmount(sale.total_amount) : "—"}</span></p>
-                            </>
-                          )}
-                          <p style={{ margin: 0, fontSize: FONT_SIZE.sm, color: "#475569" }}><span style={{ color: "#94a3b8", minWidth: 80, display: "inline-block" }}>Payment:</span> {sale.payment_mode}</p>
-                          <p style={{ margin: 0, fontSize: FONT_SIZE.sm, color: "#475569" }}><span style={{ color: "#94a3b8", minWidth: 80, display: "inline-block" }}>Delivery:</span> {sale.delivery_mode}{sale.truck_plate ? ` (${sale.truck_plate})` : ""}</p>
-                          <p style={{ margin: 0, fontSize: FONT_SIZE.sm, color: "#475569" }}><span style={{ color: "#94a3b8", minWidth: 80, display: "inline-block" }}>Customer:</span> {sale.customer_name || "—"}</p>
-                          {sale.broker_name && (
-                            <p style={{ margin: 0, fontSize: FONT_SIZE.sm, color: "#475569" }}><span style={{ color: "#94a3b8", minWidth: 80, display: "inline-block" }}>Broker:</span> {sale.broker_name}</p>
-                          )}
-                          {sale.depositor_name && (
-                            <p style={{ margin: 0, fontSize: FONT_SIZE.sm, color: "#475569" }}><span style={{ color: "#94a3b8", minWidth: 80, display: "inline-block" }}>Depositor:</span> {sale.depositor_name}{sale.bank_name ? ` (${sale.bank_name})` : ""}</p>
-                          )}
-                        </div>
-
-                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                          <span style={{ color: "#94a3b8", fontSize: FONT_SIZE.xs }}>
-                            {new Date(sale.sold_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+            <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+              {paginatedItems.map((sale) => (
+                <div key={sale.sale_id} style={{ background: "white", borderRadius: 12, padding: 20, border: "1px solid #e2e8f0", boxShadow: "0 1px 3px rgba(0, 0, 0, 0.05)", transition: "all 0.2s ease" }} onMouseEnter={e => !isMobile && (e.currentTarget.style.boxShadow = "0 4px 12px rgba(0, 0, 0, 0.08)", e.currentTarget.style.borderColor = "#cbd5e1")} onMouseLeave={e => !isMobile && (e.currentTarget.style.boxShadow = "0 1px 3px rgba(0, 0, 0, 0.05)", e.currentTarget.style.borderColor = "#e2e8f0")}>
+                  <div style={{ marginBottom: 16 }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 6, gap: 8 }}>
+                      <h3 style={{ margin: 0, color: "#0f172a", fontSize: FONT_SIZE.lg, fontWeight: 700 }}>{sale.store_name}</h3>
+                      {(() => {
+                        const { label: displayStatus, bg: statusBg, color: statusColor, border: statusBorder } = getSaleStatusStyle(sale)
+                        return (
+                          <span style={{ padding: "6px 12px", borderRadius: 16, fontSize: FONT_SIZE.xs, fontWeight: 600, background: statusBg, color: statusColor, border: `1.5px solid ${statusBorder}`, whiteSpace: "nowrap", flexShrink: 0 }}>
+                            {displayStatus}
                           </span>
-                          {(sale.status === "Confirmed" || sale.status === "Rejected") && (
-                            <div style={{ display: "flex", gap: 8 }}>
-                              {sale.status === "Rejected" && (
-                                <button
-                                  onClick={() => handleResubmit(sale)}
-                                  disabled={isResubmitting}
-                                  style={{
-                                    padding: "6px 12px",
-                                    background: "#0070f3",
-                                    color: "white",
-                                    border: "none",
-                                    borderRadius: 6,
-                                    cursor: isResubmitting ? "not-allowed" : "pointer",
-                                    fontSize: FONT_SIZE.xs,
-                                    fontWeight: 600,
-                                    minHeight: 32,
-                                    display: "flex",
-                                    alignItems: "center",
-                                    gap: 4,
-                                    transition: "all 0.2s",
-                                    opacity: isResubmitting ? 0.6 : 1
-                                  }}
-                                  onMouseEnter={e => { if (!isResubmitting) e.currentTarget.style.background = "#0056d4" }}
-                                  onMouseLeave={e => { e.currentTarget.style.background = "#0070f3" }}
-                                >
-                                  <Icon icon="mdi:rotate-3d-variant" width={14} />
-                                  {isResubmitting ? "Resubmitting…" : "Resubmit"}
-                                </button>
-                              )}
-                              <button
-                                onClick={() => openRejectModal(sale)}
-                                style={{
-                                  padding: "6px 12px",
-                                  background: "white",
-                                  color: "#ef4444",
-                                  border: "1.5px solid #ef4444",
-                                  borderRadius: 6,
-                                  cursor: "pointer",
-                                  fontSize: FONT_SIZE.xs,
-                                  fontWeight: 600,
-                                  minHeight: 32,
-                                  display: "flex",
-                                  alignItems: "center",
-                                  gap: 4,
-                                  transition: "all 0.2s"
-                                }}
-                                onMouseEnter={e => { e.currentTarget.style.background = "#fef2f2"; e.currentTarget.style.borderColor = "#dc2626" }}
-                                onMouseLeave={e => { e.currentTarget.style.background = "white"; e.currentTarget.style.borderColor = "#ef4444" }}
-                              >
-                                <Icon icon="mdi:close-circle" width={14} />
-                                {sale.status === "Rejected" ? "Re-reject" : "Reject"}
-                              </button>
-                            </div>
-                          )}
+                        )
+                      })()}
+                    </div>
+                    {sale.sale_type === "truck_load_out" && (
+                      <span style={{ marginTop: 4, padding: "2px 8px", borderRadius: 6, background: "#fff7ed", color: "#ea580c", fontWeight: 600, fontSize: FONT_SIZE.xs, display: "inline-block" }}>Truck Load Out</span>
+                    )}
+                    {sale.sale_type === "truck_load_out" && (
+                      <div style={{ marginTop: 8, display: "flex", flexDirection: "column", gap: 4 }}>
+                        {sale.driver_name && (
+                          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                            <Icon icon="mdi:account" width={14} color="#64748b" />
+                            <span style={{ fontSize: FONT_SIZE.sm, color: "#475569" }}>
+                              <span style={{ fontWeight: 600, color: "#0f172a" }}>Driver:</span> {sale.driver_name}
+                            </span>
+                          </div>
+                        )}
+                        {sale.truck_plate && (
+                          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                            <Icon icon="mdi:truck" width={14} color="#64748b" />
+                            <span style={{ fontSize: FONT_SIZE.sm, color: "#475569" }}>
+                              <span style={{ fontWeight: 600, color: "#0f172a" }}>Truck:</span> {sale.truck_plate}{sale.kbnl_truck_no ? ` (KBNL #${sale.kbnl_truck_no})` : ""}
+                            </span>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                    {sale.status === "Rejected" && sale.rejection_reason && (
+                      <div style={{ display: "flex", gap: 10, alignItems: "flex-start", marginTop: 10, padding: 10, background: "#fef2f2", borderRadius: 8, border: "1px solid #fecaca" }}>
+                        <div style={{ background: "#ef4444", color: "white", padding: 3, borderRadius: "50%", flexShrink: 0, marginTop: 1 }}>
+                          <Icon icon="mdi:close" width={12} height={12} />
+                        </div>
+                        <div>
+                          <p style={{ margin: "0 0 4px 0", color: "#ef4444", fontSize: FONT_SIZE.xs, fontWeight: 600 }}>Rejection reason</p>
+                          <div style={{ padding: "8px 10px", background: "white", borderRadius: 6, border: "1px solid #fecaca", color: "#7f1d1d", fontSize: FONT_SIZE.xs, fontStyle: "italic" }}>
+                            &ldquo;{sale.rejection_reason}&rdquo;
+                          </div>
                         </div>
                       </div>
-                    ))}
+                    )}
+                  </div>
+
+                  <div style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 16, paddingBottom: 16, borderBottom: "1px solid #f1f5f9" }}>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                      {sale.items.map((item, idx) => (
+                        <div key={idx} style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "baseline", fontSize: FONT_SIZE.sm, color: "#475569" }}>
+                          <span style={{ fontWeight: 600, color: "#0f172a" }}>{item.product}</span>
+                          <span>× {item.quantity} bags</span>
+                          {item.price_per_bag != null && (
+                            <span>· {formatAmount(item.price_per_bag)}/bag</span>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                    {sale.sale_type !== "truck_load_out" && (
+                      <>
+                        {sale.sale_type !== "truck_load_out" && sale.is_credit_approved && sale.broker_id && (
+                          <span style={{ display: "inline-block", marginTop: 4, marginBottom: 2, padding: "4px 12px", borderRadius: 6, fontSize: FONT_SIZE.xs, fontWeight: 600, background: "#eff6ff", color: "#0070f3", border: "1px solid #93c5fd" }}>Credit</span>
+                        )}
+                        <p style={{ margin: 0, fontSize: FONT_SIZE.sm, color: "#475569" }}><span style={{ color: "#94a3b8", minWidth: 80, display: "inline-block" }}>Qty:</span> <span style={{ fontWeight: 500 }}>{sale.total_quantity} bags</span></p>
+                        <p style={{ margin: 0, fontSize: FONT_SIZE.sm, color: "#475569" }}><span style={{ color: "#94a3b8", minWidth: 80, display: "inline-block" }}>Total:</span> <span style={{ fontWeight: 600, color: "#10b981" }}>{sale.total_amount ? formatAmount(sale.total_amount) : "—"}</span></p>
+                      </>
+                    )}
+                    {sale.sale_type === "truck_load_out" && (
+                      <p style={{ margin: 0, fontSize: FONT_SIZE.sm, color: "#475569" }}><span style={{ color: "#94a3b8", minWidth: 80, display: "inline-block" }}>Qty:</span> <span style={{ fontWeight: 500 }}>{sale.total_quantity} bags</span></p>
+                    )}
+                    <p style={{ margin: 0, fontSize: FONT_SIZE.sm, color: "#475569" }}><span style={{ color: "#94a3b8", minWidth: 80, display: "inline-block" }}>Payment:</span> {sale.payment_mode}</p>
+                    <p style={{ margin: 0, fontSize: FONT_SIZE.sm, color: "#475569" }}><span style={{ color: "#94a3b8", minWidth: 80, display: "inline-block" }}>Delivery:</span> {sale.delivery_mode}{sale.truck_plate ? ` (${sale.truck_plate})` : ""}</p>
+                    <p style={{ margin: 0, fontSize: FONT_SIZE.sm, color: "#475569" }}><span style={{ color: "#94a3b8", minWidth: 80, display: "inline-block" }}>Customer:</span> {sale.customer_name || "—"}</p>
+                    {sale.broker_name && (
+                      <p style={{ margin: 0, fontSize: FONT_SIZE.sm, color: "#475569" }}><span style={{ color: "#94a3b8", minWidth: 80, display: "inline-block" }}>Broker:</span> {sale.broker_name}</p>
+                    )}
+                    {sale.depositor_name && (
+                      <p style={{ margin: 0, fontSize: FONT_SIZE.sm, color: "#475569" }}><span style={{ color: "#94a3b8", minWidth: 80, display: "inline-block" }}>Depositor:</span> {sale.depositor_name}{sale.bank_name ? ` (${sale.bank_name})` : ""}</p>
+                    )}
+                  </div>
+
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                    <span style={{ color: "#94a3b8", fontSize: FONT_SIZE.xs }}>
+                      {new Date(sale.sold_at).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })} {new Date(sale.sold_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                    </span>
+                    {(sale.status === "Confirmed" || sale.status === "Rejected") && (
+                      <div style={{ display: "flex", gap: 8 }}>
+                        {sale.status === "Rejected" && (
+                          <button
+                            onClick={() => handleResubmit(sale)}
+                            disabled={isResubmitting}
+                            style={{
+                              padding: "6px 12px",
+                              background: "#0070f3",
+                              color: "white",
+                              border: "none",
+                              borderRadius: 6,
+                              cursor: isResubmitting ? "not-allowed" : "pointer",
+                              fontSize: FONT_SIZE.xs,
+                              fontWeight: 600,
+                              minHeight: 32,
+                              display: "flex",
+                              alignItems: "center",
+                              gap: 4,
+                              transition: "all 0.2s",
+                              opacity: isResubmitting ? 0.6 : 1
+                            }}
+                            onMouseEnter={e => { if (!isResubmitting) e.currentTarget.style.background = "#0056d4" }}
+                            onMouseLeave={e => { e.currentTarget.style.background = "#0070f3" }}
+                          >
+                            <Icon icon="mdi:rotate-3d-variant" width={14} />
+                            {isResubmitting ? "Resubmitting…" : "Resubmit"}
+                          </button>
+                        )}
+                        <button
+                          onClick={() => openRejectModal(sale)}
+                          style={{
+                            padding: "6px 12px",
+                            background: "white",
+                            color: "#ef4444",
+                            border: "1.5px solid #ef4444",
+                            borderRadius: 6,
+                            cursor: "pointer",
+                            fontSize: FONT_SIZE.xs,
+                            fontWeight: 600,
+                            minHeight: 32,
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 4,
+                            transition: "all 0.2s"
+                          }}
+                          onMouseEnter={e => { e.currentTarget.style.background = "#fef2f2"; e.currentTarget.style.borderColor = "#dc2626" }}
+                          onMouseLeave={e => { e.currentTarget.style.background = "white"; e.currentTarget.style.borderColor = "#ef4444" }}
+                        >
+                          <Icon icon="mdi:close-circle" width={14} />
+                          {sale.status === "Rejected" ? "Re-reject" : "Reject"}
+                        </button>
+                      </div>
+                    )}
                   </div>
                 </div>
               ))}
@@ -817,9 +808,8 @@ export default function StoreSales() {
                 <thead>
                   <tr style={{ background: "#f8fafc", borderBottom: "1px solid #e2e8f0" }}>
                     <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: FONT_SIZE.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px" }}>Store</th>
-                    <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: FONT_SIZE.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px" }}>Product</th>
-                    <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: FONT_SIZE.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px" }}>Qty</th>
-                    <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: FONT_SIZE.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px" }}>Price/Bag</th>
+                    <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: FONT_SIZE.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px" }}>Items</th>
+                    <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: FONT_SIZE.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px" }}>Total Qty</th>
                     <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: FONT_SIZE.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px" }}>Total</th>
                     <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: FONT_SIZE.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px" }}>Customer</th>
                     <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: FONT_SIZE.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px" }}>Depositor</th>
@@ -832,126 +822,120 @@ export default function StoreSales() {
                   </tr>
                 </thead>
                 <tbody>
-                  {paginatedItems.map((group) => (
-                    <Fragment key={group.date}>
-                      <tr>
-                        <td colSpan={13} style={{ padding: "10px 16px", background: "#f8fafc", fontWeight: 700, fontSize: FONT_SIZE.sm, color: "#0f172a", borderBottom: "2px solid #e2e8f0" }}>
-                          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                            <Icon icon="mdi:calendar" width={16} color="#64748b" />
-                            {new Date(group.date + "T00:00:00").toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" })}
-                            <span style={{ padding: "1px 6px", borderRadius: 8, fontSize: FONT_SIZE.xs, fontWeight: 600, background: "#e2e8f0", color: "#64748b" }}>
-                              {group.sales.length}
+                  {paginatedItems.map((sale) => (
+                    <tr key={sale.sale_id} style={{ borderBottom: "1px solid #e2e8f0", transition: "background 0.2s ease" }} onMouseEnter={e => e.currentTarget.style.background = "#f8fafc"} onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
+                      <td style={{ padding: "12px 16px", color: "#0f172a", fontSize: FONT_SIZE.base, fontWeight: 600 }}>
+                        {sale.store_name}
+                        {sale.sale_type === "truck_load_out" && <span style={{ marginLeft: 6, padding: "2px 6px", borderRadius: 6, background: "#fff7ed", color: "#ea580c", fontWeight: 600, fontSize: 10 }}>Load Out</span>}
+                      </td>
+                      <td style={{ padding: "12px 16px", color: "#0f172a", fontSize: FONT_SIZE.sm }}>
+                        <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+                          {sale.items.map((item, idx) => (
+                            <div key={idx}>
+                              <span style={{ fontWeight: 600 }}>{item.product}</span>
+                              <span style={{ color: "#64748b" }}> × {item.quantity}</span>
+                              {item.price_per_bag != null && <span style={{ color: "#64748b" }}> @ {formatAmount(item.price_per_bag)}</span>}
+                            </div>
+                          ))}
+                        </div>
+                      </td>
+                      <td style={{ padding: "12px 16px", color: "#0f172a", fontSize: FONT_SIZE.base, fontWeight: 500 }}>{sale.total_quantity}</td>
+                      <td style={{ padding: "12px 16px", color: "#10b981", fontSize: FONT_SIZE.base, fontWeight: 600 }}>
+                        {sale.sale_type === "truck_load_out" ? "—" : formatAmount(sale.total_amount)}
+                        {sale.sale_type !== "truck_load_out" && sale.is_credit_approved && sale.broker_id && (
+                          <span style={{ display: "block", marginTop: 4, padding: "3px 10px", borderRadius: 6, fontSize: 10, fontWeight: 600, background: "#eff6ff", color: "#0070f3", border: "1px solid #93c5fd" }}>Credit</span>
+                        )}
+                      </td>
+                      <td style={{ padding: "12px 16px", color: "#64748b", fontSize: FONT_SIZE.sm }}>{sale.customer_name || "—"}</td>
+                      <td style={{ padding: "12px 16px", color: "#64748b", fontSize: FONT_SIZE.sm }}>{sale.depositor_name ? `${sale.depositor_name}${sale.bank_name ? ` (${sale.bank_name})` : ""}` : "—"}</td>
+                      <td style={{ padding: "12px 16px", color: "#64748b", fontSize: FONT_SIZE.sm }}>{sale.payment_mode}</td>
+                      <td style={{ padding: "12px 16px", color: "#64748b", fontSize: FONT_SIZE.sm }}>
+                        {sale.delivery_mode}
+                        {sale.truck_plate && (
+                          <>
+                            <span> ({sale.truck_plate}</span>
+                            {sale.kbnl_truck_no && <span> · KBNL #${sale.kbnl_truck_no}</span>}
+                            <span>)</span>
+                          </>
+                        )}
+                      </td>
+                      <td style={{ padding: "12px 16px", color: "#64748b", fontSize: FONT_SIZE.sm }}>
+                        {sale.sale_type === "truck_load_out" && sale.driver_name
+                          ? <span style={{ fontWeight: 500 }}>{sale.driver_name}</span>
+                          : "—"}
+                      </td>
+                      <td style={{ padding: "12px 16px", color: "#64748b", fontSize: FONT_SIZE.sm }}>{sale.broker_name || "—"}</td>
+                      <td style={{ padding: "12px 16px" }}>
+                        {(() => {
+                          const { label: displayStatus, bg: statusBg, color: statusColor, border: statusBorder } = getSaleStatusStyle(sale)
+                          return (
+                            <span style={{ padding: "6px 10px", borderRadius: 14, fontSize: FONT_SIZE.xs, fontWeight: 600, background: statusBg, color: statusColor, border: `1.5px solid ${statusBorder}` }}>
+                              {displayStatus}
                             </span>
+                          )
+                        })()}
+                        {sale.status === "Rejected" && sale.rejection_reason && (
+                          <div style={{ marginTop: 6, padding: "6px 8px", background: "white", borderRadius: 6, border: "1px solid #fecaca", color: "#7f1d1d", fontSize: FONT_SIZE.xs, fontStyle: "italic", maxWidth: 220 }}>
+                            &ldquo;{sale.rejection_reason}&rdquo;
                           </div>
-                        </td>
-                      </tr>
-                      {group.sales.map((sale) => (
-                        <tr key={sale.sale_id} style={{ borderBottom: "1px solid #e2e8f0", transition: "background 0.2s ease" }} onMouseEnter={e => e.currentTarget.style.background = "#f8fafc"} onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
-                          <td style={{ padding: "12px 16px", color: "#0f172a", fontSize: FONT_SIZE.base, fontWeight: 600 }}>
-                            {sale.store_name}
-                            {sale.sale_type === "truck_load_out" && <span style={{ marginLeft: 6, padding: "2px 6px", borderRadius: 6, background: "#fff7ed", color: "#ea580c", fontWeight: 600, fontSize: 10 }}>Load Out</span>}
-                          </td>
-                          <td style={{ padding: "12px 16px", color: "#0f172a", fontSize: FONT_SIZE.base }}>{sale.product}</td>
-                          <td style={{ padding: "12px 16px", color: "#0f172a", fontSize: FONT_SIZE.base, fontWeight: 500 }}>{sale.quantity}</td>
-                          <td style={{ padding: "12px 16px", color: "#64748b", fontSize: FONT_SIZE.sm }}>
-                            {sale.sale_type === "truck_load_out" ? "—" : formatAmount(sale.price_per_bag)}
-                            {sale.sale_type !== "truck_load_out" && sale.is_credit_approved && sale.broker_id && (
-                              <span style={{ display: "block", marginTop: 4, padding: "3px 10px", borderRadius: 6, fontSize: 10, fontWeight: 600, background: "#eff6ff", color: "#0070f3", border: "1px solid #93c5fd" }}>Credit</span>
+                        )}
+                        {(sale.status === "Confirmed" || sale.status === "Rejected") && (
+                          <div style={{ display: "flex", gap: 6, marginTop: 8, flexWrap: "wrap" }}>
+                            {sale.status === "Rejected" && (
+                              <button
+                                onClick={() => handleResubmit(sale)}
+                                disabled={isResubmitting}
+                                style={{
+                                  padding: "5px 10px",
+                                  background: "#0070f3",
+                                  color: "white",
+                                  border: "none",
+                                  borderRadius: 5,
+                                  cursor: isResubmitting ? "not-allowed" : "pointer",
+                                  fontSize: FONT_SIZE.xs,
+                                  fontWeight: 600,
+                                  minHeight: 28,
+                                  display: "flex",
+                                  alignItems: "center",
+                                  gap: 4,
+                                  transition: "all 0.2s",
+                                  opacity: isResubmitting ? 0.6 : 1
+                                }}
+                                onMouseEnter={e => { if (!isResubmitting) e.currentTarget.style.background = "#0056d4" }}
+                                onMouseLeave={e => { e.currentTarget.style.background = "#0070f3" }}
+                              >
+                                <Icon icon="mdi:rotate-3d-variant" width={13} />
+                                Resubmit
+                              </button>
                             )}
-                          </td>
-                          <td style={{ padding: "12px 16px", color: "#10b981", fontSize: FONT_SIZE.base, fontWeight: 600 }}>{sale.sale_type === "truck_load_out" ? "—" : formatAmount(sale.total_amount)}</td>
-                          <td style={{ padding: "12px 16px", color: "#64748b", fontSize: FONT_SIZE.sm }}>{sale.customer_name || "—"}</td>
-                          <td style={{ padding: "12px 16px", color: "#64748b", fontSize: FONT_SIZE.sm }}>{sale.depositor_name ? `${sale.depositor_name}${sale.bank_name ? ` (${sale.bank_name})` : ""}` : "—"}</td>
-                          <td style={{ padding: "12px 16px", color: "#64748b", fontSize: FONT_SIZE.sm }}>{sale.payment_mode}</td>
-                          <td style={{ padding: "12px 16px", color: "#64748b", fontSize: FONT_SIZE.sm }}>
-                            {sale.delivery_mode}
-                            {sale.truck_plate && (
-                              <>
-                                <span> ({sale.truck_plate}</span>
-                                {sale.kbnl_truck_no && <span> · KBNL #{sale.kbnl_truck_no}</span>}
-                                <span>)</span>
-                              </>
-                            )}
-                          </td>
-                          <td style={{ padding: "12px 16px", color: "#64748b", fontSize: FONT_SIZE.sm }}>
-                            {sale.sale_type === "truck_load_out" && sale.driver_name
-                              ? <span style={{ fontWeight: 500 }}>{sale.driver_name}</span>
-                              : "—"}
-                          </td>
-                          <td style={{ padding: "12px 16px", color: "#64748b", fontSize: FONT_SIZE.sm }}>{sale.broker_name || "—"}</td>
-                          <td style={{ padding: "12px 16px" }}>
-                            {(() => {
-                              const { label: displayStatus, bg: statusBg, color: statusColor, border: statusBorder } = getSaleStatusStyle(sale)
-                              return (
-                                <span style={{ padding: "6px 10px", borderRadius: 14, fontSize: FONT_SIZE.xs, fontWeight: 600, background: statusBg, color: statusColor, border: `1.5px solid ${statusBorder}` }}>
-                                  {displayStatus}
-                                </span>
-                              )
-                            })()}
-                            {sale.status === "Rejected" && sale.rejection_reason && (
-                              <div style={{ marginTop: 6, padding: "6px 8px", background: "white", borderRadius: 6, border: "1px solid #fecaca", color: "#7f1d1d", fontSize: FONT_SIZE.xs, fontStyle: "italic", maxWidth: 220 }}>
-                                &ldquo;{sale.rejection_reason}&rdquo;
-                              </div>
-                            )}
-                            {(sale.status === "Confirmed" || sale.status === "Rejected") && (
-                              <div style={{ display: "flex", gap: 6, marginTop: 8, flexWrap: "wrap" }}>
-                                {sale.status === "Rejected" && (
-                                  <button
-                                    onClick={() => handleResubmit(sale)}
-                                    disabled={isResubmitting}
-                                    style={{
-                                      padding: "5px 10px",
-                                      background: "#0070f3",
-                                      color: "white",
-                                      border: "none",
-                                      borderRadius: 5,
-                                      cursor: isResubmitting ? "not-allowed" : "pointer",
-                                      fontSize: FONT_SIZE.xs,
-                                      fontWeight: 600,
-                                      minHeight: 28,
-                                      display: "flex",
-                                      alignItems: "center",
-                                      gap: 4,
-                                      transition: "all 0.2s",
-                                      opacity: isResubmitting ? 0.6 : 1
-                                    }}
-                                    onMouseEnter={e => { if (!isResubmitting) e.currentTarget.style.background = "#0056d4" }}
-                                    onMouseLeave={e => { e.currentTarget.style.background = "#0070f3" }}
-                                  >
-                                    <Icon icon="mdi:rotate-3d-variant" width={13} />
-                                    Resubmit
-                                  </button>
-                                )}
-                                <button
-                                  onClick={() => openRejectModal(sale)}
-                                  style={{
-                                    padding: "5px 10px",
-                                    background: "white",
-                                    color: "#ef4444",
-                                    border: "1.5px solid #ef4444",
-                                    borderRadius: 5,
-                                    cursor: "pointer",
-                                    fontSize: FONT_SIZE.xs,
-                                    fontWeight: 600,
-                                    minHeight: 28,
-                                    display: "flex",
-                                    alignItems: "center",
-                                    gap: 4,
-                                    transition: "all 0.2s"
-                                  }}
-                                  onMouseEnter={e => { e.currentTarget.style.background = "#fef2f2"; e.currentTarget.style.borderColor = "#dc2626" }}
-                                  onMouseLeave={e => { e.currentTarget.style.background = "white"; e.currentTarget.style.borderColor = "#ef4444" }}
-                                >
-                                  <Icon icon="mdi:close-circle" width={13} />
-                                  {sale.status === "Rejected" ? "Re-reject" : "Reject"}
-                                </button>
-                              </div>
-                            )}
-                          </td>
-                          <td style={{ padding: "12px 16px", color: "#94a3b8", fontSize: FONT_SIZE.xs }}>{new Date(sale.sold_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</td>
-                        </tr>
-                      ))}
-                    </Fragment>
+                            <button
+                              onClick={() => openRejectModal(sale)}
+                              style={{
+                                padding: "5px 10px",
+                                background: "white",
+                                color: "#ef4444",
+                                border: "1.5px solid #ef4444",
+                                borderRadius: 5,
+                                cursor: "pointer",
+                                fontSize: FONT_SIZE.xs,
+                                fontWeight: 600,
+                                minHeight: 28,
+                                display: "flex",
+                                alignItems: "center",
+                                gap: 4,
+                                transition: "all 0.2s"
+                              }}
+                              onMouseEnter={e => { e.currentTarget.style.background = "#fef2f2"; e.currentTarget.style.borderColor = "#dc2626" }}
+                              onMouseLeave={e => { e.currentTarget.style.background = "white"; e.currentTarget.style.borderColor = "#ef4444" }}
+                            >
+                              <Icon icon="mdi:close-circle" width={13} />
+                              {sale.status === "Rejected" ? "Re-reject" : "Reject"}
+                            </button>
+                          </div>
+                        )}
+                      </td>
+                      <td style={{ padding: "12px 16px", color: "#94a3b8", fontSize: FONT_SIZE.xs }}>{new Date(sale.sold_at).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })} {new Date(sale.sold_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</td>
+                    </tr>
                   ))}
                 </tbody>
               </table>
@@ -1011,8 +995,13 @@ export default function StoreSales() {
 
             <div style={{ padding: "12px 14px", background: "#f8fafc", borderRadius: 10, margin: "16px 0", border: "1px solid #e2e8f0" }}>
               <p style={{ margin: 0, fontSize: FONT_SIZE.sm, color: "#0f172a", fontWeight: 600 }}>{rejectingSale.store_name}</p>
-              <p style={{ margin: "4px 0 0", fontSize: FONT_SIZE.sm, color: "#64748b" }}>
-                {rejectingSale.product} × {rejectingSale.quantity} bags · {formatAmount(rejectingSale.total_amount)}
+              {rejectingSale.items.map((item, idx) => (
+                <p key={idx} style={{ margin: "4px 0 0", fontSize: FONT_SIZE.sm, color: "#64748b" }}>
+                  {item.product} × {item.quantity} bags{item.price_per_bag != null ? ` · ${formatAmount(item.price_per_bag)}/bag` : ""}
+                </p>
+              ))}
+              <p style={{ margin: "4px 0 0", fontSize: FONT_SIZE.sm, color: "#475569", fontWeight: 500 }}>
+                Total: {formatAmount(rejectingSale.total_amount)} · {rejectingSale.total_quantity} bags
               </p>
               {rejectingSale.broker_name && (
                 <p style={{ margin: "4px 0 0", fontSize: FONT_SIZE.sm, color: "#64748b" }}>

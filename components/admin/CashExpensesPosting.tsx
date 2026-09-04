@@ -79,7 +79,6 @@ export default function CashExpensesPosting() {
   useEffect(() => {
     fetchExpenses()
     fetchTopUps()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedOffice])
 
   async function initData() {

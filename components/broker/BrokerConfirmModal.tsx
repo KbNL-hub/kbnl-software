@@ -32,37 +32,31 @@ type Stop = {
   discount_status: string | null
 }
 
-type SaleLine = {
-  sale_id: string
+type SaleItem = {
   product: string
   quantity: number
   price_per_bag: number | null
+  company_price: number | null
+  price_reason: string | null
+}
+
+type Sale = {
+  sale_id: string
+  items: SaleItem[]
   total_amount: number | null
+  total_quantity: number | null
   customer_name: string | null
   payment_mode: string
   delivery_mode: string
   tricycle_id: string | null
   truck_plate: string | null
   sold_at: string
-  created_at: string
   status: string
   store_name: string
   rejection_reason: string | null
   discount_status: string | null
-}
-
-type SaleGroup = {
-  group_id: string
-  customer_name: string | null
-  payment_mode: string
-  delivery_mode: string
-  tricycle_id: string | null
-  truck_plate: string | null
-  sold_at: string
-  status: string
-  store_name: string
-  rejection_reason: string | null
-  lines: SaleLine[]
+  on_credit: boolean | null
+  credit_approval_id: string | null
 }
 
 type Props = {
@@ -74,7 +68,7 @@ type Props = {
   onConfirmed: () => void
 } & (
   | { mode: "stop"; stop: Stop }
-  | { mode: "sale"; saleGroup: SaleGroup }
+  | { mode: "sale"; sale: Sale }
 )
 
 const PAYMENT_LABELS: Record<string, string> = { Cash: "Cash", Transfer: "Transfer", POS: "POS", Broker: "Broker" }
@@ -87,13 +81,13 @@ function formatDate(dateStr: string) {
 export default function BrokerConfirmModal({ isOpen, onClose, brokerId, isMobile, companyPriceMap, onConfirmed, ...rest }: Props) {
   const isStop = rest.mode === "stop"
   const stop = isStop ? rest.stop : null
-  const saleGroup = !isStop ? rest.saleGroup : null
+  const sale = !isStop ? rest.sale : null
 
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(() =>
     stop?.customer_id
       ? { customer_id: stop.customer_id, full_name: stop.customer_name, phone_number: stop.customer_phone || "" }
-      : saleGroup?.customer_name
-        ? { customer_id: "", full_name: saleGroup.customer_name, phone_number: "" }
+      : sale?.customer_name
+        ? { customer_id: "", full_name: sale.customer_name, phone_number: "" }
         : null
   )
   const [selectedArea, setSelectedArea] = useState("")
@@ -102,16 +96,16 @@ export default function BrokerConfirmModal({ isOpen, onClose, brokerId, isMobile
   const [soldAtDifferentPrice, setSoldAtDifferentPrice] = useState(false)
   const [discount, setDiscount] = useState("")
   const [salePrice, setSalePrice] = useState("")
-  const [linePrices, setLinePrices] = useState<Record<string, string>>(() => {
-    if (!saleGroup) return {}
-    const prices: Record<string, string> = {}
-    for (const line of saleGroup.lines) {
-      prices[line.sale_id] = line.price_per_bag ? formatAmount(String(line.price_per_bag)) : ""
-    }
+  const [linePrices, setLinePrices] = useState<Record<number, string>>(() => {
+    if (!sale) return {}
+    const prices: Record<number, string> = {}
+    sale.items.forEach((item, idx) => {
+      prices[idx] = item.price_per_bag ? formatAmount(String(item.price_per_bag)) : ""
+    })
     return prices
   })
-  const [discounts, setDiscounts] = useState<Record<string, string>>({})
-  const [salePrices, setSalePrices] = useState<Record<string, string>>({})
+  const [discounts, setDiscounts] = useState<Record<number, string>>({})
+  const [salePrices, setSalePrices] = useState<Record<number, string>>({})
   const [priceReason, setPriceReason] = useState("")
   const [saleType, setSaleType] = useState<"cash" | "credit" | "">("")
   const [selectedCreditManagerId, setSelectedCreditManagerId] = useState("")
@@ -163,18 +157,18 @@ export default function BrokerConfirmModal({ isOpen, onClose, brokerId, isMobile
       const cp = companyPriceMap[area]?.[stop.product] ?? 0
       setCompanyPrice(cp)
       setPricePerBag(cp > 0 ? formatAmount(cp.toString()) : "")
-    } else if (saleGroup) {
-      const prices: Record<string, string> = {}
-      for (const line of saleGroup.lines) {
-        const cp = companyPriceMap[area]?.[line.product]
+    } else if (sale) {
+      const prices: Record<number, string> = {}
+      sale.items.forEach((item, idx) => {
+        const cp = companyPriceMap[area]?.[item.product]
         if (cp) {
-          prices[line.sale_id] = formatAmount(String(cp))
-        } else if (line.price_per_bag) {
-          prices[line.sale_id] = formatAmount(String(line.price_per_bag))
+          prices[idx] = formatAmount(String(cp))
+        } else if (item.price_per_bag) {
+          prices[idx] = formatAmount(String(item.price_per_bag))
         } else {
-          prices[line.sale_id] = ""
+          prices[idx] = ""
         }
-      }
+      })
       setLinePrices(prices)
     }
   }
@@ -189,12 +183,12 @@ export default function BrokerConfirmModal({ isOpen, onClose, brokerId, isMobile
       setPriceReason("")
       if (isStop) {
         setPricePerBag(formatAmount(companyPrice.toString()))
-      } else if (saleGroup) {
-        const prices: Record<string, string> = {}
-        for (const line of saleGroup.lines) {
-          const cp = companyPriceMap[selectedArea]?.[line.product]
-          prices[line.sale_id] = cp ? formatAmount(String(cp)) : (line.price_per_bag ? formatAmount(String(line.price_per_bag)) : "")
-        }
+      } else if (sale) {
+        const prices: Record<number, string> = {}
+        sale.items.forEach((item, idx) => {
+          const cp = companyPriceMap[selectedArea]?.[item.product]
+          prices[idx] = cp ? formatAmount(String(cp)) : (item.price_per_bag ? formatAmount(String(item.price_per_bag)) : "")
+        })
         setLinePrices(prices)
       }
     } else {
@@ -202,12 +196,12 @@ export default function BrokerConfirmModal({ isOpen, onClose, brokerId, isMobile
       if (isStop) {
         setSalePrice(formatAmount(companyPrice.toString()))
         setPricePerBag(formatAmount(companyPrice.toString()))
-      } else if (saleGroup) {
-        const prices: Record<string, string> = {}
-        for (const line of saleGroup.lines) {
-          const cp = companyPriceMap[selectedArea]?.[line.product] ?? 0
-          prices[line.sale_id] = formatAmount(String(cp))
-        }
+      } else if (sale) {
+        const prices: Record<number, string> = {}
+        sale.items.forEach((item, idx) => {
+          const cp = companyPriceMap[selectedArea]?.[item.product] ?? 0
+          prices[idx] = formatAmount(String(cp))
+        })
         setLinePrices(prices)
         setSalePrice(formatAmount(companyPrice.toString()))
       }
@@ -246,9 +240,9 @@ export default function BrokerConfirmModal({ isOpen, onClose, brokerId, isMobile
   const hasPriceDiff = soldAtDifferentPrice && (
     isStop
       ? (companyPrice > 0 && finalPrice > 0 && finalPrice !== companyPrice)
-      : (saleGroup?.lines.some(line => {
-          const cp = companyPriceMap[selectedArea]?.[line.product]
-          const ep = parseAmount(linePrices[line.sale_id] ?? "")
+      : (sale?.items.some((item, idx) => {
+          const cp = companyPriceMap[selectedArea]?.[item.product]
+          const ep = parseAmount(linePrices[idx] ?? "")
           return !!cp && ep > 0 && ep !== cp
         }) ?? false)
   )
@@ -368,15 +362,15 @@ export default function BrokerConfirmModal({ isOpen, onClose, brokerId, isMobile
       } finally {
         setSubmitting(false)
       }
-    } else if (saleGroup) {
+    } else if (sale) {
       if (!selectedArea) { setMessage("Select an area"); return }
       if (!saleType) { setMessage("Select a sale type"); return }
       if (!selectedCustomer) { setMessage("Customer is required"); return }
       if (saleType === "credit" && !selectedCreditManagerId) { setMessage("Select a credit manager"); return }
 
-      for (const line of saleGroup.lines) {
-        if (!linePrices[line.sale_id]) {
-          setMessage(`Enter price per bag for ${line.product}`)
+      for (let idx = 0; idx < sale.items.length; idx++) {
+        if (!linePrices[idx]) {
+          setMessage(`Enter price per bag for ${sale.items[idx].product}`)
           return
         }
       }
@@ -389,121 +383,116 @@ export default function BrokerConfirmModal({ isOpen, onClose, brokerId, isMobile
       setSubmitting(true)
       try {
         const customerName = selectedCustomer.full_name
-        const confirmed: string[] = []
-        const unconfirmed: string[] = []
         const groupId = crypto.randomUUID()
 
-        for (const line of saleGroup.lines) {
-          const price = parseAmount(linePrices[line.sale_id] ?? "")
-          const cp = companyPriceMap[selectedArea]?.[line.product] ?? 0
+        const newItems = sale.items.map((item, idx) => {
+          const price = parseAmount(linePrices[idx] ?? "")
+          const cp = companyPriceMap[selectedArea]?.[item.product] ?? 0
           const lineHasDiff = cp > 0 && price > 0 && price !== cp
-          const approvalId = saleType === "credit" ? crypto.randomUUID() : null
-
-          const subActions: Array<{
-            action: "insert" | "update" | "upsert" | "delete"
-            table: string
-            data?: Record<string, unknown>
-            filters?: Record<string, unknown>
-            conflict?: string
-          }> = []
-
-          if (saleType === "credit" && approvalId) {
-            subActions.push({
-              action: "insert",
-              table: "credit_approvals",
-              data: {
-                id: approvalId,
-                source_type: "store_sale",
-                source_id: line.sale_id,
-                broker_id: brokerId,
-                credit_manager_id: selectedCreditManagerId,
-                area: selectedArea,
-                product: line.product,
-                quantity: line.quantity,
-                company_price: cp,
-                adjusted_price: lineHasDiff ? price : null,
-                status: "Pending",
-              },
-            })
-          }
-
-          const updateData: Record<string, unknown> = {
+          return {
+            product: item.product,
+            quantity: item.quantity,
             price_per_bag: price,
-            area: selectedArea,
-            company_price: cp,
+            company_price: cp || null,
             price_reason: lineHasDiff ? priceReason.trim() : null,
-            group_id: groupId,
           }
-          if (customerName) updateData.customer_name = customerName
+        })
 
-          if (saleType === "credit") {
-            updateData.status = "Pending"
-            updateData.on_credit = true
-            if (approvalId) updateData.credit_approval_id = approvalId
-            if (lineHasDiff) updateData.discount_status = "pending"
-          } else if (hasPriceDiff) {
-            updateData.status = lineHasDiff ? "Pending" : "Confirmed"
-            if (lineHasDiff) updateData.discount_status = "pending"
-          } else {
-            updateData.status = "Confirmed"
-            if (line.discount_status === "returned") updateData.discount_status = "pending"
-          }
+        const anyHasDiff = newItems.some(item => item.company_price && item.price_per_bag > 0 && item.price_per_bag !== item.company_price)
 
-          const isReturnedLine = line.discount_status === "returned"
-          subActions.push({
-            action: "update",
-            table: "store_sales",
-            data: updateData,
-            filters: isReturnedLine
-              ? { sale_id: line.sale_id, broker_id: brokerId }
-              : { sale_id: line.sale_id, status: "Pending", broker_id: brokerId },
-          })
+        const updateData: Record<string, unknown> = {
+          items: newItems,
+          area: selectedArea,
+        }
+        if (customerName) updateData.customer_name = customerName
 
-          if (lineHasDiff) {
+        if (saleType === "credit") {
+          updateData.status = "Pending"
+          updateData.on_credit = true
+          if (anyHasDiff) updateData.discount_status = "pending"
+        } else if (anyHasDiff) {
+          updateData.status = "Pending"
+          updateData.discount_status = "pending"
+        } else {
+          updateData.status = "Confirmed"
+          if (sale.discount_status === "returned") updateData.discount_status = "pending"
+        }
+
+        const subActions: Array<{
+          action: "insert" | "update" | "upsert" | "delete"
+          table: string
+          data?: Record<string, unknown>
+          filters?: Record<string, unknown>
+          conflict?: string
+        }> = []
+
+        const isReturnedSale = sale.discount_status === "returned"
+        subActions.push({
+          action: "update",
+          table: "store_sales",
+          data: updateData,
+          filters: isReturnedSale
+            ? { sale_id: sale.sale_id, broker_id: brokerId }
+            : { sale_id: sale.sale_id, status: "Pending", broker_id: brokerId },
+        })
+
+        for (const item of newItems) {
+          if (item.company_price && item.price_per_bag > 0 && item.price_per_bag !== item.company_price) {
             subActions.push({
               action: "upsert",
               table: "price_adjustments",
-              conflict: "source_type,source_id",
+              conflict: "source_type,source_id,product",
               data: {
                 source_type: "store_sale",
-                source_id: line.sale_id,
+                source_id: sale.sale_id,
                 broker_id: brokerId,
                 area: selectedArea,
-                product: line.product,
-                company_price: cp,
-                adjusted_price: price,
-                price_reason: priceReason.trim(),
+                product: item.product,
+                company_price: item.company_price,
+                adjusted_price: item.price_per_bag,
+                price_reason: item.price_reason || priceReason.trim(),
                 status: "Pending",
                 group_id: groupId,
                 credit_status: saleType === "credit" ? "pending" : "none",
               },
             })
           }
+        }
 
-          const { data, error } = await apiMutate("finance", {
-            action: "transaction",
-            sub_actions: subActions,
-          })
-
-          const saleUpdateIndex = subActions.findIndex(sa => sa.table === "store_sales")
-          const saleUpdateRows = Array.isArray(data) ? data[saleUpdateIndex] : null
-          if (error || !Array.isArray(saleUpdateRows) || saleUpdateRows.length === 0) {
-            unconfirmed.push(line.product)
-          } else {
-            confirmed.push(line.product)
+        if (saleType === "credit") {
+          for (const item of newItems) {
+            subActions.push({
+              action: "insert",
+              table: "credit_approvals",
+              data: {
+                id: crypto.randomUUID(),
+                source_type: "store_sale",
+                source_id: sale.sale_id,
+                broker_id: brokerId,
+                credit_manager_id: selectedCreditManagerId,
+                area: selectedArea,
+                product: item.product,
+                quantity: item.quantity,
+                company_price: item.company_price,
+                adjusted_price: item.price_per_bag,
+                status: "Pending",
+              },
+            })
           }
         }
 
-        if (confirmed.length > 0) {
+        const { data, error } = await apiMutate("finance", {
+          action: "transaction",
+          sub_actions: subActions,
+        })
+
+        const saleUpdateIndex = subActions.findIndex(sa => sa.table === "store_sales")
+        const saleUpdateRows = Array.isArray(data) ? data[saleUpdateIndex] : null
+        if (error || !Array.isArray(saleUpdateRows) || saleUpdateRows.length === 0) {
+          setMessage("Failed to confirm. Please try again.")
+        } else {
           onConfirmed()
           onClose()
-          if (unconfirmed.length > 0) {
-            setMessage(`Submitted ${confirmed.join(", ")}, but failed for ${unconfirmed.join(", ")}`)
-          }
-        } else {
-          setMessage(`Could not submit: ${unconfirmed.join(", ")}`)
-          setSubmitting(false)
-          return
         }
       } catch {
         setMessage("Failed to submit. Please try again.")
@@ -526,7 +515,7 @@ export default function BrokerConfirmModal({ isOpen, onClose, brokerId, isMobile
         <p style={{ color: "#888", fontSize: 13, marginBottom: 20 }}>
           {isStop
             ? `${stop!.plate_number} · ${stop!.stop_location}`
-            : `${saleGroup!.store_name} · ${formatDate(saleGroup!.sold_at)}`
+            : `${sale!.store_name} · ${formatDate(sale!.sold_at)}`
           }
         </p>
 
@@ -549,15 +538,15 @@ export default function BrokerConfirmModal({ isOpen, onClose, brokerId, isMobile
         ) : (
           <div style={{ padding: "12px 14px", background: "#f9f9f9", borderRadius: 10, marginBottom: 20 }}>
             <p style={{ margin: "0 0 8px", fontSize: 12, color: "#888" }}>
-              {PAYMENT_LABELS[saleGroup!.payment_mode] || saleGroup!.payment_mode} · {DELIVERY_LABELS[saleGroup!.delivery_mode] || saleGroup!.delivery_mode}
+              {PAYMENT_LABELS[sale!.payment_mode] || sale!.payment_mode} · {DELIVERY_LABELS[sale!.delivery_mode] || sale!.delivery_mode}
             </p>
-            {saleGroup!.lines.map((line) => (
-              <div key={line.sale_id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "4px 0", borderBottom: "1px solid #eee" }}>
+            {sale!.items.map((item, idx) => (
+              <div key={idx} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "4px 0", borderBottom: "1px solid #eee" }}>
                 <div>
-                  <span style={{ fontWeight: 600, fontSize: 14, color: "#171717" }}>{line.product}</span>
-                  <span style={{ fontSize: 13, color: "#555", marginLeft: 8 }}>× {line.quantity}</span>
+                  <span style={{ fontWeight: 600, fontSize: 14, color: "#171717" }}>{item.product}</span>
+                  <span style={{ fontSize: 13, color: "#555", marginLeft: 8 }}>× {item.quantity}</span>
                 </div>
-                {line.price_per_bag && <span style={{ fontSize: 13, color: "#555" }}>₦{formatAmount(String(line.price_per_bag))}/bag</span>}
+                {item.price_per_bag && <span style={{ fontSize: 13, color: "#555" }}>₦{formatAmount(String(item.price_per_bag))}/bag</span>}
               </div>
             ))}
           </div>
@@ -578,11 +567,11 @@ export default function BrokerConfirmModal({ isOpen, onClose, brokerId, isMobile
         <div style={{ marginBottom: 16 }}>
           <label style={labelStyle}>Customer *</label>
           <CustomerSelector
-            key={isStop ? stop!.stop_id : saleGroup!.group_id}
+            key={isStop ? stop!.stop_id : sale!.sale_id}
             onSelect={(c: Customer) => setSelectedCustomer(c)}
             initialValue={isStop
               ? (selectedCustomer?.full_name || (stop!.customer_name !== "Not provided" ? stop!.customer_name : ""))
-              : (saleGroup!.customer_name ?? "")
+              : (sale!.customer_name ?? "")
             }
           />
         </div>
@@ -635,13 +624,13 @@ export default function BrokerConfirmModal({ isOpen, onClose, brokerId, isMobile
           )
         ) : (
           <>
-            {saleGroup?.lines.map((line) => {
-              const cp = companyPriceMap[selectedArea]?.[line.product]
+            {sale?.items.map((item, idx) => {
+              const cp = companyPriceMap[selectedArea]?.[item.product]
               return (
-                <div key={line.sale_id} style={{ marginBottom: 12 }}>
+                <div key={idx} style={{ marginBottom: 12 }}>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
-                    <span style={{ fontWeight: 600, fontSize: 14, color: "#171717" }}>{line.product}</span>
-                    <span style={{ fontSize: 13, color: "#555" }}>× {line.quantity}</span>
+                    <span style={{ fontWeight: 600, fontSize: 14, color: "#171717" }}>{item.product}</span>
+                    <span style={{ fontSize: 13, color: "#555" }}>× {item.quantity}</span>
                   </div>
                   {cp && (
                     <div style={{ padding: "8px 10px", background: "#f0f7ff", borderRadius: 7, marginBottom: 6, fontSize: 12, color: "#0070f3", fontWeight: 500, display: "flex", alignItems: "center", gap: 6 }}>
@@ -653,7 +642,7 @@ export default function BrokerConfirmModal({ isOpen, onClose, brokerId, isMobile
                     <label style={labelStyle}>Price Per Bag (₦) *</label>
                     <ModernInput
                       type="text" inputMode="numeric"
-                      value={formatAmount(linePrices[line.sale_id] ?? "")}
+                      value={formatAmount(linePrices[idx] ?? "")}
                       readOnly
                       style={{ ...inputStyle, background: "#f8fafc", color: "#374151", cursor: "not-allowed" }}
                     />
@@ -669,31 +658,31 @@ export default function BrokerConfirmModal({ isOpen, onClose, brokerId, isMobile
               </label>
             </div>
 
-            {soldAtDifferentPrice && saleGroup?.lines.map((line) => {
-              const cp = companyPriceMap[selectedArea]?.[line.product]
-              const ep = parseAmount(linePrices[line.sale_id] ?? "")
+            {soldAtDifferentPrice && sale?.items.map((item, idx) => {
+              const cp = companyPriceMap[selectedArea]?.[item.product]
+              const ep = parseAmount(linePrices[idx] ?? "")
               const showBadge = cp && ep && ep !== cp
               return (
-                <div key={`price-${line.sale_id}`} style={{ marginBottom: 16 }}>
+                <div key={`price-${idx}`} style={{ marginBottom: 16 }}>
                   <div style={{ display: "flex", gap: 10 }}>
                     <div style={{ flex: 1 }}>
-                      <label style={labelStyle}>{line.product} — Discount (₦)</label>
+                      <label style={labelStyle}>{item.product} — Discount (₦)</label>
                       <ModernInput
                         type="text" inputMode="numeric" placeholder="0"
-                        value={discounts[line.sale_id] || ""}
+                        value={discounts[idx] || ""}
                         onChange={(e) => {
                           const raw = e.target.value.replace(/[^0-9]/g, "")
                           const cpVal = cp ?? 0
                           if (raw === "") {
-                            setDiscounts(prev => ({ ...prev, [line.sale_id]: "" }))
-                            setSalePrices(prev => ({ ...prev, [line.sale_id]: "" }))
-                            setLinePrices(prev => ({ ...prev, [line.sale_id]: formatAmount(String(cpVal)) }))
+                            setDiscounts(prev => ({ ...prev, [idx]: "" }))
+                            setSalePrices(prev => ({ ...prev, [idx]: "" }))
+                            setLinePrices(prev => ({ ...prev, [idx]: formatAmount(String(cpVal)) }))
                           } else {
                             const discountVal = parseInt(raw)
                             const saleAmount = Math.max(0, cpVal - discountVal)
-                            setDiscounts(prev => ({ ...prev, [line.sale_id]: formatAmount(String(discountVal)) }))
-                            setSalePrices(prev => ({ ...prev, [line.sale_id]: formatAmount(String(saleAmount)) }))
-                            setLinePrices(prev => ({ ...prev, [line.sale_id]: formatAmount(String(saleAmount)) }))
+                            setDiscounts(prev => ({ ...prev, [idx]: formatAmount(String(discountVal)) }))
+                            setSalePrices(prev => ({ ...prev, [idx]: formatAmount(String(saleAmount)) }))
+                            setLinePrices(prev => ({ ...prev, [idx]: formatAmount(String(saleAmount)) }))
                           }
                           setMessage("")
                         }}
@@ -701,23 +690,23 @@ export default function BrokerConfirmModal({ isOpen, onClose, brokerId, isMobile
                       />
                     </div>
                     <div style={{ flex: 1 }}>
-                      <label style={labelStyle}>{line.product} — Sale Price (₦)</label>
+                      <label style={labelStyle}>{item.product} — Sale Price (₦)</label>
                       <ModernInput
                         type="text" inputMode="numeric" placeholder="Sale price"
-                        value={salePrices[line.sale_id] || ""}
+                        value={salePrices[idx] || ""}
                         onChange={(e) => {
                           const raw = e.target.value.replace(/[^0-9]/g, "")
                           const cpVal = cp ?? 0
                           if (raw === "") {
-                            setSalePrices(prev => ({ ...prev, [line.sale_id]: "" }))
-                            setDiscounts(prev => ({ ...prev, [line.sale_id]: "" }))
-                            setLinePrices(prev => ({ ...prev, [line.sale_id]: formatAmount(String(cpVal)) }))
+                            setSalePrices(prev => ({ ...prev, [idx]: "" }))
+                            setDiscounts(prev => ({ ...prev, [idx]: "" }))
+                            setLinePrices(prev => ({ ...prev, [idx]: formatAmount(String(cpVal)) }))
                           } else {
                             const saleVal = parseInt(raw)
                             const discountAmount = Math.max(0, cpVal - saleVal)
-                            setSalePrices(prev => ({ ...prev, [line.sale_id]: formatAmount(String(saleVal)) }))
-                            setDiscounts(prev => ({ ...prev, [line.sale_id]: formatAmount(String(discountAmount)) }))
-                            setLinePrices(prev => ({ ...prev, [line.sale_id]: formatAmount(String(saleVal)) }))
+                            setSalePrices(prev => ({ ...prev, [idx]: formatAmount(String(saleVal)) }))
+                            setDiscounts(prev => ({ ...prev, [idx]: formatAmount(String(discountAmount)) }))
+                            setLinePrices(prev => ({ ...prev, [idx]: formatAmount(String(saleVal)) }))
                           }
                           setMessage("")
                         }}

@@ -40,12 +40,19 @@ type StockBalance = {
   balance: number
 }
 
-type Sale = {
-  sale_id: string
+type SaleItem = {
   product: string
   quantity: number
   price_per_bag: number | null
+  company_price: number | null
+  price_reason: string | null
+}
+
+type Sale = {
+  sale_id: string
+  items: SaleItem[]
   total_amount: number | null
+  total_quantity: number | null
   customer_name: string | null
   payment_mode: string
   delivery_mode: string
@@ -61,23 +68,7 @@ type Sale = {
   depositor_name: string | null
   rejection_reason: string | null
   driver_name: string | null
-}
-
-type GroupedSale = {
-  group_id: string
-  customer_name: string | null
-  payment_mode: string
-  delivery_mode: string
-  tricycle_number: string | null
-  truck_plate: string | null
-  driver_name: string | null
-  sold_at: string
-  broker_id: string | null
-  broker_name?: string | null
-  sale_type: string
-  status: string
-  rejection_reason: string | null
-  lines: Sale[]
+  discount_status: string | null
 }
 
 type Broker = { broker_id: string; broker_name: string }
@@ -154,8 +145,8 @@ export default function StoreOfficerDashboard() {
   const [driverDropOpen, setDriverDropOpen] = useState(false)
   const [saleDate, setSaleDate] = useState(dayjs().format("YYYY-MM-DD"))
 
-  const [editingGroup, setEditingGroup] = useState<GroupedSale | null>(null)
-  const [editLines, setEditLines] = useState<{ sale_id: string; product: string; quantity: string; price_per_bag: string }[]>([])
+  const [editingGroup, setEditingGroup] = useState<Sale | null>(null)
+  const [editLines, setEditLines] = useState<{ product: string; quantity: string; price_per_bag: string }[]>([])
   const [editCustomer, setEditCustomer] = useState<{ full_name: string } | null>(null)
   const [editPayment, setEditPayment] = useState("")
   const [editBank, setEditBank] = useState("")
@@ -249,7 +240,7 @@ export default function StoreOfficerDashboard() {
 
     const { data: monthSales } = await supabase
       .from("store_sales")
-      .select("quantity, total_amount")
+      .select("total_quantity, total_amount")
       .eq("store_name", storeName)
       .eq("status", "Confirmed")
       .neq("sale_type", "truck_load_out")
@@ -257,7 +248,7 @@ export default function StoreOfficerDashboard() {
       .lte("sold_at", to)
 
     const revenue = (monthSales || []).reduce((sum, s) => sum + (s.total_amount || 0), 0)
-    const bagsSold = (monthSales || []).reduce((sum, s) => sum + (s.quantity || 0), 0)
+    const bagsSold = (monthSales || []).reduce((sum, s) => sum + (s.total_quantity || 0), 0)
 
     const { data: confirmations } = await supabase
       .from("store_supply_confirmations")
@@ -282,7 +273,7 @@ export default function StoreOfficerDashboard() {
   async function fetchSales(storeName: string) {
     const { data } = await supabase
       .from("store_sales")
-      .select("sale_id, product, quantity, price_per_bag, total_amount, customer_name, payment_mode, delivery_mode, tricycle_id, truck_plate, sold_at, created_at, broker_id, status, bank_name, depositor_name, rejection_reason, sale_type, driver_name")
+      .select("sale_id, items, total_amount, total_quantity, customer_name, payment_mode, delivery_mode, tricycle_id, truck_plate, sold_at, created_at, broker_id, status, bank_name, depositor_name, rejection_reason, sale_type, driver_name, discount_status")
       .eq("store_name", storeName)
       .order("sold_at", { ascending: false })
 
@@ -527,35 +518,37 @@ export default function StoreOfficerDashboard() {
     setSaleLoading(true)
 
     try {
-      const salesToInsert = saleLines.map(line => ({
-        officer_id: officer.officer_id,
-        store_name: officer.store_name,
+      const items = saleLines.map(line => ({
         product: line.product,
         quantity: parseInt(line.quantity),
         price_per_bag: saleType === "broker" ? null : saleType === "truck_load_out" ? 0 : parseAmount(line.price_per_bag),
-        customer_name: saleType === "truck_load_out" ? null : saleCustomer?.full_name.trim() || null,
-        payment_mode: saleType === "truck_load_out" ? "Load Out" : salePayment,
-        delivery_mode: saleType === "truck_load_out" ? "truck" : deliveryMode,
-        tricycle_id: deliveryMode === "tricycle" && saleType !== "truck_load_out" ? saleTricycleId : null,
-        truck_plate: (saleType === "truck_load_out" || deliveryMode === "truck") ? saleTruckPlate : null,
-        broker_id: saleType === "broker" ? saleBroker?.broker_id : null,
-        status: saleType === "broker" ? "Pending" : "Confirmed",
-        sale_type: saleType === "truck_load_out" ? "truck_load_out" : saleType === "broker" ? "broker" : "direct",
-        sold_at: saleDateWithTime(saleDate),
-        bank_name: salePayment === "Transfer" && saleType !== "truck_load_out" ? saleBank : null,
-        depositor_name: salePayment === "Transfer" && saleType !== "truck_load_out" ? saleDepositor.trim() : null,
-        driver_name: saleType === "truck_load_out" ? saleDriver?.full_name ?? null : null,
+        company_price: null as number | null,
+        price_reason: null as string | null,
       }))
 
-      let saleErr: string | null = null
-      for (const sale of salesToInsert) {
-        const { error } = await apiMutate("finance", {
-          action: "insert", table: "store_sales", data: sale,
-        })
-        if (error) { saleErr = error; break }
-      }
+      const { error: saleErr } = await apiMutate("finance", {
+        action: "insert",
+        table: "store_sales",
+        data: {
+          officer_id: officer.officer_id,
+          store_name: officer.store_name,
+          items,
+          customer_name: saleType === "truck_load_out" ? null : saleCustomer?.full_name.trim() || null,
+          payment_mode: saleType === "truck_load_out" ? "Load Out" : salePayment,
+          delivery_mode: saleType === "truck_load_out" ? "truck" : deliveryMode,
+          tricycle_id: deliveryMode === "tricycle" && saleType !== "truck_load_out" ? saleTricycleId : null,
+          truck_plate: (saleType === "truck_load_out" || deliveryMode === "truck") ? saleTruckPlate : null,
+          broker_id: saleType === "broker" ? saleBroker?.broker_id : null,
+          status: saleType === "broker" ? "Pending" : "Confirmed",
+          sale_type: saleType === "truck_load_out" ? "truck_load_out" : saleType === "broker" ? "broker" : "direct",
+          sold_at: saleDateWithTime(saleDate),
+          bank_name: salePayment === "Transfer" && saleType !== "truck_load_out" ? saleBank : null,
+          depositor_name: salePayment === "Transfer" && saleType !== "truck_load_out" ? saleDepositor.trim() : null,
+          driver_name: saleType === "truck_load_out" ? saleDriver?.full_name ?? null : null,
+        },
+      })
       if (saleErr) {
-        setSaleError("Failed to log sales")
+        setSaleError("Failed to log sale")
         setSaleLoading(false)
         return
       }
@@ -605,27 +598,26 @@ export default function StoreOfficerDashboard() {
     }
   }
 
-  function openEditModal(group: GroupedSale) {
-    const lines = group.lines.map(line => ({
-      sale_id: line.sale_id,
-      product: line.product,
-      quantity: String(line.quantity),
-      price_per_bag: line.price_per_bag != null ? formatAmount(String(line.price_per_bag)) : "",
+  function openEditModal(sale: Sale) {
+    const lines = (sale.items || []).map(item => ({
+      product: item.product,
+      quantity: String(item.quantity),
+      price_per_bag: item.price_per_bag != null ? formatAmount(String(item.price_per_bag)) : "",
     }))
-    const tricycleMatch = tricycles.find(t => t.tricycle_number === group.tricycle_number)
-    setEditingGroup(group)
-    setEditLines(lines)
-    setEditCustomer(group.customer_name ? { full_name: group.customer_name } : null)
-    setEditPayment(group.payment_mode === "Load Out" ? "" : group.payment_mode)
-    setEditBank(group.lines[0]?.bank_name || "")
-    setEditDepositor(group.lines[0]?.depositor_name || "")
-    setEditDeliveryMode(group.delivery_mode === "tricycle" || group.delivery_mode === "truck" ? group.delivery_mode : "self")
+    const tricycleMatch = tricycles.find(t => t.tricycle_number === sale.tricycle_number)
+    setEditingGroup(sale)
+    setEditLines(lines.length > 0 ? lines : [{ product: "", quantity: "", price_per_bag: "" }])
+    setEditCustomer(sale.customer_name ? { full_name: sale.customer_name } : null)
+    setEditPayment(sale.payment_mode === "Load Out" ? "" : sale.payment_mode)
+    setEditBank(sale.bank_name || "")
+    setEditDepositor(sale.depositor_name || "")
+    setEditDeliveryMode(sale.delivery_mode === "tricycle" || sale.delivery_mode === "truck" ? sale.delivery_mode : "self")
     setEditTricycleId(tricycleMatch?.tricycle_id || "")
-    setEditTricycleSearch(group.tricycle_number || "")
-    setEditTruckPlate(group.truck_plate || "")
-    setEditTruckSearch(group.truck_plate || "")
-    setEditDriver(group.driver_name ? { driver_id: "", full_name: group.driver_name } : null)
-    setEditDriverSearch(group.driver_name || "")
+    setEditTricycleSearch(sale.tricycle_number || "")
+    setEditTruckPlate(sale.truck_plate || "")
+    setEditTruckSearch(sale.truck_plate || "")
+    setEditDriver(sale.driver_name ? { driver_id: "", full_name: sale.driver_name } : null)
+    setEditDriverSearch(sale.driver_name || "")
     setEditError("")
   }
 
@@ -689,18 +681,20 @@ export default function StoreOfficerDashboard() {
     }
 
     const stockDeltas = new Map<string, number>()
-    for (const line of editLines) {
-      const qty = parseInt(line.quantity)
-      const original = editingGroup.lines.find(l => l.sale_id === line.sale_id)
-      if (!original) {
-        stockDeltas.set(line.product, (stockDeltas.get(line.product) || 0) - qty)
-      } else if (original.product === line.product) {
-        const delta = original.quantity - qty
-        if (delta !== 0) stockDeltas.set(line.product, (stockDeltas.get(line.product) || 0) + delta)
-      } else {
-        stockDeltas.set(original.product, (stockDeltas.get(original.product) || 0) + original.quantity)
-        stockDeltas.set(line.product, (stockDeltas.get(line.product) || 0) - qty)
-      }
+    const oldItems = editingGroup.items || []
+    const newItems = editLines.map(line => ({
+      product: line.product,
+      quantity: parseInt(line.quantity),
+      price_per_bag: saleType === "broker" ? null : saleType === "truck_load_out" ? 0 : parseAmount(line.price_per_bag),
+      company_price: null as number | null,
+      price_reason: null as string | null,
+    }))
+
+    for (const old of oldItems) {
+      stockDeltas.set(old.product, (stockDeltas.get(old.product) || 0) + old.quantity)
+    }
+    for (const item of newItems) {
+      stockDeltas.set(item.product, (stockDeltas.get(item.product) || 0) - item.quantity)
     }
     const stockAdjustments = [...stockDeltas.entries()]
       .filter(([, delta]) => delta !== 0)
@@ -711,31 +705,25 @@ export default function StoreOfficerDashboard() {
 
     try {
       const sub_actions: SubAction[] = []
-      for (const line of editLines) {
-        const qty = parseInt(line.quantity)
-        const price = saleType === "broker" ? null : saleType === "truck_load_out" ? 0 : parseAmount(line.price_per_bag)
 
-        sub_actions.push({
-          action: "update", table: "store_sales",
-          data: {
-            product: line.product,
-            quantity: qty,
-            price_per_bag: price,
-            customer_name: saleType === "truck_load_out" ? null : (editCustomer?.full_name || "").trim() || null,
-            payment_mode: saleType === "truck_load_out" ? "Load Out" : editPayment,
-            delivery_mode: saleType === "truck_load_out" ? "truck" : editDeliveryMode,
-            tricycle_id: editDeliveryMode === "tricycle" && saleType !== "truck_load_out" ? editTricycleId : null,
-            truck_plate: (saleType === "truck_load_out" || editDeliveryMode === "truck") ? editTruckPlate : null,
-            bank_name: editPayment === "Transfer" && saleType !== "truck_load_out" ? editBank : null,
-            depositor_name: editPayment === "Transfer" && saleType !== "truck_load_out" ? editDepositor.trim() : null,
-            driver_name: saleType === "truck_load_out" ? editDriver?.full_name ?? null : null,
-            sold_at: editingGroup.sold_at,
-            status: saleType === "broker" ? "Pending" : "Confirmed",
-            rejection_reason: null,
-          },
-          filters: { sale_id: line.sale_id },
-        })
-      }
+      sub_actions.push({
+        action: "update", table: "store_sales",
+        data: {
+          items: newItems,
+          customer_name: saleType === "truck_load_out" ? null : (editCustomer?.full_name || "").trim() || null,
+          payment_mode: saleType === "truck_load_out" ? "Load Out" : editPayment,
+          delivery_mode: saleType === "truck_load_out" ? "truck" : editDeliveryMode,
+          tricycle_id: editDeliveryMode === "tricycle" && saleType !== "truck_load_out" ? editTricycleId : null,
+          truck_plate: (saleType === "truck_load_out" || editDeliveryMode === "truck") ? editTruckPlate : null,
+          bank_name: editPayment === "Transfer" && saleType !== "truck_load_out" ? editBank : null,
+          depositor_name: editPayment === "Transfer" && saleType !== "truck_load_out" ? editDepositor.trim() : null,
+          driver_name: saleType === "truck_load_out" ? editDriver?.full_name ?? null : null,
+          sold_at: editingGroup.sold_at,
+          status: saleType === "broker" ? "Pending" : "Confirmed",
+          rejection_reason: null,
+        },
+        filters: { sale_id: editingGroup.sale_id },
+      })
 
       for (const adj of stockAdjustments) {
         const { data: stockRow } = await supabase
@@ -785,44 +773,7 @@ export default function StoreOfficerDashboard() {
     ])
   }
 
-  const groupedSales = sales.reduce<GroupedSale[]>((groups, sale) => {
-    const groupId = [
-      sale.sold_at.split("T")[0],
-      sale.customer_name ?? "",
-      sale.payment_mode,
-      sale.delivery_mode,
-      sale.tricycle_number ?? "",
-      sale.broker_id ?? "",
-      sale.sale_type ?? "direct",
-      sale.status,
-    ].join("|")
-    const existing = groups.find(group => group.group_id === groupId)
-
-    if (existing) {
-      existing.lines.push(sale)
-      return groups
-    }
-
-    groups.push({
-      group_id: groupId,
-      customer_name: sale.customer_name,
-      payment_mode: sale.payment_mode,
-      delivery_mode: sale.delivery_mode,
-      tricycle_number: sale.tricycle_number,
-      truck_plate: sale.truck_plate,
-      driver_name: sale.driver_name,
-      sold_at: sale.sold_at,
-      broker_id: sale.broker_id,
-      broker_name: sale.broker_name,
-      sale_type: sale.sale_type ?? "direct",
-      status: sale.status,
-      rejection_reason: sale.rejection_reason,
-      lines: [sale],
-    })
-    return groups
-  }, [])
-
-  const filteredSales = groupedSales.filter(s => {
+  const filteredSales = sales.filter(s => {
     if (salesFilter !== "All" && s.payment_mode !== salesFilter) return false
     if (salesDateFilter) {
       const saleDate = s.sold_at.split("T")[0]
@@ -832,9 +783,7 @@ export default function StoreOfficerDashboard() {
   })
   .sort((a, b) => {
     if (salesSortByAdded) {
-      const aCreated = a.lines[0]?.created_at || a.sold_at
-      const bCreated = b.lines[0]?.created_at || b.sold_at
-      return bCreated.localeCompare(aCreated)
+      return (b.created_at || b.sold_at).localeCompare(a.created_at || a.sold_at)
     } else {
       return b.sold_at.split("T")[0].localeCompare(a.sold_at.split("T")[0])
     }
@@ -1224,16 +1173,16 @@ export default function StoreOfficerDashboard() {
 
             <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
               {filteredSales.slice(0, salesPage * PAGE_SIZE).map(sale => {
-                const totalAmount = sale.lines.reduce((sum, line) => sum + (line.total_amount ?? 0), 0)
+                const totalAmount = sale.total_amount ?? 0
                 const isLoadOut = sale.sale_type === "truck_load_out"
-                const hasBrokerPricing = sale.lines.some(line => line.price_per_bag === null)
+                const hasBrokerPricing = (sale.items || []).some(item => item.price_per_bag === null)
 
                 return (
-                <div key={sale.group_id} style={{ background: "white", border: "1px solid #e2e8f0", borderRadius: 12, padding: 16, boxShadow: "0 1px 3px rgba(0,0,0,0.05)" }}>
+                <div key={sale.sale_id} style={{ background: "white", border: "1px solid #e2e8f0", borderRadius: 12, padding: 16, boxShadow: "0 1px 3px rgba(0,0,0,0.05)" }}>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 12 }}>
                     <div style={{ flex: 1 }}>
                       <p style={{ margin: 0, fontWeight: 700, fontSize: FONT_SIZE.lg, color: "#0f172a" }}>
-                        {sale.lines.length === 1 ? sale.lines[0].product : `${sale.lines.length} products`}
+                        {(sale.items || []).length === 1 ? sale.items[0].product : `${(sale.items || []).length} products`}
                       </p>
                       {sale.customer_name && <p style={{ margin: "4px 0 0", fontSize: FONT_SIZE.sm, color: "#64748b" }}>{sale.customer_name}</p>}
                       {sale.broker_name && <p style={{ margin: "4px 0 0", fontSize: FONT_SIZE.sm, color: "#0070f3", fontWeight: 500 }}>Broker: {sale.broker_name}</p>}
@@ -1305,20 +1254,20 @@ export default function StoreOfficerDashboard() {
                   })()}
 
                   <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                    {sale.lines.map(line => (
-                      <div key={line.sale_id} style={{ display: "grid", gridTemplateColumns: line.price_per_bag !== null ? "1.4fr 0.7fr 0.9fr" : "1.4fr 0.7fr", gap: 8 }}>
+                    {(sale.items || []).map((item, idx) => (
+                      <div key={idx} style={{ display: "grid", gridTemplateColumns: item.price_per_bag !== null ? "1.4fr 0.7fr 0.9fr" : "1.4fr 0.7fr", gap: 8 }}>
                         <div style={{ background: "#f8fafc", borderRadius: 8, padding: "8px 12px" }}>
                           <p style={{ margin: 0, fontSize: FONT_SIZE.xs, color: "#94a3b8" }}>Product</p>
-                          <p style={{ margin: "2px 0 0", fontWeight: 600, fontSize: FONT_SIZE.base, color: "#0f172a" }}>{line.product}</p>
+                          <p style={{ margin: "2px 0 0", fontWeight: 600, fontSize: FONT_SIZE.base, color: "#0f172a" }}>{item.product}</p>
                         </div>
                         <div style={{ background: "#f8fafc", borderRadius: 8, padding: "8px 12px" }}>
                           <p style={{ margin: 0, fontSize: FONT_SIZE.xs, color: "#94a3b8" }}>Bags</p>
-                          <p style={{ margin: "2px 0 0", fontWeight: 600, fontSize: FONT_SIZE.base, color: "#0f172a" }}>{line.quantity}</p>
+                          <p style={{ margin: "2px 0 0", fontWeight: 600, fontSize: FONT_SIZE.base, color: "#0f172a" }}>{item.quantity}</p>
                         </div>
-                        {line.price_per_bag !== null && (
+                        {item.price_per_bag !== null && (
                           <div style={{ background: "#f8fafc", borderRadius: 8, padding: "8px 12px" }}>
                             <p style={{ margin: 0, fontSize: FONT_SIZE.xs, color: "#94a3b8" }}>Price/Bag</p>
-                            <p style={{ margin: "2px 0 0", fontWeight: 600, fontSize: FONT_SIZE.base, color: "#0f172a" }}>₦{line.price_per_bag.toLocaleString()}</p>
+                            <p style={{ margin: "2px 0 0", fontWeight: 600, fontSize: FONT_SIZE.base, color: "#0f172a" }}>₦{item.price_per_bag.toLocaleString()}</p>
                           </div>
                         )}
                       </div>
@@ -1979,7 +1928,7 @@ export default function StoreOfficerDashboard() {
 
               <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 12 }}>
                 {editLines.map((line, i) => (
-                  <div key={line.sale_id} style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr 1fr" : "2fr 1fr " + (editingGroup.sale_type !== "direct" ? "0fr" : "1fr"), gap: 8, alignItems: "center" }}>
+                  <div key={i} style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr 1fr" : "2fr 1fr " + (editingGroup.sale_type !== "direct" ? "0fr" : "1fr"), gap: 8, alignItems: "center" }}>
                     <ModernInput
                       as="select"
                       value={line.product}

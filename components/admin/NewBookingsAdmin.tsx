@@ -103,13 +103,14 @@ export default function NewBookingsAdmin() {
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) return
 
-      const { error } = await apiMutate("finance", {
+      const { data, error } = await apiMutate<NewBooking[]>("finance", {
         action: "update",
         table: "new_bookings",
         data: { status: "pending", reviewed_by: user.id, reviewed_at: new Date().toISOString() },
-        filters: { id: booking.id },
+        filters: { id: booking.id, status: "awaiting_review" },
       })
       if (error) { setMessage("Failed to approve. Try again."); return }
+      if (!data || data.length === 0) { setMessage("This booking was already reviewed by another admin."); fetchBookings(); return }
 
       fetchBookings()
     } catch {
@@ -133,7 +134,7 @@ export default function NewBookingsAdmin() {
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) return
 
-      const { error } = await apiMutate("finance", {
+      const { data, error } = await apiMutate<NewBooking[]>("finance", {
         action: "update",
         table: "new_bookings",
         data: {
@@ -142,9 +143,10 @@ export default function NewBookingsAdmin() {
           reviewed_by: user.id,
           reviewed_at: new Date().toISOString(),
         },
-        filters: { id: rejectModal.id },
+        filters: { id: rejectModal.id, status: "awaiting_review" },
       })
       if (error) { setMessage("Failed to reject. Try again."); return }
+      if (!data || data.length === 0) { setMessage("This booking was already reviewed by another admin."); setRejectModal(null); setRejectReason(""); fetchBookings(); return }
 
       setRejectModal(null)
       setRejectReason("")
@@ -197,11 +199,12 @@ export default function NewBookingsAdmin() {
   const rejected = bookings.filter(b => b.status === "rejected")
   const supplied = bookings.filter(b => b.status === "supplied")
 
-  const filtered = activeFilter === "all" ? bookings
+  const filtered = (activeFilter === "all" ? bookings
     : activeFilter === "pending" ? pending
     : activeFilter === "awaiting_review" ? awaitingReview
     : activeFilter === "rejected" ? rejected
     : supplied
+  ).slice().sort((a, b) => new Date(a.payment_date).getTime() - new Date(b.payment_date).getTime())
 
   const { page, setPage, totalPages, paginatedItems, totalItems } = usePagination(filtered)
 

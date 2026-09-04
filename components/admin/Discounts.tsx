@@ -152,10 +152,13 @@ export default function Discounts() {
       if (saleSourceIds.length > 0) {
         const { data: sales } = await supabase
           .from("store_sales")
-          .select("sale_id, quantity, customer_name")
+          .select("sale_id, items, customer_name")
           .in("sale_id", saleSourceIds)
         for (const s of sales || []) {
-          quantityMap[`store_sale:${s.sale_id}`] = s.quantity
+          const items = (s.items ?? []) as { product?: string; quantity?: number }[]
+          for (const item of items) {
+            if (item.product) quantityMap[`store_sale:${s.sale_id}:${item.product}`] = item.quantity || 0
+          }
           customerNameMap[`store_sale_customer:${s.sale_id}`] = s.customer_name ?? ""
         }
       }
@@ -164,7 +167,9 @@ export default function Discounts() {
         ...a,
         broker_name: brokerMap[a.broker_id] || "Unknown",
         customer_name: customerNameMap[`${a.source_type}_customer:${a.source_id}`] ?? null,
-        quantity: quantityMap[`${a.source_type}:${a.source_id}`] ?? null,
+        quantity: a.source_type === "store_sale"
+          ? quantityMap[`store_sale:${a.source_id}:${a.product}`] ?? null
+          : quantityMap[`stop:${a.source_id}`] ?? null,
       }))
 
       setAdjustments(enriched)
@@ -363,12 +368,15 @@ export default function Discounts() {
         })
         if (adjError) { setMessage("Failed to approve. Try again."); return }
 
-        await apiMutate("finance", {
-          action: "update",
-          table: "store_sales",
-          data: { discount_status: "approved" },
-          filters: { sale_id: adj.source_id },
-        })
+        if (adj.source_type === "store_sale") {
+          const { error: saleError } = await apiMutate("finance", {
+            action: "update",
+            table: "store_sales",
+            data: { status: "Confirmed", discount_status: "none" },
+            filters: { sale_id: adj.source_id },
+          })
+          if (saleError) { setMessage("Approved but failed to confirm sale. Try again."); return }
+        }
       }
       fetchAdjustments()
     } catch {

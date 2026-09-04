@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useSyncExternalStore } from "react"
 import { useRouter } from "next/navigation"
 import { supabase } from "@/lib/supabase"
 import { Icon } from "@iconify/react"
@@ -24,12 +24,14 @@ const ALLOWED_ROLES: string[] = [Role.Admin, Role.SuperAdmin, Role.Broker, Role.
 
 export default function ChartPage() {
   const router = useRouter()
-  const [mounted, setMounted] = useState(false)
+  const mounted = useSyncExternalStore(
+    () => () => {},
+    () => true,
+    () => false,
+  )
   const [loading, setLoading] = useState(true)
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null)
   const [error, setError] = useState<string | null>(null)
-
-  useEffect(() => { setMounted(true) }, [])
 
   useEffect(() => {
     async function initUser() {

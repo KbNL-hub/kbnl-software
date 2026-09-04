@@ -12,7 +12,7 @@ import { usePermissions } from "@/lib/PermissionContext"
 import ModernInput from "@/components/ModernInput"
 import { FONT_SIZE, BANKS } from "@/lib/constants"
 import { usePolling } from "@/lib/hooks/usePolling"
-import { toISOString } from "@/lib/date-utils"
+
 import { usePagination } from "@/lib/hooks/usePagination"
 import PaginationControls from "@/components/PaginationControls"
 import { ExportActions } from "@/components/admin/ExportActions"
@@ -182,6 +182,7 @@ export default function Chart({ userProfile }: Props) {
     if (data) setTrips(data as Trip[])
   }, [])
 
+  // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { fetchBrokers() }, [fetchBrokers])
 
   usePolling(() => {

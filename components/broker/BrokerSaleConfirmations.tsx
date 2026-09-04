@@ -12,12 +12,19 @@ import PaginationControls from "@/components/PaginationControls"
 
 const AREAS = ["Calabar to Obubra", "Ikom to Obudu", "Akwa-Ibom", "East"]
 
-type SaleLine = {
-  sale_id: string
+type SaleItem = {
   product: string
   quantity: number
   price_per_bag: number | null
+  company_price: number | null
+  price_reason: string | null
+}
+
+type Sale = {
+  sale_id: string
+  items: SaleItem[]
   total_amount: number | null
+  total_quantity: number | null
   customer_name: string | null
   payment_mode: string
   delivery_mode: string
@@ -37,35 +44,18 @@ type SaleLine = {
   credit_approval_status: string | null
 }
 
-type SaleGroup = {
-  group_id: string
-  customer_name: string | null
-  payment_mode: string
-  delivery_mode: string
-  tricycle_id: string | null
-  truck_plate: string | null
-  sold_at: string
-  status: string
-  store_name: string
-  rejection_reason: string | null
-  denial_reason?: string | null
-  denied_by?: string | null
-  denial_date?: string | null
-  lines: SaleLine[]
-}
-
 export default function BrokerSaleConfirmations() {
   const bp = useBreakpoint()
   const isMobile = bp === "mobile"
 
   const [brokerId, setBrokerId] = useState<string | null>(null)
   const [activeFilter, setActiveFilter] = useState<"pending" | "confirmed" | "rejected" | "returned" | "review">("pending")
-  const [allGroups, setAllGroups] = useState<SaleGroup[]>([])
+  const [allSales, setAllSales] = useState<Sale[]>([])
   const [loading, setLoading] = useState(true)
 
-  const [confirmingGroup, setConfirmingGroup] = useState<SaleGroup | null>(null)
+  const [confirmingSale, setConfirmingSale] = useState<Sale | null>(null)
   const [confirmModalKey, setConfirmModalKey] = useState(0)
-  const [rejectingGroup, setRejectingGroup] = useState<SaleGroup | null>(null)
+  const [rejectingSale, setRejectingSale] = useState<Sale | null>(null)
   const [rejectReason, setRejectReason] = useState("")
   const [message, setMessage] = useState("")
   const [notification, setNotification] = useState("")
@@ -81,7 +71,6 @@ export default function BrokerSaleConfirmations() {
       fetchCompanyPrices(),
     ])
     setLoading(false)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   // eslint-disable-next-line react-hooks/set-state-in-effect
@@ -105,7 +94,7 @@ export default function BrokerSaleConfirmations() {
   async function fetchSales(bId: string) {
     const { data, error } = await supabase
       .from("store_sales")
-      .select("sale_id, product, quantity, price_per_bag, total_amount, customer_name, payment_mode, delivery_mode, tricycle_id, truck_plate, sold_at, created_at, status, store_name, rejection_reason, discount_status, on_credit, credit_approval_id")
+      .select("sale_id, items, total_amount, total_quantity, customer_name, payment_mode, delivery_mode, tricycle_id, truck_plate, sold_at, created_at, status, store_name, rejection_reason, discount_status, on_credit, credit_approval_id")
       .eq("broker_id", bId)
       .order("sold_at", { ascending: false })
 
@@ -120,25 +109,26 @@ export default function BrokerSaleConfirmations() {
         .select("source_id, denial_reason, reviewed_by, reviewed_at")
         .eq("source_type", "store_sale")
         .eq("status", "Denied")
-        .in("source_id", returnedSaleIds)
       for (const adj of adjustments || []) {
         if (adj.denial_reason) denialMap[adj.source_id] = { reason: adj.denial_reason, by: adj.reviewed_by ?? "Admin", at: adj.reviewed_at ?? "" }
       }
 
     // Also fetch credit rejection reasons for returned lines
-    const returnedWithCredit = (data || []).filter(s => s.discount_status === "returned" && s.credit_approval_id).map(s => s.credit_approval_id as string)
-      if (returnedWithCredit.length > 0) {
-        const { data: cas } = await supabase
-          .from("credit_approvals")
-          .select("source_id, rejection_reason, reviewed_by, credit_manager_id, reviewed_at")
-          .eq("status", "Rejected")
-          .in("id", returnedWithCredit)
-        for (const ca of cas || []) {
-          if (ca.rejection_reason && !denialMap[ca.source_id]) {
-            denialMap[ca.source_id] = { reason: ca.rejection_reason, by: ca.reviewed_by ?? ca.credit_manager_id ?? "Credit Manager", at: ca.reviewed_at ?? "" }
-          }
+    // Look up credit approvals from the credit_approvals table by source_type/source_id
+    const returnedSaleIds = (data || []).filter(s => s.discount_status === "returned").map(s => s.sale_id)
+    if (returnedSaleIds.length > 0) {
+      const { data: cas } = await supabase
+        .from("credit_approvals")
+        .select("source_id, rejection_reason, reviewed_by, credit_manager_id, reviewed_at")
+        .eq("status", "Rejected")
+        .in("source_id", returnedSaleIds)
+        .eq("source_type", "store_sale")
+      for (const ca of cas || []) {
+        if (ca.rejection_reason && !denialMap[ca.source_id]) {
+          denialMap[ca.source_id] = { reason: ca.rejection_reason, by: ca.reviewed_by ?? ca.credit_manager_id ?? "Credit Manager", at: ca.reviewed_at ?? "" }
         }
       }
+    }
 
       // Resolve reviewer names from profiles
       const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
@@ -158,14 +148,21 @@ export default function BrokerSaleConfirmations() {
     }
 
     // Fetch credit approval statuses
-    const creditApprovalIds = (data || []).filter(s => s.credit_approval_id).map(s => s.credit_approval_id as string)
-    const creditMap: Record<string, string> = {}
-    if (creditApprovalIds.length > 0) {
+    // Look up credit approvals from the credit_approvals table by source_type/source_id
+    const creditApprovalMap: Record<string, { status: string; rejection_reason?: string }> = {}
+    const allSaleIds = data.map(s => s.sale_id)
+    if (allSaleIds.length > 0) {
       const { data: cas } = await supabase
         .from("credit_approvals")
-        .select("id, status")
-        .in("id", creditApprovalIds)
-      for (const ca of (cas || [])) creditMap[ca.id] = ca.status
+        .select("id, status, rejection_reason, source_id")
+        .eq("source_type", "store_sale")
+        .in("source_id", allSaleIds)
+      for (const ca of cas || []) {
+        creditApprovalMap[ca.source_id] = {
+          status: ca.status,
+          rejection_reason: ca.rejection_reason,
+        }
+      }
     }
 
     const enriched = (data || []).map(s => ({
@@ -173,76 +170,37 @@ export default function BrokerSaleConfirmations() {
       denial_reason: denialMap[s.sale_id]?.reason ?? null,
       denied_by: denialMap[s.sale_id]?.by ?? null,
       denial_date: denialMap[s.sale_id]?.at ?? null,
-      credit_approval_status: s.credit_approval_id ? (creditMap[s.credit_approval_id] ?? null) : null,
+      credit_approval_status: creditApprovalMap[s.sale_id]?.status ?? null,
     }))
 
-    const groups = groupSales(enriched)
-    setAllGroups(groups)
+    setAllSales(enriched)
   }
 
-  function groupSales(sales: SaleLine[]): SaleGroup[] {
-    return sales.reduce<SaleGroup[]>((groups, sale) => {
-      const groupId = [
-        sale.sold_at.split("T")[0],
-        sale.customer_name ?? "",
-        sale.payment_mode,
-        sale.delivery_mode,
-        sale.status,
-      ].join("|")
-
-      const existing = groups.find(g => g.group_id === groupId)
-
-      if (existing) {
-        existing.lines.push(sale)
-        return groups
-      }
-
-      groups.push({
-        group_id: groupId,
-        customer_name: sale.customer_name,
-        payment_mode: sale.payment_mode,
-        delivery_mode: sale.delivery_mode,
-        tricycle_id: sale.tricycle_id,
-        truck_plate: sale.truck_plate,
-        sold_at: sale.sold_at,
-        status: sale.status,
-        store_name: sale.store_name,
-        rejection_reason: sale.rejection_reason,
-        denial_reason: sale.denial_reason,
-        denied_by: sale.denied_by,
-        denial_date: sale.denial_date,
-        lines: [sale],
-      })
-
-      return groups
-    }, [])
-  }
-
-  function openConfirmModal(group: SaleGroup) {
-    setConfirmingGroup(group)
+  function openConfirmModal(sale: Sale) {
+    setConfirmingSale(sale)
     setConfirmModalKey(k => k + 1)
     setMessage("")
   }
 
   function closeConfirmModal() {
-    setConfirmingGroup(null)
+    setConfirmingSale(null)
     setMessage("")
   }
 
-  function openRejectModal(group: SaleGroup) {
-    setRejectingGroup(group)
+  function openRejectModal(sale: Sale) {
+    setRejectingSale(sale)
     setRejectReason("")
     setMessage("")
   }
 
   function closeRejectModal() {
-    setRejectingGroup(null)
+    setRejectingSale(null)
     setRejectReason("")
     setMessage("")
   }
 
   async function handleReject() {
-    if (!rejectingGroup || !rejectReason.trim()) {
+    if (!rejectingSale || !rejectReason.trim()) {
       setMessage("Please provide a reason")
       return
     }
@@ -253,31 +211,16 @@ export default function BrokerSaleConfirmations() {
         status: "Rejected",
         rejection_reason: rejectReason.trim(),
       }
-      const saleIds = rejectingGroup.lines.map(line => line.sale_id)
 
-      const { data, error } = await apiMutate("finance", {
+      const { error } = await apiMutate("finance", {
         action: "update",
         table: "store_sales",
         data: updateData,
-        filters: { sale_id: saleIds, status: "Pending", broker_id: brokerId },
+        filters: { sale_id: rejectingSale.sale_id, status: "Pending", broker_id: brokerId },
       })
 
       if (error) {
-        setMessage("Could not reject the selected sales")
-        setSubmitting(false)
-        return
-      }
-
-      const rejected = Array.isArray(data) ? data.length : 0
-      if (rejected === 0) {
-        setMessage("Could not reject any of the selected sales")
-        setSubmitting(false)
-        return
-      }
-      if (rejected < saleIds.length) {
-        closeRejectModal()
-        if (brokerId) fetchSales(brokerId)
-        setNotification(`Rejected ${rejected} of ${saleIds.length} sales (${saleIds.length - rejected} had no matching pending sale)`)
+        setMessage("Could not reject the sale")
         setSubmitting(false)
         return
       }
@@ -297,28 +240,28 @@ export default function BrokerSaleConfirmations() {
     return () => clearTimeout(t)
   }, [notification])
 
-  const pendingGroups = allGroups.filter(g => g.status === "Pending" && !g.lines.some(l => l.discount_status === "returned") && !g.lines.some(l => l.discount_status === "pending") && !g.lines.some(l => l.credit_approval_status === "Pending"))
-  const reviewGroups = allGroups.filter(g => g.status === "Pending" && (g.lines.some(l => l.discount_status === "pending") || g.lines.some(l => l.credit_approval_status === "Pending")))
-  const confirmedGroups = allGroups.filter(g => g.status === "Confirmed")
-  const rejectedGroups = allGroups.filter(g => g.status === "Rejected")
-  const returnedGroups = allGroups.filter(g => g.status === "Pending" && g.lines.some(l => l.discount_status === "returned"))
+  const pendingSales = allSales.filter(s => s.status === "Pending" && s.discount_status !== "returned" && s.discount_status !== "pending" && s.credit_approval_status !== "Pending")
+  const reviewSales = allSales.filter(s => s.status === "Pending" && (s.discount_status === "pending" || s.credit_approval_status === "Pending"))
+  const confirmedSales = allSales.filter(s => s.status === "Confirmed")
+  const rejectedSales = allSales.filter(s => s.status === "Rejected")
+  const returnedSales = allSales.filter(s => s.status === "Pending" && s.discount_status === "returned")
 
-  const visibleGroups = activeFilter === "pending" ? pendingGroups
-    : activeFilter === "review" ? reviewGroups
-    : activeFilter === "confirmed" ? confirmedGroups
-    : activeFilter === "returned" ? returnedGroups
-    : rejectedGroups
+  const visibleSales = activeFilter === "pending" ? pendingSales
+    : activeFilter === "review" ? reviewSales
+    : activeFilter === "confirmed" ? confirmedSales
+    : activeFilter === "returned" ? returnedSales
+    : rejectedSales
 
-  const { page, setPage, totalPages, paginatedItems, totalItems } = usePagination(visibleGroups)
+  const { page, setPage, totalPages, paginatedItems, totalItems } = usePagination(visibleSales)
 
   if (loading) return <p style={{ color: "#888" }}>Loading…</p>
 
   const filterOptions = [
-    { key: "pending" as const, label: "Pending", count: pendingGroups.length, color: "#f5a623" },
-    { key: "review" as const, label: "In Review", count: reviewGroups.length, color: "#0070f3" },
-    { key: "confirmed" as const, label: "Confirmed", count: confirmedGroups.length, color: "#10b981" },
-    { key: "returned" as const, label: "Returned", count: returnedGroups.length, color: "#d97706" },
-    { key: "rejected" as const, label: "Rejected", count: rejectedGroups.length, color: "#ef4444" },
+    { key: "pending" as const, label: "Pending", count: pendingSales.length, color: "#f5a623" },
+    { key: "review" as const, label: "In Review", count: reviewSales.length, color: "#0070f3" },
+    { key: "confirmed" as const, label: "Confirmed", count: confirmedSales.length, color: "#10b981" },
+    { key: "returned" as const, label: "Returned", count: returnedSales.length, color: "#d97706" },
+    { key: "rejected" as const, label: "Rejected", count: rejectedSales.length, color: "#ef4444" },
   ]
 
   const inputStyle: React.CSSProperties = {
@@ -396,25 +339,25 @@ export default function BrokerSaleConfirmations() {
         })}
       </div>
 
-      {visibleGroups.length === 0 ? (
+      {visibleSales.length === 0 ? (
         <div style={{ textAlign: "center", padding: "60px 20px", color: "#bbb" }}>
           <Icon icon="mdi:store-off" width={40} style={{ display: "block", margin: "0 auto 10px" }} />
           <p style={{ margin: 0, fontSize: 14 }}>No {activeFilter} store sales</p>
         </div>
       ) : (
-        paginatedItems.map((group) => {
-          const isExpanded = expandedCard === group.group_id
-          const statusColor = group.lines.some(l => l.discount_status === "returned") ? { bg: "#fffbeb", text: "#d97706", border: "#fcd34d", label: "Returned" }
-            : group.status === "Confirmed" ? { bg: "#ecfdf5", text: "#10b981", border: "#a7f3d0", label: "Confirmed" }
-            : group.status === "Rejected" ? { bg: "#fef2f2", text: "#ef4444", border: "#fecaca", label: "Rejected" }
-            : group.lines.some(l => l.discount_status === "pending" || l.credit_approval_status === "Pending") ? { bg: "#eff6ff", text: "#0070f3", border: "#93c5fd", label: "In Review" }
+        paginatedItems.map((sale) => {
+          const isExpanded = expandedCard === sale.sale_id
+          const statusColor = sale.discount_status === "returned" ? { bg: "#fffbeb", text: "#d97706", border: "#fcd34d", label: "Returned" }
+            : sale.status === "Confirmed" ? { bg: "#ecfdf5", text: "#10b981", border: "#a7f3d0", label: "Confirmed" }
+            : sale.status === "Rejected" ? { bg: "#fef2f2", text: "#ef4444", border: "#fecaca", label: "Rejected" }
+            : sale.discount_status === "pending" || sale.credit_approval_status === "Pending" ? { bg: "#eff6ff", text: "#0070f3", border: "#93c5fd", label: "In Review" }
             : { bg: "#fffbeb", text: "#f5a623", border: "#fed7aa", label: "Pending" }
           return (
-          <div key={group.group_id} style={{
+          <div key={sale.sale_id} style={{
             background: "white", borderTop: `1px solid ${isExpanded ? "#bfdbfe" : "#e2e8f0"}`, borderRight: `1px solid ${isExpanded ? "#bfdbfe" : "#e2e8f0"}`, borderBottom: `1px solid ${isExpanded ? "#bfdbfe" : "#e2e8f0"}`, borderLeft: `3px solid ${statusColor.border}`, borderRadius: 12, marginBottom: 10,
             boxShadow: isExpanded ? "0 4px 12px rgba(0,0,0,0.08)" : "0 1px 3px rgba(0,0,0,0.04)", transition: "all 0.2s ease", cursor: "pointer"
           }}
-            onClick={() => setExpandedCard(isExpanded ? null : group.group_id)}
+            onClick={() => setExpandedCard(isExpanded ? null : sale.sale_id)}
           >
             {/* Summary row */}
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: isMobile ? "14px 16px" : "16px 20px" }}>
@@ -424,15 +367,15 @@ export default function BrokerSaleConfirmations() {
                 </div>
                 <div style={{ minWidth: 0, flex: 1 }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
-                    <p style={{ margin: 0, fontWeight: 700, fontSize: isMobile ? 15 : 14, color: "#0f172a" }}>{group.store_name}</p>
+                    <p style={{ margin: 0, fontWeight: 700, fontSize: isMobile ? 15 : 14, color: "#0f172a" }}>{sale.store_name}</p>
                     <span style={{ padding: "2px 8px", borderRadius: 10, fontSize: 11, fontWeight: 600, background: statusColor.bg, color: statusColor.text, border: `1px solid ${statusColor.border}` }}>{statusColor.label}</span>
                   </div>
-                  <p style={{ margin: "2px 0 0", fontSize: 12, color: "#64748b", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{group.customer_name || "Walk-in"} &middot; {group.lines.length} item{group.lines.length !== 1 ? "s" : ""}</p>
+                  <p style={{ margin: "2px 0 0", fontSize: 12, color: "#64748b", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{sale.customer_name || "Walk-in"} &middot; {(sale.items || []).length} item{(sale.items || []).length !== 1 ? "s" : ""}</p>
                 </div>
               </div>
               <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0, paddingLeft: 8 }}>
                 <p style={{ margin: 0, fontSize: 11, color: "#94a3b8" }}>
-                  {formatDate(group.sold_at)}
+                  {formatDate(sale.sold_at)}
                 </p>
                 <Icon icon="mdi:chevron-down" width={18} color="#94a3b8" style={{ transform: isExpanded ? "rotate(180deg)" : "rotate(0deg)", transition: "transform 0.2s" }} />
               </div>
@@ -444,32 +387,32 @@ export default function BrokerSaleConfirmations() {
                 <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 0", flexWrap: "wrap" }}>
                   <span style={{ fontSize: 12, color: "#64748b", display: "flex", alignItems: "center", gap: 4 }}>
                     <Icon icon="mdi:van-passenger" width={14} />
-                    {DELIVERY_LABELS[group.delivery_mode] || group.delivery_mode}
+                    {DELIVERY_LABELS[sale.delivery_mode] || sale.delivery_mode}
                   </span>
-                  {group.truck_plate && <span style={{ fontSize: 12, color: "#64748b" }}>Plate: {group.truck_plate}</span>}
-                  <span style={{ fontSize: 12, color: "#64748b" }}>Payment: {PAYMENT_LABELS[group.payment_mode] || group.payment_mode}</span>
+                  {sale.truck_plate && <span style={{ fontSize: 12, color: "#64748b" }}>Plate: {sale.truck_plate}</span>}
+                  <span style={{ fontSize: 12, color: "#64748b" }}>Payment: {PAYMENT_LABELS[sale.payment_mode] || sale.payment_mode}</span>
                 </div>
 
                 <div style={{ display: "flex", flexDirection: "column", gap: 4, marginBottom: 12 }}>
-                  {group.lines.map((line) => (
-                    <div key={line.sale_id} style={{
+                  {(sale.items || []).map((item, idx) => (
+                    <div key={idx} style={{
                       display: "flex", justifyContent: "space-between", alignItems: "center",
                       padding: "8px 12px", background: "#f8fafc", borderRadius: 8, border: "1px solid #e2e8f0"
                     }}>
                       <div>
-                        <span style={{ fontWeight: 600, fontSize: 14, color: "#0f172a" }}>{line.product}</span>
-                        <span style={{ fontSize: 13, color: "#64748b", marginLeft: 8 }}>&times; {line.quantity} bags</span>
+                        <span style={{ fontWeight: 600, fontSize: 14, color: "#0f172a" }}>{item.product}</span>
+                        <span style={{ fontSize: 13, color: "#64748b", marginLeft: 8 }}>&times; {item.quantity} bags</span>
                       </div>
-                      {line.price_per_bag != null && (
+                      {item.price_per_bag != null && (
                         <span style={{ fontSize: 13, color: "#475569", fontWeight: 500 }}>
-                          ₦{line.price_per_bag.toLocaleString()}/bag
+                          ₦{item.price_per_bag.toLocaleString()}/bag
                         </span>
                       )}
                     </div>
                   ))}
                 </div>
 
-                {activeFilter === "returned" && group.denial_reason && (
+                {activeFilter === "returned" && sale.denial_reason && (
                   <div style={{ display: "flex", gap: 10, alignItems: "flex-start", marginBottom: 12, padding: 10, background: "#fef2f2", borderRadius: 8, border: "1px solid #fecaca" }}>
                     <div style={{ background: "#ef4444", color: "white", padding: 3, borderRadius: "50%", flexShrink: 0, marginTop: 1 }}>
                       <Icon icon="mdi:close" width={12} height={12} />
@@ -477,19 +420,19 @@ export default function BrokerSaleConfirmations() {
                     <div>
                       <p style={{ margin: "0 0 4px 0", color: "#ef4444", fontSize: 12, fontWeight: 600 }}>Returned reason</p>
                       <div style={{ padding: "8px 10px", background: "white", borderRadius: 6, border: "1px solid #fecaca", color: "#7f1d1d", fontSize: 12, fontStyle: "italic" }}>
-                        &ldquo;{group.denial_reason}&rdquo;
+                        &ldquo;{sale.denial_reason}&rdquo;
                       </div>
-                      {group.denied_by && (
+                      {sale.denied_by && (
                         <p style={{ margin: "4px 0 0", fontSize: 11, color: "#94a3b8" }}>
-                          Returned by <span style={{ fontWeight: 600, color: "#64748b" }}>{group.denied_by}</span>
-                          {group.denial_date && <span> &middot; {new Date(group.denial_date).toLocaleDateString()}</span>}
+                          Returned by <span style={{ fontWeight: 600, color: "#64748b" }}>{sale.denied_by}</span>
+                          {sale.denial_date && <span> &middot; {new Date(sale.denial_date).toLocaleDateString()}</span>}
                         </p>
                       )}
                     </div>
                   </div>
                 )}
 
-                {activeFilter === "rejected" && group.rejection_reason && (
+                {activeFilter === "rejected" && sale.rejection_reason && (
                   <div style={{ display: "flex", gap: 10, alignItems: "flex-start", marginBottom: 12, padding: 10, background: "#fef2f2", borderRadius: 8, border: "1px solid #fecaca" }}>
                     <div style={{ background: "#ef4444", color: "white", padding: 3, borderRadius: "50%", flexShrink: 0, marginTop: 1 }}>
                       <Icon icon="mdi:close" width={12} height={12} />
@@ -497,30 +440,30 @@ export default function BrokerSaleConfirmations() {
                     <div>
                       <p style={{ margin: "0 0 4px 0", color: "#ef4444", fontSize: 12, fontWeight: 600 }}>Rejection reason</p>
                       <div style={{ padding: "8px 10px", background: "white", borderRadius: 6, border: "1px solid #fecaca", color: "#7f1d1d", fontSize: 12, fontStyle: "italic" }}>
-                        &ldquo;{group.rejection_reason}&rdquo;
+                        &ldquo;{sale.rejection_reason}&rdquo;
                       </div>
                     </div>
                   </div>
                 )}
 
                 <div style={{ display: "flex", gap: 8, marginTop: 4 }} onClick={e => e.stopPropagation()}>
-                  {activeFilter === "pending" && group.lines.some(l => l.discount_status === "pending") && (
+                  {activeFilter === "pending" && sale.discount_status === "pending" && (
                     <button disabled style={{ flex: 1, padding: "11px 0", background: "#f5f5f5", color: "#9ca3af", border: "1.5px solid #e5e7eb", borderRadius: 8, cursor: "not-allowed", fontWeight: "bold", fontSize: isMobile ? 14 : 13, minHeight: 44, display: "flex", alignItems: "center", justifyContent: "center", gap: 6, opacity: 0.7 }}>
                       <Icon icon="mdi:clock-outline" width={16} /> Awaiting Review
                     </button>
                   )}
-                  {activeFilter === "pending" && !group.lines.some(l => l.discount_status === "pending") && (
+                  {activeFilter === "pending" && sale.discount_status !== "pending" && (
                     <>
-                      <button onClick={() => openConfirmModal(group)} style={{ flex: 1, padding: "11px 0", background: "#0070f3", color: "white", border: "none", borderRadius: 8, cursor: "pointer", fontWeight: "bold", fontSize: isMobile ? 14 : 13, minHeight: 44, display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
+                      <button onClick={() => openConfirmModal(sale)} style={{ flex: 1, padding: "11px 0", background: "#0070f3", color: "white", border: "none", borderRadius: 8, cursor: "pointer", fontWeight: "bold", fontSize: isMobile ? 14 : 13, minHeight: 44, display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
                         <Icon icon="mdi:check-circle" width={16} /> Confirm
                       </button>
-                      <button onClick={() => openRejectModal(group)} style={{ flex: 1, padding: "11px 0", background: "white", color: "#ef4444", border: "1.5px solid #ef4444", borderRadius: 8, cursor: "pointer", fontWeight: "bold", fontSize: isMobile ? 14 : 13, minHeight: 44, display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
+                      <button onClick={() => openRejectModal(sale)} style={{ flex: 1, padding: "11px 0", background: "white", color: "#ef4444", border: "1.5px solid #ef4444", borderRadius: 8, cursor: "pointer", fontWeight: "bold", fontSize: isMobile ? 14 : 13, minHeight: 44, display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
                         <Icon icon="mdi:close-circle" width={16} /> Reject
                       </button>
                     </>
                   )}
                   {activeFilter === "returned" && (
-                    <button onClick={() => openConfirmModal(group)} style={{ flex: 1, padding: "11px 0", background: "#0070f3", color: "white", border: "none", borderRadius: 8, cursor: "pointer", fontWeight: "bold", fontSize: isMobile ? 14 : 13, minHeight: 44, display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
+                    <button onClick={() => openConfirmModal(sale)} style={{ flex: 1, padding: "11px 0", background: "#0070f3", color: "white", border: "none", borderRadius: 8, cursor: "pointer", fontWeight: "bold", fontSize: isMobile ? 14 : 13, minHeight: 44, display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
                       <Icon icon="mdi:pencil" width={16} /> Edit
                     </button>
                   )}
@@ -534,23 +477,23 @@ export default function BrokerSaleConfirmations() {
         })
       )}
 
-      {visibleGroups.length > 0 && (
+      {visibleSales.length > 0 && (
         <PaginationControls page={page} totalPages={totalPages} totalItems={totalItems} onPageChange={setPage} />
       )}
 
       <BrokerConfirmModal
         key={confirmModalKey}
-        isOpen={!!confirmingGroup}
+        isOpen={!!confirmingSale}
         onClose={closeConfirmModal}
         brokerId={brokerId || ""}
         isMobile={isMobile}
         companyPriceMap={companyPriceMap}
         onConfirmed={() => { if (brokerId) fetchSales(brokerId) }}
         mode="sale"
-        saleGroup={confirmingGroup!}
+        sale={confirmingSale!}
       />
 
-      {rejectingGroup && (
+      {rejectingSale && (
         <div onClick={closeRejectModal} style={modalOverlay}>
           <div onClick={e => e.stopPropagation()} style={modalBox}>
             {isMobile && <div style={{ width: 40, height: 4, background: "#e0e0e0", borderRadius: 2, margin: "0 auto 20px" }} />}
@@ -561,7 +504,7 @@ export default function BrokerSaleConfirmations() {
               <h3 style={{ margin: 0, color: "#ef4444", fontSize: isMobile ? 18 : 16 }}>Reject Sale</h3>
             </div>
             <p style={{ color: "#888", fontSize: 13, marginBottom: 20 }}>
-              {rejectingGroup.store_name} · {formatDate(rejectingGroup.sold_at)}
+              {rejectingSale.store_name} · {formatDate(rejectingSale.sold_at)}
             </p>
 
             <div style={{ marginBottom: 24 }}>

@@ -44,12 +44,19 @@ type PastVerification = {
   verified_at: string
 }
 
-type Sale = {
-  sale_id: string
+type SaleItem = {
   product: string
   quantity: number
   price_per_bag: number | null
-  total_amount: number | null
+  company_price: number | null
+  price_reason: string | null
+}
+
+type Sale = {
+  sale_id: string
+  items: SaleItem[]
+  total_amount: number
+  total_quantity: number
   customer_name: string | null
   payment_mode: string
   delivery_mode: string
@@ -62,19 +69,6 @@ type Sale = {
   officer_id: string
   rejection_reason: string | null
   sale_type: string | null
-}
-
-type GroupedSale = {
-  group_id: string
-  customer_name: string | null
-  payment_mode: string
-  delivery_mode: string
-  sold_at: string
-  broker_id: string | null
-  status: string
-  rejection_reason: string | null
-  sale_type: string | null
-  lines: Sale[]
 }
 
 const PAYMENT_MODES = ["Cash", "Transfer", "POS", "Broker"]
@@ -199,7 +193,7 @@ export default function StoreSupervisorDashboard() {
   async function fetchSales(storeName: string) {
     const { data } = await supabase
       .from("store_sales")
-      .select("sale_id, product, quantity, price_per_bag, total_amount, customer_name, payment_mode, delivery_mode, tricycle_id, truck_plate, sold_at, created_at, broker_id, status, officer_id, rejection_reason, sale_type")
+      .select("sale_id, items, total_amount, total_quantity, customer_name, payment_mode, delivery_mode, tricycle_id, truck_plate, sold_at, created_at, broker_id, status, officer_id, rejection_reason, sale_type")
       .eq("store_name", storeName)
       .order("sold_at", { ascending: false })
     setSales(data || [])
@@ -286,39 +280,16 @@ export default function StoreSupervisorDashboard() {
     return "#dc2626"
   }
 
-  // Group sales
-  const groupedSales: GroupedSale[] = (() => {
+  // Filter and sort sales
+  const filteredSales: Sale[] = (() => {
     let filtered = sales
     if (salesPaymentFilter) {
       filtered = filtered.filter(s => s.payment_mode === salesPaymentFilter)
     }
-    const sorted = [...filtered].sort((a, b) => {
+    return [...filtered].sort((a, b) => {
       if (salesSortByAdded) return new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
       return new Date(b.sold_at).getTime() - new Date(a.sold_at).getTime()
     })
-
-    const groups: GroupedSale[] = []
-    for (const sale of sorted) {
-      const key = `${sale.sold_at}_${sale.customer_name}_${sale.payment_mode}_${sale.delivery_mode}_${sale.broker_id}_${sale.status}_${sale.sale_type || "direct"}`
-      const existing = groups.find(g => g.group_id === key)
-      if (existing) {
-        existing.lines.push(sale)
-      } else {
-        groups.push({
-          group_id: key,
-          customer_name: sale.customer_name,
-          payment_mode: sale.payment_mode,
-          delivery_mode: sale.delivery_mode,
-          sold_at: sale.sold_at,
-          broker_id: sale.broker_id,
-          status: sale.status,
-          rejection_reason: sale.rejection_reason,
-          sale_type: sale.sale_type || "direct",
-          lines: [sale],
-        })
-      }
-    }
-    return groups
   })()
 
   // Group past verifications by session ID
@@ -729,22 +700,21 @@ export default function StoreSupervisorDashboard() {
               {lastUpdated && <p style={{ margin: 0, fontSize: FONT_SIZE.xs, color: "#94a3b8" }}>Updated: {formatTime(lastUpdated)}</p>}
             </div>
 
-            {groupedSales.length === 0 && <p style={{ color: "#64748b", fontSize: FONT_SIZE.base }}>No sales records.</p>}
+            {filteredSales.length === 0 && <p style={{ color: "#64748b", fontSize: FONT_SIZE.base }}>No sales records.</p>}
 
-            {groupedSales.length > PAGE_SIZE && (
+            {filteredSales.length > PAGE_SIZE && (
               <div style={{ display: "flex", justifyContent: "center", gap: 8, marginBottom: 16 }}>
                 <button disabled={salesPage <= 1} onClick={() => setSalesPage(p => Math.max(1, p - 1))} style={{ padding: "6px 14px", background: salesPage <= 1 ? "#f0f0f0" : "white", border: "1px solid #e2e8f0", borderRadius: 8, cursor: salesPage <= 1 ? "not-allowed" : "pointer", fontSize: FONT_SIZE.xs, color: salesPage <= 1 ? "#ccc" : "#64748b" }}>← Previous</button>
-                <span style={{ display: "flex", alignItems: "center", fontSize: FONT_SIZE.xs, color: "#94a3b8" }}>Page {salesPage} of {Math.ceil(groupedSales.length / PAGE_SIZE)}</span>
-                <button disabled={salesPage >= Math.ceil(groupedSales.length / PAGE_SIZE)} onClick={() => setSalesPage(p => p + 1)} style={{ padding: "6px 14px", background: salesPage >= Math.ceil(groupedSales.length / PAGE_SIZE) ? "#f0f0f0" : "white", border: "1px solid #e2e8f0", borderRadius: 8, cursor: salesPage >= Math.ceil(groupedSales.length / PAGE_SIZE) ? "not-allowed" : "pointer", fontSize: FONT_SIZE.xs, color: salesPage >= Math.ceil(groupedSales.length / PAGE_SIZE) ? "#ccc" : "#64748b" }}>Next →</button>
+                <span style={{ display: "flex", alignItems: "center", fontSize: FONT_SIZE.xs, color: "#94a3b8" }}>Page {salesPage} of {Math.ceil(filteredSales.length / PAGE_SIZE)}</span>
+                <button disabled={salesPage >= Math.ceil(filteredSales.length / PAGE_SIZE)} onClick={() => setSalesPage(p => p + 1)} style={{ padding: "6px 14px", background: salesPage >= Math.ceil(filteredSales.length / PAGE_SIZE) ? "#f0f0f0" : "white", border: "1px solid #e2e8f0", borderRadius: 8, cursor: salesPage >= Math.ceil(filteredSales.length / PAGE_SIZE) ? "not-allowed" : "pointer", fontSize: FONT_SIZE.xs, color: salesPage >= Math.ceil(filteredSales.length / PAGE_SIZE) ? "#ccc" : "#64748b" }}>Next →</button>
               </div>
             )}
 
             <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-              {groupedSales.slice(0, salesPage * PAGE_SIZE).map(sale => {
-                const totalAmount = sale.lines.reduce((sum, l) => sum + (l.total_amount || 0), 0)
+              {filteredSales.slice(0, salesPage * PAGE_SIZE).map(sale => {
                 const isLoadOut = sale.sale_type === "truck_load_out"
                 return (
-                  <div key={sale.group_id} style={{ background: "white", border: "1px solid #e2e8f0", borderRadius: 12, padding: 16, boxShadow: "0 1px 3px rgba(0,0,0,0.05)" }}>
+                  <div key={sale.sale_id} style={{ background: "white", border: "1px solid #e2e8f0", borderRadius: 12, padding: 16, boxShadow: "0 1px 3px rgba(0,0,0,0.05)" }}>
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 10 }}>
                       <div>
                         <p style={{ margin: 0, fontWeight: 700, fontSize: FONT_SIZE.lg, color: "#0f172a" }}>{isLoadOut ? "Truck Load Out" : sale.customer_name || "Walk-in"}</p>
@@ -753,9 +723,9 @@ export default function StoreSupervisorDashboard() {
                       <div style={{ textAlign: "right" }}>
                         {isLoadOut ? (
                           <span style={{ fontSize: FONT_SIZE.xs, padding: "3px 8px", borderRadius: 6, background: "#fff7ed", color: "#ea580c", fontWeight: 600, display: "inline-block" }}>Dispatch record</span>
-                        ) : totalAmount > 0 ? (
+                        ) : sale.total_amount > 0 ? (
                           <>
-                            <p style={{ margin: 0, fontWeight: 700, fontSize: FONT_SIZE.lg, color: "#16a34a" }}>₦{totalAmount.toLocaleString()}</p>
+                            <p style={{ margin: 0, fontWeight: 700, fontSize: FONT_SIZE.lg, color: "#16a34a" }}>₦{sale.total_amount.toLocaleString()}</p>
                             <span style={{ fontSize: FONT_SIZE.xs, padding: "3px 8px", borderRadius: 6, background: "#f0f7ff", color: "#0070f3", fontWeight: 600, display: "inline-block", marginTop: 4 }}>{sale.payment_mode}</span>
                           </>
                         ) : (
@@ -783,20 +753,20 @@ export default function StoreSupervisorDashboard() {
                     )}
 
                     <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                      {sale.lines.map(line => (
-                        <div key={line.sale_id} style={{ display: "grid", gridTemplateColumns: sale.sale_type !== "truck_load_out" && line.price_per_bag !== null ? "1.4fr 0.7fr 0.9fr" : "1.4fr 0.7fr", gap: 8 }}>
+                      {(sale.items || []).map((item, idx) => (
+                        <div key={idx} style={{ display: "grid", gridTemplateColumns: sale.sale_type !== "truck_load_out" && item.price_per_bag !== null ? "1.4fr 0.7fr 0.9fr" : "1.4fr 0.7fr", gap: 8 }}>
                           <div style={{ background: "#f8fafc", borderRadius: 8, padding: "8px 12px" }}>
                             <p style={{ margin: 0, fontSize: FONT_SIZE.xs, color: "#94a3b8" }}>Product</p>
-                            <p style={{ margin: "2px 0 0", fontWeight: 600, fontSize: FONT_SIZE.base, color: "#0f172a" }}>{line.product}</p>
+                            <p style={{ margin: "2px 0 0", fontWeight: 600, fontSize: FONT_SIZE.base, color: "#0f172a" }}>{item.product}</p>
                           </div>
                           <div style={{ background: "#f8fafc", borderRadius: 8, padding: "8px 12px" }}>
                             <p style={{ margin: 0, fontSize: FONT_SIZE.xs, color: "#94a3b8" }}>Bags</p>
-                            <p style={{ margin: "2px 0 0", fontWeight: 600, fontSize: FONT_SIZE.base, color: "#0f172a" }}>{line.quantity}</p>
+                            <p style={{ margin: "2px 0 0", fontWeight: 600, fontSize: FONT_SIZE.base, color: "#0f172a" }}>{item.quantity}</p>
                           </div>
-                          {sale.sale_type !== "truck_load_out" && line.price_per_bag !== null && (
+                          {sale.sale_type !== "truck_load_out" && item.price_per_bag !== null && (
                             <div style={{ background: "#f8fafc", borderRadius: 8, padding: "8px 12px" }}>
                               <p style={{ margin: 0, fontSize: FONT_SIZE.xs, color: "#94a3b8" }}>Price/Bag</p>
-                              <p style={{ margin: "2px 0 0", fontWeight: 600, fontSize: FONT_SIZE.base, color: "#0f172a" }}>₦{line.price_per_bag.toLocaleString()}</p>
+                              <p style={{ margin: "2px 0 0", fontWeight: 600, fontSize: FONT_SIZE.base, color: "#0f172a" }}>₦{item.price_per_bag.toLocaleString()}</p>
                             </div>
                           )}
                         </div>

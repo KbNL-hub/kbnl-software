@@ -71,7 +71,6 @@ export default function ManageUsers() {
   const [companyId, setCompanyId] = useState("")
   const [storeName, setStoreName] = useState("")
   const [officeName, setOfficeName] = useState("")
-  const [cashAuthOffice, setCashAuthOffice] = useState("")
   const [cashAuthOffices, setCashAuthOffices] = useState<Set<string>>(new Set())
   const [storeNames, setStoreNames] = useState<Set<string>>(new Set())
   const [companies, setCompanies] = useState<FuelCompany[]>([])
@@ -155,7 +154,6 @@ export default function ManageUsers() {
     setCompanyId("")
     setStoreName("")
     setOfficeName("")
-    setCashAuthOffice("")
     setStoreNames(new Set())
 
     const queries: Promise<void>[] = []
@@ -263,7 +261,6 @@ export default function ManageUsers() {
       setCompanyId("")
       setStoreName("")
       setOfficeName("")
-      setCashAuthOffice("")
       setCashAuthOffices(new Set())
       setStoreNames(new Set())
       await fetchUsers()
@@ -625,7 +622,7 @@ export default function ManageUsers() {
       {/* Role Assignment Modal */}
       {editingUser && (
         <div
-          onClick={() => { setEditingUser(null); setSelectedRoles(new Set()); setRoleSaveError(""); setCompanyId(""); setStoreName(""); setOfficeName(""); setCashAuthOffice(""); setCashAuthOffices(new Set()); setStoreNames(new Set()) }}
+          onClick={() => { setEditingUser(null); setSelectedRoles(new Set()); setRoleSaveError(""); setCompanyId(""); setStoreName(""); setOfficeName(""); setCashAuthOffices(new Set()); setStoreNames(new Set()) }}
           style={{
             position: "fixed", inset: 0, background: "rgba(15, 23, 42, 0.6)",
             backdropFilter: "blur(4px)",
@@ -651,7 +648,7 @@ export default function ManageUsers() {
                 </p>
               </div>
               <button
-                onClick={() => { setEditingUser(null); setSelectedRoles(new Set()); setRoleSaveError(""); setCompanyId(""); setStoreName(""); setOfficeName(""); setCashAuthOffice(""); setCashAuthOffices(new Set()); setStoreNames(new Set()) }}
+                onClick={() => { setEditingUser(null); setSelectedRoles(new Set()); setRoleSaveError(""); setCompanyId(""); setStoreName(""); setOfficeName(""); setCashAuthOffices(new Set()); setStoreNames(new Set()) }}
                 style={{ background: "none", border: "none", cursor: "pointer", color: "#94a3b8", padding: 4 }}
               >
                 <Icon icon="mdi:close" width={20} />
@@ -855,7 +852,7 @@ export default function ManageUsers() {
 
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
               <button
-                onClick={() => { setEditingUser(null); setSelectedRoles(new Set()); setRoleSaveError(""); setCompanyId(""); setStoreName(""); setOfficeName(""); setCashAuthOffice(""); setCashAuthOffices(new Set()); setStoreNames(new Set()) }}
+                onClick={() => { setEditingUser(null); setSelectedRoles(new Set()); setRoleSaveError(""); setCompanyId(""); setStoreName(""); setOfficeName(""); setCashAuthOffices(new Set()); setStoreNames(new Set()) }}
                 style={{
                   padding: "12px 16px", background: "white",
                   border: "1px solid #cbd5e1", color: "#475569",

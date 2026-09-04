@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import { Icon } from "@iconify/react"
 import { apiMutate } from "@/lib/api-mutation"
 import { formatAmount, parseAmount } from "@/lib/formatAmount"
@@ -38,10 +38,14 @@ export default function NewBookingModal({ isOpen, onClose, brokerId, isMobile, c
   const [submitting, setSubmitting] = useState(false)
 
   const areaProducts = area ? Object.keys(companyPriceMap[area] || {}).sort() : []
+  const editInitDoneRef = useRef(false)
+  const editCleanupDoneRef = useRef(false)
 
   useEffect(() => {
     if (!isOpen) return
     if (editBooking) {
+      editInitDoneRef.current = true
+      editCleanupDoneRef.current = true
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setSelectedCustomer(editBooking.customer_id ? { customer_id: editBooking.customer_id, full_name: editBooking.customer_name || "", phone_number: "" } : null)
       setArea(editBooking.area)
@@ -52,6 +56,7 @@ export default function NewBookingModal({ isOpen, onClose, brokerId, isMobile, c
       setPaymentDate(editBooking.payment_date)
       setPriceReason(editBooking.price_reason || "")
       setSoldAtDifferentPrice(!!editBooking.price_reason)
+      setCompanyPrice(editBooking.company_price || 0)
       setMessage("")
     } else {
       setSelectedCustomer(null)
@@ -70,6 +75,7 @@ export default function NewBookingModal({ isOpen, onClose, brokerId, isMobile, c
   }, [isOpen, editBooking])
 
   useEffect(() => {
+    if (editCleanupDoneRef.current) { editCleanupDoneRef.current = false; return }
     if (area && product && !(product in (companyPriceMap[area] || {}))) {
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setProduct("")
@@ -81,6 +87,7 @@ export default function NewBookingModal({ isOpen, onClose, brokerId, isMobile, c
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setCompanyPrice(0); return
     }
+    if (editInitDoneRef.current) { editInitDoneRef.current = false; return }
     const cp = companyPriceMap[area]?.[product] ?? 0
     setCompanyPrice(cp)
     if (!soldAtDifferentPrice && cp > 0) {
