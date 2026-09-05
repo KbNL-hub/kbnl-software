@@ -87,7 +87,13 @@ export default function NewBookingModal({ isOpen, onClose, brokerId, isMobile, c
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setCompanyPrice(0); return
     }
+    // Skip on initial edit mount — snapshot already set in init effect
     if (editInitDoneRef.current) { editInitDoneRef.current = false; return }
+    // Also skip if the area/product combo matches the edit booking's original combo
+    if (editBooking && area === editBooking.area && product === editBooking.product) {
+      // Keep the persisted snapshot from init effect; don't overwrite from map
+      return
+    }
     const cp = companyPriceMap[area]?.[product] ?? 0
     setCompanyPrice(cp)
     if (!soldAtDifferentPrice && cp > 0) {
@@ -402,7 +408,7 @@ export default function NewBookingModal({ isOpen, onClose, brokerId, isMobile, c
             ) : (
               <>
                 <Icon icon={isEdit ? "mdi:content-save" : "mdi:check"} width={18} />
-                {isEdit ? "Save Changes" : "Submit Booking"}
+                {isEdit ? "Save Changes" : "Submit"}
               </>
             )}
           </button>

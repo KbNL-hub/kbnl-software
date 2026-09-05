@@ -124,6 +124,18 @@ function enforceBookingAuthorization(
   const isATC = auth.roles.includes("ATCOfficer") && !isAdmin
   const isBrokerOnly_ = isBrokerOnly(auth.roles)
 
+  // Handle ATC officers first — they take priority over broker checks
+  if (isATC) {
+    if ("status" in data && data.status !== "supplied") {
+      return "ATC Officers can only mark bookings as supplied"
+    }
+    const allowed = ["status", "supply_date", "supplied_by"]
+    for (const key of Object.keys(data)) {
+      if (!allowed.includes(key)) return "ATC Officers can only update supply fields"
+    }
+    return null
+  }
+
   if (isBrokerOnly_) {
     const forbidden = ["status", "reviewed_by", "reviewed_at", "supplied_by", "supply_date"]
     if (action !== "insert") forbidden.push("broker_id")
@@ -138,16 +150,6 @@ function enforceBookingAuthorization(
       data.status = "pending"
     }
     return null
-  }
-
-  if (isATC) {
-    if ("status" in data && data.status !== "supplied") {
-      return "ATC Officers can only mark bookings as supplied"
-    }
-    const allowed = ["status", "supply_date", "supplied_by"]
-    for (const key of Object.keys(data)) {
-      if (!allowed.includes(key)) return "ATC Officers can only update supply fields"
-    }
   }
 
   return null

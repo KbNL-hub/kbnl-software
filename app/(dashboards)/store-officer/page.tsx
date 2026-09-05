@@ -18,6 +18,7 @@ import { FONT_SIZE, BANKS } from "@/lib/constants"
 import { usePolling } from "@/lib/hooks/usePolling"
   import { saleDateWithTime } from "@/lib/date-utils"
   import dayjs from "dayjs"
+import { FeaturedCard, StatCardComponent, StatCard } from "@/components/shared/StatCards"
 import { useBreakpoint } from "@/app/hooks/useBreakpoint"
 import { requireDashboardRole } from "@/lib/auth-helpers"
 import { Role } from "@/lib/roles"
@@ -885,84 +886,24 @@ export default function StoreOfficerDashboard() {
 
         {/* Monthly Stats */}
         <div style={{ marginBottom: 24 }}>
-          <div style={{
-            background: "#0070f3",
-            borderRadius: 16,
-            padding: isMobile ? "18px 16px" : "24px 28px",
-            display: "flex",
-            alignItems: "center",
-            gap: isMobile ? 14 : 18,
-            boxShadow: "0 4px 16px rgba(0, 112, 243, 0.25)",
-            marginBottom: isMobile ? 10 : 12,
-          }}>
-            <div style={{
-              width: isMobile ? 44 : 52,
-              height: isMobile ? 44 : 52,
-              borderRadius: 12,
-              background: "rgba(255,255,255,0.18)",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              flexShrink: 0,
-            }}>
-              <Icon icon="mdi:cash-multiple" width={isMobile ? 22 : 26} color="#ffffff" />
-            </div>
-            <div style={{ minWidth: 0 }}>
-              <p style={{
-                margin: 0,
-                fontSize: isMobile ? 12 : 13,
-                color: "rgba(255,255,255,0.75)",
-                fontWeight: 500,
-                whiteSpace: "nowrap",
-                overflow: "hidden",
-                textOverflow: "ellipsis",
-              }}>
-                Revenue (This Month)
-              </p>
-              <p style={{
-                margin: "4px 0 0",
-                fontSize: isMobile ? 26 : 36,
-                fontWeight: 800,
-                color: "#ffffff",
-                lineHeight: 1.1,
-                letterSpacing: "-0.02em",
-              }}>
-                ₦{monthlyStats.revenue.toLocaleString()}
-              </p>
-            </div>
-          </div>
+          <FeaturedCard
+            card={{ key: "revenue", icon: "mdi:cash-multiple", label: "Revenue (This Month)", value: monthlyStats.revenue, color: "#0070f3", isCurrency: true }}
+            isMobile={isMobile}
+          />
 
           <div style={{
             display: "grid",
             gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
             gap: isMobile ? 10 : 12,
           }}>
-            <div style={{ background: "white", borderRadius: 16, padding: isMobile ? "14px" : "16px 20px", border: "1px solid #eef0f2", display: "flex", alignItems: "center", gap: isMobile ? 12 : 14 }}>
-              <div style={{ width: isMobile ? 38 : 42, height: isMobile ? 38 : 42, borderRadius: 11, background: "rgba(0, 112, 243, 0.08)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-                <Icon icon="mdi:package-variant" width={isMobile ? 18 : 20} color="#0070f3" />
-              </div>
-              <div style={{ minWidth: 0, flex: 1 }}>
-                <p style={{ margin: 0, fontSize: isMobile ? 11 : 12, color: "#64748b", fontWeight: 500, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                  Bags Sold (This Month)
-                </p>
-                <p style={{ margin: "3px 0 0", fontSize: isMobile ? 20 : 22, fontWeight: 700, color: "#0f172a", lineHeight: 1.2, letterSpacing: "-0.01em" }}>
-                  {monthlyStats.bagsSold.toLocaleString()}
-                </p>
-              </div>
-            </div>
-            <div style={{ background: "white", borderRadius: 16, padding: isMobile ? "14px" : "16px 20px", border: "1px solid #eef0f2", display: "flex", alignItems: "center", gap: isMobile ? 12 : 14 }}>
-              <div style={{ width: isMobile ? 38 : 42, height: isMobile ? 38 : 42, borderRadius: 11, background: "rgba(0, 112, 243, 0.08)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-                <Icon icon="mdi:truck-delivery" width={isMobile ? 18 : 20} color="#0070f3" />
-              </div>
-              <div style={{ minWidth: 0, flex: 1 }}>
-                <p style={{ margin: 0, fontSize: isMobile ? 11 : 12, color: "#64748b", fontWeight: 500, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                  Bags Received (This Month)
-                </p>
-                <p style={{ margin: "3px 0 0", fontSize: isMobile ? 20 : 22, fontWeight: 700, color: "#0f172a", lineHeight: 1.2, letterSpacing: "-0.01em" }}>
-                  {monthlyStats.bagsReceived.toLocaleString()}
-                </p>
-              </div>
-            </div>
+            <StatCardComponent
+              card={{ key: "bagsSold", icon: "mdi:package-variant", label: "Bags Sold (This Month)", value: monthlyStats.bagsSold, color: "#0070f3" }}
+              isMobile={isMobile}
+            />
+            <StatCardComponent
+              card={{ key: "bagsReceived", icon: "mdi:truck-delivery", label: "Bags Received (This Month)", value: monthlyStats.bagsReceived, color: "#0070f3" }}
+              isMobile={isMobile}
+            />
           </div>
         </div>
 
