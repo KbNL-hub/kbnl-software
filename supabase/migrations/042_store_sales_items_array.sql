@@ -1,17 +1,33 @@
 -- Refactor store_sales from per-product rows to one row per sale with
 -- a JSONB items array.  Each sale becomes a single atomic record.
 --
--- Phase 1: Add new columns (items, total_amount, total_quantity)
--- Phase 2: Migrate existing data into items array
--- Phase 3: Create triggers to auto-compute total_amount / total_quantity
--- Phase 4: Update price_adjustments unique constraint
+-- Idempotent: safe to re-run if partially applied.
 
 -- ============================================================
 -- PHASE 1: Add new columns (nullable for now)
 -- ============================================================
-ALTER TABLE store_sales ADD COLUMN items JSONB DEFAULT '[]'::jsonb;
-ALTER TABLE store_sales ADD COLUMN total_amount NUMERIC DEFAULT 0;
-ALTER TABLE store_sales ADD COLUMN total_quantity INTEGER DEFAULT 0;
+
+-- items column
+DO $$ BEGIN
+  ALTER TABLE store_sales ADD COLUMN items JSONB DEFAULT '[]'::jsonb;
+EXCEPTION WHEN duplicate_column THEN NULL;
+END $$;
+
+-- total_amount: drop if generated, re-add as regular column
+DO $$ BEGIN
+  ALTER TABLE store_sales DROP COLUMN total_amount;
+EXCEPTION WHEN undefined_column THEN NULL;
+END $$;
+DO $$ BEGIN
+  ALTER TABLE store_sales ADD COLUMN total_amount NUMERIC DEFAULT 0;
+EXCEPTION WHEN duplicate_column THEN NULL;
+END $$;
+
+-- total_quantity
+DO $$ BEGIN
+  ALTER TABLE store_sales ADD COLUMN total_quantity INTEGER DEFAULT 0;
+EXCEPTION WHEN duplicate_column THEN NULL;
+END $$;
 
 -- ============================================================
 -- PHASE 2: Migrate existing data into items array
@@ -22,59 +38,65 @@ ALTER TABLE store_sales ADD COLUMN total_quantity INTEGER DEFAULT 0;
 -- We keep the row with the earliest created_at as the "base" and
 -- fold the rest into its items array.
 
--- First, build the consolidated items per group_id
-WITH grouped AS (
-  SELECT
-    group_id,
-    jsonb_agg(
-      jsonb_build_object(
-        'product',       product,
-        'quantity',      quantity,
-        'price_per_bag', price_per_bag,
-        'company_price', company_price,
-        'price_reason',  price_reason
-      ) ORDER BY created_at
-    ) AS consolidated_items,
-    SUM(quantity)  AS sum_quantity,
-    SUM(COALESCE(total_amount, quantity * price_per_bag)) AS sum_amount,
-    MIN(sale_id)   AS keep_sale_id
-  FROM store_sales
-  WHERE group_id IS NOT NULL
-  GROUP BY group_id
-),
--- Update the kept row with consolidated items
-updated AS (
-  UPDATE store_sales ss
-  SET
-    items          = g.consolidated_items,
-    total_quantity = g.sum_quantity,
-    total_amount   = g.sum_amount
-  FROM grouped g
-  WHERE ss.sale_id = g.keep_sale_id
-  RETURNING ss.sale_id
-)
--- Delete the non-kept rows in each group
-DELETE FROM store_sales ss
-USING grouped g
-WHERE ss.group_id = g.group_id
-  AND ss.sale_id != g.keep_sale_id;
+-- Only run if items is still empty (migration hasn't run yet)
+DO $$ BEGIN
+  IF EXISTS (SELECT 1 FROM store_sales WHERE items = '[]'::jsonb LIMIT 1) THEN
 
--- 2b. For rows WITHOUT a group_id (individual sales),
--- convert each to a single-item array.
-UPDATE store_sales
-SET
-  items = jsonb_build_array(
-    jsonb_build_object(
-      'product',       product,
-      'quantity',      quantity,
-      'price_per_bag', price_per_bag,
-      'company_price', company_price,
-      'price_reason',  price_reason
+    -- Consolidate grouped rows
+    WITH grouped AS (
+      SELECT
+        group_id,
+        jsonb_agg(
+          jsonb_build_object(
+            'product',       product,
+            'quantity',      quantity,
+            'price_per_bag', price_per_bag,
+            'company_price', company_price,
+            'price_reason',  price_reason
+          ) ORDER BY created_at
+        ) AS consolidated_items,
+        SUM(quantity)  AS sum_quantity,
+        SUM(COALESCE(quantity * price_per_bag, 0)) AS sum_amount,
+        (ARRAY_AGG(sale_id ORDER BY created_at))[1] AS keep_sale_id
+      FROM store_sales
+      WHERE group_id IS NOT NULL
+        AND items = '[]'::jsonb
+      GROUP BY group_id
+    ),
+    updated AS (
+      UPDATE store_sales ss
+      SET
+        items          = g.consolidated_items,
+        total_quantity = g.sum_quantity,
+        total_amount   = g.sum_amount
+      FROM grouped g
+      WHERE ss.sale_id = g.keep_sale_id
+      RETURNING ss.sale_id
     )
-  ),
-  total_quantity = quantity,
-  total_amount   = COALESCE(quantity, 0) * COALESCE(price_per_bag, 0)
-WHERE group_id IS NULL;
+    DELETE FROM store_sales ss
+    USING grouped g
+    WHERE ss.group_id = g.group_id
+      AND ss.sale_id != g.keep_sale_id;
+
+    -- Convert ungrouped rows to single-item arrays
+    UPDATE store_sales
+    SET
+      items = jsonb_build_array(
+        jsonb_build_object(
+          'product',       product,
+          'quantity',      quantity,
+          'price_per_bag', price_per_bag,
+          'company_price', company_price,
+          'price_reason',  price_reason
+        )
+      ),
+      total_quantity = quantity,
+      total_amount   = COALESCE(quantity, 0) * COALESCE(price_per_bag, 0)
+    WHERE group_id IS NULL
+      AND items = '[]'::jsonb;
+
+  END IF;
+END $$;
 
 -- ============================================================
 -- PHASE 3: Triggers to auto-compute total_amount / total_quantity
@@ -107,13 +129,45 @@ BEGIN
 END;
 $$;
 
+DROP TRIGGER IF EXISTS trg_store_sales_items_totals ON store_sales;
 CREATE TRIGGER trg_store_sales_items_totals
-  BEFORE INSERT OR UPDATE ON store_sales
+  BEFORE INSERT OR UPDATE OF items ON store_sales
   FOR EACH ROW
   EXECUTE FUNCTION store_sales_items_totals();
 
 -- ============================================================
--- PHASE 4: Update price_adjustments unique constraint
+-- PHASE 4: Drop legacy per-row columns (data now in items array)
+-- ============================================================
+
+-- Drop product, quantity, price_per_bag, company_price, price_reason
+-- All data is now in the items JSONB array.
+DO $$ BEGIN
+  ALTER TABLE store_sales DROP COLUMN product;
+EXCEPTION WHEN undefined_column THEN NULL;
+END $$;
+
+DO $$ BEGIN
+  ALTER TABLE store_sales DROP COLUMN quantity;
+EXCEPTION WHEN undefined_column THEN NULL;
+END $$;
+
+DO $$ BEGIN
+  ALTER TABLE store_sales DROP COLUMN price_per_bag;
+EXCEPTION WHEN undefined_column THEN NULL;
+END $$;
+
+DO $$ BEGIN
+  ALTER TABLE store_sales DROP COLUMN company_price;
+EXCEPTION WHEN undefined_column THEN NULL;
+END $$;
+
+DO $$ BEGIN
+  ALTER TABLE store_sales DROP COLUMN price_reason;
+EXCEPTION WHEN undefined_column THEN NULL;
+END $$;
+
+-- ============================================================
+-- PHASE 5: Update price_adjustments unique constraint
 -- ============================================================
 
 -- Drop the old constraint that only allows one adjustment per source
@@ -121,10 +175,9 @@ ALTER TABLE price_adjustments
   DROP CONSTRAINT IF EXISTS unique_price_adjustment_source;
 
 -- New constraint: one adjustment per (source_type, source_id, product)
-ALTER TABLE price_adjustments
-  ADD CONSTRAINT unique_price_adjustment_source_product
-  UNIQUE (source_type, source_id, product);
-
--- Keep a separate unique constraint for stop rows (source_type, source_id only)
--- to allow multiple stops with same source_type+source_id but different products
--- (already handled by the above constraint which includes product)
+DO $$ BEGIN
+  ALTER TABLE price_adjustments
+    ADD CONSTRAINT unique_price_adjustment_source_product
+    UNIQUE (source_type, source_id, product);
+EXCEPTION WHEN duplicate_object THEN NULL; WHEN duplicate_table THEN NULL;
+END $$;

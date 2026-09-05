@@ -160,10 +160,6 @@ export default function NewBookingModal({ isOpen, onClose, brokerId, isMobile, c
     if (!paymentDate) { setMessage("Select date of payment"); return }
     if (showPriceReason && !priceReason.trim()) { setMessage("Provide a reason for using a different price"); return }
 
-    const hasDiff = showPriceReason && companyPrice > 0 && rate > 0 && rate !== companyPrice
-    const forceReview = companyPrice === 0 && rate > 0
-    const status = hasDiff || forceReview ? "awaiting_review" : "pending"
-
     setSubmitting(true)
     setMessage("")
     try {
@@ -178,12 +174,8 @@ export default function NewBookingModal({ isOpen, onClose, brokerId, isMobile, c
         rate_per_bag: rate,
         total_amount: total,
         payment_date: paymentDate,
-        status,
-        price_reason: hasDiff ? priceReason.trim() : (forceReview ? "No company price configured" : null),
+        price_reason: showPriceReason ? priceReason.trim() : (companyPrice === 0 && rate > 0 ? "No company price configured" : null),
         company_price: companyPrice || null,
-        rejection_reason: null,
-        reviewed_by: null,
-        reviewed_at: null,
       }
 
       if (isEdit && editBooking) {

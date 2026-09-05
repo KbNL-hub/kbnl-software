@@ -117,6 +117,7 @@ function enforceBrokerScope(
 function enforceBookingAuthorization(
   data: Record<string, unknown> | undefined,
   auth: { userId: string; roles: string[] },
+  action?: string,
 ) {
   if (!data) return null
   const isAdmin = auth.roles.some(r => ["Admin", "SuperAdmin"].includes(r))
@@ -124,10 +125,19 @@ function enforceBookingAuthorization(
   const isBrokerOnly_ = isBrokerOnly(auth.roles)
 
   if (isBrokerOnly_) {
-    const forbidden = ["status", "reviewed_by", "reviewed_at", "supplied_by", "supply_date", "broker_id"]
+    const forbidden = ["status", "reviewed_by", "reviewed_at", "supplied_by", "supply_date"]
+    if (action !== "insert") forbidden.push("broker_id")
     for (const f of forbidden) {
-      if (f in data) return `Brokers cannot set ${f}`
+      delete data[f]
     }
+    const companyPrice = data.company_price as number | null
+    const ratePerBag = data.rate_per_bag as number
+    if (companyPrice == null || companyPrice === 0 || (ratePerBag && ratePerBag !== companyPrice)) {
+      data.status = "awaiting_review"
+    } else {
+      data.status = "pending"
+    }
+    return null
   }
 
   if (isATC) {
@@ -228,7 +238,7 @@ export async function POST(req: NextRequest) {
           return buildError(brokerScopeError, 403)
         }
         if (sa.table === "new_bookings" && (sa.action === "update" || sa.action === "insert")) {
-          const bookingAuthError = enforceBookingAuthorization(sa.data, auth)
+          const bookingAuthError = enforceBookingAuthorization(sa.data, auth, sa.action)
           if (bookingAuthError) {
             return buildError(bookingAuthError, 403)
           }
@@ -446,7 +456,7 @@ export async function POST(req: NextRequest) {
     }
 
     if (table === "new_bookings" && (action === "update" || action === "insert")) {
-      const bookingAuthError = enforceBookingAuthorization(data, auth)
+      const bookingAuthError = enforceBookingAuthorization(data, auth, action)
       if (bookingAuthError) {
         return buildError(bookingAuthError, 403)
       }
