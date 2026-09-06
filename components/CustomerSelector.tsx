@@ -77,6 +77,22 @@ export default function CustomerSelector({ onSelect, allowUnsavedNew, initialVal
     loadCustomers()
   }, [isOnline])
 
+  useEffect(() => {
+    if (!initialValue) {
+      if (selected) setSelected(null)
+      return
+    }
+    if (customers.length === 0) return
+    const match = customers.find(c => c.full_name === initialValue)
+    if (match) {
+      if (!selected || selected.customer_id !== match.customer_id) setSelected(match)
+    }
+  }, [initialValue, customers])
+
+  useEffect(() => {
+    if (initialValue !== undefined) setSearch(initialValue)
+  }, [initialValue])
+
   const filtered = customers.filter(c => (c.full_name || "").toLowerCase().includes((search || "").toLowerCase()))
 
   function handleSelect(customer: Customer) {
@@ -132,9 +148,11 @@ export default function CustomerSelector({ onSelect, allowUnsavedNew, initialVal
         await cacheCustomers(allCustomers)
       }
 
-      const createdCustomer = data?.[0]
+      const createdCustomer =
+        data?.[0] ??
+        allCustomers?.find(customer => customer.customer_id === customerId)
       if (!createdCustomer) {
-        setMessage("Customer created but could not be loaded")
+        setMessage("Customer created. Refresh to select it.")
         return
       }
       handleSelect(createdCustomer)

@@ -40,12 +40,14 @@ export default function NewBookingModal({ isOpen, onClose, brokerId, isMobile, c
   const areaProducts = area ? Object.keys(companyPriceMap[area] || {}).sort() : []
   const editInitDoneRef = useRef(false)
   const editCleanupDoneRef = useRef(false)
+  const editOriginalRef = useRef<{ area: string; product: string } | null>(null)
 
   useEffect(() => {
     if (!isOpen) return
     if (editBooking) {
       editInitDoneRef.current = true
       editCleanupDoneRef.current = true
+      editOriginalRef.current = { area: editBooking.area, product: editBooking.product }
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setSelectedCustomer(editBooking.customer_id ? { customer_id: editBooking.customer_id, full_name: editBooking.customer_name || "", phone_number: "" } : null)
       setArea(editBooking.area)
@@ -59,6 +61,7 @@ export default function NewBookingModal({ isOpen, onClose, brokerId, isMobile, c
       setCompanyPrice(editBooking.company_price || 0)
       setMessage("")
     } else {
+      editOriginalRef.current = null
       setSelectedCustomer(null)
       setArea("")
       setProduct("")
@@ -87,19 +90,23 @@ export default function NewBookingModal({ isOpen, onClose, brokerId, isMobile, c
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setCompanyPrice(0); return
     }
-    // Skip on initial edit mount — snapshot already set in init effect
-    if (editInitDoneRef.current) { editInitDoneRef.current = false; return }
-    // Also skip if the area/product combo matches the edit booking's original combo
-    if (editBooking && area === editBooking.area && product === editBooking.product) {
-      // Keep the persisted snapshot from init effect; don't overwrite from map
+    // If user returned to original area/product combo, restore persisted snapshot
+    if (editOriginalRef.current && area === editOriginalRef.current.area && product === editOriginalRef.current.product) {
+      if (editInitDoneRef.current) editInitDoneRef.current = false
+      setCompanyPrice(editBooking?.company_price || 0)
+      if (editBooking?.rate_per_bag && (editBooking.company_price ?? 0) > 0) {
+        setRatePerBag(formatAmount(editBooking.rate_per_bag.toString()))
+      }
       return
     }
+    // Skip on initial edit mount — snapshot already set in init effect
+    if (editInitDoneRef.current) { editInitDoneRef.current = false; return }
     const cp = companyPriceMap[area]?.[product] ?? 0
     setCompanyPrice(cp)
     if (!soldAtDifferentPrice && cp > 0) {
       setRatePerBag(formatAmount(cp.toString()))
     }
-  }, [area, product, companyPriceMap, soldAtDifferentPrice])
+  }, [area, product, companyPriceMap, soldAtDifferentPrice, editBooking])
 
   const bags = parseInt(numberOfBags.replace(/[^0-9]/g, "")) || 0
   const rate = parseAmount(ratePerBag)
@@ -114,6 +121,10 @@ export default function NewBookingModal({ isOpen, onClose, brokerId, isMobile, c
     setSalePrice("")
     setPriceReason("")
     setMessage("")
+    // Clear original tracker so change-back triggers restoration, not stale snapshot
+    if (editOriginalRef.current && val !== editOriginalRef.current.area) {
+      editOriginalRef.current = null
+    }
   }
 
   function handleToggleDifferentPrice(checked: boolean) {

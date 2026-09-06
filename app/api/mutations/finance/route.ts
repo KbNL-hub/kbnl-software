@@ -85,27 +85,44 @@ function isBrokerOnly(roles: string[]) {
     !roles.some(r => ["Admin", "SuperAdmin", "DeskOfficer", "Supervisor", "CreditManager", "StoreOfficer", "StoreSupervisor"].includes(r))
 }
 
-function enforceBrokerScope(
+function isBookingBroker(roles: string[]) {
+  return roles.includes("Broker") &&
+    !roles.some(r => ["Admin", "SuperAdmin"].includes(r))
+}
+
+async function enforceBrokerScope(
   table: string,
   action: string,
   filters: Record<string, unknown> | undefined,
   data: Record<string, unknown> | undefined,
   auth: { userId: string; roles: string[] },
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  supabaseClient?: any,
 ) {
-  if (!isBrokerOnly(auth.roles)) return null
-
   if (table === "new_bookings") {
+    if (!isBookingBroker(auth.roles)) return null
+    if (action === "upsert") return "Brokers cannot upsert bookings"
     if (action === "insert") {
       if (data) data.broker_id = auth.userId
       return null
     }
     if (action !== "update" && action !== "delete") return null
-    if (filters?.broker_id !== auth.userId) {
+    const bookingId = filters?.id as string | undefined
+    if (!bookingId) return `Access denied for ${action} on ${table}`
+    if (!supabaseClient) return `Access denied for ${action} on ${table}`
+    const { data: row, error } = await supabaseClient
+      .from("new_bookings")
+      .select("broker_id")
+      .eq("id", bookingId)
+      .single()
+    if (error || !row || (row as Record<string, unknown>).broker_id !== auth.userId) {
       return `Access denied for ${action} on ${table}`
     }
+    if (filters) filters.broker_id = auth.userId
     return null
   }
 
+  if (!isBrokerOnly(auth.roles)) return null
   if (table !== "store_sales" && table !== "customer_charts") return null
   if (action !== "update" && action !== "delete") return null
   if (filters?.broker_id !== auth.userId) {
@@ -121,11 +138,13 @@ function enforceBookingAuthorization(
 ) {
   if (!data) return null
   const isAdmin = auth.roles.some(r => ["Admin", "SuperAdmin"].includes(r))
-  const isATC = auth.roles.includes("ATCOfficer") && !isAdmin
-  const isBrokerOnly_ = isBrokerOnly(auth.roles)
+  const hasATC = auth.roles.includes("ATCOfficer") && !isAdmin
+  const hasBroker = isBookingBroker(auth.roles)
+  const isATCOnly = hasATC && !hasBroker
+  const isBrokerATC = hasATC && hasBroker
 
-  // Handle ATC officers first — they take priority over broker checks
-  if (isATC) {
+  // ATC-only officers (not brokers): restrict to supply fields for updates
+  if (isATCOnly && action !== "insert") {
     if ("status" in data && data.status !== "supplied") {
       return "ATC Officers can only mark bookings as supplied"
     }
@@ -136,18 +155,26 @@ function enforceBookingAuthorization(
     return null
   }
 
-  if (isBrokerOnly_) {
-    const forbidden = ["status", "reviewed_by", "reviewed_at", "supplied_by", "supply_date"]
+  // Brokers (with or without ATC role): apply broker rules
+  if (hasBroker) {
+    if (action === "upsert") return "Brokers cannot upsert bookings"
+    const isSupplyOp = isBrokerATC && data.status === "supplied"
+    const forbidden = ["reviewed_by", "reviewed_at"]
     if (action !== "insert") forbidden.push("broker_id")
+    if (!isSupplyOp) {
+      forbidden.push("status", "supplied_by", "supply_date")
+    }
     for (const f of forbidden) {
       delete data[f]
     }
-    const companyPrice = data.company_price as number | null
-    const ratePerBag = data.rate_per_bag as number
-    if (companyPrice == null || companyPrice === 0 || (ratePerBag && ratePerBag !== companyPrice)) {
-      data.status = "awaiting_review"
-    } else {
-      data.status = "pending"
+    if (!isSupplyOp) {
+      const companyPrice = data.company_price as number | null
+      const ratePerBag = data.rate_per_bag as number
+      if (companyPrice == null || companyPrice === 0 || (ratePerBag && ratePerBag !== companyPrice)) {
+        data.status = "awaiting_review"
+      } else {
+        data.status = "pending"
+      }
     }
     return null
   }
@@ -235,7 +262,7 @@ export async function POST(req: NextRequest) {
         if (sa.table === "customer_charts" && sa.action !== "insert" && !auth.roles.some(r => ["Admin", "SuperAdmin"].includes(r))) {
           return buildError("Only admins can modify or delete chart records", 403)
         }
-        const brokerScopeError = enforceBrokerScope(sa.table, sa.action, sa.filters, sa.data, auth)
+        const brokerScopeError = await enforceBrokerScope(sa.table, sa.action, sa.filters, sa.data, auth, supabaseAdmin)
         if (brokerScopeError) {
           return buildError(brokerScopeError, 403)
         }
@@ -452,7 +479,7 @@ export async function POST(req: NextRequest) {
       return buildError("Only admins can modify or delete chart records", 403)
     }
 
-    const brokerScopeError = enforceBrokerScope(table, action, filters, data, auth)
+    const brokerScopeError = await enforceBrokerScope(table, action, filters, data, auth, supabaseAdmin)
     if (brokerScopeError) {
       return buildError(brokerScopeError, 403)
     }
