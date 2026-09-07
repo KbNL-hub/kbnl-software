@@ -333,7 +333,7 @@ export default function BrokerConfirmModal({ isOpen, onClose, brokerId, isMobile
           subActions.push({
             action: "upsert",
             table: "price_adjustments",
-            conflict: "source_type,source_id",
+            conflict: "source_type,source_id,product",
             data: {
               source_type: "stop",
               source_id: stop.stop_id,
