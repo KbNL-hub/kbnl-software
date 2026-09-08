@@ -19,6 +19,8 @@ type DriverSummary = {
   driver_name: string
   trips_count: number
   stops_count: number
+  factory_bags: number
+  store_bags: number
   total_bags: number
   avg_bags_per_trip: number
 }
@@ -320,6 +322,16 @@ export default function Reports() {
   }
 
   // ── Driver reports ───────────────────────────────────────────────────────
+  const PLANT_LOADING_POINTS = ["HBM Mfamosing", "HBM Uyo Warehouse"]
+  const IGNORED_LOADING_POINTS = ["Dangote", "HBM", "BUA"]
+
+  function classifyBags(material_centre: string): "plant" | "store" | "other" {
+    const mc = material_centre || ""
+    if (PLANT_LOADING_POINTS.includes(mc)) return "plant"
+    if (IGNORED_LOADING_POINTS.includes(mc)) return "other"
+    return "store"
+  }
+
   async function fetchDriverReports() {
     const { from, to } = getRange()
 
@@ -334,14 +346,15 @@ export default function Reports() {
     const summaries: DriverSummary[] = await Promise.all(drivers.map(async (d) => {
       const { data: trips } = await supabase
         .from("Trips")
-        .select("trip_id, loaded_quantity")
+        .select("trip_id, loaded_quantity, material_centre")
         .eq("driver_id", d.driver_id)
         .gte("created_at", from)
         .lte("created_at", to)
 
       const tripIds = (trips || []).map(t => t.trip_id)
       let stops_count = 0
-      let total_bags = 0
+      let factory_bags = 0
+      let store_bags = 0
 
       if (tripIds.length > 0) {
         const { data: stops } = await supabase
@@ -350,16 +363,25 @@ export default function Reports() {
           .in("trip_id", tripIds)
 
         stops_count = (stops || []).length
-        total_bags = (stops || []).reduce((sum, s) => sum + (s.quantity_offloaded || 0), 0)
+      }
+
+      for (const t of trips || []) {
+        const kind = classifyBags(t.material_centre)
+        const qty = t.loaded_quantity || 0
+        if (kind === "plant") factory_bags += qty
+        else if (kind === "store") store_bags += qty
       }
 
       const trips_count = trips?.length ?? 0
+      const total_bags = factory_bags + store_bags
 
       return {
         driver_id: d.driver_id,
         driver_name: d.full_name,
         trips_count,
         stops_count,
+        factory_bags,
+        store_bags,
         total_bags,
         avg_bags_per_trip: trips_count > 0 ? Math.round(total_bags / trips_count) : 0,
       }
@@ -917,7 +939,9 @@ export default function Reports() {
       Driver: d.driver_name,
       Trips: d.trips_count,
       Stops: d.stops_count,
-      "Total Bags Delivered": d.total_bags,
+      "Plant Bags": d.factory_bags,
+      "Store Bags": d.store_bags,
+      "Total Bags": d.total_bags,
       "Avg Bags per Trip": d.avg_bags_per_trip,
     }))
     if (format === "csv") downloadCSV("driver_summary.csv", rows)
@@ -1327,7 +1351,9 @@ cursor: loading ? "not-allowed" : "pointer",
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, padding: "12px 0", borderTop: "1px solid #f1f5f9", borderBottom: "1px solid #f1f5f9" }}>
                           <ReportCardField label="Trips" value={driver.trips_count} />
                           <ReportCardField label="Stops" value={driver.stops_count} />
-                          <ReportCardField label="Bags" value={driver.total_bags} />
+                          <ReportCardField label="Plant" value={driver.factory_bags} />
+                          <ReportCardField label="Store" value={driver.store_bags} />
+                          <ReportCardField label="Total Bags" value={driver.total_bags} />
                           <ReportCardField label="Avg/Trip" value={driver.avg_bags_per_trip} />
                 </div>
 <button
@@ -1365,7 +1391,9 @@ cursor: loading ? "not-allowed" : "pointer",
                     { key: "driver_name", label: "Driver" },
                     { key: "trips_count", label: "Trips" },
                     { key: "stops_count", label: "Stops" },
-                    { key: "total_bags", label: "Bags Delivered" },
+                    { key: "factory_bags", label: "Plant" },
+                    { key: "store_bags", label: "Store" },
+                    { key: "total_bags", label: "Total Bags" },
                     { key: "avg_bags_per_trip", label: "Avg Bags/Trip" },
                     {
                       key: "actions",
