@@ -107,6 +107,7 @@ async function enforceBrokerScope(
       return null
     }
     if (action !== "update" && action !== "delete") return null
+    if (data?.status === "supplied" && auth.roles.includes("ATCOfficer")) return null
     const bookingId = filters?.id as string | undefined
     if (!bookingId) return `Access denied for ${action} on ${table}`
     if (!supabaseClient) return `Access denied for ${action} on ${table}`

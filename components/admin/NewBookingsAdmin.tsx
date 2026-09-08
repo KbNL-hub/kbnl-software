@@ -338,6 +338,12 @@ export default function NewBookingsAdmin() {
 
                     {/* Detail grid */}
                     <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, padding: "14px 0", borderTop: "1px solid #f1f5f9", borderBottom: "1px solid #f1f5f9", marginBottom: 12 }}>
+                      {booking.customer_phone && (
+                        <div>
+                          <p style={{ margin: "0 0 4px", color: "#94a3b8", fontSize: FONT_SIZE.xs }}>Phone</p>
+                          <p style={{ margin: 0, color: "#0f172a", fontSize: FONT_SIZE.base, fontWeight: 500 }}>{booking.customer_phone}</p>
+                        </div>
+                      )}
                       <div>
                         <p style={{ margin: "0 0 4px", color: "#94a3b8", fontSize: FONT_SIZE.xs }}>Product</p>
                         <p style={{ margin: 0, color: "#0f172a", fontSize: FONT_SIZE.base, fontWeight: 500 }}>{booking.product}</p>
@@ -463,7 +469,7 @@ export default function NewBookingsAdmin() {
               <table style={{ width: "100%", borderCollapse: "collapse", textAlign: "left", minWidth: 1100 }}>
                 <thead>
                   <tr style={{ background: "#f8fafc", borderBottom: "1px solid #e2e8f0" }}>
-                    {["Customer", "Broker", "Product", "Bags", "Rate", "Total", "Payment", "Status", "Actions"].map(h => (
+                    {["Customer", "Phone", "Broker", "Product", "Bags", "Rate", "Total", "Payment", "Status", "Actions"].map(h => (
                       <th key={h} style={{ ...thStyle, textAlign: h === "Total" || h === "Rate" ? "right" : "left" }}>{h}</th>
                     ))}
                   </tr>
@@ -474,6 +480,7 @@ export default function NewBookingsAdmin() {
                     return (
                       <tr key={booking.id} style={{ borderBottom: "1px solid #f1f5f9", transition: "background 0.2s ease" }} onMouseEnter={e => e.currentTarget.style.background = "#f8fafc"} onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
                         <td style={{ padding: "12px 16px", color: "#0f172a", fontSize: FONT_SIZE.sm, fontWeight: 500 }}>{booking.customer_name || "Unknown"}</td>
+                        <td style={{ padding: "12px 16px", color: "#64748b", fontSize: FONT_SIZE.sm }}>{booking.customer_phone || "—"}</td>
                         <td style={{ padding: "12px 16px", color: "#64748b", fontSize: FONT_SIZE.sm }}>{booking.broker_name || "—"}</td>
                         <td style={{ padding: "12px 16px", color: "#475569", fontSize: FONT_SIZE.sm }}>{booking.product}</td>
                         <td style={{ padding: "12px 16px", color: "#0f172a", fontSize: FONT_SIZE.sm, fontWeight: 600 }}>{booking.number_of_bags.toLocaleString()}</td>

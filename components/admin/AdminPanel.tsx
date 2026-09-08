@@ -175,7 +175,7 @@ function AdminPanelContent({ userProfile }: Props) {
   const [pendingDeskTrips, setPendingDeskTrips] = useState(0)
   const [pendingCreditApprovals, setPendingCreditApprovals] = useState(0)
   const [pendingBookings, setPendingBookings] = useState(0)
-  const [bookingToasts, setBookingToasts] = useState<{ id: string; customer_name: string; product: string; location: string; number_of_bags: number; total_amount: number; created_at: string }[]>([])
+  const [bookingToasts, setBookingToasts] = useState<{ id: string; customer_name: string; product: string; location: string; number_of_bags: number; total_amount: number; created_at: string; status: string }[]>([])
   const toastedBookingIdsRef = useRef<Set<string>>(new Set())
   const [lowBalanceCompanies, setLowBalanceCompanies] = useState<LowBalanceCompany[]>([])
   const [dismissedAlerts, setDismissedAlerts] = useState<Set<string>>(() => {
@@ -282,8 +282,16 @@ function AdminPanelContent({ userProfile }: Props) {
 
         if (getAccess("new-bookings").canView) {
           const { count } = await supabase
-            .from("new_bookings").select("*", { count: "exact", head: true }).eq("status", "awaiting_review")
+            .from("new_bookings").select("*", { count: "exact", head: true }).or("status.eq.awaiting_review,status.eq.pending")
           setPendingBookings(count || 0)
+
+          const { data: existingBookings } = await supabase
+            .from("new_bookings")
+            .select("id")
+            .in("status", ["awaiting_review", "pending"])
+          if (existingBookings) {
+            existingBookings.forEach(b => toastedBookingIdsRef.current.add(b.id))
+          }
         }
 
         if (canViewFuel) {
@@ -362,13 +370,13 @@ function AdminPanelContent({ userProfile }: Props) {
         }
         if (getAccess("new-bookings").canView) {
           const { count } = await supabase
-            .from("new_bookings").select("*", { count: "exact", head: true }).eq("status", "awaiting_review")
+            .from("new_bookings").select("*", { count: "exact", head: true }).or("status.eq.awaiting_review,status.eq.pending")
           setPendingBookings(count || 0)
 
           const { data } = await supabase
             .from("new_bookings")
-            .select("id, customer_name, product, location, number_of_bags, total_amount, created_at")
-            .eq("status", "awaiting_review")
+            .select("id, customer_name, product, location, number_of_bags, total_amount, created_at, status")
+            .in("status", ["awaiting_review", "pending"])
             .order("created_at", { ascending: false })
             .limit(20)
           if (data && data.length > 0) {
@@ -377,7 +385,7 @@ function AdminPanelContent({ userProfile }: Props) {
               const fresh = data.filter(b => !existing.has(b.id) && !toastedBookingIdsRef.current.has(b.id))
               if (fresh.length > 0) {
                 fresh.forEach(b => toastedBookingIdsRef.current.add(b.id))
-                return [...fresh, ...prev]
+                return [...fresh, ...prev].slice(0, 5)
               }
               return prev
             })
@@ -545,7 +553,7 @@ function AdminPanelContent({ userProfile }: Props) {
       item.key === "desk-expenses" && unpostedExpenses > 0 ? { count: unpostedExpenses, color: "#f5a623" } :
       item.key === "trips" && pendingDeskTrips > 0 ? { count: pendingDeskTrips, color: "#f5a623" } :
       item.key === "credit-approvals" && pendingCreditApprovals > 0 ? { count: pendingCreditApprovals, color: "#f5a623" } :
-      item.key === "new-bookings" && pendingBookings > 0 ? { count: pendingBookings, color: "#0070f3" } :
+      item.key === "new-bookings" && pendingBookings > 0 ? { count: pendingBookings, color: "#f5a623" } :
       null
 
     return (
@@ -1050,7 +1058,7 @@ function AdminPanelContent({ userProfile }: Props) {
                 <Icon icon="mdi:book-plus" width={20} color="#0070f3" />
               </div>
               <div style={{ flex: 1, minWidth: 0 }}>
-                <p style={{ margin: "0 0 3px 0", fontSize: 13, fontWeight: 700, color: "#0070f3" }}>New Booking — Awaiting Review</p>
+                <p style={{ margin: "0 0 3px 0", fontSize: 13, fontWeight: 700, color: "#0070f3" }}>New Booking — {toast.status === "pending" ? "Pending" : "Awaiting Review"}</p>
                 <p style={{ margin: "0 0 2px 0", fontSize: 14, fontWeight: 600, color: "#171717", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
                   {toast.customer_name} <span style={{ color: "#94a3b8", fontWeight: 400 }}>•</span> {toast.product}
                 </p>

@@ -9,7 +9,7 @@ export const FONT_SIZE = {
   "3xl": 28,
 } as const
 
-export const BANKS = ["First Bank", "Access Bank", "Stanbic IBTC", "Sterling Bank", "GTB"]
+export const BANKS = ["First Bank", "Access Bank", "Stanbic IBTC", "Sterling Bank", "GTB", "UBA", "Zenith Bank"]
 
 export const STORAGE_BUCKET = "profile-pictures"
 export const MAX_FILE_SIZE = 1 * 1024 * 1024

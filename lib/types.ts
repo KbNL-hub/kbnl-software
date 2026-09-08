@@ -122,6 +122,7 @@ export interface NewBooking {
   broker_id: string
   customer_id: string | null
   customer_name: string | null
+  customer_phone: string | null
   area: string
   product: string
   location: string

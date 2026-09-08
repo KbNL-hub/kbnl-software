@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from "react"
 import { Icon } from "@iconify/react"
+import { supabase } from "@/lib/supabase"
 import { apiMutate } from "@/lib/api-mutation"
 import { formatAmount, parseAmount } from "@/lib/formatAmount"
 import ModernInput from "@/components/ModernInput"
@@ -36,6 +37,7 @@ export default function NewBookingModal({ isOpen, onClose, brokerId, isMobile, c
   const [paymentDate, setPaymentDate] = useState("")
   const [message, setMessage] = useState("")
   const [submitting, setSubmitting] = useState(false)
+  const [customerPhone, setCustomerPhone] = useState("")
 
   const areaProducts = area ? Object.keys(companyPriceMap[area] || {}).sort() : []
   const editInitDoneRef = useRef(false)
@@ -49,7 +51,7 @@ export default function NewBookingModal({ isOpen, onClose, brokerId, isMobile, c
       editCleanupDoneRef.current = true
       editOriginalRef.current = { area: editBooking.area, product: editBooking.product }
       // eslint-disable-next-line react-hooks/set-state-in-effect
-      setSelectedCustomer(editBooking.customer_id ? { customer_id: editBooking.customer_id, full_name: editBooking.customer_name || "", phone_number: "" } : null)
+      setSelectedCustomer(editBooking.customer_id ? { customer_id: editBooking.customer_id, full_name: editBooking.customer_name || "", phone_number: editBooking.customer_phone || "" } : null)
       setArea(editBooking.area)
       setProduct(editBooking.product)
       setLocation(editBooking.location)
@@ -76,6 +78,17 @@ export default function NewBookingModal({ isOpen, onClose, brokerId, isMobile, c
       setMessage("")
     }
   }, [isOpen, editBooking])
+
+  // eslint-disable-next-line react-hooks/set-state-in-effect
+  useEffect(() => {
+    if (editBooking) {
+      setCustomerPhone(editBooking.customer_phone || "")
+    } else if (selectedCustomer) {
+      setCustomerPhone(selectedCustomer.phone_number || "")
+    } else {
+      setCustomerPhone("")
+    }
+  }, [selectedCustomer, editBooking])
 
   useEffect(() => {
     if (editCleanupDoneRef.current) { editCleanupDoneRef.current = false; return }
@@ -169,6 +182,7 @@ export default function NewBookingModal({ isOpen, onClose, brokerId, isMobile, c
 
   async function handleSubmit() {
     if (!selectedCustomer) { setMessage("Select a customer"); return }
+    if (!customerPhone.trim()) { setMessage("Enter customer phone number"); return }
     if (!area) { setMessage("Select an area"); return }
     if (!product) { setMessage("Select a product"); return }
     if (!location.trim()) { setMessage("Enter a location"); return }
@@ -184,6 +198,7 @@ export default function NewBookingModal({ isOpen, onClose, brokerId, isMobile, c
         broker_id: brokerId,
         customer_id: selectedCustomer?.customer_id || null,
         customer_name: selectedCustomer?.full_name || null,
+        customer_phone: customerPhone.trim(),
         area,
         product,
         location: location.trim(),
@@ -210,6 +225,19 @@ export default function NewBookingModal({ isOpen, onClose, brokerId, isMobile, c
           data: bookingData,
         })
         if (error) { setMessage("Failed to create booking. Try again."); return }
+      }
+
+      if (selectedCustomer?.customer_id && !selectedCustomer.phone_number && customerPhone.trim()) {
+        const { error: phoneError } = await supabase
+          .from("Customers")
+          .update({ phone_number: customerPhone.trim() })
+          .eq("customer_id", selectedCustomer.customer_id)
+        if (phoneError) {
+          setMessage("Booking saved but customer phone could not be updated.")
+          setSubmitting(false)
+          onSaved()
+          return
+        }
       }
 
       onSaved()
@@ -259,6 +287,18 @@ export default function NewBookingModal({ isOpen, onClose, brokerId, isMobile, c
         <div style={{ marginBottom: 16 }}>
           <label style={labelStyle}>Customer *</label>
           <CustomerSelector onSelect={setSelectedCustomer} initialValue={selectedCustomer?.full_name || ""} />
+        </div>
+
+        <div style={{ marginBottom: 16 }}>
+          <label style={labelStyle}>Customer Phone *</label>
+          <ModernInput
+            type="tel"
+            placeholder="Enter customer phone number"
+            value={customerPhone}
+            onChange={e => { setCustomerPhone(e.target.value); setMessage("") }}
+            style={{ ...inputStyle, opacity: selectedCustomer?.phone_number ? 0.7 : 1 }}
+            readOnly={!!selectedCustomer?.phone_number}
+          />
         </div>
 
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 16 }}>

@@ -77,9 +77,11 @@ export default function CustomerSelector({ onSelect, allowUnsavedNew, initialVal
     loadCustomers()
   }, [isOnline])
 
+  /* eslint-disable react-hooks/set-state-in-effect, react-hooks/exhaustive-deps */
   useEffect(() => {
     if (!initialValue) {
-      if (selected) setSelected(null)
+      setSelected(null)
+      setSearch("")
       return
     }
     if (customers.length === 0) return
@@ -87,11 +89,9 @@ export default function CustomerSelector({ onSelect, allowUnsavedNew, initialVal
     if (match) {
       if (!selected || selected.customer_id !== match.customer_id) setSelected(match)
     }
+    setSearch(initialValue)
   }, [initialValue, customers])
-
-  useEffect(() => {
-    if (initialValue !== undefined) setSearch(initialValue)
-  }, [initialValue])
+  /* eslint-enable react-hooks/set-state-in-effect, react-hooks/exhaustive-deps */
 
   const filtered = customers.filter(c => (c.full_name || "").toLowerCase().includes((search || "").toLowerCase()))
 

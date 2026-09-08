@@ -32,6 +32,7 @@ type TripPaymentRow = {
   value: number | null
   sc_rate: number | null
   location_id: string | null
+  actual_location: string | null
   payment_expected: number | null
   created_at: string
   updated_at: string
@@ -154,6 +155,14 @@ export default function TripPayment() {
 
   // Trip details modal
   const [selectedTrip, setSelectedTrip] = useState<TripDetail | null>(null)
+
+  // Trip type correction: payment row id -> newly selected type
+  const [correctedTripTypes, setCorrectedTripTypes] = useState<Record<string, Tab>>({})
+  const [tripTypeSavingIds, setTripTypeSavingIds] = useState<Set<string>>(new Set())
+
+  // Actual location: payment row id -> text value
+  const [actualLocationDrafts, setActualLocationDrafts] = useState<Record<string, string>>({})
+  const [actualLocationSavingIds, setActualLocationSavingIds] = useState<Set<string>>(new Set())
 
   // SC price modal
   const [scPriceId, setScPriceId] = useState<string | null>(null)
@@ -320,7 +329,7 @@ export default function TripPayment() {
   const { page, setPage, totalPages, paginatedItems, totalItems } = usePagination(filtered)
 
   function switchTab(next: Tab) {
-    setTab(next); setSearch(""); setPage(0); setMddEdits({}); setNotice(null)
+    setTab(next); setSearch(""); setPage(0); setMddEdits({}); setCorrectedTripTypes({}); setActualLocationDrafts({}); setNotice(null)
   }
 
   function handleSelectLocation(paymentId: string, locationId: string) {
@@ -364,6 +373,110 @@ export default function TripPayment() {
     })
     await fetchData()
     setNotice({ type: "success", text: `Payment expected updated for ${row.plate_number}` })
+  }
+
+  function handleSelectCorrectedTripType(paymentId: string, newType: Tab) {
+    setCorrectedTripTypes(prev => {
+      const next = { ...prev }
+      next[paymentId] = newType
+      return next
+    })
+    setNotice(null)
+  }
+
+  async function handleCorrectTripType(row: TripPaymentRow) {
+    if (!canEdit || tripTypeSavingIds.has(row.id)) return
+    const newType = correctedTripTypes[row.id]
+    if (!newType || newType === row.trip_type) return
+
+    setTripTypeSavingIds(prev => new Set(prev).add(row.id))
+    setNotice(null)
+
+    const tripPaymentUpdate: Record<string, unknown> = {
+      trip_type: newType,
+      updated_at: new Date().toISOString(),
+    }
+
+    if (row.trip_type === "SC" && newType === "MDD") {
+      tripPaymentUpdate.value = null
+      tripPaymentUpdate.sc_rate = null
+      tripPaymentUpdate.location_id = null
+      tripPaymentUpdate.payment_expected = null
+    } else if (row.trip_type === "MDD" && newType === "SC") {
+      let scRate = 600
+      const { data: scPriceData } = await supabase.from("sc_prices").select("rate_per_bag").limit(1).single()
+      if (scPriceData?.rate_per_bag) scRate = Number(scPriceData.rate_per_bag)
+      tripPaymentUpdate.value = scRate * row.quantity_loaded
+      tripPaymentUpdate.sc_rate = scRate
+      tripPaymentUpdate.location_id = null
+      tripPaymentUpdate.payment_expected = null
+      tripPaymentUpdate.actual_location = null
+    }
+
+    const [tripResult, paymentResult] = await Promise.all([
+      apiMutate("admin", {
+        action: "update", table: "Trips",
+        data: { trip_type: newType, updated_at: new Date().toISOString() },
+        filters: { trip_id: row.trip_id },
+      }),
+      apiMutate("admin", {
+        action: "update", table: "trip_payments",
+        data: tripPaymentUpdate,
+        filters: { id: row.id },
+      }),
+    ])
+
+    setTripTypeSavingIds(prev => {
+      const next = new Set(prev)
+      next.delete(row.id)
+      return next
+    })
+
+    const error = tripResult.error || paymentResult.error
+    if (error) return setNotice({ type: "error", text: `Failed to correct trip type: ${error}` })
+
+    setCorrectedTripTypes(prev => {
+      const next = { ...prev }
+      delete next[row.id]
+      return next
+    })
+    await fetchData()
+    setNotice({ type: "success", text: `Trip type corrected to ${newType} for ${row.plate_number}` })
+  }
+
+  function handleActualLocationDraftChange(paymentId: string, value: string) {
+    setActualLocationDrafts(prev => ({ ...prev, [paymentId]: value }))
+    setNotice(null)
+  }
+
+  async function handleSaveActualLocation(row: TripPaymentRow) {
+    if (!canEdit || actualLocationSavingIds.has(row.id)) return
+    const draft = actualLocationDrafts[row.id]
+    if (draft === undefined || draft === (row.actual_location ?? "")) return
+
+    setActualLocationSavingIds(prev => new Set(prev).add(row.id))
+    setNotice(null)
+
+    const { error } = await apiMutate("admin", {
+      action: "update", table: "trip_payments",
+      data: { actual_location: draft || null, updated_at: new Date().toISOString() },
+      filters: { id: row.id },
+    })
+
+    setActualLocationSavingIds(prev => {
+      const next = new Set(prev)
+      next.delete(row.id)
+      return next
+    })
+
+    if (error) return setNotice({ type: "error", text: `Failed to save actual location: ${error}` })
+    setActualLocationDrafts(prev => {
+      const next = { ...prev }
+      delete next[row.id]
+      return next
+    })
+    await fetchData()
+    setNotice({ type: "success", text: `Actual location saved for ${row.plate_number}` })
   }
 
   function previewExpected(row: TripPaymentRow): number | null {
@@ -614,6 +727,37 @@ export default function TripPayment() {
                       </div>
                     </div>
 
+                    {/* Trip Type Correction (ATC only) */}
+                    {canEdit && (
+                      <div style={{ marginBottom: 12 }}>
+                        <p style={{ margin: "0 0 6px", fontSize: FONT_SIZE.xs, color: "#94a3b8", fontWeight: 500 }}>Correct Trip Type</p>
+                        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                          <select
+                            className="tp-focus"
+                            value={correctedTripTypes[row.id] ?? row.trip_type}
+                            onChange={e => handleSelectCorrectedTripType(row.id, e.target.value as Tab)}
+                            style={{ ...selectStyle, minWidth: 0, flex: 1 }}
+                          >
+                            <option value="SC">SC</option>
+                            <option value="MDD">MDD</option>
+                          </select>
+                          {correctedTripTypes[row.id] && correctedTripTypes[row.id] !== row.trip_type && (
+                            <button
+                              onClick={() => handleCorrectTripType(row)}
+                              disabled={tripTypeSavingIds.has(row.id)}
+                              className="btn-hover-opacity-8"
+                              style={{ padding: "8px 12px", borderRadius: 8, border: "none", background: tripTypeSavingIds.has(row.id) ? "#93c5fd" : "#f59e0b", color: "white", cursor: tripTypeSavingIds.has(row.id) ? "not-allowed" : "pointer", fontWeight: 700, fontSize: FONT_SIZE.xs, whiteSpace: "nowrap", display: "flex", alignItems: "center", gap: 4 }}
+                            >
+                              {tripTypeSavingIds.has(row.id)
+                                ? <Icon icon="mdi:loading" width={13} className="tp-spin" />
+                                : <Icon icon="mdi:swap-horizontal" width={13} />}
+                              Save Type
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    )}
+
                     {tab === "SC" ? (
                       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: 8, padding: "10px 12px", marginBottom: 14 }}>
                         <span style={{ fontSize: FONT_SIZE.xs, color: "#16a34a", fontWeight: 600 }}>Value</span>
@@ -669,6 +813,36 @@ export default function TripPayment() {
                       </>
                     )}
 
+                    {/* Actual Location (ATC only, MDD tab) */}
+                    {canEdit && tab === "MDD" && (
+                      <div style={{ marginBottom: 12 }}>
+                        <p style={{ margin: "0 0 6px", fontSize: FONT_SIZE.xs, color: "#94a3b8", fontWeight: 500 }}>Actual Location</p>
+                        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                          <input
+                            type="text"
+                            className="tp-focus"
+                            placeholder="Enter actual location delivered to…"
+                            value={actualLocationDrafts[row.id] ?? row.actual_location ?? ""}
+                            onChange={e => handleActualLocationDraftChange(row.id, e.target.value)}
+                            style={{ ...selectStyle, minWidth: 0, flex: 1 }}
+                          />
+                          {actualLocationDrafts[row.id] !== undefined && actualLocationDrafts[row.id] !== (row.actual_location ?? "") && (
+                            <button
+                              onClick={() => handleSaveActualLocation(row)}
+                              disabled={actualLocationSavingIds.has(row.id)}
+                              className="btn-hover-opacity-8"
+                              style={{ padding: "8px 12px", borderRadius: 8, border: "none", background: actualLocationSavingIds.has(row.id) ? "#93c5fd" : "#10b981", color: "white", cursor: actualLocationSavingIds.has(row.id) ? "not-allowed" : "pointer", fontWeight: 700, fontSize: FONT_SIZE.xs, whiteSpace: "nowrap", display: "flex", alignItems: "center", gap: 4 }}
+                            >
+                              {actualLocationSavingIds.has(row.id)
+                                ? <Icon icon="mdi:loading" width={13} className="tp-spin" />
+                                : <Icon icon="mdi:check" width={13} />}
+                              Save
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    )}
+
                     <div style={{ borderTop: "1px solid #f1f5f9", paddingTop: 10 }}>
                       <span style={{ fontSize: FONT_SIZE.xs, color: "#94a3b8" }}>{formatDateTime(row.created_at)}</span>
                     </div>
@@ -681,13 +855,14 @@ export default function TripPayment() {
           {/* Table View */}
           {viewMode === "table" && (
           <div style={{ overflowX: "auto", background: "white", border: "1px solid #e2e8f0", borderRadius: 12, boxShadow: "0 1px 3px rgba(0,0,0,0.05)" }}>
-            <table style={{ width: "100%", borderCollapse: "collapse", minWidth: tab === "MDD" ? 900 : 780 }}>
+            <table style={{ width: "100%", borderCollapse: "collapse", minWidth: tab === "MDD" ? 1100 : 980 }}>
               <thead>
                 <tr style={{ background: "#f8fafc", borderBottom: "1px solid #e2e8f0" }}>
                   <th style={thStyle}>Truck</th>
                   <th style={thStyle}>ATC / Order</th>
                   <th style={{ ...thStyle, textAlign: "right" as const }}>Tonnage</th>
                   <th style={{ ...thStyle, textAlign: "right" as const }}>{tab === "SC" ? "Quantity Loaded" : "No. of Bags"}</th>
+                  {canEdit && <th style={thStyle}>Correct Type</th>}
                   {tab === "SC" ? (
                     <th style={{ ...thStyle, textAlign: "right" as const }}>Value</th>
                   ) : (
@@ -696,6 +871,7 @@ export default function TripPayment() {
                       <th style={{ ...thStyle, textAlign: "right" as const }}>Payment Expected</th>
                     </>
                   )}
+                  {canEdit && tab === "MDD" && <th style={thStyle}>Actual Location</th>}
                   <th style={thStyle}>Date</th>
                   <th style={thStyle}>Status</th>
                 </tr>
@@ -730,6 +906,34 @@ export default function TripPayment() {
                       </td>
                       <td style={tdRight}>{row.tonnage != null && row.tonnage > 0 ? `${Number(row.tonnage).toLocaleString()} T` : "—"}</td>
                       <td style={tdRight}>{`${row.quantity_loaded.toLocaleString()} bags`}</td>
+                      {canEdit && (
+                        <td style={tdStyle}>
+                          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                            <select
+                              className="tp-focus"
+                              value={correctedTripTypes[row.id] ?? row.trip_type}
+                              onChange={e => handleSelectCorrectedTripType(row.id, e.target.value as Tab)}
+                              style={{ ...selectStyle, minWidth: 70 }}
+                            >
+                              <option value="SC">SC</option>
+                              <option value="MDD">MDD</option>
+                            </select>
+                            {correctedTripTypes[row.id] && correctedTripTypes[row.id] !== row.trip_type && (
+                              <button
+                                onClick={() => handleCorrectTripType(row)}
+                                disabled={tripTypeSavingIds.has(row.id)}
+                                aria-label={`Correct trip type for ${row.plate_number}`}
+                                className="btn-hover-opacity-8"
+                                style={{ padding: "7px 10px", borderRadius: 8, border: "none", background: tripTypeSavingIds.has(row.id) ? "#93c5fd" : "#f59e0b", color: "white", cursor: tripTypeSavingIds.has(row.id) ? "not-allowed" : "pointer", fontWeight: 700, fontSize: FONT_SIZE.xs, whiteSpace: "nowrap", display: "inline-flex", alignItems: "center", gap: 4 }}
+                              >
+                                {tripTypeSavingIds.has(row.id)
+                                  ? <Icon icon="mdi:loading" width={13} className="tp-spin" />
+                                  : <Icon icon="mdi:swap-horizontal" width={13} />}
+                              </button>
+                            )}
+                          </div>
+                        </td>
+                      )}
                       {tab === "SC" ? (
                         <td style={tdRight}>{formatMoney(row.value)}</td>
                       ) : (
@@ -783,6 +987,33 @@ export default function TripPayment() {
                           </td>
                         </>
                       )}
+                      {canEdit && tab === "MDD" && (
+                        <td style={tdStyle}>
+                          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                            <input
+                              type="text"
+                              className="tp-focus"
+                              placeholder="Actual location…"
+                              value={actualLocationDrafts[row.id] ?? row.actual_location ?? ""}
+                              onChange={e => handleActualLocationDraftChange(row.id, e.target.value)}
+                              style={{ ...selectStyle, minWidth: 120 }}
+                            />
+                            {actualLocationDrafts[row.id] !== undefined && actualLocationDrafts[row.id] !== (row.actual_location ?? "") && (
+                              <button
+                                onClick={() => handleSaveActualLocation(row)}
+                                disabled={actualLocationSavingIds.has(row.id)}
+                                aria-label={`Save actual location for ${row.plate_number}`}
+                                className="btn-hover-opacity-8"
+                                style={{ padding: "7px 10px", borderRadius: 8, border: "none", background: actualLocationSavingIds.has(row.id) ? "#93c5fd" : "#10b981", color: "white", cursor: actualLocationSavingIds.has(row.id) ? "not-allowed" : "pointer", fontWeight: 700, fontSize: FONT_SIZE.xs, whiteSpace: "nowrap", display: "inline-flex", alignItems: "center", gap: 4 }}
+                              >
+                                {actualLocationSavingIds.has(row.id)
+                                  ? <Icon icon="mdi:loading" width={13} className="tp-spin" />
+                                  : <Icon icon="mdi:check" width={13} />}
+                              </button>
+                            )}
+                          </div>
+                        </td>
+                      )}
                       <td style={{ ...tdStyle, whiteSpace: "nowrap", color: "#64748b", fontSize: FONT_SIZE.xs }}>{formatDateTime(row.created_at)}</td>
                       <td style={tdStyle}>
                         <span style={{ padding: "4px 10px", borderRadius: 999, background: s.bg, color: s.color, fontSize: FONT_SIZE.xs, fontWeight: 700, whiteSpace: "nowrap" }}>
@@ -799,6 +1030,7 @@ export default function TripPayment() {
                   <td style={tdStyle} />
                   <td style={tdStyle} />
                   <td style={{ ...tdRight, textAlign: "right" as const }}>{`${totals.bags.toLocaleString()} bags`}</td>
+                  {canEdit && <td style={tdStyle} />}
                   {tab === "SC" ? (
                     <td style={{ ...tdRight, textAlign: "right" as const }}>{formatMoney(totals.scValue)}</td>
                   ) : (
@@ -811,7 +1043,7 @@ export default function TripPayment() {
                       <td style={{ ...tdRight, textAlign: "right" as const }}>{formatMoney(totals.mddExpected)}</td>
                     </>
                   )}
-                  <td style={tdStyle} />
+                  {canEdit && tab === "MDD" && <td style={tdStyle} />}
                   <td style={tdStyle} />
                 </tr>
               </tfoot>

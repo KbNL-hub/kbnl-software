@@ -279,6 +279,7 @@ export default function NewBookings() {
                   <div style={{ padding: "0 20px 20px", borderTop: "1px solid #f1f5f9" }}>
                     {/* Detail grid */}
                     <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, padding: "14px 0", borderBottom: "1px solid #f1f5f9", marginBottom: 12 }}>
+                      {booking.customer_phone && <div><p style={{ margin: "0 0 4px", color: "#94a3b8", fontSize: FONT_SIZE.xs }}>Phone</p><p style={{ margin: 0, color: "#0f172a", fontSize: FONT_SIZE.base, fontWeight: 500 }}>{booking.customer_phone}</p></div>}
                       <div><p style={{ margin: "0 0 4px", color: "#94a3b8", fontSize: FONT_SIZE.xs }}>Area</p><p style={{ margin: 0, color: "#0f172a", fontSize: FONT_SIZE.base, fontWeight: 500 }}>{booking.area}</p></div>
                       <div><p style={{ margin: "0 0 4px", color: "#94a3b8", fontSize: FONT_SIZE.xs }}>Product</p><p style={{ margin: 0, color: "#0f172a", fontSize: FONT_SIZE.base, fontWeight: 500 }}>{booking.product}</p></div>
                       <div><p style={{ margin: "0 0 4px", color: "#94a3b8", fontSize: FONT_SIZE.xs }}>Location</p><p style={{ margin: 0, color: "#0f172a", fontSize: FONT_SIZE.base, fontWeight: 500 }}>{booking.location}</p></div>
@@ -372,6 +373,7 @@ export default function NewBookings() {
             <thead>
               <tr style={{ background: "#f8fafc", borderBottom: "1px solid #e2e8f0" }}>
                 <th style={thStyle}>Customer</th>
+                <th style={thStyle}>Phone</th>
                 <th style={thStyle}>Area / Product</th>
                 <th style={{ ...thStyle, textAlign: "right" }}>Bags</th>
                 <th style={{ ...thStyle, textAlign: "right" }}>Rate</th>
@@ -390,6 +392,7 @@ export default function NewBookings() {
                     onMouseLeave={e => e.currentTarget.style.background = "transparent"}
                   >
                     <td style={{ padding: "12px 16px", color: "#0f172a", fontSize: FONT_SIZE.sm, fontWeight: 500 }}>{booking.customer_name || "Unknown"}</td>
+                    <td style={{ padding: "12px 16px", color: "#64748b", fontSize: FONT_SIZE.sm }}>{booking.customer_phone || "—"}</td>
                     <td style={{ padding: "12px 16px", color: "#475569", fontSize: FONT_SIZE.sm }}>{booking.area} · {booking.product}</td>
                     <td style={{ padding: "12px 16px", textAlign: "right", color: "#0f172a", fontSize: FONT_SIZE.sm, fontWeight: 600 }}>{booking.number_of_bags.toLocaleString()}</td>
                     <td style={{ padding: "12px 16px", textAlign: "right", color: "#475569", fontSize: FONT_SIZE.sm }}>₦{booking.rate_per_bag.toLocaleString()}</td>

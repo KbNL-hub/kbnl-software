@@ -20,7 +20,7 @@ import { ExportActions } from "@/components/admin/ExportActions"
 const PRODUCTS = ["BUA cement", "Falcon", "3X", "Supaset", "Supafix", "Classic"]
 
 type Broker = { broker_id: string; broker_name: string }
-type Customer = { customer_id: string; full_name: string; phone_number: number | null; broker_id: string }
+type Customer = { customer_id: string; full_name: string; phone_number: string | null; broker_id: string }
 type Trip = {
   trip_id: string
   plate_number: string
@@ -146,7 +146,7 @@ export default function Chart({ userProfile }: Props) {
       .select("customer_id, full_name, phone_number")
       .in("customer_id", customerIds)
 
-    const phoneMap = new Map<string, number | null>()
+    const phoneMap = new Map<string, string | null>()
     customerRows?.forEach(c => phoneMap.set(c.customer_id, c.phone_number))
 
     const result: Customer[] = customerIds.map(id => ({
@@ -722,7 +722,7 @@ export default function Chart({ userProfile }: Props) {
                 const customer: Customer = {
                   customer_id: c.customer_id,
                   full_name: c.full_name,
-                  phone_number: c.phone_number ? Number(c.phone_number) || null : null,
+                  phone_number: c.phone_number || null,
                   broker_id: selectedBroker!.broker_id,
                 }
                 openCustomerLedger(customer)
