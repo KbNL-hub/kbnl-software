@@ -21,7 +21,9 @@ type ActiveTruck = {
   remaining: number
   driver_name: string
   driver_phone: string
+  driver_id: string | null
   trip_status: string
+  trip_type: string | null
   route_points: string[]
 }
 
@@ -70,6 +72,17 @@ const PRODUCT_BY_LOADING_POINT: Record<string, string[]> = {
   HBM: ["Supaset", "Supafix", "Classic"],
   Dangote: ["3X", "Falcon"],
   BUA:     ["BUA cement"],
+}
+
+const LOADING_POINT_MAP: Record<string, string[]> = {
+  Factory: ["HBM Mfamosing", "HBM Uyo Warehouse"],
+  Depot: ["Calabar Mini Depot", "Ikom Mini Depot", "Ogoja Depot", "Uyo Depot"],
+  Outlet: ["Brooks Outlet", "Urua Ekpa Outlet", "Urua Nyemeiko Outlet", "Reserve Store", "E1 Outlet", "Ogoja Outlet"],
+}
+
+const FACTORY_PRODUCTS: Record<string, string[]> = {
+  "HBM Mfamosing": ["Classic", "Supaset", "Supafix"],
+  "HBM Uyo Warehouse": ["Classic", "Supaset", "Supafix"],
 }
 
 
@@ -138,6 +151,7 @@ export default function MonitorTrucks({ viewOnly = false }: { viewOnly?: boolean
   const [selectedDdStopTrip, setSelectedDdStopTrip] = useState<DDTrip | null>(null)
   const [ddStopOffloaded, setDdStopOffloaded] = useState(0)
   const [ddEndConfirmTrip, setDdEndConfirmTrip] = useState<DDTrip | null>(null)
+  const [stopFormSource, setStopFormSource] = useState<"dd" | "mdd">("dd")
 
   // Discrepancy reporting
   const [showDiscModal, setShowDiscModal] = useState(false)
@@ -152,6 +166,29 @@ export default function MonitorTrucks({ viewOnly = false }: { viewOnly?: boolean
   const [discSubmitting, setDiscSubmitting] = useState(false)
   const [discSuccess, setDiscSuccess] = useState("")
   const discCloseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  // Start Trip for Driver (ATC officer on behalf of driver)
+  const [showStartTripForm, setShowStartTripForm] = useState(false)
+  const [stDriverId, setStDriverId] = useState("")
+  const [stTripType, setStTripType] = useState<"SC" | "MDD" | "">("")
+  const [stTruckSize, setStTruckSize] = useState("")
+  const [stPlateNumber, setStPlateNumber] = useState("")
+  const [stLoadingCategory, setStLoadingCategory] = useState("")
+  const [stLoadingName, setStLoadingName] = useState("")
+  const [stA, setStA] = useState("")
+  const [stOrderNo, setStOrderNo] = useState("")
+  const [stChildOrderNo, setStChildOrderNo] = useState("")
+  const [stProduct, setStProduct] = useState("")
+  const [stLoadedQty, setStLoadedQty] = useState("")
+  const [stAmountCharged, setStAmountCharged] = useState("")
+  const [stPaymentMode, setStPaymentMode] = useState("")
+  const [stSubmitting, setStSubmitting] = useState(false)
+  const [stMessage, setStMessage] = useState("")
+  const [stMessageType, setStMessageType] = useState<"success" | "error">("success")
+  const [availableDrivers, setAvailableDrivers] = useState<{ driver_id: string; full_name: string; phone_number: string | null }[]>([])
+  const [allTrucks, setAllTrucks] = useState<{ plate_number: string; kbnl_truck_no?: string; truck_size: string | null }[]>([])
+  const [allProducts, setAllProducts] = useState<string[]>([])
+  const [discDriverId, setDiscDriverId] = useState<string | null>(null)
 
   async function fetchActiveTrucks() {
     const { data: trips, error } = await supabase.rpc("get_active_mdd_trucks_remaining")
@@ -168,7 +205,7 @@ export default function MonitorTrucks({ viewOnly = false }: { viewOnly?: boolean
       return
     }
 
-    const enriched = trips.map((trip: { trip_id: string; plate_number: string; kbnl_truck_no: string | null; loaded_quantity: number; remaining: number; driver_name: string | null; driver_phone: string | null; trip_status: string; route_points: unknown[] }) => ({
+    const enriched = trips.map((trip: { trip_id: string; plate_number: string; kbnl_truck_no: string | null; loaded_quantity: number; remaining: number; driver_name: string | null; driver_phone: string | null; driver_id: string | null; trip_type: string | null; trip_status: string; route_points: unknown[] }) => ({
       trip_id: trip.trip_id,
       plate_number: trip.plate_number,
       kbnl_truck_no: trip.kbnl_truck_no ?? null,
@@ -176,6 +213,8 @@ export default function MonitorTrucks({ viewOnly = false }: { viewOnly?: boolean
       remaining: trip.remaining,
       driver_name: trip.driver_name ?? "Unknown",
       driver_phone: trip.driver_phone ?? "—",
+      driver_id: trip.driver_id ?? null,
+      trip_type: trip.trip_type ?? null,
       trip_status: trip.trip_status,
       route_points: trip.route_points ?? [],
     }))
@@ -338,9 +377,24 @@ export default function MonitorTrucks({ viewOnly = false }: { viewOnly?: boolean
     setDdTrips(prev => prev.map(t => t.dd_trip_id === tripId ? { ...t, trip_status: status } : t))
   }
 
-  async function openDdStopForm(trip: DDTrip) {
+  async function updateMddTripStatus(tripId: string, status: string) {
+    const { error } = await apiMutate("trips", {
+      action: "update",
+      table: "Trips",
+      data: { trip_status: status },
+      filters: { trip_id: tripId },
+    })
+
+    if (error) { alert(`Failed to update status: ${error}`); return }
+
+    setTrucks(prev => prev.map(t => t.trip_id === tripId ? { ...t, trip_status: status } : t))
+    fetchActiveTrucks()
+  }
+
+  async function openDdStopForm(trip: DDTrip, source: "dd" | "mdd" = "dd") {
     setSelectedDdStopTrip(trip)
     setDdStopOffloaded(0)
+    setStopFormSource(source)
     const { data: existing } = await supabase
       .from("Stops")
       .select("quantity_offloaded")
@@ -353,13 +407,24 @@ export default function MonitorTrucks({ viewOnly = false }: { viewOnly?: boolean
 
   async function handleDdStopLogged() {
     const tripId = selectedDdStopTrip?.dd_trip_id
+    const source = stopFormSource
     setShowDdStopForm(false)
     setSelectedDdStopTrip(null)
     setDdStopOffloaded(0)
-    const updated = await fetchDdTrips()
-    const trip = updated.find(t => t.dd_trip_id === tripId)
-    if (trip && trip.trip_status !== "Completed" && trip.remaining <= 0) {
-      setDdEndConfirmTrip(trip)
+    setStopFormSource("dd")
+
+    if (source === "mdd") {
+      await fetchActiveTrucks()
+      const trip = trucks.find(t => t.trip_id === tripId)
+      if (trip && trip.trip_status !== "Completed" && trip.remaining <= 0) {
+        setDdEndConfirmTrip({ dd_trip_id: trip.trip_id, plate_number: trip.plate_number, driver_name: trip.driver_name, driver_phone: trip.driver_phone, product: "", loading_point: "", loaded_quantity: trip.loaded_quantity, remaining: trip.remaining, atc: null, order_no: null, child_order_no: null, trip_status: trip.trip_status, route_points: trip.route_points, created_at: "" })
+      }
+    } else {
+      const updated = await fetchDdTrips()
+      const trip = updated.find(t => t.dd_trip_id === tripId)
+      if (trip && trip.trip_status !== "Completed" && trip.remaining <= 0) {
+        setDdEndConfirmTrip(trip)
+      }
     }
   }
 
@@ -413,11 +478,112 @@ export default function MonitorTrucks({ viewOnly = false }: { viewOnly?: boolean
     setDdMessage("")
   }
 
-  function openDiscModal(tripId: string, label: string, remaining: number) {
+  async function fetchStartTripData() {
+    const [driversRes, trucksRes, tricyclesRes, productsRes] = await Promise.all([
+      supabase.from("Drivers").select("driver_id, full_name, phone_number").eq("status", "Active").order("full_name"),
+      supabase.from("Trucks").select("plate_number, kbnl_truck_no, truck_size").neq("status", "Decommissioned"),
+      supabase.from("tricycles").select("tricycle_number, assigned_to"),
+      supabase.rpc("get_products"),
+    ])
+    if (driversRes.error || trucksRes.error || tricyclesRes.error || productsRes.error) {
+      stSetMsg("Failed to load form data. Please try again.", "error")
+      return
+    }
+    setAvailableDrivers(driversRes.data || [])
+    const trucks = [...(trucksRes.data || [])]
+    const tricycles = (tricyclesRes.data || []).map((t: { tricycle_number: string; assigned_to: string }) => ({
+      plate_number: t.tricycle_number, kbnl_truck_no: t.assigned_to, truck_size: "Tricycle" as const,
+    }))
+    setAllTrucks([...trucks, ...tricycles])
+    if (productsRes.data) setAllProducts(productsRes.data.map((r: { value: string }) => r.value))
+  }
+
+  function stSetMsg(msg: string, type: "success" | "error") {
+    setStMessage(msg); setStMessageType(type)
+    if (type === "success") setTimeout(() => setStMessage(""), 3000)
+  }
+
+  function resetStartTripForm() {
+    setStDriverId(""); setStTripType(""); setStTruckSize(""); setStPlateNumber("")
+    setStLoadingCategory(""); setStLoadingName(""); setStA(""); setStOrderNo("")
+    setStChildOrderNo(""); setStProduct(""); setStLoadedQty("")
+    setStAmountCharged(""); setStPaymentMode(""); setStMessage("")
+  }
+
+  const stIsDinaOrTricycle = stTruckSize === "Dina" || stTruckSize === "Tricycle"
+  const stShowHbm = stLoadingCategory === "Factory" && stLoadingName === "HBM Mfamosing" && !stIsDinaOrTricycle
+  const stShowATC = stLoadingCategory === "Factory" && !stShowHbm && !stIsDinaOrTricycle
+  const stAvailableLocations = LOADING_POINT_MAP[stLoadingCategory] || []
+  const stProductOptions = stLoadingCategory === "Factory" ? (FACTORY_PRODUCTS[stLoadingName] || []) : allProducts
+
+  async function handleStartTripOnBehalf() {
+    if (!stDriverId) return stSetMsg("Select a driver", "error")
+    if (!stTripType) return stSetMsg("Select a trip type", "error")
+    if (!stTruckSize) return stSetMsg("Select a truck size", "error")
+    if (!stPlateNumber) return stSetMsg("Select a plate number", "error")
+    if (!stLoadingCategory) return stSetMsg("Select a loading point type", "error")
+    if (!stLoadingName) return stSetMsg("Select a loading point", "error")
+    if (stShowATC && !stA.trim()) return stSetMsg("ATC number is required", "error")
+    if (stShowHbm && !stOrderNo.trim()) return stSetMsg("Order number is required", "error")
+    if (stShowHbm && !stChildOrderNo.trim()) return stSetMsg("Child order number is required", "error")
+    if (stIsDinaOrTricycle && !stAmountCharged) return stSetMsg("Enter amount charged", "error")
+    if (stIsDinaOrTricycle && !stPaymentMode) return stSetMsg("Select payment mode", "error")
+    if (!stProduct) return stSetMsg("Select a product", "error")
+    const stQty = parseInt(stLoadedQty, 10)
+    if (!stLoadedQty || isNaN(stQty) || stQty <= 0) return stSetMsg("Enter a valid number of bags", "error")
+
+    setStSubmitting(true); setStMessage("")
+
+    const { data, error } = await apiMutate("trips", {
+      action: "insert",
+      table: "Trips",
+      data: {
+        driver_id: stDriverId,
+        trip_type: stTripType,
+        plate_number: stPlateNumber.toUpperCase(),
+        product: stProduct,
+        material_centre: stLoadingName,
+        loaded_quantity: stQty,
+        ATC: stShowATC ? stA.trim() : null,
+        order_no: stShowHbm ? stOrderNo.trim() : null,
+        child_order_no: stShowHbm ? stChildOrderNo.trim() : null,
+        amount_charged: stIsDinaOrTricycle ? parseFloat(stAmountCharged) : null,
+        payment_mode: stIsDinaOrTricycle ? stPaymentMode : null,
+        trip_status: "In transit",
+      },
+    })
+
+    setStSubmitting(false)
+
+    if (error || !data || !Array.isArray(data) || data.length === 0) {
+      return stSetMsg(error || "Failed to start trip", "error")
+    }
+
+    if (stTruckSize !== "Tricycle") {
+      const { error: truckErr } = await apiMutate("trips", {
+        action: "update", table: "Trucks",
+        data: { status: "Loaded" },
+        filters: { plate_number: stPlateNumber.toUpperCase() },
+      })
+      if (truckErr) {
+        stSetMsg(`Trip recorded but truck status update failed: ${truckErr}`, "success")
+      } else {
+        stSetMsg("Trip started successfully!", "success")
+      }
+    } else {
+      stSetMsg("Trip started successfully!", "success")
+    }
+    resetStartTripForm()
+    fetchActiveTrucks()
+    setTimeout(() => setShowStartTripForm(false), 2000)
+  }
+
+  function openDiscModal(tripId: string, label: string, remaining: number, driverId?: string) {
     if (discCloseTimerRef.current) { clearTimeout(discCloseTimerRef.current); discCloseTimerRef.current = null }
     setDiscTripId(tripId)
     setDiscTripLabel(label)
     setDiscTripRemaining(remaining)
+    setDiscDriverId(driverId || null)
     setDiscType("shortage")
     setDiscShortage("")
     setDiscCaked("")
@@ -470,7 +636,7 @@ export default function MonitorTrucks({ viewOnly = false }: { viewOnly?: boolean
       table: "trip_discrepancies",
       data: {
         trip_id: discTripId,
-        driver_id: user.id,
+        driver_id: discDriverId || user.id,
         shortage: discType === 'shortage' ? shortage : 0,
         caked_bags: discType === 'caked' ? caked : 0,
         discrepancy_type: discType,
@@ -705,6 +871,21 @@ export default function MonitorTrucks({ viewOnly = false }: { viewOnly?: boolean
             >
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36M20.49 15a9 9 0 0 1-14.85 3.36"/></svg>
             </button>
+            {!viewOnly && (
+              <button
+                onClick={() => { setShowStartTripForm(true); fetchStartTripData() }}
+                disabled={!canEdit}
+                style={{
+                  padding: "10px 18px", background: !canEdit ? "#94a3b8" : "#10b981", color: "white",
+                  border: "none", borderRadius: 8, cursor: !canEdit ? "not-allowed" : "pointer",
+                  fontSize: FONT_SIZE.sm, fontWeight: 600,
+                  display: "flex", alignItems: "center", gap: 6, minHeight: 40,
+                }}
+              >
+                <Icon icon="mdi:account-switch" width={16} />
+                Start Trip for Driver
+              </button>
+            )}
           </div>
 
           {lastUpdated && (
@@ -798,20 +979,62 @@ export default function MonitorTrucks({ viewOnly = false }: { viewOnly?: boolean
                           <p style={{ margin: 0, color: "#0f172a", fontSize: FONT_SIZE.sm }}>{truck.driver_phone}</p>
                         </div>
                       </div>
-                      {!viewOnly && (
-                        <button
-                          onClick={() => openRouteEditor(truck)}
-                          disabled={!canEdit}
-                          style={{
-                            width: "100%", padding: "10px 14px", background: !canEdit ? "#94a3b8" : "#0070f3", color: "white",
-                            border: "none", borderRadius: 8, cursor: !canEdit ? "not-allowed" : "pointer", fontSize: FONT_SIZE.sm,
-                            fontWeight: 600, transition: "all 0.2s", minHeight: 40
-                          }}
-                          onMouseEnter={e => { if (canEdit) e.currentTarget.style.opacity = "0.9" }}
-                          onMouseLeave={e => { if (canEdit) e.currentTarget.style.opacity = "1" }}
-                        >
-                          {truck.route_points.length > 0 ? "Edit Route" : "Set Route"}
-                        </button>
+                      {!viewOnly && truck.trip_status !== "Completed" && (
+                        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, borderTop: "1px solid #f1f5f9", paddingTop: 12, marginTop: 4 }}>
+                          <button
+                            onClick={() => openDiscModal(truck.trip_id, `${truck.plate_number} — ${truck.driver_name}`, truck.remaining, truck.driver_id ?? undefined)}
+                            disabled={!canEdit}
+                            style={{
+                              padding: "10px 12px", background: !canEdit ? "#e2e8f0" : "white", color: !canEdit ? "#94a3b8" : "#f5a623",
+                              border: "1.5px solid #f5a623", borderRadius: 8, cursor: !canEdit ? "not-allowed" : "pointer",
+                              fontSize: FONT_SIZE.sm, fontWeight: 600, minHeight: 40,
+                              display: "flex", alignItems: "center", justifyContent: "center", gap: 6, transition: "all 0.2s"
+                            }}
+                            onMouseEnter={e => { if (canEdit) e.currentTarget.style.background = "#fffbeb" }}
+                            onMouseLeave={e => { if (canEdit) e.currentTarget.style.background = "white" }}
+                          >
+                            <Icon icon="mdi:alert-outline" width={16} /> Discrepancy
+                          </button>
+                          <button
+                            onClick={() => openDdStopForm({ dd_trip_id: truck.trip_id, plate_number: truck.plate_number, product: "", loaded_quantity: truck.loaded_quantity, trip_status: truck.trip_status } as DDTrip, "mdd")}
+                            disabled={!canEdit}
+                            style={{
+                              padding: "10px 12px", background: !canEdit ? "#94a3b8" : "#8b5cf6", color: "white",
+                              border: "none", borderRadius: 8, cursor: !canEdit ? "not-allowed" : "pointer", fontSize: FONT_SIZE.sm,
+                              fontWeight: 600, minHeight: 40, transition: "opacity 0.2s"
+                            }}
+                            onMouseEnter={e => { if (canEdit) e.currentTarget.style.opacity = "0.9" }}
+                            onMouseLeave={e => { if (canEdit) e.currentTarget.style.opacity = "1" }}
+                          >
+                            Log Stop
+                          </button>
+                          <button
+                            onClick={() => openRouteEditor(truck)}
+                            disabled={!canEdit}
+                            style={{
+                              padding: "10px 12px", background: !canEdit ? "#94a3b8" : "#0070f3", color: "white",
+                              border: "none", borderRadius: 8, cursor: !canEdit ? "not-allowed" : "pointer", fontSize: FONT_SIZE.sm,
+                              fontWeight: 600, minHeight: 40, transition: "opacity 0.2s"
+                            }}
+                            onMouseEnter={e => { if (canEdit) e.currentTarget.style.opacity = "0.9" }}
+                            onMouseLeave={e => { if (canEdit) e.currentTarget.style.opacity = "1" }}
+                          >
+                            {truck.route_points.length > 0 ? "Edit Route" : "Set Route"}
+                          </button>
+                          <button
+                            onClick={() => updateMddTripStatus(truck.trip_id, "Completed")}
+                            disabled={!canEdit}
+                            style={{
+                              padding: "10px 12px", background: !canEdit ? "#94a3b8" : "#10b981", color: "white",
+                              border: "none", borderRadius: 8, cursor: !canEdit ? "not-allowed" : "pointer", fontSize: FONT_SIZE.sm,
+                              fontWeight: 600, minHeight: 40, transition: "opacity 0.2s"
+                            }}
+                            onMouseEnter={e => { if (canEdit) e.currentTarget.style.opacity = "0.9" }}
+                            onMouseLeave={e => { if (canEdit) e.currentTarget.style.opacity = "1" }}
+                          >
+                            Mark Completed
+                          </button>
+                        </div>
                       )}
                     </div>
                   ))}
@@ -860,21 +1083,22 @@ export default function MonitorTrucks({ viewOnly = false }: { viewOnly?: boolean
                           </td>
                           {!viewOnly && (
                             <td style={{ padding: "12px 16px", textAlign: "right" }}>
-                              <button
-                                onClick={() => openRouteEditor(truck)}
-                                disabled={!canEdit}
-                                title={truck.route_points.length > 0 ? "Edit route" : "Set route"}
-                                style={{
-                                  padding: "6px 10px", cursor: !canEdit ? "not-allowed" : "pointer", borderRadius: 6, border: "1.5px solid #0070f3",
-                                  color: !canEdit ? "#94a3b8" : "#0070f3", background: !canEdit ? "#e2e8f0" : "#f0f7ff", fontSize: FONT_SIZE.sm, fontWeight: 500,
-                                  transition: "all 0.2s", minHeight: 32,
-                                  display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 4
-                                }}
-                                onMouseEnter={e => { if (canEdit) e.currentTarget.style.background = "#e0efff" }}
-                                onMouseLeave={e => { if (canEdit) e.currentTarget.style.background = "#f0f7ff" }}
-                              >
-                                Route
-                              </button>
+                              {truck.trip_status !== "Completed" && (
+                              <div style={{ display: "flex", gap: 6, justifyContent: "flex-end" }}>
+                                <button onClick={() => openDiscModal(truck.trip_id, `${truck.plate_number} — ${truck.driver_name}`, truck.remaining, truck.driver_id ?? undefined)} disabled={!canEdit} title="Report shortage or caked bags" style={{ padding: "6px 10px", cursor: !canEdit ? "not-allowed" : "pointer", borderRadius: 6, border: "1.5px solid #f5a623", color: !canEdit ? "#94a3b8" : "#f5a623", background: !canEdit ? "#e2e8f0" : "#fffbeb", fontSize: FONT_SIZE.xs, fontWeight: 600, transition: "all 0.2s", minHeight: 32, whiteSpace: "nowrap", display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 4 }}
+                                  onMouseEnter={e => { if (canEdit) e.currentTarget.style.background = "#fef3c7" }}
+                                  onMouseLeave={e => { if (canEdit) e.currentTarget.style.background = "#fffbeb" }}><Icon icon="mdi:alert-outline" width={14} /> Disc</button>
+                                <button onClick={() => openDdStopForm({ dd_trip_id: truck.trip_id, plate_number: truck.plate_number, product: "", loaded_quantity: truck.loaded_quantity, trip_status: truck.trip_status } as DDTrip, "mdd")} disabled={!canEdit} title="Log stop" style={{ padding: "6px 10px", cursor: !canEdit ? "not-allowed" : "pointer", borderRadius: 6, border: "1.5px solid #8b5cf6", color: !canEdit ? "#94a3b8" : "#8b5cf6", background: !canEdit ? "#e2e8f0" : "#f5f3ff", fontSize: FONT_SIZE.xs, fontWeight: 600, transition: "all 0.2s", minHeight: 32, whiteSpace: "nowrap", display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 4 }}
+                                  onMouseEnter={e => { if (canEdit) e.currentTarget.style.background = "#ede9fe" }}
+                                  onMouseLeave={e => { if (canEdit) e.currentTarget.style.background = "#f5f3ff" }}><Icon icon="mdi:map-marker-plus" width={14} /> Stop</button>
+                                <button onClick={() => openRouteEditor(truck)} disabled={!canEdit} title={truck.route_points.length > 0 ? "Edit route" : "Set route"} style={{ padding: "6px 10px", cursor: !canEdit ? "not-allowed" : "pointer", borderRadius: 6, border: "1.5px solid #0070f3", color: !canEdit ? "#94a3b8" : "#0070f3", background: !canEdit ? "#e2e8f0" : "#f0f7ff", fontSize: FONT_SIZE.xs, fontWeight: 600, transition: "all 0.2s", minHeight: 32, whiteSpace: "nowrap", display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 4 }}
+                                  onMouseEnter={e => { if (canEdit) e.currentTarget.style.background = "#e0efff" }}
+                                  onMouseLeave={e => { if (canEdit) e.currentTarget.style.background = "#f0f7ff" }}><Icon icon="mdi:map-marker-outline" width={14} /> Route</button>
+                                <button onClick={() => updateMddTripStatus(truck.trip_id, "Completed")} disabled={!canEdit} title="Mark completed" style={{ padding: "6px 10px", cursor: !canEdit ? "not-allowed" : "pointer", borderRadius: 6, border: "1.5px solid #10b981", color: !canEdit ? "#94a3b8" : "#10b981", background: !canEdit ? "#e2e8f0" : "#f0fdf4", fontSize: FONT_SIZE.xs, fontWeight: 600, transition: "all 0.2s", minHeight: 32, whiteSpace: "nowrap", display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 4 }}
+                                  onMouseEnter={e => { if (canEdit) e.currentTarget.style.background = "#dcfce7" }}
+                                  onMouseLeave={e => { if (canEdit) e.currentTarget.style.background = "#f0fdf4" }}><Icon icon="mdi:check-circle-outline" width={14} /> Done</button>
+                              </div>
+                              )}
                             </td>
                           )}
                         </tr>
@@ -1450,7 +1674,7 @@ export default function MonitorTrucks({ viewOnly = false }: { viewOnly?: boolean
               <div>
                 <h3 style={{ margin: 0, color: "#171717", fontWeight: 700, fontSize: FONT_SIZE.lg }}>Log Stop</h3>
                 <p style={{ margin: "4px 0 0", color: "#64748b", fontSize: FONT_SIZE.sm }}>
-                  {selectedDdStopTrip.plate_number} — {selectedDdStopTrip.product}
+                  {selectedDdStopTrip.plate_number} — {selectedDdStopTrip.product || "MDD/SC Trip"}
                 </p>
               </div>
               <button onClick={() => { setShowDdStopForm(false); setSelectedDdStopTrip(null) }}
@@ -1566,6 +1790,177 @@ export default function MonitorTrucks({ viewOnly = false }: { viewOnly?: boolean
               <button onClick={closeDiscModal} disabled={discSubmitting} style={{ padding: "12px 16px", background: "white", border: "1px solid #cbd5e1", color: discSubmitting ? "#cbd5e1" : "#475569", borderRadius: 8, cursor: discSubmitting ? "not-allowed" : "pointer", fontSize: FONT_SIZE.md, minHeight: 44, fontWeight: 700 }}>Cancel</button>
               <button onClick={handleReportDiscrepancy} disabled={discSubmitting} style={{ padding: "12px 16px", background: discSubmitting ? "#94a3b8" : "#f5a623", color: "white", border: "none", borderRadius: 8, cursor: discSubmitting ? "not-allowed" : "pointer", fontWeight: 700, fontSize: FONT_SIZE.md, minHeight: 44, opacity: discSubmitting ? 0.7 : 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
                 {discSubmitting ? <><Icon icon="mdi:loading" width={16} style={{ animation: "spin 1s linear infinite" }} /> Submitting…</> : "Submit Report"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Start Trip for Driver Modal ── */}
+      {showStartTripForm && (
+        <div onClick={() => { if (!stSubmitting) { setShowStartTripForm(false); resetStartTripForm() } }} style={{ position: "fixed", inset: 0, background: "rgba(15, 23, 42, 0.6)", backdropFilter: "blur(4px)", display: "flex", alignItems: isMobile ? "flex-end" : "center", justifyContent: "center", zIndex: 100, padding: isMobile ? 0 : 24, animation: "fadeIn 0.2s ease-out" }}>
+          <style>{`@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } } @keyframes slideUp { from { transform: translateY(20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }`}</style>
+          <div onClick={e => e.stopPropagation()} style={{ background: "white", borderRadius: isMobile ? "20px 20px 0 0" : 12, padding: isMobile ? "28px 20px" : 32, width: "100%", maxWidth: 480, maxHeight: "90vh", overflowY: "auto", boxShadow: "0 25px 50px -12px rgba(0, 0, 0, 0.25)", animation: "slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1)" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24 }}>
+              <h2 style={{ margin: 0, color: "#10b981", fontSize: FONT_SIZE.xl, fontWeight: 700, display: "flex", alignItems: "center", gap: 8 }}>
+                <Icon icon="mdi:account-switch" width={22} />
+                Start Trip for Driver
+              </h2>
+              <button onClick={() => { if (!stSubmitting) { setShowStartTripForm(false); resetStartTripForm() } }} style={{ background: "none", border: "none", color: "#94a3b8", cursor: "pointer", width: 32, height: 32, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+              </button>
+            </div>
+
+            <div style={{ marginBottom: 16 }}>
+              <label style={labelStyle}>Select Driver *</label>
+              <ModernInput as="select" value={stDriverId} onChange={e => { setStDriverId(e.target.value); setStMessage("") }}>
+                <option value="">Choose a driver</option>
+                {availableDrivers.map(d => (
+                  <option key={d.driver_id} value={d.driver_id}>{d.full_name}{d.phone_number ? ` (${d.phone_number})` : ""}</option>
+                ))}
+              </ModernInput>
+            </div>
+
+            <div style={{ marginBottom: 16 }}>
+              <label style={labelStyle}>Trip Type *</label>
+              <ModernInput as="select" value={stTripType} onChange={e => { setStTripType(e.target.value as "SC" | "MDD"); setStMessage("") }}>
+                <option value="">Select trip type</option>
+                <option value="SC">SC — Self Collect</option>
+                <option value="MDD">MDD — Modified Direct Delivery</option>
+              </ModernInput>
+            </div>
+
+            <div style={{ marginBottom: 16 }}>
+              <label style={labelStyle}>Truck Size *</label>
+              <ModernInput as="select" value={stTruckSize} onChange={e => { setStTruckSize(e.target.value); setStPlateNumber(""); setStLoadingCategory(""); setStLoadingName(""); setStProduct(""); setStMessage("") }}>
+                <option value="">Select truck size</option>
+                <option value="20">20</option>
+                <option value="40/45">40/45</option>
+                <option value="Dina">Dina</option>
+                <option value="Tricycle">Tricycle</option>
+              </ModernInput>
+            </div>
+
+            <div style={{ marginBottom: 16 }}>
+              <label style={labelStyle}>{stTruckSize === "Tricycle" ? "Tricycle Number" : "Plate Number"} *</label>
+              <ModernInput as="select" value={stPlateNumber} onChange={e => { setStPlateNumber(e.target.value); setStMessage("") }}>
+                <option value="">{stTruckSize === "Tricycle" ? "Select tricycle" : "Select plate number"}</option>
+                {allTrucks.filter(t => !stTruckSize || t.truck_size === stTruckSize).map(t => (
+                  <option key={t.plate_number} value={t.plate_number}>{t.plate_number}{t.kbnl_truck_no ? (t.truck_size === "Tricycle" ? ` · ${t.kbnl_truck_no}` : ` · #${t.kbnl_truck_no}`) : ""}</option>
+                ))}
+              </ModernInput>
+            </div>
+
+            <div style={{ marginBottom: 16 }}>
+              <label style={labelStyle}>Loading Point Type *</label>
+              <ModernInput as="select" value={stLoadingCategory} onChange={e => { setStLoadingCategory(e.target.value); setStLoadingName(""); setStProduct(""); setStA(""); setStOrderNo(""); setStChildOrderNo(""); setStMessage("") }}>
+                <option value="">Select loading point</option>
+                {Object.keys(LOADING_POINT_MAP).filter(cat => !stIsDinaOrTricycle || cat !== "Factory").map(cat => (
+                  <option key={cat} value={cat}>{cat}</option>
+                ))}
+              </ModernInput>
+            </div>
+
+            {stLoadingCategory && (
+              <div style={{ marginBottom: 16 }}>
+                <label style={labelStyle}>{stLoadingCategory} *</label>
+                <ModernInput as="select" value={stLoadingName} onChange={e => { setStLoadingName(e.target.value); setStProduct(""); setStA(""); setStOrderNo(""); setStChildOrderNo(""); setStMessage("") }}>
+                  <option value="">Select {stLoadingCategory.toLowerCase()}</option>
+                  {stAvailableLocations.map(loc => (
+                    <option key={loc} value={loc}>{loc}</option>
+                  ))}
+                </ModernInput>
+              </div>
+            )}
+
+            {stShowATC && stLoadingName && (
+              <div style={{ marginBottom: 16 }}>
+                <label style={labelStyle}>ATC Number *</label>
+                <ModernInput type="text" placeholder="Enter ATC number" value={stA} onChange={e => { setStA(e.target.value); setStMessage("") }} />
+              </div>
+            )}
+
+            {stShowHbm && stLoadingName && (
+              <>
+                <div style={{ marginBottom: 16 }}>
+                  <label style={labelStyle}>Order No. *</label>
+                  <ModernInput type="text" placeholder="Enter order number" value={stOrderNo} onChange={e => { setStOrderNo(e.target.value); setStMessage("") }} />
+                </div>
+                <div style={{ marginBottom: 16 }}>
+                  <label style={labelStyle}>Child Order No. *</label>
+                  <ModernInput type="text" placeholder="Enter child order number" value={stChildOrderNo} onChange={e => { setStChildOrderNo(e.target.value); setStMessage("") }} />
+                </div>
+              </>
+            )}
+
+            {stIsDinaOrTricycle && stLoadingName && (
+              <>
+                <div style={{ marginBottom: 16 }}>
+                  <label style={labelStyle}>Amount Charged (₦) *</label>
+                  <ModernInput type="number" placeholder="e.g. 5000" value={stAmountCharged} onChange={e => { setStAmountCharged(e.target.value); setStMessage("") }} />
+                </div>
+                <div style={{ marginBottom: 16 }}>
+                  <label style={labelStyle}>Payment Mode *</label>
+                  <ModernInput as="select" value={stPaymentMode} onChange={e => { setStPaymentMode(e.target.value); setStMessage("") }}>
+                    <option value="">Select payment mode</option>
+                    <option value="Cash">Cash</option>
+                    <option value="Transfer">Transfer</option>
+                    <option value="POS">POS</option>
+                  </ModernInput>
+                </div>
+              </>
+            )}
+
+            {stLoadingName && (
+              <div style={{ marginBottom: 16 }}>
+                <label style={labelStyle}>Product *</label>
+                <ModernInput as="select" value={stProduct} onChange={e => { setStProduct(e.target.value); setStMessage("") }}>
+                  <option value="">Select product</option>
+                  {stProductOptions.map(p => (
+                    <option key={p} value={p}>{p}</option>
+                  ))}
+                </ModernInput>
+              </div>
+            )}
+
+            {stProduct && (
+              <div style={{ marginBottom: 24 }}>
+                <label style={labelStyle}>No. of Bags *</label>
+                <ModernInput type="number" placeholder="e.g. 600" value={stLoadedQty} onChange={e => { setStLoadedQty(e.target.value); setStMessage("") }} onKeyDown={e => { if (e.key === "Enter") handleStartTripOnBehalf() }} />
+              </div>
+            )}
+
+            {stMessage && (
+              <div style={{
+                padding: 12, borderRadius: 8, marginBottom: 16, fontSize: FONT_SIZE.sm, fontWeight: 600,
+                background: stMessageType === "success" ? "#f0fff4" : "#fef2f2",
+                border: stMessageType === "success" ? "1px solid #86efac" : "1px solid #fecaca",
+                color: stMessageType === "success" ? "#166534" : "#b91c1c",
+              }}>
+                {stMessage}
+              </div>
+            )}
+
+            <div style={{ display: "flex", gap: 10 }}>
+              <button onClick={() => { if (!stSubmitting) { setShowStartTripForm(false); resetStartTripForm() } }} disabled={stSubmitting} style={{
+                flex: 1, padding: "12px 0", background: "white", border: "1.5px solid #d1d5db",
+                borderRadius: 8, cursor: stSubmitting ? "not-allowed" : "pointer", fontSize: FONT_SIZE.sm, fontWeight: 600, minHeight: 48
+              }}>Cancel</button>
+              <button
+                onClick={handleStartTripOnBehalf}
+                disabled={stSubmitting || !canEdit}
+                style={{
+                  flex: 1, padding: "12px 0", background: stSubmitting || !canEdit ? "#94a3b8" : "#10b981", color: "white",
+                  border: "none", borderRadius: 8, cursor: stSubmitting || !canEdit ? "not-allowed" : "pointer",
+                  fontWeight: 700, fontSize: FONT_SIZE.sm, minHeight: 48,
+                  display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
+                  opacity: stSubmitting || !canEdit ? 0.7 : 1, transition: "opacity 0.2s",
+                }}
+              >
+                {stSubmitting
+                  ? <><Icon icon="mdi:loading" width={16} style={{ animation: "spin 1s linear infinite" }} /> Starting…</>
+                  : <><Icon icon="mdi:truck-check" width={16} /> Start Trip</>
+                }
               </button>
             </div>
           </div>
