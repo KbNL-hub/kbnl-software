@@ -13,7 +13,7 @@ import { FONT_SIZE } from "@/lib/constants"
 import { Role } from "@/lib/roles"
 import type { NewBooking } from "@/lib/types"
 
-type FilterKey = "all" | "pending" | "awaiting_review" | "rejected" | "supplied"
+type FilterKey = "all" | "pending" | "awaiting_review" | "rejected" | "supplied" | "partial"
 
 function formatDate(dateStr: string) {
   return new Date(dateStr).toLocaleDateString("en-NG", { day: "numeric", month: "short", year: "numeric" })
@@ -23,18 +23,19 @@ const STATUS_CONFIG: Record<string, { label: string; bg: string; color: string; 
   pending:         { label: "Pending",         bg: "#eff6ff", color: "#0070f3", border: "#0070f3" },
   awaiting_review: { label: "Awaiting Review", bg: "#fffbeb", color: "#d97706", border: "#fcd34d" },
   supplied:        { label: "Supplied",        bg: "#ecfdf5", color: "#059669", border: "#10b981" },
+  partial:         { label: "Partial",         bg: "#fff7ed", color: "#ea580c", border: "#fb923c" },
   rejected:        { label: "Rejected",        bg: "#fef2f2", color: "#dc2626", border: "#ef4444" },
 }
 
 const FILTER_COLORS: Record<FilterKey, string> = {
-  all: "#171717", pending: "#0070f3", awaiting_review: "#f5a623", rejected: "#ef4444", supplied: "#10b981",
+  all: "#171717", pending: "#0070f3", awaiting_review: "#f5a623", rejected: "#ef4444", supplied: "#10b981", partial: "#ea580c",
 }
 
 const getPillStyle = (filter: FilterKey, isActive: boolean) => {
   if (!isActive) return { bg: "white", textColor: "#64748b", borderColor: "#e2e8f0" }
   const color = FILTER_COLORS[filter]
   const tint: Record<FilterKey, string> = {
-    all: "#f5f5f5", pending: "#eff6ff", awaiting_review: "#fffbeb", rejected: "#fef2f2", supplied: "#ecfdf5",
+    all: "#f5f5f5", pending: "#eff6ff", awaiting_review: "#fffbeb", rejected: "#fef2f2", supplied: "#ecfdf5", partial: "#fff7ed",
   }
   return { bg: tint[filter], textColor: color, borderColor: color }
 }
@@ -56,6 +57,7 @@ export default function NewBookingsAdmin() {
   // Supply modal
   const [supplyModal, setSupplyModal] = useState<NewBooking | null>(null)
   const [supplyDate, setSupplyDate] = useState("")
+  const [supplyBags, setSupplyBags] = useState("")
 
   // Reject modal
   const [rejectModal, setRejectModal] = useState<NewBooking | null>(null)
@@ -161,11 +163,19 @@ export default function NewBookingsAdmin() {
   function openSupplyModal(booking: NewBooking) {
     setSupplyModal(booking)
     setSupplyDate("")
+    const remaining = booking.number_of_bags - (booking.bags_supplied || 0)
+    setSupplyBags(remaining > 0 ? String(remaining) : "")
     setMessage("")
   }
 
   async function handleSupply() {
     if (!supplyModal || !supplyDate) { setMessage("Select a supply date"); return }
+    const bagsToSupply = parseInt(supplyBags, 10)
+    if (!bagsToSupply || bagsToSupply <= 0) { setMessage("Enter a valid number of bags"); return }
+    const previouslySupplied = supplyModal.bags_supplied || 0
+    const remaining = supplyModal.number_of_bags - previouslySupplied
+    if (bagsToSupply > remaining) { setMessage(`Cannot supply more than ${remaining} remaining bags`); return }
+
     setSubmitting(true)
     setMessage("")
     try {
@@ -173,19 +183,21 @@ export default function NewBookingsAdmin() {
       if (!user) return
 
       const { error } = await apiMutate("finance", {
-        action: "update",
-        table: "new_bookings",
-        data: {
-          status: "supplied",
-          supply_date: supplyDate,
-          supplied_by: user.id,
+        action: "rpc",
+        function: "supply_booking",
+        params: {
+          p_booking_id: supplyModal.id,
+          p_bags: bagsToSupply,
+          p_supply_date: supplyDate,
+          p_supplied_by: user.id,
+          p_idempotency_key: crypto.randomUUID(),
         },
-        filters: { id: supplyModal.id },
       })
       if (error) { setMessage("Failed to mark as supplied. Try again."); return }
 
       setSupplyModal(null)
       setSupplyDate("")
+      setSupplyBags("")
       fetchBookings()
     } catch {
       setMessage("Failed to mark as supplied. Try again.")
@@ -198,11 +210,13 @@ export default function NewBookingsAdmin() {
   const awaitingReview = bookings.filter(b => b.status === "awaiting_review")
   const rejected = bookings.filter(b => b.status === "rejected")
   const supplied = bookings.filter(b => b.status === "supplied")
+  const partial = bookings.filter(b => b.status === "partial")
 
   const filtered = (activeFilter === "all" ? bookings
     : activeFilter === "pending" ? pending
     : activeFilter === "awaiting_review" ? awaitingReview
     : activeFilter === "rejected" ? rejected
+    : activeFilter === "partial" ? partial
     : supplied
   ).slice().sort((a, b) => new Date(a.payment_date).getTime() - new Date(b.payment_date).getTime())
 
@@ -214,6 +228,7 @@ export default function NewBookingsAdmin() {
     { key: "awaiting_review", label: "Awaiting Review", count: awaitingReview.length },
     { key: "rejected", label: "Rejected", count: rejected.length },
     { key: "supplied", label: "Supplied", count: supplied.length },
+    { key: "partial", label: "Partial", count: partial.length },
   ]
 
   const thStyle: React.CSSProperties = {
@@ -374,6 +389,14 @@ export default function NewBookingsAdmin() {
                           <p style={{ margin: 0, color: "#0f172a", fontSize: FONT_SIZE.base, fontWeight: 500 }}>{formatDate(booking.supply_date)}</p>
                         </div>
                       )}
+                      {booking.status === "partial" && (
+                        <div>
+                          <p style={{ margin: "0 0 4px", color: "#94a3b8", fontSize: FONT_SIZE.xs }}>Bags Supplied</p>
+                          <p style={{ margin: 0, color: "#ea580c", fontSize: FONT_SIZE.base, fontWeight: 700 }}>
+                            {booking.bags_supplied || 0} / {booking.number_of_bags.toLocaleString()}
+                          </p>
+                        </div>
+                      )}
                     </div>
 
                     {/* Price reason */}
@@ -450,12 +473,37 @@ export default function NewBookingsAdmin() {
                       </button>
                     )}
 
-                    {(booking.status === "supplied" || booking.status === "rejected") && (
-                      <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 6, padding: "10px 12px", borderRadius: 8, background: booking.status === "supplied" ? "#f0fdf4" : "#fef2f2", border: `1px solid ${booking.status === "supplied" ? "#bbf7d0" : "#fecaca"}` }}>
-                        <Icon icon={booking.status === "supplied" ? "mdi:check-circle" : "mdi:close-circle"} width={15} color={booking.status === "supplied" ? "#059669" : "#dc2626"} />
-                        <span style={{ fontSize: FONT_SIZE.sm, color: booking.status === "supplied" ? "#059669" : "#dc2626", fontWeight: 600 }}>
-                          {booking.status === "supplied" ? "Booking supplied" : "Booking rejected"}
-                        </span>
+                    {booking.status === "partial" && canEdit && (
+                      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                        <div style={{ padding: "10px 12px", borderRadius: 8, background: "#fff7ed", border: "1px solid #fed7aa" }}>
+                          <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
+                            <span style={{ fontSize: FONT_SIZE.xs, color: "#9a3412", fontWeight: 600 }}>Supply Progress</span>
+                            <span style={{ fontSize: FONT_SIZE.xs, color: "#9a3412", fontWeight: 700 }}>{booking.bags_supplied || 0} / {booking.number_of_bags.toLocaleString()}</span>
+                          </div>
+                          <div style={{ width: "100%", height: 6, background: "#fed7aa", borderRadius: 3, overflow: "hidden" }}>
+                            <div style={{ width: `${((booking.bags_supplied || 0) / booking.number_of_bags) * 100}%`, height: "100%", background: "#ea580c", borderRadius: 3, transition: "width 0.3s" }} />
+                          </div>
+                          <p style={{ margin: "6px 0 0", fontSize: FONT_SIZE.xs, color: "#9a3412" }}>
+                            {(booking.number_of_bags - (booking.bags_supplied || 0)).toLocaleString()} bags remaining
+                          </p>
+                        </div>
+                        <button onClick={() => openSupplyModal(booking)} style={{ width: "100%", padding: "10px 0", background: "#ea580c", color: "white", border: "none", borderRadius: 8, cursor: "pointer", fontSize: FONT_SIZE.sm, fontWeight: 600, display: "flex", alignItems: "center", justifyContent: "center", gap: 4, transition: "all 0.2s" }} onMouseEnter={e => e.currentTarget.style.background = "#c2410c"} onMouseLeave={e => e.currentTarget.style.background = "#ea580c"}>
+                          <Icon icon="mdi:truck-check" width={15} /> Supply More
+                        </button>
+                      </div>
+                    )}
+
+                    {booking.status === "supplied" && (
+                      <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 6, padding: "10px 12px", borderRadius: 8, background: "#f0fdf4", border: "1px solid #bbf7d0" }}>
+                        <Icon icon="mdi:check-circle" width={15} color="#059669" />
+                        <span style={{ fontSize: FONT_SIZE.sm, color: "#059669", fontWeight: 600 }}>Booking fully supplied</span>
+                      </div>
+                    )}
+
+                    {booking.status === "rejected" && (
+                      <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 6, padding: "10px 12px", borderRadius: 8, background: "#fef2f2", border: "1px solid #fecaca" }}>
+                        <Icon icon="mdi:close-circle" width={15} color="#dc2626" />
+                        <span style={{ fontSize: FONT_SIZE.sm, color: "#dc2626", fontWeight: 600 }}>Booking rejected</span>
                       </div>
                     )}
                   </div>
@@ -509,6 +557,14 @@ export default function NewBookingsAdmin() {
                               <Icon icon="mdi:truck-check" width={14} /> Supply
                             </button>
                           )}
+                          {booking.status === "partial" && canEdit && (
+                            <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                              <span style={{ fontSize: 11, color: "#9a3412", fontWeight: 600 }}>{booking.bags_supplied || 0}/{booking.number_of_bags.toLocaleString()} bags</span>
+                              <button onClick={() => openSupplyModal(booking)} style={{ padding: "6px 10px", cursor: "pointer", borderRadius: 6, border: "1px solid #fed7aa", color: "#ea580c", background: "#fff7ed", fontSize: FONT_SIZE.xs, fontWeight: 600, transition: "all 0.2s", minHeight: 32, display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 4 }} onMouseEnter={e => e.currentTarget.style.background = "#ffedd5"} onMouseLeave={e => e.currentTarget.style.background = "#fff7ed"}>
+                                <Icon icon="mdi:truck-check" width={14} /> Supply More
+                              </button>
+                            </div>
+                          )}
                           {(booking.status === "supplied" || booking.status === "rejected" || !canEdit) && (
                             <span style={{ fontSize: FONT_SIZE.xs, color: "#94a3b8" }}>—</span>
                           )}
@@ -529,16 +585,34 @@ export default function NewBookingsAdmin() {
 
       {/* Supply Modal */}
       {supplyModal && (
-        <div onClick={() => { setSupplyModal(null); setSupplyDate("") }} style={{ position: "fixed", inset: 0, background: "rgba(15,23,42,0.6)", backdropFilter: "blur(4px)", display: "flex", alignItems: isMobile ? "flex-end" : "center", justifyContent: "center", zIndex: 100, padding: isMobile ? 0 : 24, animation: "fadeIn 0.2s ease-out" }}>
+        <div onClick={() => { setSupplyModal(null); setSupplyDate(""); setSupplyBags("") }} style={{ position: "fixed", inset: 0, background: "rgba(15,23,42,0.6)", backdropFilter: "blur(4px)", display: "flex", alignItems: isMobile ? "flex-end" : "center", justifyContent: "center", zIndex: 100, padding: isMobile ? 0 : 24, animation: "fadeIn 0.2s ease-out" }}>
           <style>{`@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } } @keyframes slideUp { from { transform: translateY(20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } } @keyframes spin { to { transform: rotate(360deg); } }`}</style>
           <div onClick={e => e.stopPropagation()} style={{ background: "white", borderRadius: isMobile ? "20px 20px 0 0" : 12, padding: isMobile ? "28px 20px" : 32, width: "100%", maxWidth: 420, maxHeight: "90vh", overflowY: "auto", boxShadow: "0 25px 50px -12px rgba(0,0,0,0.25)", animation: "slideUp 0.3s cubic-bezier(0.16,1,0.3,1)" }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
               <h3 style={{ margin: 0, color: "#0f172a", fontSize: FONT_SIZE.xl, fontWeight: 700 }}>Mark as Supplied</h3>
-              <button onClick={() => { setSupplyModal(null); setSupplyDate("") }} style={{ background: "none", border: "none", color: "#94a3b8", cursor: "pointer", padding: 0, width: 32, height: 32, display: "flex", alignItems: "center", justifyContent: "center", transition: "color 0.2s" }} onMouseEnter={e => e.currentTarget.style.color = "#64748b"} onMouseLeave={e => e.currentTarget.style.color = "#94a3b8"}><Icon icon="mdi:close" width={20} /></button>
+              <button onClick={() => { setSupplyModal(null); setSupplyDate(""); setSupplyBags("") }} style={{ background: "none", border: "none", color: "#94a3b8", cursor: "pointer", padding: 0, width: 32, height: 32, display: "flex", alignItems: "center", justifyContent: "center", transition: "color 0.2s" }} onMouseEnter={e => e.currentTarget.style.color = "#64748b"} onMouseLeave={e => e.currentTarget.style.color = "#94a3b8"}><Icon icon="mdi:close" width={20} /></button>
             </div>
             <p style={{ margin: "0 0 20px", fontSize: FONT_SIZE.sm, color: "#64748b" }}>
               {supplyModal.customer_name || "Unknown"} — {supplyModal.number_of_bags.toLocaleString()} bags of {supplyModal.product}
+              {(supplyModal.bags_supplied || 0) > 0 && (
+                <span style={{ display: "block", marginTop: 4, color: "#9a3412", fontWeight: 600 }}>
+                  {supplyModal.bags_supplied} bags already supplied · {supplyModal.number_of_bags - (supplyModal.bags_supplied || 0)} remaining
+                </span>
+              )}
             </p>
+
+            <div style={{ marginBottom: 20 }}>
+              <label style={{ display: "block", fontWeight: 600, marginBottom: 6, fontSize: FONT_SIZE.sm, color: "#475569" }}>Bags to Supply *</label>
+              <ModernInput
+                type="number"
+                min={1}
+                max={supplyModal.number_of_bags - (supplyModal.bags_supplied || 0)}
+                value={supplyBags}
+                onChange={e => { setSupplyBags(e.target.value); setMessage("") }}
+                placeholder={`Max ${supplyModal.number_of_bags - (supplyModal.bags_supplied || 0)}`}
+                style={{ width: "100%", padding: isMobile ? "14px 12px" : "11px 12px", boxSizing: "border-box", borderRadius: 8, border: "1.5px solid #e5e5e5", fontSize: isMobile ? 16 : 14, background: "white", color: "#171717", minHeight: isMobile ? 48 : 42 }}
+              />
+            </div>
 
             <div style={{ marginBottom: 20 }}>
               <label style={{ display: "block", fontWeight: 600, marginBottom: 6, fontSize: FONT_SIZE.sm, color: "#475569" }}>Supply Date *</label>
@@ -557,10 +631,10 @@ export default function NewBookingsAdmin() {
             )}
 
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1.2fr", gap: 10 }}>
-              <button onClick={() => { setSupplyModal(null); setSupplyDate("") }} style={{ padding: "12px 16px", background: "white", color: "#475569", border: "1px solid #cbd5e1", borderRadius: 8, cursor: "pointer", fontWeight: 600, fontSize: FONT_SIZE.md, minHeight: 44 }}>
+              <button onClick={() => { setSupplyModal(null); setSupplyDate(""); setSupplyBags("") }} style={{ padding: "12px 16px", background: "white", color: "#475569", border: "1px solid #cbd5e1", borderRadius: 8, cursor: "pointer", fontWeight: 600, fontSize: FONT_SIZE.md, minHeight: 44 }}>
                 Cancel
               </button>
-              <button onClick={handleSupply} disabled={submitting || !supplyDate} style={{ padding: "12px 16px", background: (!supplyDate || submitting) ? "#93c5fd" : "#0070f3", color: "white", border: "none", borderRadius: 8, cursor: (!supplyDate || submitting) ? "not-allowed" : "pointer", fontWeight: 600, fontSize: FONT_SIZE.md, opacity: submitting ? 0.7 : 1, minHeight: 44, display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
+              <button onClick={handleSupply} disabled={submitting || !supplyDate || !supplyBags} style={{ padding: "12px 16px", background: (!supplyDate || !supplyBags || submitting) ? "#93c5fd" : "#0070f3", color: "white", border: "none", borderRadius: 8, cursor: (!supplyDate || !supplyBags || submitting) ? "not-allowed" : "pointer", fontWeight: 600, fontSize: FONT_SIZE.md, opacity: submitting ? 0.7 : 1, minHeight: 44, display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
                 {submitting ? <Icon icon="mdi:loading" width={16} style={{ animation: "spin 1s linear infinite" }} /> : <Icon icon="mdi:truck-check" width={16} />}
                 {submitting ? "Saving..." : "Confirm Supply"}
               </button>

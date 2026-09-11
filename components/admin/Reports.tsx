@@ -9,7 +9,7 @@ import { ExportActions } from "./ExportActions"
 import { EmptyState } from "./EmptyState"
 import { LoadingState } from "./LoadingState"
 import { ReportModal } from "./ReportModal"
-import { ReportCard, ReportCardField } from "./ReportCard"
+import { ReportCard, ReportCardField, ReportCardSection } from "./ReportCard"
 import { QuickFilterPills } from "./QuickFilterPills"
 import { DateRangeSelector } from "./DateRangeSelector"
 
@@ -19,8 +19,6 @@ type DriverSummary = {
   driver_name: string
   trips_count: number
   stops_count: number
-  factory_bags: number
-  store_bags: number
   total_bags: number
   avg_bags_per_trip: number
 }
@@ -124,12 +122,6 @@ type CashOfficeExpenseSummary = {
   total_amount: number
 }
 
-type TransactionSummary = {
-  to_account: string
-  transactions_count: number
-  total_amount: number
-}
-
 type SideTripSummary = {
   driver_id: string
   driver_name: string
@@ -154,7 +146,6 @@ type ReportType =
   | "cash-expenses"
   | "truck-health"
   | "side-trips"
-  | "transactions"
 
 // ── Constants ──────────────────────────────────────────────────────────────
 const PRODUCT_MANUFACTURER: Record<string, string> = {
@@ -173,7 +164,6 @@ const REPORT_OPTIONS: { group: string; value: ReportType; label: string }[] = [
   { group: "Operations", value: "side-trips", label: "Side Trips by Driver" },
   { group: "Finance", value: "cash-expenses", label: "Cash Office Expenses" },
   { group: "Finance", value: "truck-health", label: "Truck Health / Expenses" },
-  { group: "Finance", value: "transactions", label: "Transactions (Top Ups)" },
 ]
 
 
@@ -246,7 +236,6 @@ export default function Reports() {
   const [productVolumeSummaries, setProductVolumeSummaries] = useState<ProductVolumeSummary[]>([])
   const [factoryLoadingSummaries, setFactoryLoadingSummaries] = useState<FactoryLoadingSummary[]>([])
   const [cashOfficeExpenseSummaries, setCashOfficeExpenseSummaries] = useState<CashOfficeExpenseSummary[]>([])
-  const [transactionSummaries, setTransactionSummaries] = useState<TransactionSummary[]>([])
   const [sideTripSummaries, setSideTripSummaries] = useState<SideTripSummary[]>([])
   const [drillDown, setDrillDown] = useState<DrillDown | null>(null)
   const [drillLoading, setDrillLoading] = useState(false)
@@ -311,7 +300,6 @@ export default function Reports() {
         case "cash-expenses": await fetchCashExpenseReports(); break
         case "truck-health": await fetchTruckReports(); break
         case "side-trips": await fetchSideTripReports(); break
-        case "transactions": await fetchTransactionReports(); break
       }
       setHasLoaded(true)
     } catch (err) {
@@ -322,16 +310,6 @@ export default function Reports() {
   }
 
   // ── Driver reports ───────────────────────────────────────────────────────
-  const PLANT_LOADING_POINTS = ["HBM Mfamosing", "HBM Uyo Warehouse"]
-  const IGNORED_LOADING_POINTS = ["Dangote", "HBM", "BUA"]
-
-  function classifyBags(material_centre: string): "plant" | "store" | "other" {
-    const mc = material_centre || ""
-    if (PLANT_LOADING_POINTS.includes(mc)) return "plant"
-    if (IGNORED_LOADING_POINTS.includes(mc)) return "other"
-    return "store"
-  }
-
   async function fetchDriverReports() {
     const { from, to } = getRange()
 
@@ -346,15 +324,14 @@ export default function Reports() {
     const summaries: DriverSummary[] = await Promise.all(drivers.map(async (d) => {
       const { data: trips } = await supabase
         .from("Trips")
-        .select("trip_id, loaded_quantity, material_centre")
+        .select("trip_id, loaded_quantity")
         .eq("driver_id", d.driver_id)
         .gte("created_at", from)
         .lte("created_at", to)
 
       const tripIds = (trips || []).map(t => t.trip_id)
       let stops_count = 0
-      let factory_bags = 0
-      let store_bags = 0
+      let total_bags = 0
 
       if (tripIds.length > 0) {
         const { data: stops } = await supabase
@@ -363,25 +340,16 @@ export default function Reports() {
           .in("trip_id", tripIds)
 
         stops_count = (stops || []).length
-      }
-
-      for (const t of trips || []) {
-        const kind = classifyBags(t.material_centre)
-        const qty = t.loaded_quantity || 0
-        if (kind === "plant") factory_bags += qty
-        else if (kind === "store") store_bags += qty
+        total_bags = (stops || []).reduce((sum, s) => sum + (s.quantity_offloaded || 0), 0)
       }
 
       const trips_count = trips?.length ?? 0
-      const total_bags = factory_bags + store_bags
 
       return {
         driver_id: d.driver_id,
         driver_name: d.full_name,
         trips_count,
         stops_count,
-        factory_bags,
-        store_bags,
         total_bags,
         avg_bags_per_trip: trips_count > 0 ? Math.round(total_bags / trips_count) : 0,
       }
@@ -609,17 +577,16 @@ export default function Reports() {
 
       const { data: storeSales, error: storeSalesErr } = await supabase
         .from("store_sales")
-        .select("total_quantity, total_amount")
+        .select("quantity, total_amount")
         .eq("broker_id", b.broker_id)
         .eq("status", "Confirmed")
-        .neq("sale_type", "truck_load_out")
         .gte("sold_at", from)
         .lte("sold_at", to)
 
       if (storeSalesErr) throw new Error(`Failed to fetch broker store sales: ${storeSalesErr.message}`)
 
       const store_sales_count = (storeSales || []).length
-      const store_bags = (storeSales || []).reduce((sum, s) => sum + (s.total_quantity || 0), 0)
+      const store_bags = (storeSales || []).reduce((sum, s) => sum + (s.quantity || 0), 0)
       const store_revenue = (storeSales || []).reduce((sum, s) => sum + (s.total_amount || 0), 0)
 
       return {
@@ -745,9 +712,8 @@ export default function Reports() {
 
     const { data: sales, error: salesErr } = await supabase
       .from("store_sales")
-      .select("store_name, total_quantity, total_amount")
+      .select("store_name, quantity, total_amount")
       .eq("status", "Confirmed")
-      .neq("sale_type", "truck_load_out")
       .gte("sold_at", from)
       .lte("sold_at", to)
 
@@ -757,7 +723,7 @@ export default function Reports() {
     for (const s of sales || []) {
       if (!storeMap[s.store_name]) storeMap[s.store_name] = { sales_count: 0, total_quantity: 0, total_revenue: 0 }
       storeMap[s.store_name].sales_count++
-      storeMap[s.store_name].total_quantity += s.total_quantity || 0
+      storeMap[s.store_name].total_quantity += s.quantity || 0
       storeMap[s.store_name].total_revenue += s.total_amount || 0
     }
 
@@ -859,33 +825,6 @@ export default function Reports() {
     setCashOfficeExpenseSummaries(summaries)
   }
 
-  // ── Transactions (top ups) (#10) ─────────────────────────────────────────
-  async function fetchTransactionReports() {
-    const { from, to } = getRange()
-
-    const { data: transactions, error: transactionsErr } = await supabase
-      .from("transactions")
-      .select("to_account, amount")
-      .gte("created_at", from)
-      .lte("created_at", to)
-
-    if (transactionsErr) throw new Error(`Failed to fetch transactions: ${transactionsErr.message}`)
-
-    const destMap: Record<string, { transactions_count: number; total_amount: number }> = {}
-    for (const t of transactions || []) {
-      const dest = t.to_account || "Unknown"
-      if (!destMap[dest]) destMap[dest] = { transactions_count: 0, total_amount: 0 }
-      destMap[dest].transactions_count++
-      destMap[dest].total_amount += t.amount || 0
-    }
-
-    const summaries: TransactionSummary[] = Object.entries(destMap)
-      .map(([to_account, v]) => ({ to_account, ...v }))
-      .sort((a, b) => b.total_amount - a.total_amount)
-
-    setTransactionSummaries(summaries)
-  }
-
   // ── Side trips by driver (#9) ────────────────────────────────────────────
   async function fetchSideTripReports() {
     const { from, to } = getRange()
@@ -939,9 +878,7 @@ export default function Reports() {
       Driver: d.driver_name,
       Trips: d.trips_count,
       Stops: d.stops_count,
-      "Plant Bags": d.factory_bags,
-      "Store Bags": d.store_bags,
-      "Total Bags": d.total_bags,
+      "Total Bags Delivered": d.total_bags,
       "Avg Bags per Trip": d.avg_bags_per_trip,
     }))
     if (format === "csv") downloadCSV("driver_summary.csv", rows)
@@ -1098,16 +1035,6 @@ export default function Reports() {
     }))
     if (format === "csv") downloadCSV("cash_office_expenses.csv", rows)
     else downloadXLSX("cash_office_expenses.xlsx", rows, "Cash Office Expenses")
-  }
-
-  function exportTransactions(format: "csv" | "xlsx") {
-    const rows = transactionSummaries.map((t) => ({
-      "To Account": t.to_account,
-      "Transactions Count": t.transactions_count,
-      "Total Amount (₦)": t.total_amount,
-    }))
-    if (format === "csv") downloadCSV("transactions.csv", rows)
-    else downloadXLSX("transactions.xlsx", rows, "Transactions")
   }
 
   function exportSideTrips(format: "csv" | "xlsx") {
@@ -1351,9 +1278,7 @@ cursor: loading ? "not-allowed" : "pointer",
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, padding: "12px 0", borderTop: "1px solid #f1f5f9", borderBottom: "1px solid #f1f5f9" }}>
                           <ReportCardField label="Trips" value={driver.trips_count} />
                           <ReportCardField label="Stops" value={driver.stops_count} />
-                          <ReportCardField label="Plant" value={driver.factory_bags} />
-                          <ReportCardField label="Store" value={driver.store_bags} />
-                          <ReportCardField label="Total Bags" value={driver.total_bags} />
+                          <ReportCardField label="Bags" value={driver.total_bags} />
                           <ReportCardField label="Avg/Trip" value={driver.avg_bags_per_trip} />
                 </div>
 <button
@@ -1391,9 +1316,7 @@ cursor: loading ? "not-allowed" : "pointer",
                     { key: "driver_name", label: "Driver" },
                     { key: "trips_count", label: "Trips" },
                     { key: "stops_count", label: "Stops" },
-                    { key: "factory_bags", label: "Plant" },
-                    { key: "store_bags", label: "Store" },
-                    { key: "total_bags", label: "Total Bags" },
+                    { key: "total_bags", label: "Bags Delivered" },
                     { key: "avg_bags_per_trip", label: "Avg Bags/Trip" },
                     {
                       key: "actions",
@@ -2148,34 +2071,6 @@ borderRadius: 6,
                 ]}
                 rows={cashOfficeExpenseSummaries}
                 rowKey={(row) => row.office_name}
-              />
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Transactions (Top Ups) */}
-      {!loading && hasLoaded && reportType === "transactions" && (
-        <div>
-          {transactionSummaries.length === 0 ? (
-            <EmptyState icon="💸" title="No data available" description="No transfers found in this period." />
-          ) : (
-            <div>
-              <div style={{ display: "flex", flexDirection: isMobile ? "column" : "row", justifyContent: "space-between", alignItems: isMobile ? "flex-start" : "center", gap: 12, marginBottom: 16 }}>
-                <div>
-                  <h2 style={{ margin: 0, color: "#0f172a", fontSize: FONT_SIZE.lg, fontWeight: 600 }}>Transactions (Top Ups)</h2>
-                  <p style={{ margin: "4px 0 0", color: "#64748b", fontSize: FONT_SIZE.sm }}>{transactionSummaries.length} destinations</p>
-                </div>
-                <ExportActions onExportCSV={() => exportTransactions("csv")} onExportXLSX={() => exportTransactions("xlsx")} />
-              </div>
-              <DataTable
-                columns={[
-                  { key: "to_account", label: "To Account" },
-                  { key: "transactions_count", label: "Transfers Count" },
-                  { key: "total_amount", label: "Total Amount", render: (value) => `₦${(value as number).toLocaleString()}` },
-                ]}
-                rows={transactionSummaries}
-                rowKey={(row) => row.to_account}
               />
             </div>
           )}

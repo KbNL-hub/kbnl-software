@@ -1,7 +1,7 @@
 "use client"
 
 import Image from "next/image"
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import { useRouter } from "next/navigation"
 import { supabase } from "@/lib/supabase"
 import { apiMutate } from "@/lib/api-mutation"
@@ -16,6 +16,7 @@ import { Role } from "@/lib/roles"
 import { formatDateTime, formatTime } from "@/lib/date-utils"
 import { useStops } from "@/lib/hooks/useStops"
 import { Icon } from "@iconify/react"
+import { calculateStockBalances, TransactionEvent } from "@/lib/stock-utils"
 
 type Supervisor = {
   supervisor_id: string
@@ -103,6 +104,8 @@ export default function StoreSupervisorDashboard() {
   const [salesPage, setSalesPage] = useState(1)
   const [salesPaymentFilter, setSalesPaymentFilter] = useState("")
   const [salesSortByAdded, setSalesSortByAdded] = useState(false)
+  const [stockBalances, setStockBalances] = useState<Map<string, number>>(new Map())
+  const storeGenerationRef = useRef(0)
   const PAGE_SIZE = 50
 
   // Stops (supplies) - read-only
@@ -152,19 +155,31 @@ export default function StoreSupervisorDashboard() {
   // Fetch data when store changes
   useEffect(() => {
     if (!selectedStore) return
-    fetchStock(selectedStore)
-    fetchSales(selectedStore)
-    fetchPastVerifications(selectedStore)
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setExpandedGroups(new Set())
-    setLastUpdated(new Date())
+    const gen = ++storeGenerationRef.current
+    async function load() {
+      const [freshStock, freshSales] = await Promise.all([
+        fetchStock(selectedStore),
+        fetchSales(selectedStore),
+        fetchPastVerifications(selectedStore),
+      ])
+      if (gen !== storeGenerationRef.current) return
+      computeStockBalances(selectedStore, freshSales || [], freshStock || [])
+      setExpandedGroups(new Set())
+      setLastUpdated(new Date())
+    }
+    load()
   }, [selectedStore])
 
-  usePolling(() => {
-    fetchStock(selectedStore)
-    fetchSales(selectedStore)
-    fetchPastVerifications(selectedStore)
-    refetchStops()
+  usePolling(async () => {
+    const gen = ++storeGenerationRef.current
+    const [freshStock, freshSales] = await Promise.all([
+      fetchStock(selectedStore),
+      fetchSales(selectedStore),
+      fetchPastVerifications(selectedStore),
+      refetchStops(),
+    ])
+    if (gen !== storeGenerationRef.current) return
+    computeStockBalances(selectedStore, freshSales || [], freshStock || [])
     setLastUpdated(new Date())
   }, 120000, !!selectedStore)
 
@@ -187,7 +202,9 @@ export default function StoreSupervisorDashboard() {
       .select("product, balance")
       .eq("store_name", storeName)
       .order("product", { ascending: true })
-    setStock(data || [])
+    const stockData = data || []
+    setStock(stockData)
+    return stockData
   }
 
   async function fetchSales(storeName: string) {
@@ -196,7 +213,9 @@ export default function StoreSupervisorDashboard() {
       .select("sale_id, items, total_amount, total_quantity, customer_name, payment_mode, delivery_mode, tricycle_id, truck_plate, sold_at, created_at, broker_id, status, officer_id, rejection_reason, sale_type")
       .eq("store_name", storeName)
       .order("sold_at", { ascending: false })
-    setSales(data || [])
+    const salesData = data || []
+    setSales(salesData)
+    return salesData
   }
 
   async function fetchPastVerifications(storeName: string) {
@@ -207,6 +226,59 @@ export default function StoreSupervisorDashboard() {
       .order("verified_at", { ascending: false })
       .limit(100)
     setPastVerifications(data || [])
+  }
+
+  async function computeStockBalances(storeName: string, salesData: Sale[], stockData: StockBalance[]) {
+    const { data: supplyConfs } = await supabase
+      .from("store_supply_confirmations")
+      .select("confirmation_id, store_name, confirmed_at")
+      .eq("store_name", storeName)
+
+    const confIds = (supplyConfs || []).map(c => c.confirmation_id)
+    let supplyLines: { confirmation_id: string; quantity: number }[] = []
+    if (confIds.length > 0) {
+      const { data: lines } = await supabase
+        .from("store_supply_lines")
+        .select("confirmation_id, quantity")
+        .in("confirmation_id", confIds)
+      supplyLines = lines || []
+    }
+
+    const linesByConf = new Map<string, number>()
+    for (const line of supplyLines) {
+      linesByConf.set(line.confirmation_id, (linesByConf.get(line.confirmation_id) || 0) + line.quantity)
+    }
+
+    const events: TransactionEvent[] = []
+
+    for (const conf of supplyConfs || []) {
+      const qty = linesByConf.get(conf.confirmation_id) || 0
+      if (qty > 0) {
+        events.push({
+          id: conf.confirmation_id,
+          kind: "supply",
+          store_name: storeName,
+          total_quantity: qty,
+          timestamp: conf.confirmed_at,
+        })
+      }
+    }
+
+    for (const sale of salesData) {
+      events.push({
+        id: sale.sale_id,
+        kind: "sale",
+        store_name: storeName,
+        total_quantity: sale.total_quantity || 0,
+        timestamp: sale.created_at,
+      })
+    }
+
+    const currentBalanceMap = new Map<string, number>()
+    currentBalanceMap.set(storeName, stockData.reduce((sum, s) => sum + s.balance, 0))
+
+    const balances = calculateStockBalances(events, currentBalanceMap)
+    setStockBalances(balances)
   }
 
   function updateVerificationRow(index: number, field: "physical_count" | "notes", value: string) {
@@ -770,7 +842,14 @@ export default function StoreSupervisorDashboard() {
                             </div>
                           )}
                         </div>
-                      ))}
+                      )                      )}
+                    </div>
+
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, background: "#f0f7ff", borderRadius: 8, padding: "10px 14px", marginTop: 12, border: "1px solid #bfdbfe" }}>
+                      <Icon icon="mdi:package-variant" width={18} color="#0070f3" />
+                      <span style={{ fontSize: FONT_SIZE.sm, color: "#475569", fontWeight: 500 }}>Total bags remaining:</span>
+                      <span style={{ fontSize: FONT_SIZE.lg, fontWeight: 700, color: "#0070f3" }}>{(stockBalances.get(sale.sale_id) ?? 0).toLocaleString()}</span>
+                      <span style={{ fontSize: FONT_SIZE.xs, color: "#64748b" }}>bags</span>
                     </div>
                   </div>
                 )

@@ -24,8 +24,8 @@ const supabaseAdmin = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!,
 )
 
-const ALLOWED_TABLES = ["customer_payments", "broker_credits", "store_sales", "store_supply_confirmations", "store_supply_lines", "cash_expenses", "cash_expense_items", "cash_offices", "cash_deposits", "admin_office_assignments", "Customers", "Brokers", "store_stock", "store_officers", "stock_verifications", "price_adjustments", "credit_approvals", "customer_charts", "new_bookings"] as const
-const ALLOWED_RPCS = ["decrement_store_stock", "add_cash_deposit", "authorise_cash_expense", "create_transaction"] as const
+const ALLOWED_TABLES = ["customer_payments", "broker_credits", "store_sales", "store_supply_confirmations", "store_supply_lines", "cash_expenses", "cash_expense_items", "cash_offices", "cash_deposits", "admin_office_assignments", "Customers", "Brokers", "store_stock", "store_officers", "stock_verifications", "price_adjustments", "credit_approvals", "customer_charts", "new_bookings", "booking_supply_events"] as const
+const ALLOWED_RPCS = ["decrement_store_stock", "add_cash_deposit", "authorise_cash_expense", "create_transaction", "supply_booking"] as const
 
 const TABLE_ROLES: Record<string, string[]> = {
   customer_payments: ["Broker", "Admin", "SuperAdmin", "DeskOfficer", "Supervisor"],
@@ -48,6 +48,7 @@ const TABLE_ROLES: Record<string, string[]> = {
   credit_approvals: ["Broker", "Admin", "SuperAdmin", "DeskOfficer", "CreditManager"],
   customer_charts: ["Admin", "SuperAdmin", "Broker", "DeskOfficer"],
   new_bookings: ["Broker", "Admin", "SuperAdmin", "ATCOfficer"],
+  booking_supply_events: ["Admin", "SuperAdmin", "ATCOfficer"],
 }
 
 const RPC_ROLES: Record<string, string[]> = {
@@ -55,6 +56,7 @@ const RPC_ROLES: Record<string, string[]> = {
   add_cash_deposit: ["CashOfficer", "Admin", "SuperAdmin", "Broker", "CashAuthorizer", "DeskOfficer"],
   authorise_cash_expense: ["Admin", "SuperAdmin", "Broker", "CashAuthorizer", "DeskOfficer"],
   create_transaction: ["Admin", "SuperAdmin"],
+  supply_booking: ["Admin", "SuperAdmin", "ATCOfficer"],
 }
 
 const RPC_PARAM_SCHEMAS: Record<string, string[]> = {
@@ -62,6 +64,7 @@ const RPC_PARAM_SCHEMAS: Record<string, string[]> = {
   add_cash_deposit: ["p_office_name", "p_amount", "p_note", "p_deposited_by"],
   authorise_cash_expense: ["p_expense_id", "p_admin_id", "p_notes"],
   create_transaction: ["p_from_account", "p_to_account", "p_amount", "p_description", "p_created_by"],
+  supply_booking: ["p_booking_id", "p_bags", "p_supply_date", "p_supplied_by", "p_idempotency_key"],
 }
 
 function buildError(msg: string, status: number) {
@@ -108,6 +111,7 @@ async function enforceBrokerScope(
     }
     if (action !== "update" && action !== "delete") return null
     if (data?.status === "supplied" && auth.roles.includes("ATCOfficer")) return null
+    if (data?.status === "partial" && auth.roles.includes("ATCOfficer")) return null
     const bookingId = filters?.id as string | undefined
     if (!bookingId) return `Access denied for ${action} on ${table}`
     if (!supabaseClient) return `Access denied for ${action} on ${table}`
@@ -146,10 +150,10 @@ function enforceBookingAuthorization(
 
   // ATC-only officers (not brokers): restrict to supply fields for updates
   if (isATCOnly && action !== "insert") {
-    if ("status" in data && data.status !== "supplied") {
-      return "ATC Officers can only mark bookings as supplied"
+    if ("status" in data && data.status !== "supplied" && data.status !== "partial") {
+      return "ATC Officers can only mark bookings as supplied or partial"
     }
-    const allowed = ["status", "supply_date", "supplied_by"]
+    const allowed = ["status", "supply_date", "supplied_by", "bags_supplied"]
     for (const key of Object.keys(data)) {
       if (!allowed.includes(key)) return "ATC Officers can only update supply fields"
     }
@@ -159,11 +163,17 @@ function enforceBookingAuthorization(
   // Brokers (with or without ATC role): apply broker rules
   if (hasBroker) {
     if (action === "upsert") return "Brokers cannot upsert bookings"
-    const isSupplyOp = isBrokerATC && data.status === "supplied"
+    const isSupplyOp = isBrokerATC && (data.status === "supplied" || data.status === "partial")
+    if (isSupplyOp) {
+      const supplyAllowed = ["status", "supply_date", "supplied_by", "bags_supplied"]
+      for (const key of Object.keys(data)) {
+        if (!supplyAllowed.includes(key)) return "Supply operations can only modify status, supply_date, supplied_by, or bags_supplied"
+      }
+    }
     const forbidden = ["reviewed_by", "reviewed_at"]
     if (action !== "insert") forbidden.push("broker_id")
     if (!isSupplyOp) {
-      forbidden.push("status", "supplied_by", "supply_date")
+      forbidden.push("status", "supplied_by", "supply_date", "bags_supplied")
     }
     for (const f of forbidden) {
       delete data[f]
@@ -262,6 +272,9 @@ export async function POST(req: NextRequest) {
         }
         if (sa.table === "customer_charts" && sa.action !== "insert" && !auth.roles.some(r => ["Admin", "SuperAdmin"].includes(r))) {
           return buildError("Only admins can modify or delete chart records", 403)
+        }
+        if (sa.table === "booking_supply_events" && sa.action !== "insert" && auth.roles.includes("ATCOfficer") && !auth.roles.some(r => ["Admin", "SuperAdmin"].includes(r))) {
+          return buildError("ATC Officers can only insert supply events", 403)
         }
         const brokerScopeError = await enforceBrokerScope(sa.table, sa.action, sa.filters, sa.data, auth, supabaseAdmin)
         if (brokerScopeError) {
@@ -490,6 +503,10 @@ export async function POST(req: NextRequest) {
       if (bookingAuthError) {
         return buildError(bookingAuthError, 403)
       }
+    }
+
+    if (table === "booking_supply_events" && action !== "insert" && auth.roles.includes("ATCOfficer") && !auth.roles.some(r => ["Admin", "SuperAdmin"].includes(r))) {
+      return buildError("ATC Officers can only insert supply events", 403)
     }
 
     switch (action) {

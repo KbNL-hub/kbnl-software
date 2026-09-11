@@ -24,6 +24,7 @@ import { requireDashboardRole } from "@/lib/auth-helpers"
 import { Role } from "@/lib/roles"
 import { formatDateTime, formatTime } from "@/lib/date-utils"
 import { useStops } from "@/lib/hooks/useStops"
+import { calculateStockBalances, TransactionEvent } from "@/lib/stock-utils"
 
 type Officer = { officer_id: string; full_name: string; store_name: string; profile_picture_url?: string }
 
@@ -169,6 +170,7 @@ export default function StoreOfficerDashboard() {
   const [salesFilter, setSalesFilter] = useState("All")
   const [salesDateFilter, setSalesDateFilter] = useState("")
   const [salesSortByAdded, setSalesSortByAdded] = useState(true)
+  const [stockBalances, setStockBalances] = useState<Map<string, number>>(new Map())
 
   const [showPictureModal, setShowPictureModal] = useState(false)
   const [showReportModal, setShowReportModal] = useState(false)
@@ -207,7 +209,7 @@ export default function StoreOfficerDashboard() {
     if (productsData) setAllProducts(productsData.map((r: { value: string }) => r.value))
     if (storeName) setStopsFilter({ store_name: storeName, pending: true })
 
-    await Promise.all([
+    const [fetchedStock, fetchedSales] = await Promise.all([
       fetchStock(storeName),
       fetchSales(storeName),
       fetchMonthlyStats(storeName),
@@ -217,14 +219,20 @@ export default function StoreOfficerDashboard() {
       fetchDrivers(),
     ])
     setLoading(false)
+
+    if (storeName) computeStockBalances(storeName, fetchedSales || [], fetchedStock || [])
   }
 
-  usePolling(() => {
+  usePolling(async () => {
     if (!officer) return
     refetchStops()
-    fetchStock(officer.store_name)
-    fetchMonthlyStats(officer.store_name)
+    const [freshStock, freshSales] = await Promise.all([
+      fetchStock(officer.store_name),
+      fetchSales(officer.store_name),
+      fetchMonthlyStats(officer.store_name),
+    ])
     setLastUpdated(new Date())
+    computeStockBalances(officer.store_name, freshSales || [], freshStock || [])
   }, 120000, !!officer)
 
   async function fetchStock(storeName: string) {
@@ -233,7 +241,9 @@ export default function StoreOfficerDashboard() {
       .select("product, balance")
       .eq("store_name", storeName)
       .order("product", { ascending: true })
-    setStock(data || [])
+    const stockData = data || []
+    setStock(stockData)
+    return stockData
   }
 
   async function fetchMonthlyStats(storeName: string) {
@@ -278,7 +288,7 @@ export default function StoreOfficerDashboard() {
       .eq("store_name", storeName)
       .order("sold_at", { ascending: false })
 
-    if (!data) { setSales([]); return }
+    if (!data) { setSales([]); return [] }
 
     const tricycleIds = [...new Set(data.map(s => s.tricycle_id).filter(Boolean))]
     const brokerIds = [...new Set(data.map(s => s.broker_id).filter(Boolean))]
@@ -298,6 +308,7 @@ export default function StoreOfficerDashboard() {
     }))
 
     setSales(enriched)
+    return enriched
   }
 
   async function fetchTricycles() {
@@ -331,6 +342,59 @@ export default function StoreOfficerDashboard() {
       .eq("status", "Active")
       .order("full_name", { ascending: true })
     setDrivers(data || [])
+  }
+
+  async function computeStockBalances(storeName: string, salesData: Sale[], stockData: StockBalance[]) {
+    const { data: supplyConfs } = await supabase
+      .from("store_supply_confirmations")
+      .select("confirmation_id, store_name, confirmed_at")
+      .eq("store_name", storeName)
+
+    const confIds = (supplyConfs || []).map(c => c.confirmation_id)
+    let supplyLines: { confirmation_id: string; quantity: number }[] = []
+    if (confIds.length > 0) {
+      const { data: lines } = await supabase
+        .from("store_supply_lines")
+        .select("confirmation_id, quantity")
+        .in("confirmation_id", confIds)
+      supplyLines = lines || []
+    }
+
+    const linesByConf = new Map<string, number>()
+    for (const line of supplyLines) {
+      linesByConf.set(line.confirmation_id, (linesByConf.get(line.confirmation_id) || 0) + line.quantity)
+    }
+
+    const events: TransactionEvent[] = []
+
+    for (const conf of supplyConfs || []) {
+      const qty = linesByConf.get(conf.confirmation_id) || 0
+      if (qty > 0) {
+        events.push({
+          id: conf.confirmation_id,
+          kind: "supply",
+          store_name: storeName,
+          total_quantity: qty,
+          timestamp: conf.confirmed_at,
+        })
+      }
+    }
+
+    for (const sale of salesData) {
+      events.push({
+        id: sale.sale_id,
+        kind: "sale",
+        store_name: storeName,
+        total_quantity: sale.total_quantity || 0,
+        timestamp: sale.created_at,
+      })
+    }
+
+    const currentBalanceMap = new Map<string, number>()
+    currentBalanceMap.set(storeName, stockData.reduce((sum, s) => sum + s.balance, 0))
+
+    const balances = calculateStockBalances(events, currentBalanceMap)
+    setStockBalances(balances)
   }
 
   function addSupplyLine() {
@@ -588,11 +652,12 @@ export default function StoreOfficerDashboard() {
       setDriverSearch("")
       setSaleDate(new Date().toISOString().split("T")[0])
 
-      await Promise.all([
+      const [freshSales, freshStock] = await Promise.all([
         fetchSales(officer.store_name),
         fetchStock(officer.store_name),
         fetchMonthlyStats(officer.store_name),
       ])
+      computeStockBalances(officer.store_name, freshSales || [], freshStock || [])
     } catch {
       setSaleError("An error occurred")
       setSaleLoading(false)
@@ -767,11 +832,12 @@ export default function StoreOfficerDashboard() {
     setEditLoading(false)
     closeEditModal()
 
-    await Promise.all([
+    const [freshSales, freshStock] = await Promise.all([
       fetchSales(officer.store_name),
       fetchStock(officer.store_name),
       fetchMonthlyStats(officer.store_name),
     ])
+    computeStockBalances(officer.store_name, freshSales || [], freshStock || [])
   }
 
   const filteredSales = sales.filter(s => {
@@ -1213,6 +1279,13 @@ export default function StoreOfficerDashboard() {
                         )}
                       </div>
                     ))}
+                    </div>
+
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, background: "#f0f7ff", borderRadius: 8, padding: "10px 14px", marginTop: 12, border: "1px solid #bfdbfe" }}>
+                    <Icon icon="mdi:package-variant" width={18} color="#0070f3" />
+                    <span style={{ fontSize: FONT_SIZE.sm, color: "#475569", fontWeight: 500 }}>Total bags remaining:</span>
+                    <span style={{ fontSize: FONT_SIZE.lg, fontWeight: 700, color: "#0070f3" }}>{(stockBalances.get(sale.sale_id) ?? 0).toLocaleString()}</span>
+                    <span style={{ fontSize: FONT_SIZE.xs, color: "#64748b" }}>bags</span>
                   </div>
 
                   {sale.status === "Rejected" && (

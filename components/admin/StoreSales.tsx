@@ -11,6 +11,7 @@ import { supabase } from "@/lib/supabase"
 import { fetchStores } from "@/lib/stores"
 import ModernInput from "@/components/ModernInput"
 import PaginationControls from "@/components/PaginationControls"
+import { calculateStockBalances, TransactionEvent } from "@/lib/stock-utils"
 
 type SaleItem = {
   product: string
@@ -154,6 +155,7 @@ export default function StoreSales() {
   const [isResubmitting, setIsResubmitting] = useState(false)
   const [message, setMessage] = useState("")
 
+  const [stockBalances, setStockBalances] = useState<Map<string, number>>(new Map())
   const [allProducts, setAllProducts] = useState<string[]>([])
   const [filterProduct, setFilterProduct] = useState("")
   const [filterStore, setFilterStore] = useState("")
@@ -228,7 +230,6 @@ export default function StoreSales() {
       .from("store_supply_confirmations")
       .select("confirmation_id, store_name, confirmed_at, stop_id")
       .order("confirmed_at", { ascending: false })
-      .limit(500)
 
     if (error) throw error
     if (!confirmations) return []
@@ -284,6 +285,37 @@ export default function StoreSales() {
       setSales(salesData)
       setSupplies(suppliesData)
       setLastUpdated(new Date())
+
+      const { data: stockRows } = await supabase.from("store_stock").select("store_name, balance")
+      const currentBalanceMap = new Map<string, number>()
+      for (const row of stockRows || []) {
+        currentBalanceMap.set(row.store_name, (currentBalanceMap.get(row.store_name) || 0) + row.balance)
+      }
+
+      const events: TransactionEvent[] = []
+
+      for (const sale of salesData) {
+        events.push({
+          id: sale.sale_id,
+          kind: "sale",
+          store_name: sale.store_name,
+          total_quantity: sale.total_quantity,
+          timestamp: sale.created_at,
+        })
+      }
+
+      for (const supply of suppliesData) {
+        events.push({
+          id: supply.confirmation_id,
+          kind: "supply",
+          store_name: supply.store_name,
+          total_quantity: supply.total_quantity,
+          timestamp: supply.confirmed_at,
+        })
+      }
+
+      const balances = calculateStockBalances(events, currentBalanceMap)
+      setStockBalances(balances)
     } catch (err) {
       console.error("Error loading store activity:", err)
     } finally {
@@ -935,6 +967,13 @@ export default function StoreSales() {
                       )}
                     </div>
 
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, background: "#f0f7ff", borderRadius: 8, padding: "10px 14px", marginTop: 12, border: "1px solid #bfdbfe" }}>
+                      <Icon icon="mdi:package-variant" width={18} color="#0070f3" />
+                      <span style={{ fontSize: FONT_SIZE.sm, color: "#475569", fontWeight: 500 }}>Total bags remaining:</span>
+                      <span style={{ fontSize: FONT_SIZE.lg, fontWeight: 700, color: "#0070f3" }}>{(item.sale_id ? stockBalances.get(item.sale_id) ?? 0 : 0).toLocaleString()}</span>
+                      <span style={{ fontSize: FONT_SIZE.xs, color: "#64748b" }}>bags</span>
+                    </div>
+
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                       <span style={{ color: "#94a3b8", fontSize: FONT_SIZE.xs }}>
                         {new Date(item.date).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })} {new Date(item.date).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
@@ -1002,7 +1041,7 @@ export default function StoreSales() {
 
           {viewMode === "table" && (
             <div style={{ background: "white", borderRadius: 12, border: "1px solid #e2e8f0", boxShadow: "0 1px 3px rgba(0, 0, 0, 0.05)", overflowX: "auto" }}>
-              <table style={{ width: "100%", borderCollapse: "collapse", textAlign: "left", minWidth: 1150 }}>
+              <table style={{ width: "100%", borderCollapse: "collapse", textAlign: "left", minWidth: 1250 }}>
                 <thead>
                   <tr style={{ background: "#f8fafc", borderBottom: "1px solid #e2e8f0" }}>
                     <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: FONT_SIZE.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px" }}>Store</th>
@@ -1016,6 +1055,7 @@ export default function StoreSales() {
                     <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: FONT_SIZE.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px" }}>Driver</th>
                     <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: FONT_SIZE.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px" }}>Broker</th>
                     <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: FONT_SIZE.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px" }}>Status</th>
+                    <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: FONT_SIZE.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px" }}>Stock Left</th>
                     <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: FONT_SIZE.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px" }}>Date</th>
                   </tr>
                 </thead>
@@ -1053,6 +1093,7 @@ export default function StoreSales() {
                               Confirmed
                             </span>
                           </td>
+                          <td style={{ padding: "12px 16px", color: "#94a3b8", fontSize: FONT_SIZE.sm }}>—</td>
                           <td style={{ padding: "12px 16px", color: "#94a3b8", fontSize: FONT_SIZE.xs }}>{new Date(item.date).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })} {new Date(item.date).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</td>
                         </tr>
                       )
@@ -1160,6 +1201,9 @@ onClick={() => handleResubmit(item)}
                               </button>
                             </div>
                           )}
+                        </td>
+                        <td style={{ padding: "12px 16px", fontSize: FONT_SIZE.base, fontWeight: 600, color: "#0070f3" }}>
+                          {item.sale_id ? (stockBalances.get(item.sale_id) ?? 0).toLocaleString() : "—"}
                         </td>
                         <td style={{ padding: "12px 16px", color: "#94a3b8", fontSize: FONT_SIZE.xs }}>{new Date(item.date).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })} {new Date(item.date).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</td>
                       </tr>

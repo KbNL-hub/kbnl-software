@@ -105,6 +105,7 @@ export default function CustomerSelector({ onSelect, allowUnsavedNew, initialVal
 
   async function handleCreate() {
     if (!newName.trim()) { setMessage("Customer name is required"); return }
+    if (!newPhone.trim()) { setMessage("Phone number is required"); return }
 
     if (allowUnsavedNew) {
       const tempCustomer = { customer_id: "", full_name: newName, phone_number: newPhone || "", isNew: true }
@@ -243,7 +244,7 @@ export default function CustomerSelector({ onSelect, allowUnsavedNew, initialVal
           />
           <ModernInput
             type="text"
-            placeholder="Phone number (optional)"
+            placeholder="Phone number *"
             value={newPhone}
             onChange={e => setNewPhone(e.target.value)}
             style={{ ...fieldStyle, marginBottom: 12 }}

@@ -130,15 +130,25 @@ export interface NewBooking {
   rate_per_bag: number
   total_amount: number
   payment_date: string
-  status: "pending" | "awaiting_review" | "rejected" | "supplied"
+  status: "pending" | "awaiting_review" | "rejected" | "supplied" | "partial"
   price_reason: string | null
   company_price: number | null
   supply_date: string | null
   supplied_by: string | null
+  bags_supplied: number
   rejection_reason: string | null
   reviewed_by: string | null
   reviewed_at: string | null
   created_at: string
   updated_at: string
   broker_name?: string
+}
+
+export interface BookingSupplyEvent {
+  id: string
+  booking_id: string
+  bags_supplied: number
+  supply_date: string
+  supplied_by: string | null
+  created_at: string
 }
