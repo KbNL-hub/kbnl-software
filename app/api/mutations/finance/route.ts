@@ -172,7 +172,7 @@ function enforceBookingAuthorization(
     }
     const forbidden = ["reviewed_by", "reviewed_at"]
     if (action !== "insert") forbidden.push("broker_id")
-    if (!isSupplyOp) {
+    if (!isSupplyOp && action === "update") {
       forbidden.push("status", "supplied_by", "supply_date", "bags_supplied")
     }
     for (const f of forbidden) {
