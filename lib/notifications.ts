@@ -96,6 +96,15 @@ export function notifyBrokerPaymentPosted(brokerId: string, customerName: string
   })
 }
 
+export function notifyBrokerStoreSalePosted(brokerId: string, storeName: string, amount: number) {
+  return sendToUser(brokerId, {
+    title: 'Store Sale Posted',
+    body: `₦${amount.toLocaleString()} sale at ${storeName} has been posted.`,
+    url: '/admin?section=store-sales',
+    tag: `store-sale-posted-${brokerId}`,
+  })
+}
+
 export function notifyBrokerCreditExceeded15Days(brokerId: string, customerName: string) {
   return sendToUser(brokerId, {
     title: 'Credit Days Exceeded',

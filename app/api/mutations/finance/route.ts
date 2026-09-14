@@ -17,6 +17,7 @@ import {
   notifyStoreOfficerSaleConfirmed,
   notifyBrokerSaleReturned,
   notifyBrokerStopReturned,
+  notifyBrokerStoreSalePosted,
 } from "@/lib/notifications"
 
 const supabaseAdmin = createClient(
@@ -50,6 +51,8 @@ const TABLE_ROLES: Record<string, string[]> = {
   new_bookings: ["Broker", "Admin", "SuperAdmin", "ATCOfficer"],
   booking_supply_events: ["Admin", "SuperAdmin", "ATCOfficer"],
 }
+
+const STORE_SALE_POSTING_ROLES = ["Admin", "SuperAdmin", "DeskOfficer", "Supervisor"]
 
 const RPC_ROLES: Record<string, string[]> = {
   decrement_store_stock: ["StoreOfficer", "Admin", "SuperAdmin"],
@@ -276,6 +279,14 @@ export async function POST(req: NextRequest) {
         if (sa.table === "booking_supply_events" && sa.action !== "insert" && auth.roles.includes("ATCOfficer") && !auth.roles.some(r => ["Admin", "SuperAdmin"].includes(r))) {
           return buildError("ATC Officers can only insert supply events", 403)
         }
+        if (sa.table === "store_sales" && sa.action === "update" && sa.data?.status === "Posted") {
+          if (!auth.roles.some(r => STORE_SALE_POSTING_ROLES.includes(r))) {
+            return buildError("You do not have permission to post store sales", 403)
+          }
+          // Set posted_by and posted_at server-side, enforce atomic status predicate
+          sa.data.posted_by = auth.userId
+          sa.data.posted_at = new Date().toISOString()
+        }
         const brokerScopeError = await enforceBrokerScope(sa.table, sa.action, sa.filters, sa.data, auth, supabaseAdmin)
         if (brokerScopeError) {
           return buildError(brokerScopeError, 403)
@@ -327,6 +338,10 @@ export async function POST(req: NextRequest) {
                 throw new Error("filters are required for update")
               }
               let q = supabaseAdmin.from(sa.table).update(sa.data)
+              // Atomic posting predicate: only transition from Confirmed, reject truck_load_out
+              if (sa.table === "store_sales" && sa.data.status === "Posted") {
+                q = q.eq("status", "Confirmed").neq("sale_type", "truck_load_out")
+              }
               for (const [k, v] of Object.entries(sa.filters)) {
                 q = q.eq(k, v)
               }
@@ -334,6 +349,9 @@ export async function POST(req: NextRequest) {
               if (error) {
                 console.error("Sub-action failed", error)
                 throw new Error(error.message || "Sub-action failed")
+              }
+              if (sa.table === "store_sales" && sa.data.status === "Posted" && (!r || r.length === 0)) {
+                throw new Error("Sale is not in Confirmed status or is a truck load out")
               }
               execResult = r
               break
@@ -398,7 +416,7 @@ export async function POST(req: NextRequest) {
             }
           }
 
-          // Store Sale Resubmitted / Confirmed (in transaction)
+          // Store Sale Resubmitted / Confirmed / Posted (in transaction)
           if (c.table === "store_sales" && c.action === "update") {
             const saleId = row.sale_id as string
             const brokerId = row.broker_id as string
@@ -414,6 +432,10 @@ export async function POST(req: NextRequest) {
                 notifyDeskOfficerStoreSaleNeedsAttention(saleId).catch(console.error)
               } else if (row.status === "Confirmed" && saleId) {
                 notifyStoreOfficerSaleConfirmed(saleId).catch(console.error)
+              } else if (row.status === "Posted" && brokerId) {
+                const storeName = row.store_name as string || "Store"
+                const amount = row.total_amount as number || 0
+                notifyBrokerStoreSalePosted(brokerId, storeName, amount).catch(console.error)
               }
             }
           }
@@ -599,6 +621,42 @@ export async function POST(req: NextRequest) {
         if (!filters || Object.keys(filters).length === 0) {
           return buildError("filters are required for update", 400)
         }
+
+        // Store Sale Posted — dedicated atomic posting transition
+        if (table === "store_sales" && data.status === "Posted") {
+          if (!auth.roles.some(r => STORE_SALE_POSTING_ROLES.includes(r))) {
+            return buildError("You do not have permission to post store sales", 403)
+          }
+          // Set posted_by and posted_at server-side
+          data.posted_by = auth.userId
+          data.posted_at = new Date().toISOString()
+          // Atomic predicate: only transition from Confirmed, reject truck_load_out
+          let postQuery = supabaseAdmin.from(table).update(data)
+            .eq("status", "Confirmed")
+            .neq("sale_type", "truck_load_out")
+          for (const [k, v] of Object.entries(filters)) {
+            postQuery = postQuery.eq(k, v)
+          }
+          const { data: postResult, error: postError } = await postQuery.select()
+          if (postError) {
+            console.error("Store sale post failed", postError)
+            return buildError("Failed to post store sale. Try again.", 500)
+          }
+          if (!postResult || postResult.length === 0) {
+            return buildError("Sale is not in Confirmed status or is a truck load out", 400)
+          }
+          // Notify broker for every updated sale
+          for (const postRow of postResult || []) {
+            const brokerId = (postRow as Record<string, unknown>).broker_id as string
+            const storeName = (postRow as Record<string, unknown>).store_name as string || "Store"
+            const amount = (postRow as Record<string, unknown>).total_amount as number || 0
+            if (brokerId) {
+              notifyBrokerStoreSalePosted(brokerId, storeName, amount).catch(console.error)
+            }
+          }
+          return NextResponse.json({ data: postResult })
+        }
+
         let query = supabaseAdmin.from(table).update(data)
         query = applyFilters(query, filters)
         const { data: result, error } = await query.select()

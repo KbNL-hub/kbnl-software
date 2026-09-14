@@ -93,6 +93,7 @@ function getSaleStatusStyle(sale: { status: string; discount_status?: string | n
     Confirmed: { bg: "#ecfdf5", color: "#10b981", border: "#10b981" },
     Pending: { bg: "#fffbeb", color: "#f5a623", border: "#f5a623" },
     Rejected: { bg: "#fef2f2", color: "#ef4444", border: "#ef4444" },
+    Posted: { bg: "#f0f7ff", color: "#0070f3", border: "#93c5fd" },
   }
   return { label: sale.status, ...(byStatus[sale.status] ?? { bg: "#f1f5f9", color: "#475569", border: "#cbd5e1" }) }
 }
@@ -130,6 +131,8 @@ const getPillStyle = (filter: string, isActive: boolean) => {
     return { bg: "#fffbeb", textColor: "#f5a623", borderColor: "#f5a623" }
   } else if (filter === "Rejected") {
     return { bg: "#fef2f2", textColor: "#ef4444", borderColor: "#ef4444" }
+  } else if (filter === "Posted") {
+    return { bg: "#f0f7ff", textColor: "#0070f3", borderColor: "#93c5fd" }
   } else if (filter === "Supplies") {
     return { bg: "#ecfdf5", textColor: "#059669", borderColor: "#059669" }
   }
@@ -137,7 +140,7 @@ const getPillStyle = (filter: string, isActive: boolean) => {
   return { bg: "white", textColor: "#64748b", borderColor: "#e2e8f0" }
 }
 
-const filterOptions = ["All", "Confirmed", "Pending", "Rejected", "Supplies"]
+const filterOptions = ["All", "Confirmed", "Pending", "Posted", "Rejected", "Supplies"]
 
 export default function StoreSales() {
   const { isMobile } = useBreakpoint()
@@ -154,6 +157,9 @@ export default function StoreSales() {
   const [isRejecting, setIsRejecting] = useState(false)
   const [isResubmitting, setIsResubmitting] = useState(false)
   const [message, setMessage] = useState("")
+  const [postingSale, setPostingSale] = useState<ActivityItem | null>(null)
+  const [isPosting, setIsPosting] = useState(false)
+  const [showPostModal, setShowPostModal] = useState(false)
 
   const [stockBalances, setStockBalances] = useState<Map<string, number>>(new Map())
   const [allProducts, setAllProducts] = useState<string[]>([])
@@ -479,6 +485,43 @@ export default function StoreSales() {
       console.error("Error resubmitting sale:", err)
       setMessage("Failed to resubmit sale. Please try again.")
       setIsResubmitting(false)
+    }
+  }
+
+  function openPostModal(sale: ActivityItem) {
+    setPostingSale(sale)
+    setShowPostModal(true)
+  }
+
+  function closePostModal() {
+    setShowPostModal(false)
+    setPostingSale(null)
+  }
+
+  async function handlePost() {
+    if (!postingSale || postingSale.kind !== "sale" || !postingSale.sale_id) return
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return
+
+    setIsPosting(true)
+    try {
+      const { data, error } = await apiMutate("finance", {
+        action: "update",
+        table: "store_sales",
+        data: { status: "Posted", posted_by: user.id, posted_at: new Date().toISOString() },
+        filters: { sale_id: postingSale.sale_id },
+      })
+      if (error || (Array.isArray(data) && data.length === 0)) {
+        setMessage("Failed to post sale")
+        return
+      }
+      closePostModal()
+      loadAll()
+    } catch (err) {
+      console.error("Error posting sale:", err)
+      setMessage("Failed to post sale. Please try again.")
+    } finally {
+      setIsPosting(false)
     }
   }
 
@@ -967,7 +1010,7 @@ export default function StoreSales() {
                       )}
                     </div>
 
-                    <div style={{ display: "flex", alignItems: "center", gap: 8, background: "#f0f7ff", borderRadius: 8, padding: "10px 14px", marginTop: 12, border: "1px solid #bfdbfe" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, background: "#f0f7ff", borderRadius: 8, padding: "10px 14px", marginTop: 12, marginBottom: 12, border: "1px solid #bfdbfe" }}>
                       <Icon icon="mdi:package-variant" width={18} color="#0070f3" />
                       <span style={{ fontSize: FONT_SIZE.sm, color: "#475569", fontWeight: 500 }}>Total bags remaining:</span>
                       <span style={{ fontSize: FONT_SIZE.lg, fontWeight: 700, color: "#0070f3" }}>{(item.sale_id ? stockBalances.get(item.sale_id) ?? 0 : 0).toLocaleString()}</span>
@@ -1005,6 +1048,31 @@ export default function StoreSales() {
                             >
                               <Icon icon="mdi:rotate-3d-variant" width={14} />
                               {isResubmitting ? "Resubmitting…" : "Resubmit"}
+                            </button>
+                          )}
+                          {item.status === "Confirmed" && (
+                            <button
+                              onClick={() => openPostModal(item)}
+                              style={{
+                                padding: "6px 12px",
+                                background: "#0070f3",
+                                color: "white",
+                                border: "none",
+                                borderRadius: 6,
+                                cursor: "pointer",
+                                fontSize: FONT_SIZE.xs,
+                                fontWeight: 600,
+                                minHeight: 32,
+                                display: "flex",
+                                alignItems: "center",
+                                gap: 4,
+                                transition: "all 0.2s"
+                              }}
+                              onMouseEnter={e => { e.currentTarget.style.background = "#0056d4" }}
+                              onMouseLeave={e => { e.currentTarget.style.background = "#0070f3" }}
+                            >
+                              <Icon icon="mdi:check-circle" width={14} />
+                              Post
                             </button>
                           )}
                           <button
@@ -1174,6 +1242,31 @@ onClick={() => handleResubmit(item)}
                                 >
                                   <Icon icon="mdi:rotate-3d-variant" width={13} />
                                   Resubmit
+                                </button>
+                              )}
+                              {item.status === "Confirmed" && (
+                                <button
+                                  onClick={() => openPostModal(item)}
+                                  style={{
+                                    padding: "5px 10px",
+                                    background: "#0070f3",
+                                    color: "white",
+                                    border: "none",
+                                    borderRadius: 5,
+                                    cursor: "pointer",
+                                    fontSize: FONT_SIZE.xs,
+                                    fontWeight: 600,
+                                    minHeight: 28,
+                                    display: "flex",
+                                    alignItems: "center",
+                                    gap: 4,
+                                    transition: "all 0.2s"
+                                  }}
+                                  onMouseEnter={e => { e.currentTarget.style.background = "#0056d4" }}
+                                  onMouseLeave={e => { e.currentTarget.style.background = "#0070f3" }}
+                                >
+                                  <Icon icon="mdi:check-circle" width={13} />
+                                  Post
                                 </button>
                               )}
                               <button
@@ -1356,6 +1449,123 @@ onClick={() => handleResubmit(item)}
                 {isRejecting
                   ? <><Icon icon="mdi:loading" width={16} style={{ animation: "spin 1s linear infinite" }} />Rejecting…</>
                   : <><Icon icon="mdi:close-circle" width={16} />{rejectingSale.status === "Rejected" ? "Update Reason" : "Reject Sale"}</>
+                }
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showPostModal && postingSale && (
+        <div
+          onClick={closePostModal}
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(15, 23, 42, 0.6)",
+            backdropFilter: "blur(4px)",
+            display: "flex",
+            alignItems: isMobile ? "flex-end" : "center",
+            justifyContent: "center",
+            zIndex: 100,
+            padding: isMobile ? 0 : 24,
+            animation: "fadeIn 0.2s ease-out",
+          }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              background: "white",
+              borderRadius: isMobile ? "20px 20px 0 0" : 12,
+              padding: isMobile ? "28px 20px" : 32,
+              width: "100%",
+              maxWidth: 480,
+              maxHeight: "90vh",
+              overflowY: "auto",
+              boxShadow: "0 25px 50px -12px rgba(0, 0, 0, 0.25)",
+              animation: "slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1)",
+            }}
+          >
+            {isMobile && <div style={{ width: 40, height: 4, background: "#e0e0e0", borderRadius: 2, margin: "0 auto 20px" }} />}
+
+            <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 4 }}>
+              <div style={{ width: 38, height: 38, borderRadius: 10, background: "#f0f7ff", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                <Icon icon="mdi:check-circle" width={20} color="#0070f3" />
+              </div>
+              <h3 style={{ margin: 0, color: "#0f172a", fontSize: isMobile ? 18 : 16, fontWeight: 700 }}>
+                Post Sale
+              </h3>
+            </div>
+
+            <div style={{ padding: "12px 14px", background: "#f8fafc", borderRadius: 10, margin: "16px 0", border: "1px solid #e2e8f0" }}>
+              <p style={{ margin: 0, fontSize: FONT_SIZE.sm, color: "#0f172a", fontWeight: 600 }}>{postingSale.store_name}</p>
+              {postingSale.items.map((item, idx) => (
+                <p key={idx} style={{ margin: "4px 0 0", fontSize: FONT_SIZE.sm, color: "#64748b" }}>
+                  {item.product} × {item.quantity} bags{item.price_per_bag != null ? ` · ${formatAmount(item.price_per_bag)}/bag` : ""}
+                </p>
+              ))}
+              <p style={{ margin: "4px 0 0", fontSize: FONT_SIZE.sm, color: "#475569", fontWeight: 500 }}>
+                Total: {formatAmount(activityTotal(postingSale))} · {postingSale.total_quantity} bags
+              </p>
+              {postingSale.broker_name && (
+                <p style={{ margin: "4px 0 0", fontSize: FONT_SIZE.sm, color: "#64748b" }}>
+                  Broker: {postingSale.broker_name}
+                </p>
+              )}
+            </div>
+
+            <p style={{ margin: "0 0 16px", fontSize: FONT_SIZE.sm, color: "#64748b" }}>
+              This will mark the sale as <strong style={{ color: "#0070f3" }}>Posted</strong>. The sale will become read-only and the broker will be notified.
+            </p>
+
+            <div style={{ display: "flex", gap: 8 }}>
+              <button
+                onClick={closePostModal}
+                style={{
+                  flex: 1,
+                  padding: "13px 0",
+                  background: "white",
+                  border: "1.5px solid #e5e5e5",
+                  borderRadius: 10,
+                  cursor: "pointer",
+                  fontSize: 15,
+                  minHeight: 50,
+                  fontWeight: "bold",
+                  color: "#475569",
+                  transition: "all 0.2s",
+                }}
+                onMouseEnter={e => { e.currentTarget.style.background = "#f8fafc" }}
+                onMouseLeave={e => { e.currentTarget.style.background = "white" }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handlePost}
+                disabled={isPosting}
+                style={{
+                  flex: 1,
+                  padding: "13px 0",
+                  background: isPosting ? "#ccc" : "#0070f3",
+                  color: "white",
+                  border: "none",
+                  borderRadius: 10,
+                  cursor: isPosting ? "not-allowed" : "pointer",
+                  fontSize: 15,
+                  minHeight: 50,
+                  fontWeight: "bold",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: 6,
+                  transition: "all 0.2s",
+                  opacity: isPosting ? 0.7 : 1,
+                }}
+                onMouseEnter={e => { if (!isPosting) e.currentTarget.style.background = "#0056d4" }}
+                onMouseLeave={e => { e.currentTarget.style.background = isPosting ? "#ccc" : "#0070f3" }}
+              >
+                {isPosting
+                  ? <><Icon icon="mdi:loading" width={16} style={{ animation: "spin 1s linear infinite" }} />Posting…</>
+                  : <><Icon icon="mdi:check-circle" width={16} />Post Sale</>
                 }
               </button>
             </div>

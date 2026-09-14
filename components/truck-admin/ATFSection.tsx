@@ -102,17 +102,17 @@ export default function ATFSection({
         {filteredATFs.map(atf => {
           const { bg, color, border } = atfStatusColor(atf.atf_status)
           return (
-            <div key={atf.request_id} className="card-hover" style={{ background: "white", border: `1px solid ${border}`, borderRadius: 12, padding: 16, boxShadow: "0 1px 3px rgba(0,0,0,0.05)", transition: "all 0.2s" }}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 12 }}>
-                <div>
-                  {atf.atf_code ? <p style={{ margin: 0, fontWeight: 700, fontSize: FONT_SIZE.base, fontFamily: "monospace", letterSpacing: 1, color: "#0f172a" }}>{atf.atf_code}</p> : <p style={{ margin: 0, fontSize: FONT_SIZE.sm, color: "#94a3b8" }}>Awaiting authorisation</p>}
-                  <p style={{ margin: "4px 0 0", fontSize: FONT_SIZE.sm, color: "#64748b" }}>{atf.plate_number} · {atf.driver_name}</p>
-                  <p style={{ margin: "4px 0 0", fontSize: FONT_SIZE.xs, color: "#94a3b8" }}>Station: {atf.company_name}</p>
-                  <p style={{ margin: "4px 0 0", fontSize: FONT_SIZE.xs, color: "#94a3b8" }}>Initiated by {atf.officer_name}</p>
+            <div key={atf.request_id} className="card-hover" style={{ background: "white", border: `1px solid ${border}`, borderRadius: 12, padding: 16, boxShadow: "0 1px 3px rgba(0,0,0,0.05)", transition: "all 0.2s", overflow: "hidden", boxSizing: "border-box", minWidth: 0 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 12, minWidth: 0 }}>
+                <div style={{ minWidth: 0, flex: 1 }}>
+                  {atf.atf_code ? <p style={{ margin: 0, fontWeight: 700, fontSize: FONT_SIZE.base, fontFamily: "monospace", letterSpacing: 1, color: "#0f172a", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{atf.atf_code}</p> : <p style={{ margin: 0, fontSize: FONT_SIZE.sm, color: "#94a3b8" }}>Awaiting authorisation</p>}
+                  <p style={{ margin: "4px 0 0", fontSize: FONT_SIZE.sm, color: "#64748b", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{atf.plate_number} · {atf.driver_name}</p>
+                  <p style={{ margin: "4px 0 0", fontSize: FONT_SIZE.xs, color: "#94a3b8", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>Station: {atf.company_name}</p>
+                  <p style={{ margin: "4px 0 0", fontSize: FONT_SIZE.xs, color: "#94a3b8", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>Initiated by {atf.officer_name}</p>
                 </div>
-                <span style={{ padding: "4px 10px", borderRadius: 20, fontSize: FONT_SIZE.xs, background: bg, color, fontWeight: 700, whiteSpace: "nowrap", border: `1px solid ${color}33` }}>{atf.atf_status}</span>
+                <span style={{ padding: "4px 10px", borderRadius: 20, fontSize: FONT_SIZE.xs, background: bg, color, fontWeight: 700, whiteSpace: "nowrap", border: `1px solid ${color}33`, flexShrink: 0 }}>{atf.atf_status}</span>
               </div>
-              <div style={{ display: "grid", gridTemplateColumns: atf.total_amount ? "1fr 1fr 1fr 1fr" : "1fr 1fr 1fr", gap: 10, marginBottom: 12 }}>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(100px, 1fr))", gap: 10, marginBottom: 12 }}>
                 <div style={{ background: "#f0f7ff", borderRadius: 8, padding: "10px 12px", border: "1px solid #bfdbfe" }}>
                   <p style={{ margin: 0, fontSize: FONT_SIZE.xs, color: "#3b82f6" }}>Requested</p>
                   <p style={{ margin: "2px 0 0", fontWeight: 700, color: "#1d4ed8", fontSize: FONT_SIZE.base }}>{atf.litres}L</p>

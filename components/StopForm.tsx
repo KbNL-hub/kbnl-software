@@ -47,24 +47,40 @@ export default function StopForm({ tripId, loadedQuantity: initialLoaded = 0, of
       if (!tripData || cancelled) return
       setLoadedQuantity(tripData.loaded_quantity)
 
-      const { data: stopsData } = await supabase
+      const { data: stopsData, error: stopsErr } = await supabase
         .from("Stops").select("quantity_offloaded").eq("trip_id", tripId)
-      const { data: discData } = await supabase
+      const { data: discData, error: discErr } = await supabase
         .from("trip_discrepancies").select("shortage, caked_bags").eq("trip_id", tripId)
 
       if (cancelled) return
+      // On error, preserve existing offloadedSoFar rather than resetting to zero
+      if (stopsErr || discErr) return
       const totalOffloaded = (stopsData || []).reduce((sum, s) => sum + (s.quantity_offloaded || 0), 0)
       const totalShortage = (discData || []).reduce((sum, d) => sum + (d.shortage || 0), 0)
       const totalCaked = (discData || []).reduce((sum, d) => sum + (d.caked_bags || 0), 0)
       setOffloadedSoFar(totalOffloaded + totalShortage + totalCaked)
     }
 
-    // If data provided as props, use it
+    async function fetchOffloadedOnly() {
+      const { data: stopsData, error: stopsErr } = await supabase
+        .from("Stops").select("quantity_offloaded").eq("trip_id", tripId)
+      const { data: discData, error: discErr } = await supabase
+        .from("trip_discrepancies").select("shortage, caked_bags").eq("trip_id", tripId)
+
+      if (cancelled) return
+      if (stopsErr || discErr) return // Preserve existing totals on error
+      const totalOffloaded = (stopsData || []).reduce((sum, s) => sum + (s.quantity_offloaded || 0), 0)
+      const totalShortage = (discData || []).reduce((sum, d) => sum + (d.shortage || 0), 0)
+      const totalCaked = (discData || []).reduce((sum, d) => sum + (d.caked_bags || 0), 0)
+      setOffloadedSoFar(totalOffloaded + totalShortage + totalCaked)
+    }
+
+    // Always set loadedQuantity from props if provided
     if (initialLoaded > 0) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      setLoadedQuantity(initialLoaded);
-      setOffloadedSoFar(initialOffloaded);
-      return; // Don't fetch
+      setLoadedQuantity(initialLoaded)
+      // But always re-fetch offloadedSoFar from DB to prevent stale state
+      fetchOffloadedOnly()
+      return () => { cancelled = true }
     }
 
     fetchTripData()
@@ -102,10 +118,34 @@ export default function StopForm({ tripId, loadedQuantity: initialLoaded = 0, of
     if (!quantityOffloaded) return setMessage("Enter quantity offloaded")
     if (inputQty <= 0) return setMessage("Quantity must be greater than 0")
     if (!Number.isInteger(inputQty)) return setMessage("Quantity must be a whole number")
-    if (inputQty > remaining) return setMessage(`Only ${remaining} bags remaining`)
     if (stopType === "customer" && !stopLocation.trim()) return setMessage("Enter stop location")
 
+    // Guard against parallel submits from repeated clicks
+    if (submitting) return
     setSubmitting(true)
+
+    // Re-fetch fresh offloadedSoFar from DB to prevent stale state from network delays
+    try {
+      const { data: stopsData, error: stopsErr } = await supabase
+        .from("Stops").select("quantity_offloaded").eq("trip_id", tripId)
+      const { data: discData, error: discErr } = await supabase
+        .from("trip_discrepancies").select("shortage, caked_bags").eq("trip_id", tripId)
+      if (!stopsErr && !discErr) {
+        const freshOffloaded = (stopsData || []).reduce((sum, s) => sum + (s.quantity_offloaded || 0), 0)
+        const freshShortage = (discData || []).reduce((sum, d) => sum + (d.shortage || 0), 0)
+        const freshCaked = (discData || []).reduce((sum, d) => sum + (d.caked_bags || 0), 0)
+        const freshRemaining = loadedQuantity - freshOffloaded - freshShortage - freshCaked
+        if (inputQty > freshRemaining) {
+          setMessage(`Only ${freshRemaining} bags remaining`)
+          setOffloadedSoFar(freshOffloaded + freshShortage + freshCaked)
+          setSubmitting(false)
+          return
+        }
+      }
+      // If re-fetch fails, proceed — the DB trigger will catch any overage
+    } catch {
+      // Network error on re-fetch — proceed with existing validation
+    }
 
     try {
       // Derive stop_type from actual form data: if broker exists → customer, else → store
