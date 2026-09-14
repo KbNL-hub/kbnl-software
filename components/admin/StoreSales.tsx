@@ -45,6 +45,8 @@ type StoreSale = {
   driver_name?: string | null
   kbnl_truck_no?: string | null
   is_credit_approved?: boolean
+  posted_by?: string | null
+  posted_at?: string | null
 }
 
 type StoreSupply = {
@@ -82,6 +84,8 @@ type ActivityItem = {
   is_credit_approved?: boolean
   confirmation_id?: string
   plate_number?: string | null
+  posted_by?: string | null
+  posted_at?: string | null
 }
 
 type ViewMode = "card" | "table"
@@ -170,6 +174,7 @@ export default function StoreSales() {
   const [filterDateFrom, setFilterDateFrom] = useState("")
   const [filterDateTo, setFilterDateTo] = useState("")
   const [storeLocations, setStoreLocations] = useState<string[]>([])
+  const [profilesMap, setProfilesMap] = useState<Record<string, string>>({})
 
   const hasActiveFilters = filterProduct || filterStore || filterDateFrom || filterDateTo
 
@@ -183,7 +188,7 @@ export default function StoreSales() {
   async function fetchSales() {
     const { data, error } = await supabase
       .from("store_sales")
-      .select("sale_id, store_name, items, total_amount, total_quantity, customer_name, payment_mode, delivery_mode, tricycle_id, truck_plate, broker_id, sold_at, created_at, status, bank_name, depositor_name, rejection_reason, sale_type, discount_status, driver_name")
+      .select("sale_id, store_name, items, total_amount, total_quantity, customer_name, payment_mode, delivery_mode, tricycle_id, truck_plate, broker_id, sold_at, created_at, status, bank_name, depositor_name, rejection_reason, sale_type, discount_status, driver_name, posted_by, posted_at")
       .order("sold_at", { ascending: false })
 
     if (error) throw error
@@ -292,6 +297,14 @@ export default function StoreSales() {
       setSupplies(suppliesData)
       setLastUpdated(new Date())
 
+      // Fetch profiles for "Posted by" display
+      const { data: profiles, error: profilesErr } = await supabase.from("Profiles").select("user_id, full_name")
+      if (!profilesErr && profiles) {
+        const pMap: Record<string, string> = {}
+        profiles.forEach((p: { user_id: string; full_name: string }) => { pMap[p.user_id] = p.full_name })
+        setProfilesMap(pMap)
+      }
+
       const { data: stockRows } = await supabase.from("store_stock").select("store_name, balance")
       const currentBalanceMap = new Map<string, number>()
       for (const row of stockRows || []) {
@@ -361,6 +374,8 @@ export default function StoreSales() {
       driver_name: s.driver_name,
       kbnl_truck_no: s.kbnl_truck_no,
       is_credit_approved: s.is_credit_approved,
+      posted_by: s.posted_by,
+      posted_at: s.posted_at,
     })),
     ...supplies.map(s => ({
       id: s.confirmation_id,
@@ -973,6 +988,12 @@ export default function StoreSales() {
                           </div>
                         </div>
                       )}
+                      {item.status === "Posted" && (
+                        <div style={{ marginTop: 10, padding: "10px 12px", background: "#f0fdf4", borderRadius: 8, fontSize: FONT_SIZE.sm, color: "#166534" }}>
+                          <p style={{ margin: 0, fontWeight: 600 }}>Posted by {profilesMap[item.posted_by || ""] || "Admin"}</p>
+                          {item.posted_at && <p style={{ margin: "4px 0 0", color: "#16a34a", fontSize: FONT_SIZE.xs }}>{new Date(item.posted_at).toLocaleString()}</p>}
+                        </div>
+                      )}
                     </div>
 
                     <div style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 16, paddingBottom: 16, borderBottom: "1px solid #f1f5f9" }}>
@@ -1213,6 +1234,12 @@ export default function StoreSales() {
                           {item.status === "Rejected" && item.rejection_reason && (
                             <div style={{ marginTop: 6, padding: "6px 8px", background: "white", borderRadius: 6, border: "1px solid #fecaca", color: "#7f1d1d", fontSize: FONT_SIZE.xs, fontStyle: "italic", maxWidth: 220 }}>
                               &ldquo;{item.rejection_reason}&rdquo;
+                            </div>
+                          )}
+                          {item.status === "Posted" && (
+                            <div style={{ marginTop: 6, padding: "6px 8px", background: "#f0fdf4", borderRadius: 6, fontSize: FONT_SIZE.xs, color: "#166534" }}>
+                              Posted by {profilesMap[item.posted_by || ""] || "Admin"}
+                              {item.posted_at && <span style={{ marginLeft: 4, color: "#16a34a" }}>{new Date(item.posted_at).toLocaleDateString()}</span>}
                             </div>
                           )}
                           {(item.status === "Confirmed" || item.status === "Rejected") && (
