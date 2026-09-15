@@ -19,6 +19,8 @@ type DriverSummary = {
   driver_name: string
   trips_count: number
   stops_count: number
+  plant_bags: number
+  store_bags: number
   total_bags: number
   avg_bags_per_trip: number
 }
@@ -77,14 +79,17 @@ type BrokerSummary = {
   total_revenue: number
 }
 
-type BrokerStop = {
-  stop_id: string
-  plate_number: string
+type BrokerRecord = {
+  id: string
+  source: "stop" | "store_sale"
+  plate_number: string | null
   customer_name: string | null
-  quantity_offloaded: number
+  quantity: number
   price_per_bag: number | null
   revenue: number
-  stop_time: string
+  date: string
+  status: string
+  confirmed: boolean
 }
 
 type TruckTripSummary = {
@@ -132,7 +137,7 @@ type SideTripSummary = {
 type DrillDown =
   | { kind: "driver"; driver: DriverSummary; trips: DriverTrip[] }
   | { kind: "truck"; truck: TruckSummary; maintenance: TruckMaintenance[]; fuel: TruckFuel[] }
-  | { kind: "broker"; broker: BrokerSummary; stops: BrokerStop[] }
+  | { kind: "broker"; broker: BrokerSummary; records: BrokerRecord[] }
 
 type ViewMode = "card" | "table"
 
@@ -310,6 +315,16 @@ export default function Reports() {
   }
 
   // ── Driver reports ───────────────────────────────────────────────────────
+  const PLANT_LOADING_POINTS = ["HBM Mfamosing", "HBM Uyo Warehouse"]
+  const IGNORED_LOADING_POINTS = ["Dangote", "HBM", "BUA"]
+
+  function classifyBags(material_centre: string): "plant" | "store" | "other" {
+    const mc = material_centre || ""
+    if (PLANT_LOADING_POINTS.includes(mc)) return "plant"
+    if (IGNORED_LOADING_POINTS.includes(mc)) return "other"
+    return "store"
+  }
+
   async function fetchDriverReports() {
     const { from, to } = getRange()
 
@@ -324,14 +339,15 @@ export default function Reports() {
     const summaries: DriverSummary[] = await Promise.all(drivers.map(async (d) => {
       const { data: trips } = await supabase
         .from("Trips")
-        .select("trip_id, loaded_quantity")
+        .select("trip_id, loaded_quantity, material_centre")
         .eq("driver_id", d.driver_id)
         .gte("created_at", from)
         .lte("created_at", to)
 
       const tripIds = (trips || []).map(t => t.trip_id)
       let stops_count = 0
-      let total_bags = 0
+      let plant_bags = 0
+      let store_bags = 0
 
       if (tripIds.length > 0) {
         const { data: stops } = await supabase
@@ -340,16 +356,25 @@ export default function Reports() {
           .in("trip_id", tripIds)
 
         stops_count = (stops || []).length
-        total_bags = (stops || []).reduce((sum, s) => sum + (s.quantity_offloaded || 0), 0)
+      }
+
+      for (const t of trips || []) {
+        const kind = classifyBags(t.material_centre)
+        const qty = t.loaded_quantity || 0
+        if (kind === "plant") plant_bags += qty
+        else if (kind === "store") store_bags += qty
       }
 
       const trips_count = trips?.length ?? 0
+      const total_bags = plant_bags + store_bags
 
       return {
         driver_id: d.driver_id,
         driver_name: d.full_name,
         trips_count,
         stops_count,
+        plant_bags,
+        store_bags,
         total_bags,
         avg_bags_per_trip: trips_count > 0 ? Math.round(total_bags / trips_count) : 0,
       }
@@ -600,7 +625,11 @@ export default function Reports() {
       }
     }))
 
-    setBrokerSummaries(summaries.filter(b => b.total_transactions > 0))
+    setBrokerSummaries(
+      summaries
+        .filter(b => b.total_transactions > 0)
+        .sort((a, b) => b.total_revenue - a.total_revenue)
+    )
   }
 
   async function fetchBrokerDrillDown(broker: BrokerSummary) {
@@ -611,14 +640,26 @@ export default function Reports() {
 
       const { data: stopsRaw } = await supabase
         .from("Stops")
-        .select("stop_id, trip_id, quantity_offloaded, stop_time")
+        .select("stop_id, trip_id, customer_id, quantity_offloaded, stop_time")
         .eq("broker_id", broker.broker_id)
         .eq("confirmed", true)
         .gte("stop_time", from)
         .lte("stop_time", to)
         .order("stop_time", { ascending: false })
 
-      const stops: BrokerStop[] = await Promise.all((stopsRaw || []).map(async (s) => {
+      const customerIds = [...new Set((stopsRaw || []).map(s => s.customer_id).filter(Boolean))]
+      const customerNameMap: Record<string, string> = {}
+      if (customerIds.length > 0) {
+        const { data: customers } = await supabase
+          .from("Customers")
+          .select("customer_id, full_name")
+          .in("customer_id", customerIds)
+        for (const c of customers || []) {
+          customerNameMap[c.customer_id] = c.full_name
+        }
+      }
+
+      const stopRecords: BrokerRecord[] = await Promise.all((stopsRaw || []).map(async (s) => {
         const { data: trip } = await supabase
           .from("Trips")
           .select("plate_number")
@@ -635,17 +676,55 @@ export default function Reports() {
         const revenue = s.quantity_offloaded * price
 
         return {
-          stop_id: s.stop_id,
+          id: s.stop_id,
+          source: "stop" as const,
           plate_number: trip?.plate_number ?? "—",
-          customer_name: null,
-          quantity_offloaded: s.quantity_offloaded,
+          customer_name: customerNameMap[s.customer_id] ?? null,
+          quantity: s.quantity_offloaded,
           price_per_bag: price,
           revenue,
-          stop_time: s.stop_time,
+          date: s.stop_time,
+          status: "Confirmed",
+          confirmed: true,
         }
       }))
 
-      setDrillDown({ kind: "broker", broker, stops })
+      const { data: storeSalesRaw, error: storeSalesErr } = await supabase
+        .from("store_sales")
+        .select("sale_id, store_name, customer_name, total_quantity, total_amount, sold_at, status, items")
+        .eq("broker_id", broker.broker_id)
+        .in("status", ["Confirmed", "Pending"])
+        .gte("sold_at", from)
+        .lte("sold_at", to)
+        .order("sold_at", { ascending: false })
+
+      if (storeSalesErr) throw new Error(`Failed to fetch broker store sales: ${storeSalesErr.message}`)
+
+      const storeSaleRecords: BrokerRecord[] = (storeSalesRaw || []).map((ss) => {
+        const isConfirmed = ss.status === "Confirmed"
+        let pricePerBag: number | null = null
+        if (isConfirmed && ss.items?.length > 0 && ss.total_quantity > 0) {
+          pricePerBag = Math.round((ss.total_amount / ss.total_quantity) * 100) / 100
+        }
+        return {
+          id: ss.sale_id,
+          source: "store_sale" as const,
+          plate_number: null,
+          customer_name: ss.customer_name ?? null,
+          quantity: ss.total_quantity ?? 0,
+          price_per_bag: pricePerBag,
+          revenue: isConfirmed ? (ss.total_amount ?? 0) : 0,
+          date: ss.sold_at,
+          status: ss.status,
+          confirmed: isConfirmed,
+        }
+      })
+
+      const records = [...stopRecords, ...storeSaleRecords].sort(
+        (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()
+      )
+
+      setDrillDown({ kind: "broker", broker, records })
     } finally {
       setDrillLoading(false)
       setLoadingBrokerId(null)
@@ -878,7 +957,9 @@ export default function Reports() {
       Driver: d.driver_name,
       Trips: d.trips_count,
       Stops: d.stops_count,
-      "Total Bags Delivered": d.total_bags,
+      "Plant Bags": d.plant_bags,
+      "Store Bags": d.store_bags,
+      "Total Bags": d.total_bags,
       "Avg Bags per Trip": d.avg_bags_per_trip,
     }))
     if (format === "csv") downloadCSV("driver_summary.csv", rows)
@@ -965,18 +1046,20 @@ export default function Reports() {
 
   function exportBrokerDetail(format: "csv" | "xlsx") {
     if (drillDown?.kind !== "broker") return
-    const rows = drillDown.stops.map((s) => ({
-      "Stop ID": s.stop_id,
-      Plate: s.plate_number,
-      "Bags Offloaded": s.quantity_offloaded,
-      "Price per Bag (₦)": s.price_per_bag ?? 0,
-      "Revenue (₦)": s.revenue,
-      Date: new Date(s.stop_time).toLocaleDateString(),
+    const rows = drillDown.records.map((r) => ({
+      Date: new Date(r.date).toLocaleDateString(),
+      Type: r.source === "store_sale" ? "Store Sale" : "Stop",
+      Status: r.source === "stop" ? "Confirmed" : r.status,
+      Customer: r.customer_name ?? "—",
+      Plate: r.plate_number ?? "—",
+      Bags: r.quantity,
+      "Price per Bag (₦)": r.confirmed ? (r.price_per_bag ?? "—") : "—",
+      "Revenue (₦)": r.confirmed ? r.revenue : "—",
     }))
     if (format === "csv") {
-      downloadCSV(`${drillDown.broker.broker_name}_stops.csv`, rows)
+      downloadCSV(`${drillDown.broker.broker_name}_sales.csv`, rows)
     } else {
-      downloadXLSX(`${drillDown.broker.broker_name}_stops.xlsx`, rows, "Stop Detail")
+      downloadXLSX(`${drillDown.broker.broker_name}_sales.xlsx`, rows, "Sales Detail")
     }
   }
 
@@ -1278,7 +1361,9 @@ cursor: loading ? "not-allowed" : "pointer",
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, padding: "12px 0", borderTop: "1px solid #f1f5f9", borderBottom: "1px solid #f1f5f9" }}>
                           <ReportCardField label="Trips" value={driver.trips_count} />
                           <ReportCardField label="Stops" value={driver.stops_count} />
-                          <ReportCardField label="Bags" value={driver.total_bags} />
+                          <ReportCardField label="Plant Bags" value={driver.plant_bags} />
+                          <ReportCardField label="Store Bags" value={driver.store_bags} />
+                          <ReportCardField label="Total Bags" value={driver.total_bags} />
                           <ReportCardField label="Avg/Trip" value={driver.avg_bags_per_trip} />
                 </div>
 <button
@@ -1316,7 +1401,9 @@ cursor: loading ? "not-allowed" : "pointer",
                     { key: "driver_name", label: "Driver" },
                     { key: "trips_count", label: "Trips" },
                     { key: "stops_count", label: "Stops" },
-                    { key: "total_bags", label: "Bags Delivered" },
+                    { key: "plant_bags", label: "Plant Bags" },
+                    { key: "store_bags", label: "Store Bags" },
+                    { key: "total_bags", label: "Total Bags" },
                     { key: "avg_bags_per_trip", label: "Avg Bags/Trip" },
                     {
                       key: "actions",
@@ -1491,7 +1578,7 @@ cursor: loading ? "not-allowed" : "pointer",
                               Loading...
                             </>
                           ) : (
-                            "View Stops"
+                            "View Sales"
                           )}
                         </button>
                       </div>
@@ -1534,7 +1621,7 @@ cursor: loading ? "not-allowed" : "pointer",
                               Loading...
                             </>
                           ) : (
-                            "View Stops"
+                            "View Sales"
                           )}
                         </button>
                       ),
@@ -1550,8 +1637,8 @@ cursor: loading ? "not-allowed" : "pointer",
           <ReportModal
             isOpen={drillDown?.kind === "broker" && !drillLoading}
             onClose={() => setDrillDown(null)}
-            title={`${drillDown?.kind === "broker" ? drillDown.broker.broker_name : ""} — Stop Details`}
-            subtitle={drillDown?.kind === "broker" ? `${drillDown.stops.length} confirmed stops in period` : ""}
+            title={`${drillDown?.kind === "broker" ? drillDown.broker.broker_name : ""} — Sales Details`}
+            subtitle={drillDown?.kind === "broker" ? `${drillDown.records.length} records in period` : ""}
             isMobile={isMobile}
             actions={
               drillDown?.kind === "broker" ? (
@@ -1563,25 +1650,47 @@ cursor: loading ? "not-allowed" : "pointer",
               <DataTable
                 columns={[
                   {
-                    key: "stop_time",
+                    key: "date",
                     label: "Date",
                     render: (value) => new Date(value as string).toLocaleDateString(),
                   },
+                  {
+                    key: "source",
+                    label: "Type",
+                    render: (value) => (value === "store_sale" ? "Store Sale" : "Stop"),
+                  },
+                  { key: "customer_name", label: "Customer" },
                   { key: "plate_number", label: "Plate" },
-                  { key: "quantity_offloaded", label: "Bags" },
+                  { key: "quantity", label: "Bags" },
+                  {
+                    key: "status",
+                    label: "Status",
+                    render: (value, row: BrokerRecord) => (
+                      <span style={{
+                        padding: "2px 8px",
+                        borderRadius: 12,
+                        fontSize: 12,
+                        fontWeight: 600,
+                        background: row.confirmed ? "#ecfdf5" : "#fffbeb",
+                        color: row.confirmed ? "#10b981" : "#f59e0b",
+                      }}>
+                        {row.source === "stop" ? "Confirmed" : (value as string)}
+                      </span>
+                    ),
+                  },
                   {
                     key: "price_per_bag",
                     label: "Price/Bag",
-                    render: (value) => `₦${((value as number) ?? 0).toLocaleString()}`,
+                    render: (value, row: BrokerRecord) => row.confirmed ? (value ? `₦${((value as number) ?? 0).toLocaleString()}` : "—") : "—",
                   },
                   {
                     key: "revenue",
                     label: "Revenue",
-                    render: (value) => `₦${(value as number).toLocaleString()}`,
+                    render: (value, row: BrokerRecord) => row.confirmed ? `₦${(value as number).toLocaleString()}` : "—",
                   },
                 ]}
-                rows={drillDown.stops}
-                rowKey={(row) => row.stop_id}
+                rows={drillDown.records}
+                rowKey={(row) => row.id}
               />
             )}
           </ReportModal>
