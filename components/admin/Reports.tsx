@@ -577,7 +577,7 @@ export default function Reports() {
 
       const { data: storeSales, error: storeSalesErr } = await supabase
         .from("store_sales")
-        .select("quantity, total_amount")
+        .select("total_quantity, total_amount")
         .eq("broker_id", b.broker_id)
         .eq("status", "Confirmed")
         .gte("sold_at", from)
@@ -586,7 +586,7 @@ export default function Reports() {
       if (storeSalesErr) throw new Error(`Failed to fetch broker store sales: ${storeSalesErr.message}`)
 
       const store_sales_count = (storeSales || []).length
-      const store_bags = (storeSales || []).reduce((sum, s) => sum + (s.quantity || 0), 0)
+      const store_bags = (storeSales || []).reduce((sum, s) => sum + (s.total_quantity || 0), 0)
       const store_revenue = (storeSales || []).reduce((sum, s) => sum + (s.total_amount || 0), 0)
 
       return {
@@ -712,7 +712,7 @@ export default function Reports() {
 
     const { data: sales, error: salesErr } = await supabase
       .from("store_sales")
-      .select("store_name, quantity, total_amount")
+      .select("store_name, total_quantity, total_amount")
       .eq("status", "Confirmed")
       .gte("sold_at", from)
       .lte("sold_at", to)
@@ -723,7 +723,7 @@ export default function Reports() {
     for (const s of sales || []) {
       if (!storeMap[s.store_name]) storeMap[s.store_name] = { sales_count: 0, total_quantity: 0, total_revenue: 0 }
       storeMap[s.store_name].sales_count++
-      storeMap[s.store_name].total_quantity += s.quantity || 0
+      storeMap[s.store_name].total_quantity += s.total_quantity || 0
       storeMap[s.store_name].total_revenue += s.total_amount || 0
     }
 
