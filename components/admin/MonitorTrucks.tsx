@@ -25,6 +25,10 @@ type ActiveTruck = {
   trip_status: string
   trip_type: string | null
   route_points: string[]
+  product: string | null
+  ATC: string | null
+  order_no: string | null
+  child_order_no: string | null
 }
 
 type DDTrip = {
@@ -205,7 +209,7 @@ export default function MonitorTrucks({ viewOnly = false }: { viewOnly?: boolean
       return
     }
 
-    const enriched = trips.map((trip: { trip_id: string; plate_number: string; kbnl_truck_no: string | null; loaded_quantity: number; remaining: number; driver_name: string | null; driver_phone: string | null; driver_id: string | null; trip_type: string | null; trip_status: string; route_points: unknown[] }) => ({
+    const enriched = trips.map((trip: { trip_id: string; plate_number: string; kbnl_truck_no: string | null; loaded_quantity: number; remaining: number; driver_name: string | null; driver_phone: string | null; driver_id: string | null; trip_type: string | null; trip_status: string; route_points: unknown[]; product: string | null; ATC: string | null; order_no: string | null; child_order_no: string | null }) => ({
       trip_id: trip.trip_id,
       plate_number: trip.plate_number,
       kbnl_truck_no: trip.kbnl_truck_no ?? null,
@@ -217,6 +221,10 @@ export default function MonitorTrucks({ viewOnly = false }: { viewOnly?: boolean
       trip_type: trip.trip_type ?? null,
       trip_status: trip.trip_status,
       route_points: trip.route_points ?? [],
+      product: trip.product ?? null,
+      ATC: trip.ATC ?? null,
+      order_no: trip.order_no ?? null,
+      child_order_no: trip.child_order_no ?? null,
     }))
 
     setTrucks(enriched)
@@ -945,6 +953,15 @@ export default function MonitorTrucks({ viewOnly = false }: { viewOnly?: boolean
                             )}
                           </div>
                           <p style={{ margin: 0, color: "#64748b", fontSize: FONT_SIZE.sm }}>{truck.driver_name}</p>
+                          {truck.product && (
+                            <p style={{ margin: "4px 0 0", color: "#0f172a", fontSize: FONT_SIZE.sm, fontWeight: 600 }}>{truck.product}</p>
+                          )}
+                          {(truck.order_no || truck.ATC) && (
+                            <p style={{ margin: "2px 0 0", color: "#64748b", fontSize: FONT_SIZE.xs }}>
+                              {truck.order_no ? `Order: ${truck.order_no}` : `ATC: ${truck.ATC}`}
+                              {truck.child_order_no && ` / Child: ${truck.child_order_no}`}
+                            </p>
+                          )}
                         </div>
                         <span style={{
                           padding: "6px 12px", borderRadius: 16, fontSize: FONT_SIZE.xs, fontWeight: 600,
@@ -996,7 +1013,7 @@ export default function MonitorTrucks({ viewOnly = false }: { viewOnly?: boolean
                             <Icon icon="mdi:alert-outline" width={16} /> Discrepancy
                           </button>
                           <button
-                            onClick={() => openDdStopForm({ dd_trip_id: truck.trip_id, plate_number: truck.plate_number, product: "", loaded_quantity: truck.loaded_quantity, trip_status: truck.trip_status } as DDTrip, "mdd")}
+                            onClick={() => openDdStopForm({ dd_trip_id: truck.trip_id, plate_number: truck.plate_number, product: truck.product || "", loaded_quantity: truck.loaded_quantity, trip_status: truck.trip_status } as DDTrip, "mdd")}
                             disabled={!canEdit}
                             style={{
                               padding: "10px 12px", background: !canEdit ? "#94a3b8" : "#8b5cf6", color: "white",
@@ -1048,6 +1065,8 @@ export default function MonitorTrucks({ viewOnly = false }: { viewOnly?: boolean
                       <tr style={{ background: "#f8fafc", borderBottom: "1px solid #e2e8f0" }}>
                         <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: FONT_SIZE.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px" }}>Truck</th>
                         <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: FONT_SIZE.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px" }}>Driver</th>
+                        <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: FONT_SIZE.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px" }}>Product</th>
+                        <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: FONT_SIZE.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px" }}>ATC / Order</th>
                         <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: FONT_SIZE.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px" }}>Contact</th>
                         <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: FONT_SIZE.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px" }}>Loaded</th>
                         <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: FONT_SIZE.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px" }}>Remaining</th>
@@ -1066,6 +1085,15 @@ export default function MonitorTrucks({ viewOnly = false }: { viewOnly?: boolean
                             {truck.kbnl_truck_no && <div style={{ fontSize: FONT_SIZE.xs, color: "#94a3b8", marginTop: 2 }}>#{truck.kbnl_truck_no}</div>}
                           </td>
                           <td style={{ padding: "12px 16px", color: "#0f172a", fontSize: FONT_SIZE.base }}>{truck.driver_name}</td>
+                          <td style={{ padding: "12px 16px", color: "#475569", fontSize: FONT_SIZE.sm, fontWeight: 500 }}>{truck.product || "—"}</td>
+                          <td style={{ padding: "12px 16px", color: "#475569", fontSize: FONT_SIZE.sm }}>
+                            {truck.order_no ? (
+                              <span>
+                                <span style={{ fontWeight: 600 }}>{truck.order_no}</span>
+                                {truck.child_order_no && <span style={{ color: "#94a3b8" }}> / {truck.child_order_no}</span>}
+                              </span>
+                            ) : truck.ATC || "—"}
+                          </td>
                           <td style={{ padding: "12px 16px", color: "#64748b", fontSize: FONT_SIZE.sm }}>{truck.driver_phone}</td>
                           <td style={{ padding: "12px 16px", color: "#0f172a", fontSize: FONT_SIZE.base, fontWeight: 500 }}>{truck.loaded_quantity}</td>
                           <td style={{ padding: "12px 16px", color: remainingColor(truck.remaining, truck.loaded_quantity), fontSize: FONT_SIZE.base, fontWeight: 600 }}>{truck.remaining}</td>
@@ -1088,7 +1116,7 @@ export default function MonitorTrucks({ viewOnly = false }: { viewOnly?: boolean
                                 <button onClick={() => openDiscModal(truck.trip_id, `${truck.plate_number} — ${truck.driver_name}`, truck.remaining, truck.driver_id ?? undefined)} disabled={!canEdit} title="Report shortage or caked bags" style={{ padding: "6px 10px", cursor: !canEdit ? "not-allowed" : "pointer", borderRadius: 6, border: "1.5px solid #f5a623", color: !canEdit ? "#94a3b8" : "#f5a623", background: !canEdit ? "#e2e8f0" : "#fffbeb", fontSize: FONT_SIZE.xs, fontWeight: 600, transition: "all 0.2s", minHeight: 32, whiteSpace: "nowrap", display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 4 }}
                                   onMouseEnter={e => { if (canEdit) e.currentTarget.style.background = "#fef3c7" }}
                                   onMouseLeave={e => { if (canEdit) e.currentTarget.style.background = "#fffbeb" }}><Icon icon="mdi:alert-outline" width={14} /> Disc</button>
-                                <button onClick={() => openDdStopForm({ dd_trip_id: truck.trip_id, plate_number: truck.plate_number, product: "", loaded_quantity: truck.loaded_quantity, trip_status: truck.trip_status } as DDTrip, "mdd")} disabled={!canEdit} title="Log stop" style={{ padding: "6px 10px", cursor: !canEdit ? "not-allowed" : "pointer", borderRadius: 6, border: "1.5px solid #8b5cf6", color: !canEdit ? "#94a3b8" : "#8b5cf6", background: !canEdit ? "#e2e8f0" : "#f5f3ff", fontSize: FONT_SIZE.xs, fontWeight: 600, transition: "all 0.2s", minHeight: 32, whiteSpace: "nowrap", display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 4 }}
+                                <button onClick={() => openDdStopForm({ dd_trip_id: truck.trip_id, plate_number: truck.plate_number, product: truck.product || "", loaded_quantity: truck.loaded_quantity, trip_status: truck.trip_status } as DDTrip, "mdd")} disabled={!canEdit} title="Log stop" style={{ padding: "6px 10px", cursor: !canEdit ? "not-allowed" : "pointer", borderRadius: 6, border: "1.5px solid #8b5cf6", color: !canEdit ? "#94a3b8" : "#8b5cf6", background: !canEdit ? "#e2e8f0" : "#f5f3ff", fontSize: FONT_SIZE.xs, fontWeight: 600, transition: "all 0.2s", minHeight: 32, whiteSpace: "nowrap", display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 4 }}
                                   onMouseEnter={e => { if (canEdit) e.currentTarget.style.background = "#ede9fe" }}
                                   onMouseLeave={e => { if (canEdit) e.currentTarget.style.background = "#f5f3ff" }}><Icon icon="mdi:map-marker-plus" width={14} /> Stop</button>
                                 <button onClick={() => openRouteEditor(truck)} disabled={!canEdit} title={truck.route_points.length > 0 ? "Edit route" : "Set route"} style={{ padding: "6px 10px", cursor: !canEdit ? "not-allowed" : "pointer", borderRadius: 6, border: "1.5px solid #0070f3", color: !canEdit ? "#94a3b8" : "#0070f3", background: !canEdit ? "#e2e8f0" : "#f0f7ff", fontSize: FONT_SIZE.xs, fontWeight: 600, transition: "all 0.2s", minHeight: 32, whiteSpace: "nowrap", display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 4 }}

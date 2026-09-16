@@ -516,7 +516,10 @@ export default function StoreSales() {
   async function handlePost() {
     if (!postingSale || postingSale.kind !== "sale" || !postingSale.sale_id) return
     const { data: { user } } = await supabase.auth.getUser()
-    if (!user) return
+    if (!user) {
+      setMessage("Session expired. Please log in again.")
+      return
+    }
 
     setIsPosting(true)
     try {
@@ -526,8 +529,12 @@ export default function StoreSales() {
         data: { status: "Posted", posted_by: user.id, posted_at: new Date().toISOString() },
         filters: { sale_id: postingSale.sale_id },
       })
-      if (error || (Array.isArray(data) && data.length === 0)) {
-        setMessage("Failed to post sale")
+      if (error) {
+        setMessage(error)
+        return
+      }
+      if (Array.isArray(data) && data.length === 0) {
+        setMessage("Sale is not in Confirmed status or is a truck load out. Refresh and try again.")
         return
       }
       closePostModal()
@@ -1544,6 +1551,12 @@ onClick={() => handleResubmit(item)}
             <p style={{ margin: "0 0 16px", fontSize: FONT_SIZE.sm, color: "#64748b" }}>
               This will mark the sale as <strong style={{ color: "#0070f3" }}>Posted</strong>. The sale will become read-only and the broker will be notified.
             </p>
+
+            {message && (
+              <div style={{ display: "flex", alignItems: "center", gap: 6, color: "#ef4444", marginBottom: 14, fontSize: FONT_SIZE.sm, padding: "10px 12px", background: "#fef2f2", borderRadius: 8, border: "1px solid #fecaca" }}>
+                <Icon icon="mdi:alert-circle" width={16} />{message}
+              </div>
+            )}
 
             <div style={{ display: "flex", gap: 8 }}>
               <button
