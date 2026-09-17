@@ -30,6 +30,14 @@ const TRUCK_STATUS_CARDS: { status: string; icon: string; color: string }[] = [
   { status: "Decommissioned", icon: "mdi:truck-remove", color: "#ef4444" },
 ]
 
+const AREAS = ["Calabar to Obubra", "Ikom to Obudu", "Akwa-Ibom", "East"]
+const AREA_COLORS: Record<string, string> = {
+  "Calabar to Obubra": "#0070f3",
+  "Ikom to Obudu": "#10b981",
+  "Akwa-Ibom": "#8b5cf6",
+  "East": "#f59e0b",
+}
+
 function getCurrentMonthRange() {
   const now = new Date()
   const from = new Date(now.getFullYear(), now.getMonth(), 1).toISOString()
@@ -188,6 +196,7 @@ export default function AdminDashboard({ effectiveRole, fullName }: Props) {
   const [stats, setStats] = useState<StatCard[]>([])
   const [truckStats, setTruckStats] = useState<StatCard[]>([])
   const [productStats, setProductStats] = useState<StatCard[]>([])
+  const [areaStats, setAreaStats] = useState<{ name: string; color: string; bags: number; amount: number }[]>([])
   const [creditTotal, setCreditTotal] = useState(0)
   const [lastCreditUpdate, setLastCreditUpdate] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
@@ -198,6 +207,7 @@ export default function AdminDashboard({ effectiveRole, fullName }: Props) {
     setLoading(true)
     setTruckStats([])
     setProductStats([])
+    setAreaStats([])
     setCreditTotal(0)
     setLastCreditUpdate(null)
     try {
@@ -229,6 +239,7 @@ export default function AdminDashboard({ effectiveRole, fullName }: Props) {
       trucksResult,
       productTripsResult,
       creditsResult,
+      pendingBookingsResult,
     ] = await Promise.all([
       supabase
         .from("Stops")
@@ -269,6 +280,10 @@ export default function AdminDashboard({ effectiveRole, fullName }: Props) {
         .from("broker_credits")
         .select("amount, updated_at")
         .eq("status", "Active"),
+      supabase
+        .from("new_bookings")
+        .select("area, number_of_bags, total_amount")
+        .eq("status", "pending"),
     ])
 
     const bagsFromStops = (stopsResult.data || []).reduce(
@@ -343,6 +358,25 @@ export default function AdminDashboard({ effectiveRole, fullName }: Props) {
         value: productMap[cfg.name] || 0,
         color: cfg.color,
       }))
+    )
+
+    const pendingBookings = (pendingBookingsResult.data || []) as { area: string; number_of_bags: number; total_amount: number }[]
+    const areaBagMap: Record<string, { bags: number; amount: number }> = {}
+    for (const b of pendingBookings) {
+      if (!b.area) continue
+      if (!areaBagMap[b.area]) areaBagMap[b.area] = { bags: 0, amount: 0 }
+      areaBagMap[b.area].bags += b.number_of_bags || 0
+      areaBagMap[b.area].amount += b.total_amount || 0
+    }
+    setAreaStats(
+      AREAS
+        .filter(a => (areaBagMap[a]?.bags || 0) > 0)
+        .map(name => ({
+          name,
+          color: AREA_COLORS[name] || "#64748b",
+          bags: areaBagMap[name].bags,
+          amount: areaBagMap[name].amount,
+        }))
     )
 
     setStats([
@@ -482,6 +516,38 @@ export default function AdminDashboard({ effectiveRole, fullName }: Props) {
               <StatCardComponent key={card.key} card={card} isMobile={isMobile} />
             ))}
           </div>
+
+          {roleGroup === "admin" && areaStats.length > 0 && (
+            <div style={{ marginTop: isMobile ? 24 : 32 }}>
+              <p style={{ margin: "0 0 10px", fontSize: isMobile ? 11 : 12, color: "#64748b", textTransform: "uppercase", letterSpacing: 0.5, fontWeight: 700 }}>
+                Pending Bookings
+              </p>
+              <div style={{ background: "white", borderRadius: 16, border: "1px solid #eef0f2", padding: isMobile ? "16px" : "20px 24px" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 16 }}>
+                  <div style={{ width: 36, height: 36, borderRadius: 8, background: "#eff6ff", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                    <Icon icon="mdi:book-plus" width={18} color="#0070f3" />
+                  </div>
+                  <p style={{ margin: 0, color: "#0f172a", fontSize: isMobile ? 13 : 14, fontWeight: 600 }}>
+                    {areaStats.reduce((s, a) => s + a.bags, 0).toLocaleString()} bags · ₦{areaStats.reduce((s, a) => s + a.amount, 0).toLocaleString()}
+                  </p>
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: isMobile ? "repeat(2, 1fr)" : "repeat(auto-fill, minmax(180px, 1fr))", gap: 10 }}>
+                  {areaStats.map(area => (
+                    <div key={area.name} style={{ background: "#f8fafc", borderRadius: 10, padding: "14px 16px", borderBottom: `4px solid ${area.color}`, borderLeft: "none", transition: "all 0.2s" }}>
+                      <p style={{ margin: "0 0 8px", color: "#64748b", fontSize: isMobile ? 10 : 11, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.3px" }}>{area.name}</p>
+                      <p style={{ margin: 0, color: "#0f172a", fontSize: isMobile ? 20 : 24, fontWeight: 800, lineHeight: 1.1 }}>
+                        {area.bags.toLocaleString()}
+                        <span style={{ fontSize: isMobile ? 10 : 11, fontWeight: 500, color: "#64748b", marginLeft: 4 }}>bags</span>
+                      </p>
+                      <p style={{ margin: "4px 0 0", color: "#475569", fontSize: isMobile ? 12 : 13, fontWeight: 600 }}>
+                        ₦{area.amount.toLocaleString()}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
 
           {productStats.length > 0 && (
             <div style={{ marginTop: isMobile ? 24 : 32 }}>

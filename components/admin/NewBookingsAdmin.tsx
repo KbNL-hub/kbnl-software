@@ -31,6 +31,14 @@ const FILTER_COLORS: Record<FilterKey, string> = {
   all: "#171717", pending: "#0070f3", awaiting_review: "#f5a623", rejected: "#ef4444", supplied: "#10b981", partial: "#ea580c",
 }
 
+const AREAS = ["Calabar to Obubra", "Ikom to Obudu", "Akwa-Ibom", "East"]
+const AREA_COLORS: Record<string, string> = {
+  "Calabar to Obubra": "#0070f3",
+  "Ikom to Obudu": "#10b981",
+  "Akwa-Ibom": "#8b5cf6",
+  "East": "#f59e0b",
+}
+
 const getPillStyle = (filter: FilterKey, isActive: boolean) => {
   if (!isActive) return { bg: "white", textColor: "#64748b", borderColor: "#e2e8f0" }
   const color = FILTER_COLORS[filter]
@@ -212,6 +220,18 @@ export default function NewBookingsAdmin() {
   const supplied = bookings.filter(b => b.status === "supplied")
   const partial = bookings.filter(b => b.status === "partial")
 
+  const totalPendingBags = pending.reduce((sum, b) => sum + (b.number_of_bags || 0), 0)
+  const totalPendingAmount = pending.reduce((sum, b) => sum + (b.total_amount || 0), 0)
+
+  const areaBreakdown = AREAS
+    .map(area => ({
+      name: area,
+      color: AREA_COLORS[area] || "#64748b",
+      bags: pending.filter(b => b.area === area).reduce((s, b) => s + (b.number_of_bags || 0), 0),
+      amount: pending.filter(b => b.area === area).reduce((s, b) => s + (b.total_amount || 0), 0),
+    }))
+    .filter(a => a.bags > 0)
+
   const filtered = (activeFilter === "all" ? bookings
     : activeFilter === "pending" ? pending
     : activeFilter === "awaiting_review" ? awaitingReview
@@ -269,6 +289,37 @@ export default function NewBookingsAdmin() {
           </div>
         )}
       </div>
+
+      {/* Pending by Area */}
+      {areaBreakdown.length > 0 && (
+        <div style={{ background: "white", borderRadius: 12, border: "1px solid #e2e8f0", padding: isMobile ? "16px" : "20px 24px", marginBottom: 20, boxShadow: "0 1px 3px rgba(0,0,0,0.05)" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 16 }}>
+            <div style={{ width: 36, height: 36, borderRadius: 8, background: "#eff6ff", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+              <Icon icon="mdi:book-plus" width={18} color="#0070f3" />
+            </div>
+            <div>
+              <p style={{ margin: 0, color: "#64748b", fontSize: FONT_SIZE.xs, textTransform: "uppercase", letterSpacing: "0.5px", fontWeight: 700 }}>Pending by Area</p>
+              <p style={{ margin: 0, color: "#0f172a", fontSize: FONT_SIZE.sm, fontWeight: 500 }}>
+                {totalPendingBags.toLocaleString()} bags · ₦{totalPendingAmount.toLocaleString()}
+              </p>
+            </div>
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: isMobile ? "repeat(2, 1fr)" : "repeat(auto-fill, minmax(180px, 1fr))", gap: 10 }}>
+            {areaBreakdown.map(area => (
+              <div key={area.name} style={{ background: "#f8fafc", borderRadius: 10, padding: "14px 16px", borderBottom: `4px solid ${area.color}`, borderLeft: "none", transition: "all 0.2s" }}>
+                <p style={{ margin: "0 0 8px", color: "#64748b", fontSize: FONT_SIZE.xs, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.3px" }}>{area.name}</p>
+                <p style={{ margin: 0, color: "#0f172a", fontSize: isMobile ? FONT_SIZE.xl : FONT_SIZE["2xl"], fontWeight: 800, lineHeight: 1.1 }}>
+                  {area.bags.toLocaleString()}
+                  <span style={{ fontSize: FONT_SIZE.xs, fontWeight: 500, color: "#64748b", marginLeft: 4 }}>bags</span>
+                </p>
+                <p style={{ margin: "4px 0 0", color: "#475569", fontSize: FONT_SIZE.sm, fontWeight: 600 }}>
+                  ₦{area.amount.toLocaleString()}
+                </p>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Filter pills */}
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 24, overflowX: "auto", paddingBottom: 4 }}>

@@ -1549,7 +1549,7 @@ onClick={() => handleResubmit(item)}
             </div>
 
             <p style={{ margin: "0 0 16px", fontSize: FONT_SIZE.sm, color: "#64748b" }}>
-              This will mark the sale as <strong style={{ color: "#0070f3" }}>Posted</strong>. The sale will become read-only and the broker will be notified.
+              This will mark the sale as <strong style={{ color: "#0070f3" }}>Posted</strong>. The sale will become read-only.
             </p>
 
             {message && (
