@@ -491,6 +491,7 @@ export default function BrokerActiveTrips() {
                   )}
                   {trip.amount_charged && <p style={{ margin: 0, fontSize: fontSize.sm, color: "#475569" }}><span style={{ color: "#94a3b8", width: 70, display: "inline-block" }}>Charged:</span> ₦{trip.amount_charged.toLocaleString()}</p>}
                   {trip.payment_mode && <p style={{ margin: 0, fontSize: fontSize.sm, color: "#475569" }}><span style={{ color: "#94a3b8", width: 70, display: "inline-block" }}>Payment:</span> {trip.payment_mode}</p>}
+                  <p style={{ margin: 0, fontSize: fontSize.sm, color: "#475569" }}><span style={{ color: "#94a3b8", width: 70, display: "inline-block" }}>Trip started:</span> {new Date(trip.created_at).toLocaleString()}</p>
                 </div>
 
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 16 }}>
@@ -548,6 +549,7 @@ export default function BrokerActiveTrips() {
                 <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: fontSize.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px" }}>Remaining</th>
                 <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: fontSize.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px" }}>Stops</th>
                 <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: fontSize.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px" }}>Status</th>
+                <th style={{ padding: "12px 16px", fontWeight: 600, fontSize: fontSize.xs, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px" }}>Started</th>
               </tr>
             </thead>
             <tbody>
@@ -588,6 +590,7 @@ export default function BrokerActiveTrips() {
                         {trip.trip_status}
                       </span>
                     </td>
+                    <td style={{ padding: "12px 16px", color: "#94a3b8", fontSize: fontSize.xs }}>{new Date(trip.created_at).toLocaleString()}</td>
                   </tr>
                 )
               })}
