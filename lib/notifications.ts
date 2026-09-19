@@ -528,10 +528,10 @@ export function notifyATCSideTripSubmitted(driverName: string, plateNumber: stri
   })
 }
 
-export function notifyATCRouteSet(tripId: string, plateNumber: string) {
+export function notifyATCRouteSet(tripId: string, plateNumber: string, materialCentre: string) {
   return notify(['ATCOfficer'], {
     title: 'Route Set for Trip',
-    body: `Route set for trip ${tripId} (${plateNumber}). Tap to view.`,
+    body: `Route set for trip ${plateNumber}, ${materialCentre}. Tap to view.`,
     url: '/admin?section=monitor-trips',
     tag: `atc-route-${tripId}`,
   })
@@ -553,7 +553,7 @@ const adminRoles = ['Supervisor', 'Admin', 'SuperAdmin']
 export function notifyAdminTripStarted(tripId: string, plateNumber: string, materialCentre: string) {
   return notify(adminRoles, {
     title: 'New Trip Started',
-    body: `Trip ${tripId} — ${plateNumber}, ${materialCentre}. Tap to monitor.`,
+    body: `Trip ${plateNumber}, ${materialCentre}. Tap to monitor.`,
     url: '/admin?section=monitor-trips',
     tag: `admin-trip-${tripId}`,
   })
@@ -562,7 +562,7 @@ export function notifyAdminTripStarted(tripId: string, plateNumber: string, mate
 export function notifyAdminTripCompleted(tripId: string, plateNumber: string) {
   return notify(adminRoles, {
     title: 'Trip Completed',
-    body: `Trip ${tripId} (${plateNumber}) completed. Tap to view summary.`,
+    body: `Trip (${plateNumber}) completed. Tap to view summary.`,
     url: '/admin?section=monitor-trips',
     tag: `admin-trip-done-${tripId}`,
   })
@@ -577,10 +577,10 @@ export function notifyAdminPendingBrokerConfirmation(brokerName: string, hours: 
   })
 }
 
-export function notifyAdminTruckRouteSet(tripId: string, plateNumber: string) {
+export function notifyAdminTruckRouteSet(tripId: string, plateNumber: string, materialCentre: string) {
   return notify(adminRoles, {
     title: 'Truck Route Set',
-    body: `Route set for trip ${tripId} (${plateNumber}). Tap to view.`,
+    body: `Route set for trip ${plateNumber}, ${materialCentre}. Tap to view.`,
     url: '/admin?section=monitor-trips',
     tag: `admin-route-${tripId}`,
   })

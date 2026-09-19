@@ -134,10 +134,29 @@ type SideTripSummary = {
   items: string[]
 }
 
+type BrokerPaymentsSummary = {
+  broker_id: string
+  broker_name: string
+  payments_count: number
+  pending_count: number
+  posted_count: number
+  total_amount: number
+}
+
+type BrokerPaymentsRecord = {
+  customer_id: string
+  customer_name: string
+  payments_count: number
+  pending_count: number
+  posted_count: number
+  total_amount: number
+}
+
 type DrillDown =
   | { kind: "driver"; driver: DriverSummary; trips: DriverTrip[] }
   | { kind: "truck"; truck: TruckSummary; maintenance: TruckMaintenance[]; fuel: TruckFuel[] }
   | { kind: "broker"; broker: BrokerSummary; records: BrokerRecord[] }
+  | { kind: "broker-payments"; broker: BrokerPaymentsSummary; records: BrokerPaymentsRecord[] }
 
 type ViewMode = "card" | "table"
 
@@ -151,6 +170,7 @@ type ReportType =
   | "cash-expenses"
   | "truck-health"
   | "side-trips"
+  | "broker-payments"
 
 // ── Constants ──────────────────────────────────────────────────────────────
 const PRODUCT_MANUFACTURER: Record<string, string> = {
@@ -169,6 +189,7 @@ const REPORT_OPTIONS: { group: string; value: ReportType; label: string }[] = [
   { group: "Operations", value: "side-trips", label: "Side Trips by Driver" },
   { group: "Finance", value: "cash-expenses", label: "Cash Office Expenses" },
   { group: "Finance", value: "truck-health", label: "Truck Health / Expenses" },
+  { group: "Finance", value: "broker-payments", label: "Broker Payments" },
 ]
 
 
@@ -242,6 +263,7 @@ export default function Reports() {
   const [factoryLoadingSummaries, setFactoryLoadingSummaries] = useState<FactoryLoadingSummary[]>([])
   const [cashOfficeExpenseSummaries, setCashOfficeExpenseSummaries] = useState<CashOfficeExpenseSummary[]>([])
   const [sideTripSummaries, setSideTripSummaries] = useState<SideTripSummary[]>([])
+  const [brokerPaymentsSummaries, setBrokerPaymentsSummaries] = useState<BrokerPaymentsSummary[]>([])
   const [drillDown, setDrillDown] = useState<DrillDown | null>(null)
   const [drillLoading, setDrillLoading] = useState(false)
   const [reportError, setReportError] = useState<string | null>(null)
@@ -305,6 +327,7 @@ export default function Reports() {
         case "cash-expenses": await fetchCashExpenseReports(); break
         case "truck-health": await fetchTruckReports(); break
         case "side-trips": await fetchSideTripReports(); break
+        case "broker-payments": await fetchBrokerPaymentsReports(); break
       }
       setHasLoaded(true)
     } catch (err) {
@@ -951,6 +974,92 @@ export default function Reports() {
     setSideTripSummaries(summaries)
   }
 
+  // ── Broker payments reports ───────────────────────────────────────────────
+  async function fetchBrokerPaymentsReports() {
+    const { from, to } = getRange()
+
+    const { data: brokers, error: brokersErr } = await supabase
+      .from("Brokers")
+      .select("broker_id, broker_name")
+      .order("broker_name", { ascending: true })
+
+    if (brokersErr) throw new Error(`Failed to fetch brokers: ${brokersErr.message}`)
+    if (!brokers) return
+
+    const summaries: BrokerPaymentsSummary[] = await Promise.all(brokers.map(async (b) => {
+      const { data: payments, error: paymentsErr } = await supabase
+        .from("customer_payments")
+        .select("payment_id, status, amount")
+        .eq("broker_id", b.broker_id)
+        .gte("created_at", from)
+        .lte("created_at", to)
+
+      if (paymentsErr) throw new Error(`Failed to fetch broker payments: ${paymentsErr.message}`)
+
+      const payments_count = (payments || []).length
+      const pending_count = (payments || []).filter(p => p.status === "Pending").length
+      const posted_count = (payments || []).filter(p => p.status === "Posted").length
+      const total_amount = (payments || []).reduce((sum, p) => sum + (p.amount || 0), 0)
+
+      return {
+        broker_id: b.broker_id,
+        broker_name: b.broker_name,
+        payments_count,
+        pending_count,
+        posted_count,
+        total_amount,
+      }
+    }))
+
+    setBrokerPaymentsSummaries(
+      summaries
+        .filter(b => b.payments_count > 0)
+        .sort((a, b) => b.total_amount - a.total_amount)
+    )
+  }
+
+  async function fetchBrokerPaymentsDrillDown(broker: BrokerPaymentsSummary) {
+    setDrillLoading(true)
+    setLoadingBrokerId(broker.broker_id)
+    setReportError(null)
+    try {
+      const { from, to } = getRange()
+
+      const { data: payments, error: paymentsErr } = await supabase
+        .from("customer_payments")
+        .select("customer_id, customer_name, status, amount")
+        .eq("broker_id", broker.broker_id)
+        .gte("created_at", from)
+        .lte("created_at", to)
+
+      if (paymentsErr) throw new Error(`Failed to fetch broker payments: ${paymentsErr.message}`)
+
+      const customerMap: Record<string, { customer_name: string; payments_count: number; pending_count: number; posted_count: number; total_amount: number }> = {}
+
+      for (const p of payments || []) {
+        const id = p.customer_id || "unknown"
+        if (!customerMap[id]) {
+          customerMap[id] = { customer_name: p.customer_name || "Unknown", payments_count: 0, pending_count: 0, posted_count: 0, total_amount: 0 }
+        }
+        customerMap[id].payments_count++
+        if (p.status === "Pending") customerMap[id].pending_count++
+        if (p.status === "Posted") customerMap[id].posted_count++
+        customerMap[id].total_amount += p.amount || 0
+      }
+
+      const records: BrokerPaymentsRecord[] = Object.entries(customerMap)
+        .map(([customer_id, v]) => ({ customer_id, ...v }))
+        .sort((a, b) => b.total_amount - a.total_amount)
+
+      setDrillDown({ kind: "broker-payments", broker, records })
+    } catch (err) {
+      setReportError(err instanceof Error ? err.message : "Failed to load customer payments")
+    } finally {
+      setDrillLoading(false)
+      setLoadingBrokerId(null)
+    }
+  }
+
   // ── Export helpers ────────────────────────────────────────────────────────
   function exportDriverSummary(format: "csv" | "xlsx") {
     const rows = driverSummaries.map((d) => ({
@@ -1128,6 +1237,34 @@ export default function Reports() {
     }))
     if (format === "csv") downloadCSV("side_trips_by_driver.csv", rows)
     else downloadXLSX("side_trips_by_driver.xlsx", rows, "Side Trips")
+  }
+
+  function exportBrokerPayments(format: "csv" | "xlsx") {
+    const rows = brokerPaymentsSummaries.map((b) => ({
+      Broker: b.broker_name,
+      "Payments Count": b.payments_count,
+      "Pending": b.pending_count,
+      "Posted": b.posted_count,
+      "Total Amount (₦)": b.total_amount,
+    }))
+    if (format === "csv") downloadCSV("broker_payments_summary.csv", rows)
+    else downloadXLSX("broker_payments_summary.xlsx", rows, "Broker Payments Summary")
+  }
+
+  function exportBrokerPaymentsDetail(format: "csv" | "xlsx") {
+    if (drillDown?.kind !== "broker-payments") return
+    const rows = drillDown.records.map((r) => ({
+      Customer: r.customer_name,
+      "Payments Count": r.payments_count,
+      "Pending": r.pending_count,
+      "Posted": r.posted_count,
+      "Total Amount (₦)": r.total_amount,
+    }))
+    if (format === "csv") {
+      downloadCSV(`${drillDown.broker.broker_name}_customer_payments.csv`, rows)
+    } else {
+      downloadXLSX(`${drillDown.broker.broker_name}_customer_payments.xlsx`, rows, "Customer Payments Detail")
+    }
   }
 
   // ── Render ────────────────────────────────────────────────────────────────
@@ -2211,6 +2348,132 @@ borderRadius: 6,
               />
             </div>
           )}
+        </div>
+      )}
+
+      {/* Broker Payments */}
+      {!loading && hasLoaded && reportType === "broker-payments" && (
+        <div>
+          {brokerPaymentsSummaries.length === 0 ? (
+            <EmptyState icon="💰" title="No data available" description="No customer payments found in this period." />
+          ) : (
+            <div>
+              <div style={{ display: "flex", flexDirection: isMobile ? "column" : "row", justifyContent: "space-between", alignItems: isMobile ? "flex-start" : "center", gap: 12, marginBottom: 16 }}>
+                <div>
+                  <h2 style={{ margin: 0, color: "#0f172a", fontSize: FONT_SIZE.lg, fontWeight: 600 }}>Broker Payments</h2>
+                  <p style={{ margin: "4px 0 0", color: "#64748b", fontSize: FONT_SIZE.sm }}>{brokerPaymentsSummaries.length} brokers</p>
+                </div>
+                <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+                  <div style={{ display: "flex", background: "white", border: "1px solid #e2e8f0", borderRadius: 8, padding: 4, gap: 0 }}>
+                    <button onClick={() => setViewMode("card")} aria-label="Show card view" aria-pressed={viewMode === "card"} style={{ padding: "8px 12px", background: viewMode === "card" ? "#0070f3" : "transparent", color: viewMode === "card" ? "white" : "#64748b", border: "none", borderRadius: 6, cursor: "pointer", fontSize: FONT_SIZE.xs, fontWeight: 600, minWidth: 44, height: 40, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M3 3h8v8H3V3zm10 0h8v8h-8V3zM3 13h8v8H3v-8zm10 0h8v8h-8v-8z" /></svg>
+                    </button>
+                    <button onClick={() => setViewMode("table")} aria-label="Show table view" aria-pressed={viewMode === "table"} style={{ padding: "8px 12px", background: viewMode === "table" ? "#0070f3" : "transparent", color: viewMode === "table" ? "white" : "#64748b", border: "none", borderRadius: 6, cursor: "pointer", fontSize: FONT_SIZE.xs, fontWeight: 600, minWidth: 44, height: 40, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M3 4h18v2H3V4zm0 7h18v2H3v-2zm0 7h18v2H3v-2z" /></svg>
+                    </button>
+                  </div>
+                  <ExportActions onExportCSV={() => exportBrokerPayments("csv")} onExportXLSX={() => exportBrokerPayments("xlsx")} />
+                </div>
+              </div>
+
+              {viewMode === "card" ? (
+                <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(auto-fill, minmax(320px, 1fr))", gap: 12 }}>
+                  {brokerPaymentsSummaries.map((broker) => (
+                    <ReportCard key={broker.broker_id}>
+                      <div>
+                        <div style={{ marginBottom: 12 }}>
+                          <h3 style={{ margin: 0, color: "#0f172a", fontSize: FONT_SIZE.lg, fontWeight: 600 }}>{broker.broker_name}</h3>
+                        </div>
+                        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, padding: "12px 0", borderTop: "1px solid #f1f5f9", borderBottom: "1px solid #f1f5f9" }}>
+                          <ReportCardField label="Payments" value={broker.payments_count} />
+                          <ReportCardField label="Pending" value={broker.pending_count} />
+                          <ReportCardField label="Posted" value={broker.posted_count} />
+                          <ReportCardField label="Total Amount" value={`₦${broker.total_amount.toLocaleString()}`} />
+                        </div>
+                        <button
+                          onClick={() => fetchBrokerPaymentsDrillDown(broker)}
+                          disabled={drillLoading}
+                          style={{ width: "100%", marginTop: 12, padding: "10px 14px", background: loadingBrokerId === broker.broker_id ? "#93c5fd" : "#0070f3", color: "white", border: "none", borderRadius: 8, cursor: drillLoading ? "wait" : "pointer", fontWeight: 600, fontSize: FONT_SIZE.md, minHeight: 40, opacity: drillLoading ? 0.8 : 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}
+                          onMouseEnter={(e) => { if (!drillLoading) e.currentTarget.style.background = "#0057c7" }}
+                          onMouseLeave={(e) => { if (!drillLoading) e.currentTarget.style.background = "#0070f3" }}
+                        >
+                          {loadingBrokerId === broker.broker_id ? (
+                            <>
+                              <div style={{ width: 14, height: 14, borderRadius: "50%", border: "2px solid rgba(255,255,255,0.3)", borderTopColor: "white", animation: "spin 1s linear infinite" }} />
+                              Loading...
+                            </>
+                          ) : (
+                            "View Details"
+                          )}
+                        </button>
+                      </div>
+                    </ReportCard>
+                  ))}
+                </div>
+              ) : (
+                <DataTable
+                  columns={[
+                    { key: "broker_name", label: "Broker" },
+                    { key: "payments_count", label: "Payments" },
+                    { key: "pending_count", label: "Pending" },
+                    { key: "posted_count", label: "Posted" },
+                    { key: "total_amount", label: "Total Amount", render: (value) => `₦${(value as number).toLocaleString()}` },
+                    {
+                      key: "actions",
+                      label: "Actions",
+                      render: (_value, broker: BrokerPaymentsSummary) => (
+                        <button
+                          onClick={() => fetchBrokerPaymentsDrillDown(broker)}
+                          disabled={drillLoading}
+                          style={{ padding: "6px 10px", background: "white", color: "#0070f3", border: "1px solid #e2e8f0", borderRadius: 6, cursor: drillLoading ? "wait" : "pointer", fontWeight: 500, fontSize: FONT_SIZE.xs, opacity: drillLoading ? 0.6 : 1, display: "flex", alignItems: "center", gap: 6 }}
+                          onMouseEnter={(e) => { if (!drillLoading) e.currentTarget.style.background = "#eff6ff" }}
+                          onMouseLeave={(e) => { if (!drillLoading) e.currentTarget.style.background = "white" }}
+                        >
+                          {loadingBrokerId === broker.broker_id ? (
+                            <>
+                              <div style={{ width: 12, height: 12, borderRadius: "50%", border: "2px solid #e2e8f0", borderTopColor: "#0070f3", animation: "spin 1s linear infinite" }} />
+                              Loading...
+                            </>
+                          ) : (
+                            "View Details"
+                          )}
+                        </button>
+                      ),
+                    },
+                  ]}
+                  rows={brokerPaymentsSummaries}
+                  rowKey={(row) => row.broker_id}
+                />
+              )}
+            </div>
+          )}
+
+          <ReportModal
+            isOpen={drillDown?.kind === "broker-payments" && !drillLoading}
+            onClose={() => setDrillDown(null)}
+            title={`${drillDown?.kind === "broker-payments" ? drillDown.broker.broker_name : ""} — Customer Payments`}
+            subtitle={drillDown?.kind === "broker-payments" ? `${drillDown.records.length} customers in period` : ""}
+            isMobile={isMobile}
+            actions={
+              drillDown?.kind === "broker-payments" ? (
+                <ExportActions onExportCSV={() => exportBrokerPaymentsDetail("csv")} onExportXLSX={() => exportBrokerPaymentsDetail("xlsx")} />
+              ) : null
+            }
+          >
+            {drillDown?.kind === "broker-payments" && (
+              <DataTable
+                columns={[
+                  { key: "customer_name", label: "Customer" },
+                  { key: "payments_count", label: "Payments" },
+                  { key: "pending_count", label: "Pending" },
+                  { key: "posted_count", label: "Posted" },
+                  { key: "total_amount", label: "Total Amount", render: (value) => `₦${(value as number).toLocaleString()}` },
+                ]}
+                rows={drillDown.records}
+                rowKey={(row) => row.customer_id}
+              />
+            )}
+          </ReportModal>
         </div>
       )}
     </div>
