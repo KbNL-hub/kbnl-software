@@ -224,10 +224,11 @@ export async function POST(req: NextRequest) {
         if (table === "dd_trips" && data.route_points && row) {
           const tripId = (filters.dd_trip_id ?? row.dd_trip_id) as string
           const plate = row.plate_number as string
+          const loadingPoint = (row.loading_point as string) || ""
           if (plate) {
             notifyBrokerRouteSet(tripId, plate).catch(console.error)
-            notifyATCRouteSet(tripId, plate).catch(console.error)
-            notifyAdminTruckRouteSet(tripId, plate).catch(console.error)
+            notifyATCRouteSet(tripId, plate, loadingPoint).catch(console.error)
+            notifyAdminTruckRouteSet(tripId, plate, loadingPoint).catch(console.error)
           }
         }
 
