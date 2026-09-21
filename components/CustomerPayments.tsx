@@ -51,6 +51,7 @@ export default function CustomerPayments({ brokerId }: { brokerId: string }) {
   const [submitting, setSubmitting] = useState(false)
   const [message, setMessage] = useState("")
   const [profilesMap, setProfilesMap] = useState<Record<string, string>>({})
+  const [deletingPayment, setDeletingPayment] = useState<Payment | null>(null)
 
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { fetchPayments(); fetchProfiles() }, [brokerId])
@@ -162,6 +163,16 @@ export default function CustomerPayments({ brokerId }: { brokerId: string }) {
     setSubmitting(false)
   }
 
+  async function deletePayment(payment: Payment) {
+    const { error } = await apiMutate<unknown[]>("finance", {
+      action: "delete",
+      table: "customer_payments",
+      filters: { payment_id: payment.payment_id, status: "Pending" }
+    })
+    if (error) { setMessage("Failed to delete: " + error); return false }
+    setDeletingPayment(null); fetchPayments(); return true
+  }
+
   const statusStyle = (s: string) => {
     if (s === "Posted") return { bg: "#d1fae5", color: "#065f46", border: "#a7f3d0" }
     return { bg: "#f0f7ff", color: "#0c4a6e", border: "#bfdbfe" }
@@ -252,14 +263,24 @@ export default function CustomerPayments({ brokerId }: { brokerId: string }) {
                   </p>
                 )}
 
-                {p.status === "Pending" && (
-                  <button onClick={() => openModal(p)} style={{
-                    width: "100%", padding: "10px", background: "#f0f7ff", color: "#0070f3",
-                    border: "1px solid #bfdbfe", borderRadius: 8, cursor: "pointer", fontWeight: 600,
-                    fontSize: fontSize.sm, display: "flex", alignItems: "center", justifyContent: "center", gap: 6, transition: "all 0.2s",
-                  }} onMouseEnter={e => { e.currentTarget.style.background = "#e0efff"; e.currentTarget.style.borderColor = "#0070f3" }} onMouseLeave={e => { e.currentTarget.style.background = "#f0f7ff"; e.currentTarget.style.borderColor = "#bfdbfe" }}>
-                    <Icon icon="mdi:pencil" width={16} /> Edit Payment
-                  </button>
+{p.status === "Pending" && (
+                  <div style={{ display: "flex", gap: 6, marginTop: 8 }}>
+                    <button onClick={() => openModal(p)} style={{
+                      flex: 1, padding: "10px", background: "#f0f7ff", color: "#0070f3",
+                      border: "1px solid #bfdbfe", borderRadius: 8, cursor: "pointer", fontWeight: 600,
+                      fontSize: fontSize.sm, display: "flex", alignItems: "center", justifyContent: "center", transition: "all 0.2s",
+                      borderRight: "1px solid #e2e8f0",
+                    }} onMouseEnter={e => { e.currentTarget.style.background = "#e0efff"; e.currentTarget.style.borderColor = "#0070f3" }} onMouseLeave={e => { e.currentTarget.style.background = "#f0f7ff"; e.currentTarget.style.borderColor = "#bfdbfe" }}>
+                      <Icon icon="mdi:pencil" width={16} /> Edit Payment
+                    </button>
+                    <button onClick={() => { setMessage(""); setDeletingPayment(p) }} style={{
+                      width: "auto", padding: "10px", background: "white", color: "#ef4444",
+                      border: "1px solid #f87171", borderRadius: 8, cursor: "pointer", fontWeight: 600,
+                      fontSize: fontSize.sm, display: "flex", alignItems: "center", justifyContent: "center", transition: "all 0.2s",
+                    }} onMouseEnter={e => { e.currentTarget.style.background = "#fee2e2"; e.currentTarget.style.borderColor = "#f87171" }} onMouseLeave={e => { e.currentTarget.style.background = "white"; e.currentTarget.style.borderColor = "#e2e8f0" }}>
+                      <Icon icon="mdi:trash" width={16} /> Delete
+                    </button>
+                  </div>
                 )}
                 {p.status === "Posted" && (
                   <div style={{ marginTop: 12, padding: "10px 12px", background: "#f0fdf4", borderRadius: 8, fontSize: fontSize.sm, color: "#166534" }}>
@@ -308,12 +329,19 @@ export default function CustomerPayments({ brokerId }: { brokerId: string }) {
                     </td>
                     <td style={{ padding: "12px 16px", textAlign: "right" }}>
                       {p.status === "Pending" && (
-                        <button onClick={() => openModal(p)} style={{ padding: "6px 10px", cursor: "pointer", borderRadius: 5, border: "1px solid #e2e8f0", color: "#0070f3", background: "#f0f7ff", fontSize: fontSize.sm, fontWeight: 500, transition: "all 0.2s", minHeight: 32, minWidth: 32, display: "inline-flex", alignItems: "center", justifyContent: "center" }}
-                          onMouseEnter={e => { e.currentTarget.style.background = "#e0efff"; e.currentTarget.style.borderColor = "#0070f3" }}
-                          onMouseLeave={e => { e.currentTarget.style.background = "#f0f7ff"; e.currentTarget.style.borderColor = "#e2e8f0" }}
-                        >
-                          <Icon icon="mdi:pencil" width={14} />
-                        </button>
+                        <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                          <button onClick={() => openModal(p)} style={{
+                            padding: "6px 10px", cursor: "pointer", borderRadius: 5, border: "1px solid #e2e8f0", color: "#0070f3", background: "#f0f7ff", fontSize: fontSize.sm, fontWeight: 500, transition: "all 0.2s", minHeight: 32, minWidth: 32, display: "inline-flex", alignItems: "center", justifyContent: "center"
+                          }} onMouseEnter={e => { e.currentTarget.style.background = "#e0efff"; e.currentTarget.style.borderColor = "#0070f3" }} onMouseLeave={e => { e.currentTarget.style.background = "#f0f7ff"; e.currentTarget.style.borderColor = "#e2e8f0" }}>
+                            <Icon icon="mdi:pencil" width={14} /> Edit
+                          </button>
+                          <button onClick={() => { setMessage(""); setDeletingPayment(p) }} style={{
+                            width: "auto", padding: "6px 10px", background: "white", color: "#ef4444",
+                            border: "1px solid #f87171", borderRadius: 6, cursor: "pointer", fontSize: fontSize.sm, fontWeight: 600, transition: "all 0.2s"
+                          }} onMouseEnter={e => { e.currentTarget.style.background = "#fee2e2"; e.currentTarget.style.borderColor = "#f87171" }} onMouseLeave={e => { e.currentTarget.style.background = "white"; e.currentTarget.style.borderColor = "#e2e8f0" }}>
+                            <Icon icon="mdi:trash" width={14} /> Delete
+                          </button>
+                        </div>
                       )}
                     </td>
                   </tr>
@@ -384,6 +412,61 @@ export default function CustomerPayments({ brokerId }: { brokerId: string }) {
               {submitting ? <Icon icon="mdi:loading" width={18} style={{ animation: "spin 1s linear infinite" }} /> : <Icon icon="mdi:content-save" width={18} />}
               {submitting ? "Saving..." : "Save Payment"}
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Confirmation Modal */}
+      {deletingPayment && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(15,23,42,0.6)", backdropFilter: "blur(4px)", display: "flex", alignItems: isMobile ? "flex-end" : "center", justifyContent: "center", zIndex: 100, padding: isMobile ? 0 : 24 }}>
+          <div style={{ background: "white", borderRadius: isMobile ? "20px 20px 0 0" : 12, padding: isMobile ? "28px 20px" : 32, width: "100%", maxWidth: 420, maxHeight: "90vh", overflowY: "auto", boxShadow: "0 25px 50px -12px rgba(0,0,0,0.25)" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
+              <h3 style={{ margin: 0, fontSize: fontSize.xl, fontWeight: 700, color: "#0f172a" }}>Delete Payment</h3>
+              <button onClick={() => { setMessage(""); setDeletingPayment(null) }} style={{ background: "none", border: "none", color: "#94a3b8", cursor: "pointer", padding: 0, width: 32, height: 32, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20 }}>
+                <Icon icon="mdi:close" width={20} />
+              </button>
+            </div>
+
+            <div style={{ background: "#fef2f2", padding: 14, borderRadius: 8, marginBottom: 20, border: "1px solid #fecaca" }}>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                <div>
+                  <p style={{ margin: "0 0 4px 0", color: "#94a3b8", fontSize: fontSize.xs }}>Amount</p>
+                  <p style={{ margin: 0, fontSize: fontSize.lg, fontWeight: 700, color: "#0f172a" }}>₦{deletingPayment.amount.toLocaleString()}</p>
+                </div>
+                <div>
+                  <p style={{ margin: "0 0 4px 0", color: "#94a3b8", fontSize: fontSize.xs }}>Bank</p>
+                  <p style={{ margin: 0, fontSize: fontSize.base, fontWeight: 600, color: "#0f172a" }}>{deletingPayment.bank_name}</p>
+                </div>
+                <div>
+                  <p style={{ margin: "0 0 4px 0", color: "#94a3b8", fontSize: fontSize.xs }}>Customer</p>
+                  <p style={{ margin: 0, fontSize: fontSize.base, fontWeight: 600, color: "#0f172a" }}>{deletingPayment.customer_name}</p>
+                </div>
+                <div>
+                  <p style={{ margin: "0 0 4px 0", color: "#94a3b8", fontSize: fontSize.xs }}>Depositor</p>
+                  <p style={{ margin: 0, fontSize: fontSize.base, fontWeight: 600, color: "#0f172a" }}>{deletingPayment.depositor_name || "—"}</p>
+                </div>
+              </div>
+            </div>
+
+            <p style={{ margin: "0 0 20px 0", fontSize: fontSize.sm, color: "#64748b", textAlign: "center" }}>
+              Are you sure you want to delete this pending payment? This cannot be undone.
+            </p>
+
+            {message && (
+              <div style={{ padding: 12, background: "#fef2f2", borderLeft: "4px solid #ef4444", borderRadius: 4, marginBottom: 16, color: "#b91c1c", fontSize: fontSize.sm, fontWeight: 600, display: "flex", alignItems: "center", gap: 6 }}>
+                <Icon icon="mdi:alert-circle" width={16} /> {message}
+              </div>
+            )}
+
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1.2fr", gap: 10 }}>
+              <button onClick={() => { setMessage(""); setDeletingPayment(null) }} style={{ padding: "12px 16px", background: "white", color: "#475569", border: "1px solid #cbd5e1", borderRadius: 8, cursor: "pointer", fontWeight: 600, fontSize: fontSize.md, minHeight: 44 }}>
+                Cancel
+              </button>
+              <button onClick={async () => { if (deletingPayment) await deletePayment(deletingPayment) }} style={{ padding: "12px 16px", background: "#ef4444", color: "white", border: "none", borderRadius: 8, cursor: "pointer", fontWeight: 600, fontSize: fontSize.md, minHeight: 44, display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
+                <Icon icon="mdi:trash-can" width={16} />
+                Delete Payment
+              </button>
+            </div>
           </div>
         </div>
       )}
