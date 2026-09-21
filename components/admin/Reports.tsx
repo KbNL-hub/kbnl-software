@@ -991,8 +991,8 @@ export default function Reports() {
         .from("customer_payments")
         .select("payment_id, status, amount")
         .eq("broker_id", b.broker_id)
-        .gte("created_at", from)
-        .lte("created_at", to)
+        .gte("payment_date", from.slice(0, 10))
+        .lte("payment_date", to.slice(0, 10))
 
       if (paymentsErr) throw new Error(`Failed to fetch broker payments: ${paymentsErr.message}`)
 
@@ -1029,8 +1029,8 @@ export default function Reports() {
         .from("customer_payments")
         .select("customer_id, customer_name, status, amount")
         .eq("broker_id", broker.broker_id)
-        .gte("created_at", from)
-        .lte("created_at", to)
+        .gte("payment_date", from.slice(0, 10))
+        .lte("payment_date", to.slice(0, 10))
 
       if (paymentsErr) throw new Error(`Failed to fetch broker payments: ${paymentsErr.message}`)
 
