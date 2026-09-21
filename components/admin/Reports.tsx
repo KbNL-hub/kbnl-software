@@ -217,6 +217,18 @@ function toEndOfDay(dateStr: string) {
   return d.toISOString()
 }
 
+function isValidPaymentDate(raw: unknown): raw is string {
+  const pd = String(raw || "").slice(0, 10)
+  if (pd.length < 10) return false
+  const match = pd.match(/^(\d{4})-(\d{2})-(\d{2})$/)
+  if (!match) return false
+  const y = parseInt(match[1], 10)
+  const m = parseInt(match[2], 10) - 1
+  const d = parseInt(match[3], 10)
+  const roundTripped = new Date(Date.UTC(y, m, d)).toISOString().slice(0, 10)
+  return roundTripped === pd
+}
+
 // ── Export helpers ────────────────────────────────────────────────────────
 function downloadCSV(filename: string, rows: Record<string, unknown>[]) {
   if (!rows.length) return
@@ -996,12 +1008,14 @@ export default function Reports() {
         .from("customer_payments")
         .select("payment_id, status, amount, payment_date")
         .eq("broker_id", b.broker_id)
+        .gte("payment_date", from.slice(0, 10))
+        .lte("payment_date", to.slice(0, 10))
 
       if (paymentsErr) throw new Error(`Failed to fetch broker payments: ${paymentsErr.message}`)
 
       const filtered = (payments || []).filter(p => {
         const pd = String(p.payment_date || "").slice(0, 10)
-        if (!pd || pd.length < 10) return false
+        if (!isValidPaymentDate(pd)) return false
         const ts = new Date(pd + "T12:00:00Z").getTime()
         return ts >= rangeFrom && ts <= rangeTo
       })
@@ -1041,12 +1055,14 @@ export default function Reports() {
         .from("customer_payments")
         .select("customer_id, customer_name, status, amount, payment_date")
         .eq("broker_id", broker.broker_id)
+        .gte("payment_date", from.slice(0, 10))
+        .lte("payment_date", to.slice(0, 10))
 
       if (paymentsErr) throw new Error(`Failed to fetch broker payments: ${paymentsErr.message}`)
 
       const filtered = (payments || []).filter(p => {
         const pd = String(p.payment_date || "").slice(0, 10)
-        if (!pd || pd.length < 10) return false
+        if (!isValidPaymentDate(pd)) return false
         const ts = new Date(pd + "T12:00:00Z").getTime()
         return ts >= rangeFrom && ts <= rangeTo
       })
