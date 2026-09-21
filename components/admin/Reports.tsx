@@ -196,15 +196,18 @@ const REPORT_OPTIONS: { group: string; value: ReportType; label: string }[] = [
 // ── Date helpers ───────────────────────────────────────────────────────────
 function thisMonthRange() {
   const now = new Date()
-  const from = new Date(now.getFullYear(), now.getMonth(), 1).toISOString()
-  const to = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999).toISOString()
+  const y = now.getUTCFullYear()
+  const m = now.getUTCMonth()
+  const from = new Date(Date.UTC(y, m, 1, 0, 0, 0, 0)).toISOString()
+  const to = new Date(Date.UTC(y, m + 1, 0, 23, 59, 59, 999)).toISOString()
   return { from, to }
 }
 
 function thisYearRange() {
   const now = new Date()
-  const from = new Date(now.getFullYear(), 0, 1).toISOString()
-  const to = new Date(now.getFullYear(), 11, 31, 23, 59, 59, 999).toISOString()
+  const y = now.getUTCFullYear()
+  const from = new Date(Date.UTC(y, 0, 1, 0, 0, 0, 0)).toISOString()
+  const to = new Date(Date.UTC(y, 11, 31, 23, 59, 59, 999)).toISOString()
   return { from, to }
 }
 
@@ -977,6 +980,8 @@ export default function Reports() {
   // ── Broker payments reports ───────────────────────────────────────────────
   async function fetchBrokerPaymentsReports() {
     const { from, to } = getRange()
+    const rangeFrom = new Date(from.slice(0, 10) + "T00:00:00Z").getTime()
+    const rangeTo = new Date(to.slice(0, 10) + "T23:59:59Z").getTime()
 
     const { data: brokers, error: brokersErr } = await supabase
       .from("Brokers")
@@ -989,17 +994,22 @@ export default function Reports() {
     const summaries: BrokerPaymentsSummary[] = await Promise.all(brokers.map(async (b) => {
       const { data: payments, error: paymentsErr } = await supabase
         .from("customer_payments")
-        .select("payment_id, status, amount")
+        .select("payment_id, status, amount, payment_date")
         .eq("broker_id", b.broker_id)
-        .gte("payment_date", from.slice(0, 10))
-        .lte("payment_date", to.slice(0, 10))
 
       if (paymentsErr) throw new Error(`Failed to fetch broker payments: ${paymentsErr.message}`)
 
-      const payments_count = (payments || []).length
-      const pending_count = (payments || []).filter(p => p.status === "Pending").length
-      const posted_count = (payments || []).filter(p => p.status === "Posted").length
-      const total_amount = (payments || []).reduce((sum, p) => sum + (p.amount || 0), 0)
+      const filtered = (payments || []).filter(p => {
+        const pd = String(p.payment_date || "").slice(0, 10)
+        if (!pd || pd.length < 10) return false
+        const ts = new Date(pd + "T12:00:00Z").getTime()
+        return ts >= rangeFrom && ts <= rangeTo
+      })
+
+      const payments_count = filtered.length
+      const pending_count = filtered.filter(p => p.status === "Pending").length
+      const posted_count = filtered.filter(p => p.status === "Posted").length
+      const total_amount = filtered.reduce((sum, p) => sum + Number(p.amount || 0), 0)
 
       return {
         broker_id: b.broker_id,
@@ -1024,19 +1034,26 @@ export default function Reports() {
     setReportError(null)
     try {
       const { from, to } = getRange()
+      const rangeFrom = new Date(from.slice(0, 10) + "T00:00:00Z").getTime()
+      const rangeTo = new Date(to.slice(0, 10) + "T23:59:59Z").getTime()
 
       const { data: payments, error: paymentsErr } = await supabase
         .from("customer_payments")
-        .select("customer_id, customer_name, status, amount")
+        .select("customer_id, customer_name, status, amount, payment_date")
         .eq("broker_id", broker.broker_id)
-        .gte("payment_date", from.slice(0, 10))
-        .lte("payment_date", to.slice(0, 10))
 
       if (paymentsErr) throw new Error(`Failed to fetch broker payments: ${paymentsErr.message}`)
 
+      const filtered = (payments || []).filter(p => {
+        const pd = String(p.payment_date || "").slice(0, 10)
+        if (!pd || pd.length < 10) return false
+        const ts = new Date(pd + "T12:00:00Z").getTime()
+        return ts >= rangeFrom && ts <= rangeTo
+      })
+
       const customerMap: Record<string, { customer_name: string; payments_count: number; pending_count: number; posted_count: number; total_amount: number }> = {}
 
-      for (const p of payments || []) {
+      for (const p of filtered) {
         const id = p.customer_id || "unknown"
         if (!customerMap[id]) {
           customerMap[id] = { customer_name: p.customer_name || "Unknown", payments_count: 0, pending_count: 0, posted_count: 0, total_amount: 0 }
@@ -1044,7 +1061,7 @@ export default function Reports() {
         customerMap[id].payments_count++
         if (p.status === "Pending") customerMap[id].pending_count++
         if (p.status === "Posted") customerMap[id].posted_count++
-        customerMap[id].total_amount += p.amount || 0
+        customerMap[id].total_amount += Number(p.amount || 0)
       }
 
       const records: BrokerPaymentsRecord[] = Object.entries(customerMap)
