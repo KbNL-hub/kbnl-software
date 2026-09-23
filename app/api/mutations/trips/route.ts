@@ -72,10 +72,8 @@ function getUniqueViolationMessage(error: unknown) {
 
   const message = error.message || ""
   if (message.includes("trips_one_active_per_driver_idx")) return ACTIVE_TRIP_ERROR
-  if (message.includes("trips_order_no_unique")) return "Order number has already been used."
   if (message.includes("trips_child_order_no_unique")) return "Child order number has already been used."
   if (message.includes("trips_atc_unique")) return "ATC number has already been used."
-  if (message.includes("dd_trips_order_no_unique")) return "Order number has already been used."
   if (message.includes("dd_trips_child_order_no_unique")) return "Child order number has already been used."
   if (message.includes("dd_trips_atc_unique")) return "ATC number has already been used."
   return "A record with the same unique value already exists."
