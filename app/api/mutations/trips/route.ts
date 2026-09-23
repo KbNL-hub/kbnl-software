@@ -1,6 +1,6 @@
 import { createClient } from "@supabase/supabase-js"
 import { NextRequest, NextResponse } from "next/server"
-import { requireRole, handleApiError } from "@/lib/auth-middleware"
+import { requireRole, handleApiError, type AuthContext } from "@/lib/auth-middleware"
 import { includes } from "@/lib/type-utils"
 import {
   notifyBrokerNewTripStarted,
@@ -38,6 +38,89 @@ const TABLE_ROLES: Record<string, string[]> = {
 
 function buildError(msg: string, status: number) {
   return NextResponse.json({ error: msg }, { status })
+}
+
+const ON_BEHALF_TRIP_ROLES = new Set(["TruckOfficer", "Broker", "Admin", "SuperAdmin", "DeskOfficer", "ATCOfficer", "Supervisor"])
+const ACTIVE_TRIP_ERROR = "This driver already has an active trip. Wait for the driver to complete it or ask the driver to end their trip before starting another."
+
+type DatabaseError = {
+  code?: string
+  message?: string
+}
+
+type PreparedTripInsert = {
+  data: Record<string, unknown>
+  conflict?: boolean
+  error?: string
+}
+
+class MutationError extends Error {
+  status: number
+
+  constructor(message: string, status: number) {
+    super(message)
+    this.status = status
+  }
+}
+
+function isDatabaseError(error: unknown): error is DatabaseError {
+  return typeof error === "object" && error !== null && "code" in error
+}
+
+function getUniqueViolationMessage(error: unknown) {
+  if (!isDatabaseError(error) || error.code !== "23505") return null
+
+  const message = error.message || ""
+  if (message.includes("trips_one_active_per_driver_idx")) return ACTIVE_TRIP_ERROR
+  if (message.includes("trips_order_no_unique")) return "Order number has already been used."
+  if (message.includes("trips_child_order_no_unique")) return "Child order number has already been used."
+  if (message.includes("trips_atc_unique")) return "ATC number has already been used."
+  if (message.includes("dd_trips_order_no_unique")) return "Order number has already been used."
+  if (message.includes("dd_trips_child_order_no_unique")) return "Child order number has already been used."
+  if (message.includes("dd_trips_atc_unique")) return "ATC number has already been used."
+  return "A record with the same unique value already exists."
+}
+
+function buildMutationError(error: unknown) {
+  const uniqueViolationMessage = getUniqueViolationMessage(error)
+  if (uniqueViolationMessage) return buildError(uniqueViolationMessage, 409)
+
+  const message = isDatabaseError(error) && error.message ? error.message : "Action failed"
+  return buildError(message, 500)
+}
+
+function throwSubActionError(error: unknown): never {
+  const uniqueViolationMessage = getUniqueViolationMessage(error)
+  if (uniqueViolationMessage) throw new MutationError(uniqueViolationMessage, 409)
+  throw new Error("Sub-action failed")
+}
+
+async function prepareTripInsert(data: Record<string, unknown>, auth: AuthContext): Promise<PreparedTripInsert> {
+  const nextData = { ...data }
+  const canStartOnBehalf = auth.roles.some(role => ON_BEHALF_TRIP_ROLES.has(role))
+
+  if (auth.roles.includes("Driver") && !canStartOnBehalf) {
+    nextData.driver_id = auth.userId
+  }
+
+  if (nextData.trip_status !== "In transit" && nextData.trip_status !== "On hold") {
+    return { data: nextData }
+  }
+
+  const driverId = typeof nextData.driver_id === "string" ? nextData.driver_id : null
+  if (!driverId) return { data: nextData }
+
+  const { data: activeTrip, error } = await supabaseAdmin
+    .from("Trips")
+    .select("trip_id")
+    .eq("driver_id", driverId)
+    .in("trip_status", ["In transit", "On hold"])
+    .limit(1)
+    .maybeSingle()
+
+  if (error) return { data: nextData, error: error.message }
+  if (activeTrip) return { data: nextData, conflict: true }
+  return { data: nextData }
 }
 
 // Trip Payment feature constants
@@ -102,6 +185,7 @@ export async function POST(req: NextRequest) {
         conflict?: string
       }>
     }
+    let auth: AuthContext | null = null
 
     if (action !== "transaction") {
       if (!table || !includes(ALLOWED_TABLES, table)) {
@@ -111,7 +195,7 @@ export async function POST(req: NextRequest) {
         return buildError(`Invalid action "${action}"`, 400)
       }
       const rolesForTable = TABLE_ROLES[table] || ["Admin"]
-      const auth = await requireRole(req, rolesForTable)
+      auth = await requireRole(req, rolesForTable)
       if (table === "credit_approvals" && action !== "insert" && isBrokerOnly(auth.roles)) {
         return buildError("Brokers cannot modify or delete credit approvals", 403)
       }
@@ -119,7 +203,7 @@ export async function POST(req: NextRequest) {
       if (!sub_actions || !Array.isArray(sub_actions) || sub_actions.length === 0) {
         return buildError("sub_actions array is required for transaction", 400)
       }
-      const auth = await requireRole(req, ["Driver", "Broker", "TruckOfficer", "Admin", "SuperAdmin", "ATCOfficer", "DeskOfficer"])
+      auth = await requireRole(req, ["Driver", "Broker", "TruckOfficer", "Admin", "SuperAdmin", "ATCOfficer", "DeskOfficer"])
       for (const sa of sub_actions || []) {
         const rolesForTable = TABLE_ROLES[sa.table] || ["Admin"]
         if (!auth.roles.some(r => rolesForTable.includes(r))) {
@@ -131,13 +215,22 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    if (!auth) return buildError("Authentication required", 401)
+
     switch (action) {
       case "insert": {
         if (!data) return buildError("data is required for insert", 400)
-        const { data: result, error } = await supabaseAdmin.from(table!).insert([data]).select()
+        let insertData = data
+        if (table === "Trips") {
+          const prepared = await prepareTripInsert(data, auth)
+          if (prepared.conflict) return buildError(ACTIVE_TRIP_ERROR, 409)
+          if (prepared.error) return buildError(prepared.error, 500)
+          insertData = prepared.data
+        }
+        const { data: result, error } = await supabaseAdmin.from(table!).insert([insertData]).select()
         if (error) {
           console.error("Mutation failed", error)
-          return buildError(error.message || "Action failed", 500)
+          return buildMutationError(error)
         }
         // Trip Started
         if (table === "Trips" && result?.[0]) {
@@ -161,7 +254,7 @@ export async function POST(req: NextRequest) {
         const { data: result, error } = await supabaseAdmin.from(table!).upsert([data], upsertOptions).select()
         if (error) {
           console.error("Mutation failed", error)
-          return buildError(error.message || "Action failed", 500)
+          return buildMutationError(error)
         }
         return NextResponse.json({ data: result })
       }
@@ -178,7 +271,7 @@ export async function POST(req: NextRequest) {
         const { data: result, error } = await query.select()
         if (error) {
           console.error("Mutation failed", error)
-          return buildError(error.message || "Action failed", 500)
+          return buildMutationError(error)
         }
         const row = result?.[0] as Record<string, unknown> | undefined
 
@@ -246,7 +339,7 @@ export async function POST(req: NextRequest) {
         const { data: result, error } = await query.select()
         if (error) {
           console.error("Mutation failed", error)
-          return buildError(error.message || "Action failed", 500)
+          return buildMutationError(error)
         }
         return NextResponse.json({ data: result })
       }
@@ -261,6 +354,12 @@ export async function POST(req: NextRequest) {
           }
           if (!includes(ALLOWED_TABLES, sa.table)) {
             return buildError(`Table "${sa.table}" is not supported by this endpoint`, 400)
+          }
+          if (sa.table === "Trips" && sa.action === "insert" && sa.data) {
+            const prepared = await prepareTripInsert(sa.data, auth)
+            if (prepared.conflict) return buildError(ACTIVE_TRIP_ERROR, 409)
+            if (prepared.error) return buildError(prepared.error, 500)
+            sa.data = prepared.data
           }
         }
 
@@ -292,7 +391,7 @@ export async function POST(req: NextRequest) {
                 const { data: r, error } = await supabaseAdmin.from(sa.table).insert([sa.data]).select()
                 if (error) {
                   console.error("Sub-action failed", error)
-                  throw new Error("Sub-action failed")
+                  throwSubActionError(error)
                 }
                 execResult = r
                 break
@@ -309,7 +408,7 @@ export async function POST(req: NextRequest) {
                 const { data: r, error } = await q.select()
                 if (error) {
                   console.error("Sub-action failed", error)
-                  throw new Error("Sub-action failed")
+                  throwSubActionError(error)
                 }
                 execResult = r
                 break
@@ -325,7 +424,7 @@ export async function POST(req: NextRequest) {
                 const { data: r, error } = await q.select()
                 if (error) {
                   console.error("Sub-action failed", error)
-                  throw new Error("Sub-action failed")
+                  throwSubActionError(error)
                 }
                 execResult = r
                 break
@@ -336,7 +435,7 @@ export async function POST(req: NextRequest) {
                 const { data: r, error } = await supabaseAdmin.from(sa.table).upsert([sa.data], opts).select()
                 if (error) {
                   console.error("Sub-action failed", error)
-                  throw new Error("Sub-action failed")
+                  throwSubActionError(error)
                 }
                 execResult = r
                 break
@@ -389,6 +488,7 @@ export async function POST(req: NextRequest) {
           }
 
           console.error("Transaction failed", err)
+          if (err instanceof MutationError) return buildError(err.message, err.status)
           return buildError("Transaction failed", 500)
         }
       }

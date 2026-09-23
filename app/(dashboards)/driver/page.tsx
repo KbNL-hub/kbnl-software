@@ -239,8 +239,33 @@ export default function DriverDashboard() {
   }, [])
 
   function navigateTo(newView: ViewType) {
-    setView(newView)
-    window.history.pushState(null, '', `/driver?view=${newView}`)
+    const nextView = newView === "start-trip" && activeTrip ? "active-trip" : newView
+    setView(nextView)
+    window.history.pushState(null, '', `/driver?view=${nextView}`)
+  }
+
+  async function loadActiveTrip(driverId: string): Promise<Trip | null> {
+    const { data, error } = await supabase
+      .from("Trips").select("*").eq("driver_id", driverId)
+      .in("trip_status", ["In transit", "On hold"])
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle()
+
+    if (!mountedRef.current) return (data as Trip | null) || null
+    if (error) {
+      setMessage("Unable to verify whether you already have an active trip. Please try again.")
+      return null
+    }
+    if (!data) return null
+
+    const trip = data as Trip
+    setActiveTrip(trip)
+    await Promise.all([
+      fetchStops(trip.trip_id, trip.loaded_quantity),
+      fetchLoadMoreEntries(trip.trip_id),
+    ])
+    return trip
   }
 
   async function initDriver() {
@@ -266,17 +291,7 @@ export default function DriverDashboard() {
       setDriver({ driver_id: user.id, full_name: profile.full_name })
     }
 
-    const { data: tripData } = await supabase
-      .from("Trips").select("*").eq("driver_id", user.id)
-      .in("trip_status", ["In transit", "On hold"]).single()
-
-    if (tripData) {
-      setActiveTrip(tripData)
-      await Promise.all([
-        fetchStops(tripData.trip_id, tripData.loaded_quantity),
-        fetchLoadMoreEntries(tripData.trip_id),
-      ])
-    }
+    await loadActiveTrip(user.id)
 
     const { data: trucksData } = await supabase
       .from("Trucks").select("plate_number, kbnl_truck_no, truck_size").neq("status", "Decommissioned")
@@ -462,6 +477,11 @@ export default function DriverDashboard() {
   const availableLocations = LOADING_POINT_MAP[loadingPointCategory] || []
 
   async function handleStartTrip() {
+    if (submitting) return
+    if (activeTrip) {
+      navigateTo("active-trip")
+      return
+    }
     if (!tripType) return setMessage("Select a trip type")
     if (!truckSize) return setMessage("Select a truck size")
     if (!plateNumber) return setMessage("Select a plate number")
@@ -476,7 +496,7 @@ export default function DriverDashboard() {
     if (!loadedQuantity) return setMessage("Enter no. of bags")
 
     setSubmitting(true)
-    const { data, error } = await apiMutate("trips", {
+    const { data, error, status } = await apiMutate("trips", {
       action: "insert",
       table: "Trips",
       data: {
@@ -491,7 +511,18 @@ export default function DriverDashboard() {
       },
     })
 
-    if (error || !data || !Array.isArray(data) || data.length === 0) { setMessage("Failed to start trip"); setSubmitting(false); return }
+    if (error || !data || !Array.isArray(data) || data.length === 0) {
+      setMessage(error || "Failed to start trip")
+      setSubmitting(false)
+      if (status === 409 && error?.toLowerCase().includes("active trip") && driver?.driver_id) {
+        const currentTrip = await loadActiveTrip(driver.driver_id)
+        if (currentTrip) {
+          setMessage("")
+          navigateTo("active-trip")
+        }
+      }
+      return
+    }
     if (truckSize !== "Tricycle") {
       await apiMutate("trips", { action: "update", table: "Trucks", data: { status: "Loaded" }, filters: { plate_number: plateNumber } })
     }
@@ -1134,8 +1165,20 @@ export default function DriverDashboard() {
           </div>
         )}
 
+        {view === "start-trip" && activeTrip && (
+          <div style={{ maxWidth: 480, margin: "48px auto", textAlign: "center" }}>
+            <h2 style={{ marginBottom: 12, color: "#0f172a", fontSize: isMobile ? FONT_SIZE["2xl"] : FONT_SIZE.xl, fontWeight: 700 }}>Active Trip in Progress</h2>
+            <p style={{ margin: "0 0 24px", color: "#64748b", fontSize: FONT_SIZE.base }}>
+              You cannot start another trip while {activeTrip.plate_number} is still active.
+            </p>
+            <button onClick={() => navigateTo("active-trip")} style={{ padding: "14px 18px", background: "#0070f3", color: "white", border: "none", borderRadius: 10, cursor: "pointer", fontWeight: 700, fontSize: FONT_SIZE.md, minHeight: 48 }}>
+              Continue Active Trip
+            </button>
+          </div>
+        )}
+
         {/* ── Start Trip ── */}
-        {view === "start-trip" && (
+        {view === "start-trip" && !activeTrip && (
           <div>
             <button onClick={() => { navigateTo("dashboard"); setMessage("") }} className="btn-hover-opacity-8" style={{ background: "none", border: "none", color: "#0070f3", cursor: "pointer", marginBottom: 20, padding: 0, fontSize: FONT_SIZE.base, display: "flex", alignItems: "center", gap: 4, fontWeight: 600, transition: "all 0.2s" }}>
               <Icon icon="mdi:arrow-left" width={18} /> Back

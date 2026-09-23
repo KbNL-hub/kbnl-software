@@ -425,7 +425,7 @@ export default function TripEditModal({ trip, isMobile, onClose }: Props) {
   const showOverview = !stopForm && !discForm
 
   return (
-    <div onClick={() => { if (!isOverLimit && !saving) onClose(); } style={{ position: "fixed", inset: 0, background: "rgba(15, 23, 42, 0.6)", backdropFilter: "blur(4px)", display: "flex", alignItems: isMobile ? "flex-end" : "center", justifyContent: "center", zIndex: 100, padding: isMobile ? 0 : 24, animation: "fadeIn 0.2s ease-out" }}>
+    <div onClick={() => { const ok = !isOverLimit && !saving; if (ok) onClose(); }} style={{ position: "fixed", inset: 0, background: "rgba(15, 23, 42, 0.6)", backdropFilter: "blur(4px)", display: "flex", alignItems: isMobile ? "flex-end" : "center", justifyContent: "center", zIndex: 100, padding: isMobile ? 0 : 24, animation: "fadeIn 0.2s ease-out" }}>
       <style>{`@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } } @keyframes slideUp { from { transform: translateY(20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }`}</style>
       <div onClick={e => e.stopPropagation()} style={{ background: "white", borderRadius: isMobile ? "20px 20px 0 0" : 12, padding: isMobile ? "28px 20px" : 32, width: "100%", maxWidth: stopForm || discForm ? 560 : 600, maxHeight: isMobile ? "90vh" : "85vh", overflowY: "auto", boxShadow: "0 25px 50px -12px rgba(0, 0, 0, 0.25)", animation: "slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1)" }}>
 
@@ -626,8 +626,8 @@ export default function TripEditModal({ trip, isMobile, onClose }: Props) {
 
             {/* Stop Time */}
             <div style={{ marginBottom: 16 }}>
-              <label style={{ display: "block", fontWeight: 600, fontSize: FONT_SIZE.xs, color: "#475569", marginBottom: 4 }}>Stop Time</label>
-              <input type="datetime-local" value={stopForm.stop_time ? (() => { const d = new Date(stopForm.stop_time); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}` })() : ""} onChange={e => { const val = e.target.value; if (!val) { setStopForm({ ...stopForm, stop_time: "" }); return; } setStopForm({ ...stopForm, stop_time: new Date(val).toISOString() }); }} style={{ width: "100%", padding: "8px 10px", border: "1.5px solid #e2e8f0", borderRadius: 6, fontSize: FONT_SIZE.sm, boxSizing: "border-box" }} />
+              <label style={{ display: "block", fontWeight: 600, fontSize: FONT_SIZE.xs, color: "#475569", marginBottom: 4 }}>Stop Date</label>
+              <input type="date" value={stopForm.stop_time ? new Date(stopForm.stop_time).toISOString().slice(0, 10) : ""} onChange={e => { const val = e.target.value; if (!val) { setStopForm({ ...stopForm, stop_time: "" }); return; } const base = stopForm.stop_time ? new Date(stopForm.stop_time) : new Date(); setStopForm({ ...stopForm, stop_time: `${val}T${base.getHours().toString().padStart(2, '0')}:${base.getMinutes().toString().padStart(2, '0')}` }); }} style={{ width: "100%", padding: "8px 10px", border: "1.5px solid #e2e8f0", borderRadius: 6, fontSize: FONT_SIZE.sm, boxSizing: "border-box" }} />
             </div>
 
             {message && (

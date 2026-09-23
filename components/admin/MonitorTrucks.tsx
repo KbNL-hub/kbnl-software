@@ -189,6 +189,8 @@ export default function MonitorTrucks({ viewOnly = false }: { viewOnly?: boolean
   const [stSubmitting, setStSubmitting] = useState(false)
   const [stMessage, setStMessage] = useState("")
   const [stMessageType, setStMessageType] = useState<"success" | "error">("success")
+  const [stActiveTrip, setStActiveTrip] = useState<{ plate_number: string; trip_status: string } | null>(null)
+  const stDriverIdRef = useRef("")
   const [availableDrivers, setAvailableDrivers] = useState<{ driver_id: string; full_name: string; phone_number: string | null }[]>([])
   const [allTrucks, setAllTrucks] = useState<{ plate_number: string; kbnl_truck_no?: string; truck_size: string | null }[]>([])
   const [allProducts, setAllProducts] = useState<string[]>([])
@@ -511,11 +513,45 @@ export default function MonitorTrucks({ viewOnly = false }: { viewOnly?: boolean
     if (type === "success") setTimeout(() => setStMessage(""), 3000)
   }
 
+  async function getStActiveTrip(driverId: string) {
+    const { data, error } = await supabase
+      .from("Trips")
+      .select("plate_number, trip_status")
+      .eq("driver_id", driverId)
+      .in("trip_status", ["In transit", "On hold"])
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle()
+    if (error) throw new Error("Unable to verify whether this driver has an active trip")
+    return data as { plate_number: string; trip_status: string } | null
+  }
+
+  function handleStDriverChange(driverId: string) {
+    stDriverIdRef.current = driverId
+    setStDriverId(driverId)
+    setStMessage("")
+    setStMessageType("success")
+    setStActiveTrip(null)
+    if (!driverId) return
+
+    void getStActiveTrip(driverId)
+      .then(activeTrip => {
+        if (stDriverIdRef.current !== driverId || !activeTrip) return
+        setStActiveTrip(activeTrip)
+        stSetMsg("This driver currently has an active trip. Wait for the driver to complete it or ask the driver to end their trip before starting another.", "error")
+      })
+      .catch(error => {
+        if (stDriverIdRef.current !== driverId) return
+        stSetMsg(error instanceof Error ? error.message : "Unable to verify this driver's active trip", "error")
+      })
+  }
+
   function resetStartTripForm() {
+    stDriverIdRef.current = ""
     setStDriverId(""); setStTripType(""); setStTruckSize(""); setStPlateNumber("")
     setStLoadingCategory(""); setStLoadingName(""); setStA(""); setStOrderNo("")
     setStChildOrderNo(""); setStProduct(""); setStLoadedQty("")
-    setStAmountCharged(""); setStPaymentMode(""); setStMessage("")
+    setStAmountCharged(""); setStPaymentMode(""); setStMessage(""); setStActiveTrip(null)
   }
 
   const stIsDinaOrTricycle = stTruckSize === "Dina" || stTruckSize === "Tricycle"
@@ -525,7 +561,18 @@ export default function MonitorTrucks({ viewOnly = false }: { viewOnly?: boolean
   const stProductOptions = stLoadingCategory === "Factory" ? (FACTORY_PRODUCTS[stLoadingName] || []) : allProducts
 
   async function handleStartTripOnBehalf() {
+    if (stSubmitting) return
     if (!stDriverId) return stSetMsg("Select a driver", "error")
+    if (stActiveTrip) return stSetMsg("This driver currently has an active trip. Wait for the driver to complete it or ask the driver to end their trip before starting another.", "error")
+    try {
+      const activeTrip = await getStActiveTrip(stDriverId)
+      if (activeTrip) {
+        setStActiveTrip(activeTrip)
+        return stSetMsg("This driver currently has an active trip. Wait for the driver to complete it or ask the driver to end their trip before starting another.", "error")
+      }
+    } catch (error) {
+      return stSetMsg(error instanceof Error ? error.message : "Unable to verify this driver's active trip", "error")
+    }
     if (!stTripType) return stSetMsg("Select a trip type", "error")
     if (!stTruckSize) return stSetMsg("Select a truck size", "error")
     if (!stPlateNumber) return stSetMsg("Select a plate number", "error")
@@ -542,7 +589,7 @@ export default function MonitorTrucks({ viewOnly = false }: { viewOnly?: boolean
 
     setStSubmitting(true); setStMessage("")
 
-    const { data, error } = await apiMutate("trips", {
+    const { data, error, status } = await apiMutate("trips", {
       action: "insert",
       table: "Trips",
       data: {
@@ -564,6 +611,13 @@ export default function MonitorTrucks({ viewOnly = false }: { viewOnly?: boolean
     setStSubmitting(false)
 
     if (error || !data || !Array.isArray(data) || data.length === 0) {
+      if (status === 409 && error?.toLowerCase().includes("active trip")) {
+        try {
+          setStActiveTrip(await getStActiveTrip(stDriverId))
+        } catch {
+          setStActiveTrip(null)
+        }
+      }
       return stSetMsg(error || "Failed to start trip", "error")
     }
 
@@ -1841,7 +1895,7 @@ export default function MonitorTrucks({ viewOnly = false }: { viewOnly?: boolean
 
             <div style={{ marginBottom: 16 }}>
               <label style={labelStyle}>Select Driver *</label>
-              <ModernInput as="select" value={stDriverId} onChange={e => { setStDriverId(e.target.value); setStMessage("") }}>
+              <ModernInput as="select" value={stDriverId} onChange={e => handleStDriverChange(e.target.value)}>
                 <option value="">Choose a driver</option>
                 {availableDrivers.map(d => (
                   <option key={d.driver_id} value={d.driver_id}>{d.full_name}{d.phone_number ? ` (${d.phone_number})` : ""}</option>
@@ -1976,13 +2030,13 @@ export default function MonitorTrucks({ viewOnly = false }: { viewOnly?: boolean
               }}>Cancel</button>
               <button
                 onClick={handleStartTripOnBehalf}
-                disabled={stSubmitting || !canEdit}
+                disabled={stSubmitting || !canEdit || stActiveTrip !== null}
                 style={{
-                  flex: 1, padding: "12px 0", background: stSubmitting || !canEdit ? "#94a3b8" : "#10b981", color: "white",
-                  border: "none", borderRadius: 8, cursor: stSubmitting || !canEdit ? "not-allowed" : "pointer",
+                  flex: 1, padding: "12px 0", background: stSubmitting || !canEdit || stActiveTrip !== null ? "#94a3b8" : "#10b981", color: "white",
+                  border: "none", borderRadius: 8, cursor: stSubmitting || !canEdit || stActiveTrip !== null ? "not-allowed" : "pointer",
                   fontWeight: 700, fontSize: FONT_SIZE.sm, minHeight: 48,
                   display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
-                  opacity: stSubmitting || !canEdit ? 0.7 : 1, transition: "opacity 0.2s",
+                  opacity: stSubmitting || !canEdit || stActiveTrip !== null ? 0.7 : 1, transition: "all 0.2s",
                 }}
               >
                 {stSubmitting

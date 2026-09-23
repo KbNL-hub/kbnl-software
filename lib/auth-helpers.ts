@@ -34,7 +34,14 @@ export async function requireDashboardRole(
 }
 
 export function generateTempPassword(): string {
-  const values = new Uint32Array(5)
-  crypto.getRandomValues(values)
-  return Array.from(values).map(v => (v % 10).toString()).join('')
+  const passwordRange = 1_000_000
+  const randomRange = 0x1_0000_0000
+  const rejectionLimit = Math.floor(randomRange / passwordRange) * passwordRange
+  const values = new Uint32Array(1)
+
+  do {
+    crypto.getRandomValues(values)
+  } while (values[0] >= rejectionLimit)
+
+  return (values[0] % passwordRange).toString().padStart(6, "0")
 }
