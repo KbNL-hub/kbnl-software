@@ -4,6 +4,7 @@ import { FONT_SIZE } from "@/lib/constants"
 import { usePolling } from "@/lib/hooks/usePolling"
 import { usePagination } from "@/lib/hooks/usePagination"
 import CustomerSelector from "@/components/CustomerSelector"
+import TripEditModal from "@/components/admin/TripEditModal"
 import { fetchStores } from "@/lib/stores"
 
 import { useState, useEffect, useCallback } from "react"
@@ -160,7 +161,7 @@ export default function MonitorTrips() {
   const [selectedDiscrepancies, setSelectedDiscrepancies] = useState<Discrepancy[]>([])
   const [selectedLoadMore, setSelectedLoadMore] = useState<LoadMoreEntry[]>([])
   const [selectedPlate, setSelectedPlate] = useState("")
-  const [selectedTrip, setSelectedTrip] = useState<Pick<Trip, "trip_id" | "plate_number" | "atc" | "order_no" | "child_order_no" | "amount_charged" | "payment_mode" | "trip_status" | "recorded" | "posted" | "isDD"> | null>(null)
+  const [selectedTrip, setSelectedTrip] = useState<Pick<Trip, "trip_id" | "plate_number" | "atc" | "order_no" | "child_order_no" | "amount_charged" | "payment_mode" | "trip_status" | "recorded" | "posted" | "isDD" | "remaining" | "loaded_quantity"> | null>(null)
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null)
   const [postingTrip, setPostingTrip] = useState<string | null>(null)
   const [postLoading, setPostLoading] = useState(false)
@@ -173,6 +174,8 @@ export default function MonitorTrips() {
   const [storeLocations, setStoreLocations] = useState<string[]>([])
   const [resolvingTripId, setResolvingTripId] = useState<string | null>(null)
   const [resolveOriginalQuantity, setResolveOriginalQuantity] = useState(0)
+  const [showActionsDropdown, setShowActionsDropdown] = useState(false)
+  const [isEditingTrip, setIsEditingTrip] = useState(false)
 
   async function fetchTrips() {
     const { data: tripsData, error } = await supabase
@@ -810,6 +813,8 @@ async function fetchResolveData() {
     setSelectedDiscrepancies([])
     setSelectedLoadMore([])
     setPostingTrip(null)
+    setShowActionsDropdown(false)
+    setIsEditingTrip(false)
   }
 
   return (
@@ -1209,7 +1214,7 @@ async function fetchResolveData() {
                       </div>
                       
                       <button
-                        onClick={() => { setSelectedStops(trip.stops); setSelectedDiscrepancies(trip.discrepancies); setSelectedLoadMore(trip.load_more_entries); setSelectedPlate(trip.plate_number); setSelectedTrip({ trip_id: trip.trip_id, plate_number: trip.plate_number, atc: trip.atc, order_no: trip.order_no, child_order_no: trip.child_order_no, amount_charged: trip.amount_charged, payment_mode: trip.payment_mode, trip_status: trip.trip_status, recorded: trip.recorded, posted: trip.posted, isDD: trip.isDD }); }}
+                        onClick={() => { setSelectedStops(trip.stops); setSelectedDiscrepancies(trip.discrepancies); setSelectedLoadMore(trip.load_more_entries); setSelectedPlate(trip.plate_number); setSelectedTrip({ trip_id: trip.trip_id, plate_number: trip.plate_number, atc: trip.atc, order_no: trip.order_no, child_order_no: trip.child_order_no, amount_charged: trip.amount_charged, payment_mode: trip.payment_mode, trip_status: trip.trip_status, recorded: trip.recorded, posted: trip.posted, isDD: trip.isDD, remaining: trip.remaining, loaded_quantity: trip.loaded_quantity }); }}
                         style={{ padding: "8px 16px", background: "#f0f7ff", color: "#0070f3", border: "1px solid #bfdbfe", borderRadius: 8, cursor: "pointer", fontWeight: 600, fontSize: FONT_SIZE.sm, transition: "all 0.2s" }}
                         onMouseEnter={e => { e.currentTarget.style.background = "#e0efff" }}
                         onMouseLeave={e => { e.currentTarget.style.background = "#f0f7ff" }}
@@ -1276,7 +1281,7 @@ async function fetchResolveData() {
                         <td style={{ padding: "12px 16px", color: "#64748b", fontSize: FONT_SIZE.sm }}>{trip.payment_mode || "—"}</td>
                         <td style={{ padding: "12px 16px", color: "#0f172a", fontSize: FONT_SIZE.base, fontWeight: 500 }}>{trip.loaded_quantity}</td>
                         <td style={{ padding: "12px 16px", color: trip.remaining === 0 ? "#ef4444" : trip.remaining < trip.loaded_quantity * 0.2 ? "#f5a623" : "#16a34a", fontSize: FONT_SIZE.base, fontWeight: 600 }}>{trip.remaining}</td>
-                        <td style={{ padding: "12px 16px", cursor: "pointer" }} onClick={() => { setSelectedStops(trip.stops); setSelectedDiscrepancies(trip.discrepancies); setSelectedLoadMore(trip.load_more_entries); setSelectedPlate(trip.plate_number); setSelectedTrip({ trip_id: trip.trip_id, plate_number: trip.plate_number, atc: trip.atc, order_no: trip.order_no, child_order_no: trip.child_order_no, amount_charged: trip.amount_charged, payment_mode: trip.payment_mode, trip_status: trip.trip_status, recorded: trip.recorded, posted: trip.posted, isDD: trip.isDD }); }}>
+                        <td style={{ padding: "12px 16px", cursor: "pointer" }} onClick={() => { setSelectedStops(trip.stops); setSelectedDiscrepancies(trip.discrepancies); setSelectedLoadMore(trip.load_more_entries); setSelectedPlate(trip.plate_number); setSelectedTrip({ trip_id: trip.trip_id, plate_number: trip.plate_number, atc: trip.atc, order_no: trip.order_no, child_order_no: trip.child_order_no, amount_charged: trip.amount_charged, payment_mode: trip.payment_mode, trip_status: trip.trip_status, recorded: trip.recorded, posted: trip.posted, isDD: trip.isDD, remaining: trip.remaining, loaded_quantity: trip.loaded_quantity }); }}>
                           <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
                             <span style={{ color: "#0070f3", fontSize: FONT_SIZE.sm, fontWeight: 500, textDecoration: "underline" }}>{trip.stop_count} {trip.stop_count === 1 ? "stop" : "stops"}</span>
                             {confirmed > 0 && <div style={{ display: "flex", alignItems: "center", gap: 2, padding: "2px 6px", background: "#f0fdf4", borderRadius: 12 }}><Icon icon="mdi:check-circle" width="12" height="12" style={{ color: "#16a34a" }} /><span style={{ fontSize: 10, color: "#16a34a", fontWeight: "bold" }}>{confirmed}</span></div>}
@@ -1476,32 +1481,90 @@ async function fetchResolveData() {
                   </div>
                 )}
 
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, position: "relative" }}>
                   {selectedTrip && !selectedTrip.recorded && (() => {
-                    const allConfirmed = selectedStops && selectedStops.every((s) => s.confirmed) && !selectedStops.some((s) => s.disputed)
+                    const allConfirmed = selectedStops && selectedStops.length > 0 && selectedStops.every((s) => s.confirmed) && !selectedStops.some((s) => s.disputed) && selectedTrip.remaining === 0
                     return (
-                      <button
-                        onClick={handlePostTripClick}
-                        disabled={!canEdit || !allConfirmed}
-                        style={{
-                          padding: "12px 16px",
-                          background: !canEdit || !allConfirmed ? "#f1f5f9" : "#f0fdf4",
-                          color: !canEdit || !allConfirmed ? "#94a3b8" : "#16a34a",
-                          border: "1px solid",
-                          borderColor: !canEdit || !allConfirmed ? "#e2e8f0" : "#bbf7d0",
-                          borderRadius: 8,
-                          cursor: !canEdit || !allConfirmed ? "not-allowed" : "pointer",
-                          fontWeight: 600,
-                          fontSize: FONT_SIZE.md,
-                          minHeight: 44,
-                          transition: "background 0.2s"
-                        }}
-                        onMouseEnter={e => { if (canEdit && allConfirmed) e.currentTarget.style.background = "#dcfce7" }}
-                        onMouseLeave={e => { if (canEdit && allConfirmed) e.currentTarget.style.background = "#f0fdf4" }}
-                        title={!allConfirmed ? "Resolve all disputed and confirm all stops before recording" : ""}
-                      >
-                        Record Trip
-                      </button>
+                      <div style={{ position: "relative" }}>
+                        <button
+                          onClick={() => setShowActionsDropdown(prev => !prev)}
+                          disabled={!canEdit}
+                          style={{
+                            width: "100%",
+                            padding: "12px 16px",
+                            background: !canEdit ? "#f1f5f9" : showActionsDropdown ? "#f0f7ff" : "white",
+                            color: !canEdit ? "#94a3b8" : "#0070f3",
+                            border: "1.5px solid",
+                            borderColor: !canEdit ? "#e2e8f0" : showActionsDropdown ? "#93c5fd" : "#bfdbfe",
+                            borderRadius: 8,
+                            cursor: !canEdit ? "not-allowed" : "pointer",
+                            fontWeight: 600,
+                            fontSize: FONT_SIZE.md,
+                            minHeight: 44,
+                            transition: "all 0.2s",
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            gap: 6,
+                          }}
+                          onMouseEnter={e => { if (canEdit) e.currentTarget.style.background = "#eff6ff" }}
+                          onMouseLeave={e => { if (canEdit && !showActionsDropdown) e.currentTarget.style.background = "white" }}
+                        >
+                          Actions
+                          <Icon icon={showActionsDropdown ? "mdi:chevron-up" : "mdi:chevron-down"} width={18} />
+                        </button>
+                        {showActionsDropdown && (
+                          <div style={{ position: "absolute", top: "calc(100% + 4px)", left: 0, right: 0, background: "white", border: "1px solid #e2e8f0", borderRadius: 8, boxShadow: "0 4px 16px rgba(0,0,0,0.12)", zIndex: 50, overflow: "hidden" }}>
+                            <button
+                              onClick={() => { setShowActionsDropdown(false); handlePostTripClick() }}
+                              disabled={!allConfirmed}
+                              style={{
+                                width: "100%",
+                                padding: "10px 16px",
+                                background: "white",
+                                color: !allConfirmed ? "#94a3b8" : "#16a34a",
+                                border: "none",
+                                cursor: !allConfirmed ? "not-allowed" : "pointer",
+                                fontWeight: 600,
+                                fontSize: FONT_SIZE.sm,
+                                textAlign: "left",
+                                display: "flex",
+                                alignItems: "center",
+                                gap: 8,
+                              }}
+                              onMouseEnter={e => { if (allConfirmed) e.currentTarget.style.background = "#f0fdf4" }}
+                              onMouseLeave={e => { e.currentTarget.style.background = "white" }}
+                              title={!allConfirmed ? "All stops must be confirmed, none disputed, and all bags offloaded" : ""}
+                            >
+                              <Icon icon="mdi:check-circle-outline" width={18} />
+                              Record Trip
+                            </button>
+                            <button
+                              onClick={() => { setShowActionsDropdown(false); setIsEditingTrip(true) }}
+                              style={{
+                                width: "100%",
+                                padding: "10px 16px",
+                                background: "white",
+                                color: "#0070f3",
+                                border: "none",
+                                borderTop: "1px solid #f1f5f9",
+                                cursor: "pointer",
+                                fontWeight: 600,
+                                fontSize: FONT_SIZE.sm,
+                                textAlign: "left",
+                                display: "flex",
+                                alignItems: "center",
+                                gap: 8,
+                              }}
+                              onMouseEnter={e => e.currentTarget.style.background = "#eff6ff"}
+                              onMouseLeave={e => e.currentTarget.style.background = "white"}
+                            >
+                              <Icon icon="mdi:pencil-outline" width={18} />
+                              Edit Trip
+                            </button>
+                          </div>
+                        )}
+                      </div>
                     )
                   })()}
                   {selectedTrip && selectedTrip.recorded && (
@@ -1722,6 +1785,20 @@ async function fetchResolveData() {
             </div>
           </div>
         </div>
+      )}
+
+      {isEditingTrip && selectedTrip && selectedStops && (
+        <TripEditModal
+          trip={{
+            trip_id: selectedTrip.trip_id,
+            plate_number: selectedTrip.plate_number,
+            loaded_quantity: selectedTrip.loaded_quantity,
+            stops: selectedStops,
+            discrepancies: selectedDiscrepancies,
+          }}
+          isMobile={isMobile}
+          onClose={() => { setIsEditingTrip(false); setSelectedTrip(null); loadAll() }}
+        />
       )}
     </div>
   )
