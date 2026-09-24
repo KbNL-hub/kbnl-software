@@ -12,8 +12,8 @@ import ModernInput from "@/components/ModernInput"
 import ProfilePictureUpload from "@/components/ProfilePictureUpload"
 import { useBreakpoint } from "@/app/hooks/useBreakpoint"
 import { useOfflineTripAction } from "@/app/hooks/useOfflineTripAction"
-import { initTripActionAutoSync } from "@/lib/offline/tripActionSync"
-import { clearOfflineTripData } from '@/lib/offline/tripsDb'
+import { initTripActionAutoSync, tripActionSyncManager } from "@/lib/offline/tripActionSync"
+import { clearOfflineTripData, getPendingActionsByTrip } from '@/lib/offline/tripsDb'
 import { FONT_SIZE } from "@/lib/constants"
 import { toISOString, formatDate } from "@/lib/date-utils"
 import { requireDashboardRole } from "@/lib/auth-helpers"
@@ -41,6 +41,7 @@ type Stop = {
   stop_time: string
 }
 type Truck = { plate_number: string; kbnl_truck_no?: string; truck_size: string | null }
+type PendingTripFinalization = { trip_id: string; driver_id: string; plate_number: string }
 type Complaint = {
   complaint_id: string
   complaint_type: string
@@ -138,6 +139,7 @@ export default function DriverDashboard() {
 
   // Modals
   const [showEndConfirm, setShowEndConfirm] = useState(false)
+  const [endTripError, setEndTripError] = useState("")
   const [showHoldConfirm, setShowHoldConfirm] = useState(false)
   const [showDiscrepancyModal, setShowDiscrepancyModal] = useState(false)
   const [showComplaintModal, setShowComplaintModal] = useState(false)
@@ -257,9 +259,25 @@ export default function DriverDashboard() {
       setMessage("Unable to verify whether you already have an active trip. Please try again.")
       return null
     }
-    if (!data) return null
+    let tripData = data
+    if (!tripData) {
+      const storedFinalization = window.localStorage.getItem("driver.pendingTripFinalization")
+      if (storedFinalization) {
+        try {
+          const pending = JSON.parse(storedFinalization) as PendingTripFinalization
+          if (pending.driver_id === driverId) {
+            const { data: completedTrip } = await supabase
+              .from("Trips").select("*").eq("trip_id", pending.trip_id).eq("driver_id", driverId).maybeSingle()
+            tripData = completedTrip
+          }
+        } catch {
+          window.localStorage.removeItem("driver.pendingTripFinalization")
+        }
+      }
+    }
+    if (!tripData) return null
 
-    const trip = data as Trip
+    const trip = tripData as Trip
     setActiveTrip(trip)
     await Promise.all([
       fetchStops(trip.trip_id, trip.loaded_quantity),
@@ -344,7 +362,10 @@ export default function DriverDashboard() {
       
       const rem = loadedQty - total
       setRemaining(rem)
-      if (rem <= 0 && tripId) setShowEndConfirm(true)
+      if (rem <= 0 && tripId) {
+        setEndTripError("")
+        setShowEndConfirm(true)
+      }
     } catch (error) {
       console.warn('[fetchStops] Network error, keeping local state', error)
     }
@@ -531,14 +552,107 @@ export default function DriverDashboard() {
   }
 
   async function handleEndTrip() {
-    if (!activeTrip) return
+    if (!activeTrip || submitting) return
+    if (!isOnline) {
+      setEndTripError("Internet connection is required to end this trip. Please try again when you are online.")
+      setShowEndConfirm(true)
+      return
+    }
+
+    setEndTripError("")
     setSubmitting(true)
 
-    await clearOfflineTripData(activeTrip.trip_id);
-    await apiMutate("trips", { action: "update", table: "Trips", data: { trip_status: "Completed", updated_at: toISOString() }, filters: { trip_id: activeTrip.trip_id } })
-    await apiMutate("trips", { action: "update", table: "Trucks", data: { status: "Empty" }, filters: { plate_number: activeTrip.plate_number } })
-    setSubmitting(false); setShowEndConfirm(false); setActiveTrip(null); setStops([]); setLoadMoreEntries([]); setRemaining(0); setOffloadedSoFar(0); navigateTo("dashboard")
-    if (driver?.driver_id) fetchMonthlyStats(driver.driver_id)
+    try {
+      await tripActionSyncManager.syncAll()
+      const pendingActions = await getPendingActionsByTrip(activeTrip.trip_id)
+      if (pendingActions.length > 0) {
+        setEndTripError("Pending offline actions must be synced before the trip can be completed. Please try again.")
+        setSubmitting(false)
+        setShowEndConfirm(true)
+        return
+      }
+    } catch (error) {
+      setEndTripError(`Pending offline actions could not be synced: ${error instanceof Error ? error.message : "Unknown error"}`)
+      setSubmitting(false)
+      setShowEndConfirm(true)
+      return
+    }
+
+    const { data: truckData, error: truckLookupError } = await supabase
+      .from("Trucks").select("truck_size").eq("plate_number", activeTrip.plate_number).maybeSingle()
+    const { data: tricycleData, error: tricycleLookupError } = await supabase
+      .from("tricycles").select("tricycle_number").eq("tricycle_number", activeTrip.plate_number).maybeSingle()
+
+    if (truckLookupError || tricycleLookupError || (!truckData && !tricycleData)) {
+      setEndTripError("The truck could not be verified. Please try again before completing the trip.")
+      setSubmitting(false)
+      setShowEndConfirm(true)
+      return
+    }
+
+    const isTricycle = !!tricycleData || truckData?.truck_size === "Tricycle"
+    if (!isTricycle) {
+      const truckResult = await apiMutate<Record<string, unknown>[]>("trips", {
+        action: "update",
+        table: "Trucks",
+        data: { status: "Empty" },
+        filters: { plate_number: activeTrip.plate_number },
+      })
+      if (truckResult.error || !Array.isArray(truckResult.data) || truckResult.data.length === 0) {
+        setEndTripError(`The truck status could not be updated: ${truckResult.error || "No truck was updated"}`)
+        setSubmitting(false)
+        setShowEndConfirm(true)
+        return
+      }
+    }
+
+    if (!driver?.driver_id) {
+      setEndTripError("Your driver account could not be verified. Please reload and try again.")
+      setSubmitting(false)
+      setShowEndConfirm(true)
+      return
+    }
+
+    window.localStorage.setItem("driver.pendingTripFinalization", JSON.stringify({
+      trip_id: activeTrip.trip_id,
+      driver_id: driver.driver_id,
+      plate_number: activeTrip.plate_number,
+    } satisfies PendingTripFinalization))
+
+    const tripResult = await apiMutate<Record<string, unknown>[]>("trips", {
+      action: "update",
+      table: "Trips",
+      data: { trip_status: "Completed", updated_at: toISOString() },
+      filters: { trip_id: activeTrip.trip_id },
+    })
+    const completedTrip = tripResult.data?.[0]
+    if (tripResult.error || !completedTrip || completedTrip.trip_id !== activeTrip.trip_id || completedTrip.trip_status !== "Completed") {
+      setEndTripError(tripResult.error || "The trip could not be completed. Please try again.")
+      setSubmitting(false)
+      setShowEndConfirm(true)
+      return
+    }
+
+    try {
+      await clearOfflineTripData(activeTrip.trip_id)
+    } catch (error) {
+      setEndTripError(`The trip was completed, but offline trip data could not be cleared: ${error instanceof Error ? error.message : "Unknown error"}`)
+      setSubmitting(false)
+      setShowEndConfirm(true)
+      return
+    }
+
+    window.localStorage.removeItem("driver.pendingTripFinalization")
+    setSubmitting(false)
+    setShowEndConfirm(false)
+    setActiveTrip(null)
+    setStops([])
+    setLoadMoreEntries([])
+    setRemaining(0)
+    setOffloadedSoFar(0)
+    setMessage("")
+    navigateTo("dashboard")
+    if (driver?.driver_id) await fetchMonthlyStats(driver.driver_id)
   }
 
   async function handleHoldTrip() {
@@ -612,7 +726,6 @@ export default function DriverDashboard() {
     const updateData = {
       trip_id: activeTrip.trip_id,
       loaded_quantity: newTotal,
-      trip_status: activeTrip.trip_status,
       updated_at: toISOString(),
     }
 
@@ -1605,8 +1718,18 @@ export default function DriverDashboard() {
               <h3 style={{ margin: 0, color: "#0f172a", fontSize: FONT_SIZE.xl, fontWeight: 700 }}>All bags offloaded!</h3>
               <p style={{ margin: "8px 0 0", color: "#64748b", fontSize: FONT_SIZE.sm }}>Ready to end this trip?</p>
             </div>
+            {!isOnline && (
+              <div style={{ padding: 12, background: "#f0f7ff", border: "1px solid #bfdbfe", borderRadius: 8, marginBottom: 16, color: "#1e40af", fontSize: FONT_SIZE.sm, fontWeight: 600 }}>
+                An internet connection is required to complete this trip.
+              </div>
+            )}
+            {endTripError && (
+              <div style={{ padding: 12, background: "#fef2f2", border: "1px solid #fecaca", borderRadius: 8, marginBottom: 16, color: "#b91c1c", fontSize: FONT_SIZE.sm, fontWeight: 600 }}>
+                {endTripError}
+              </div>
+            )}
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-              <button onClick={handleEndTrip} disabled={submitting} style={{ padding: "12px 16px", background: "#0070f3", color: "white", border: "none", borderRadius: 8, cursor: submitting ? "not-allowed" : "pointer", fontWeight: 700, fontSize: FONT_SIZE.md, minHeight: 44, display: "flex", alignItems: "center", justifyContent: "center", gap: 8, opacity: submitting ? 0.7 : 1 }}>
+              <button onClick={handleEndTrip} disabled={submitting || !isOnline} style={{ padding: "12px 16px", background: submitting || !isOnline ? "#bfdbfe" : "#0070f3", color: "white", border: "none", borderRadius: 8, cursor: submitting || !isOnline ? "not-allowed" : "pointer", fontWeight: 700, fontSize: FONT_SIZE.md, minHeight: 44, display: "flex", alignItems: "center", justifyContent: "center", gap: 8, opacity: submitting ? 0.7 : 1 }}>
                 {submitting ? <><Icon icon="mdi:loading" width={16} style={{ animation: "spin 1s linear infinite" }} /> Ending…</> : <><Icon icon="mdi:flag-checkered" width={18} /> End Trip</>}
               </button>
               <button onClick={openComplaintFromEndTrip} className="btn-outline-amber" style={{ padding: "12px 16px", background: "white", color: "#f5a623", border: "1.5px solid #f5a623", borderRadius: 8, cursor: "pointer", fontWeight: 700, fontSize: FONT_SIZE.md, minHeight: 44, display: "flex", alignItems: "center", justifyContent: "center", gap: 8, transition: "all 0.2s" }}>

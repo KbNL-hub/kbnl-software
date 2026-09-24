@@ -86,6 +86,7 @@ export default function ManageTrucks() {
   const [editKbnlNo, setEditKbnlNo] = useState("")
   const [editModel, setEditModel] = useState("")
   const [editCapacity, setEditCapacity] = useState("")
+  const [editFuelBalance, setEditFuelBalance] = useState("")
   const [editTruckSize, setEditTruckSize] = useState("")
   const [editEngineType, setEditEngineType] = useState("")
   const [editStatus, setEditStatus] = useState("")
@@ -121,6 +122,7 @@ export default function ManageTrucks() {
     setEditKbnlNo(truck.kbnl_truck_no)
     setEditModel(truck.truck_model)
     setEditCapacity(truck.capacity.toString())
+    setEditFuelBalance(truck.fuel_balance.toString())
     setEditTruckSize(truck.truck_size ?? "")
     setEditEngineType(truck.engine_type)
     setEditStatus(truck.status)
@@ -141,26 +143,40 @@ export default function ManageTrucks() {
     if (!editCapacity) return setMessage("Capacity is required")
     const capacity = Number(editCapacity)
     if (!Number.isInteger(capacity) || capacity <= 0) return setMessage("Capacity must be a positive whole number")
+    if (editFuelBalance === "") return setMessage("Available fuel is required")
+    const fuelBalance = Number(editFuelBalance)
+    if (!Number.isFinite(fuelBalance) || fuelBalance < 0) return setMessage("Available fuel must be zero or greater")
+
+    const updateData: Record<string, unknown> = {
+      kbnl_truck_no: editKbnlNo.trim(),
+      truck_model: editModel.trim(),
+      capacity,
+      truck_size: editTruckSize || null,
+      engine_type: editEngineType,
+      status: editStatus,
+    }
+    const updateFilters: Record<string, unknown> = { plate_number: editingTruck.plate_number }
+    if (fuelBalance !== editingTruck.fuel_balance) {
+      updateData.fuel_balance = fuelBalance
+      updateFilters.fuel_balance = editingTruck.fuel_balance
+    }
 
     setSubmitting(true)
 
     try {
-      const { error } = await apiMutate("admin", {
+      const { data, error } = await apiMutate("admin", {
         action: "update",
         table: "Trucks",
-        data: {
-          kbnl_truck_no: editKbnlNo.trim(),
-          truck_model: editModel.trim(),
-          capacity,
-          truck_size: editTruckSize || null,
-          engine_type: editEngineType,
-          status: editStatus,
-        },
-        filters: { plate_number: editingTruck.plate_number },
+        data: updateData,
+        filters: updateFilters,
       })
 
       if (error) {
         setMessage(error)
+        return
+      }
+      if (!data || !Array.isArray(data) || data.length === 0) {
+        setMessage("The truck was updated by someone else. Refresh and try again.")
         return
       }
 
@@ -483,6 +499,21 @@ export default function ManageTrucks() {
                   </div>
 
                   <div>
+                    <label style={{ display: "block", marginBottom: 6, color: "#475569", fontSize: FONT_SIZE.sm, fontWeight: 500 }}>
+                      Available {editEngineType === "CNG" ? "gas (bars)" : "diesel (L)"} *
+                    </label>
+                    <input
+                      type="number"
+                      min="0"
+                      step="any"
+                      value={editFuelBalance}
+                      readOnly={!canEdit}
+                      onChange={(e) => { setEditFuelBalance(e.target.value); setMessage("") }}
+                      style={inputStyle}
+                    />
+                  </div>
+
+                  <div>
                     <label style={{ display: "block", marginBottom: 6, color: "#475569", fontSize: FONT_SIZE.sm, fontWeight: 500 }}>Truck Size (Tonnage)</label>
                     <select value={editTruckSize} disabled={!canEdit} onChange={(e) => setEditTruckSize(e.target.value)} style={{ ...inputStyle, appearance: "none", paddingRight: 32, backgroundImage: "url('data:image/svg+xml;charset=UTF-8,%3csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 24 24%22 fill=%22none%22 stroke=%22%23171717%22 stroke-width=%222%22%3e%3cpolyline points=%226 9 12 15 18 9%22%3e%3c/polyline%3e%3c/svg%3e')", backgroundRepeat: "no-repeat", backgroundPosition: "right 12px center", backgroundSize: "16px" }}>
                       <option value="">No size</option>
@@ -494,7 +525,7 @@ export default function ManageTrucks() {
 
                   <div>
                     <label style={{ display: "block", marginBottom: 6, color: "#475569", fontSize: FONT_SIZE.sm, fontWeight: 500 }}>Engine Type</label>
-                    <select value={editEngineType} disabled={!canEdit} onChange={(e) => setEditEngineType(e.target.value)} style={{ ...inputStyle, appearance: "none", paddingRight: 32, backgroundImage: "url('data:image/svg+xml;charset=UTF-8,%3csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 24 24%22 fill=%22none%22 stroke=%22%23171717%22 stroke-width=%222%22%3e%3cpolyline points=%226 9 12 15 18 9%22%3e%3c/polyline%3e%3c/svg%3e')", backgroundRepeat: "no-repeat", backgroundPosition: "right 12px center", backgroundSize: "16px" }}>
+                    <select value={editEngineType} disabled={!canEdit} onChange={(e) => { const nextEngineType = e.target.value; setEditEngineType(nextEngineType); if (nextEngineType !== editingTruck?.engine_type) setEditFuelBalance(""); setMessage("") }} style={{ ...inputStyle, appearance: "none", paddingRight: 32, backgroundImage: "url('data:image/svg+xml;charset=UTF-8,%3csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 24 24%22 fill=%22none%22 stroke=%22%23171717%22 stroke-width=%222%22%3e%3cpolyline points=%226 9 12 15 18 9%22%3e%3c/polyline%3e%3c/svg%3e')", backgroundRepeat: "no-repeat", backgroundPosition: "right 12px center", backgroundSize: "16px" }}>
                       {ENGINE_TYPES.map((t) => (
                         <option key={t} value={t}>{t}</option>
                       ))}

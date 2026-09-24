@@ -58,12 +58,14 @@ export class TripActionSyncManager {
       console.log(`[TripSync] Syncing ${action.type}: ${action.id}`);
 
       if (action.type === 'load_more') {
-        const { trip_id, ...updateData } = action.data;
+        const updateData = { ...action.data };
+        delete updateData.trip_id;
+        delete updateData.trip_status;
         const { error } = await apiMutate("trips", {
           action: "update",
           table: "Trips",
           data: updateData,
-          filters: { trip_id },
+          filters: { trip_id: action.data.trip_id as string },
         })
 
         if (error) {

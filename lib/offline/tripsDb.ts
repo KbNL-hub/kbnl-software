@@ -204,18 +204,28 @@ export async function clearOfflineTripData(tripId: string): Promise<void> {
     const store = tx.objectStore(STORE_NAME);
     const index = store.index('tripId');
     const request = index.getAll(tripId);
+    let deletedCount = 0;
+
+    tx.oncomplete = () => {
+      console.log(`[OfflineDB] Cleared ${deletedCount} offline actions for trip ${tripId}`);
+      resolve();
+    };
+    tx.onerror = () => reject(tx.error);
+    tx.onabort = () => reject(tx.error || new Error('Offline data transaction aborted'));
 
     request.onerror = () => reject(request.error);
     request.onsuccess = () => {
       const actions = request.result;
-      
-      // Delete each action for this trip
+      if (actions.some(action => action.synced === 0)) {
+        tx.abort();
+        reject(new Error('Unsynced offline actions remain for this trip'));
+        return;
+      }
+      deletedCount = actions.length;
+
       for (const action of actions) {
         store.delete(action.id);
       }
-      
-      console.log(`[OfflineDB] Cleared ${actions.length} offline actions for trip ${tripId}`);
-      resolve();
     };
   });
 }

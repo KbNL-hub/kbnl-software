@@ -49,11 +49,11 @@ export function useOfflineTripAction(): UseOfflineTripActionResult {
 
           let result;
           if (type === 'load_more') {
-            const { loaded_quantity, trip_status, updated_at } = data;
+            const { loaded_quantity, updated_at } = data;
             result = await apiMutate("trips", {
               action: "update",
               table: "Trips",
-              data: { loaded_quantity, trip_status, updated_at },
+              data: { loaded_quantity, updated_at },
               filters: { trip_id: tripId },
             })
           } else {

@@ -43,6 +43,10 @@ function buildError(msg: string, status: number) {
 const ON_BEHALF_TRIP_ROLES = new Set(["TruckOfficer", "Broker", "Admin", "SuperAdmin", "DeskOfficer", "ATCOfficer", "Supervisor"])
 const ACTIVE_TRIP_ERROR = "This driver already has an active trip. Wait for the driver to complete it or ask the driver to end their trip before starting another."
 
+function isDriverOnlyTripUser(auth: AuthContext) {
+  return auth.roles.includes("Driver") && !auth.roles.some(role => ON_BEHALF_TRIP_ROLES.has(role))
+}
+
 type DatabaseError = {
   code?: string
   message?: string
@@ -95,9 +99,8 @@ function throwSubActionError(error: unknown): never {
 
 async function prepareTripInsert(data: Record<string, unknown>, auth: AuthContext): Promise<PreparedTripInsert> {
   const nextData = { ...data }
-  const canStartOnBehalf = auth.roles.some(role => ON_BEHALF_TRIP_ROLES.has(role))
 
-  if (auth.roles.includes("Driver") && !canStartOnBehalf) {
+  if (isDriverOnlyTripUser(auth)) {
     nextData.driver_id = auth.userId
   }
 
@@ -119,6 +122,20 @@ async function prepareTripInsert(data: Record<string, unknown>, auth: AuthContex
   if (error) return { data: nextData, error: error.message }
   if (activeTrip) return { data: nextData, conflict: true }
   return { data: nextData }
+}
+
+async function upsertDriverTrip(data: Record<string, unknown>, conflict: string | undefined, driverId: string) {
+  if (!conflict) return supabaseAdmin.from("Trips").insert([data]).select()
+
+  let updateQuery = supabaseAdmin.from("Trips").update(data).eq("driver_id", driverId)
+  for (const key of conflict.split(",").map(value => value.trim())) {
+    if (data[key] === undefined) return supabaseAdmin.from("Trips").insert([data]).select()
+    updateQuery = updateQuery.eq(key, data[key])
+  }
+
+  const updated = await updateQuery.select()
+  if (updated.error || updated.data?.length) return updated
+  return supabaseAdmin.from("Trips").insert([data]).select()
 }
 
 // Trip Payment feature constants
@@ -166,6 +183,10 @@ function isBrokerOnly(roles: string[]) {
     !roles.some(r => ["Admin", "SuperAdmin", "DeskOfficer", "Supervisor", "CreditManager", "StoreOfficer", "StoreSupervisor"].includes(r))
 }
 
+function isUuid(value: unknown): value is string {
+  return typeof value === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value)
+}
+
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json()
@@ -184,6 +205,132 @@ export async function POST(req: NextRequest) {
       }>
     }
     let auth: AuthContext | null = null
+
+    if (action === "record_trip") {
+      auth = await requireRole(req, ["ATCOfficer", "Admin", "SuperAdmin", "Supervisor"])
+      if (!isUuid(data?.trip_id)) {
+        return buildError("Invalid trip ID", 400)
+      }
+
+      const isDd = data?.is_dd === true
+      const table = isDd ? "dd_trips" : "Trips"
+      const idKey = isDd ? "dd_trip_id" : "trip_id"
+      const tripId = data.trip_id as string
+      const { data: trip, error: tripError } = await supabaseAdmin
+        .from(table)
+        .select("loaded_quantity, recorded, posted")
+        .eq(idKey, tripId)
+        .maybeSingle()
+
+      if (tripError) return buildError(tripError.message, 400)
+      if (!trip) return buildError("Trip not found", 404)
+      if (trip.recorded || trip.posted) return buildError("Trip is already recorded", 409)
+
+      const { data: stops, error: stopsError } = await supabaseAdmin
+        .from("Stops")
+        .select("stop_id, stop_type, confirmed, disputed, quantity_offloaded")
+        .eq("trip_id", tripId)
+
+      if (stopsError) return buildError(stopsError.message, 400)
+      if (!stops || stops.length === 0) return buildError("Trip has no stops", 400)
+      if (stops.some(stop => !stop.confirmed || stop.disputed)) {
+        return buildError("All stops must be confirmed and none disputed", 400)
+      }
+
+      const customerStopIds = stops.filter(stop => stop.stop_type === "customer").map(stop => stop.stop_id)
+      const confirmationMap = new Map<string, number>()
+      if (customerStopIds.length > 0) {
+        const { data: confirmations, error: confirmationsError } = await supabaseAdmin
+          .from("Stop_Confirmations")
+          .select("stop_id, price_per_bag")
+          .in("stop_id", customerStopIds)
+
+        if (confirmationsError) return buildError(confirmationsError.message, 400)
+        for (const confirmation of confirmations || []) {
+          confirmationMap.set(confirmation.stop_id, Number(confirmation.price_per_bag))
+        }
+      }
+
+      if (customerStopIds.some(stopId => (confirmationMap.get(stopId) || 0) <= 0)) {
+        return buildError("Every customer stop must have a price", 400)
+      }
+
+      const { data: discrepancies, error: discrepanciesError } = await supabaseAdmin
+        .from("trip_discrepancies")
+        .select("shortage, caked_bags")
+        .eq("trip_id", tripId)
+
+      if (discrepanciesError) return buildError(discrepanciesError.message, 400)
+      const totalOffloaded = stops.reduce((sum, stop) => sum + Number(stop.quantity_offloaded || 0), 0)
+      const totalShortage = (discrepancies || []).reduce((sum, discrepancy) => sum + Number(discrepancy.shortage || 0), 0)
+      const totalCaked = (discrepancies || []).reduce((sum, discrepancy) => sum + Number(discrepancy.caked_bags || 0), 0)
+      if (Number(trip.loaded_quantity) - totalOffloaded - totalShortage - totalCaked !== 0) {
+        return buildError("All loaded bags must be accounted for", 400)
+      }
+
+      const { data: updatedTrip, error: updateError } = await supabaseAdmin
+        .from(table)
+        .update({
+          recorded: true,
+          recorded_by: auth.userId,
+          recorded_at: new Date().toISOString(),
+        })
+        .eq(idKey, tripId)
+        .select()
+
+      if (updateError) return buildError(updateError.message, 400)
+      return NextResponse.json({ data: updatedTrip })
+    }
+
+    if (action === "save_stop") {
+      auth = await requireRole(req, ["ATCOfficer", "Admin", "SuperAdmin", "Supervisor"])
+      const stopId = data?.stop_id
+      if (stopId !== null && stopId !== undefined && !isUuid(stopId)) {
+        return buildError("Invalid stop ID", 400)
+      }
+      if (!isUuid(data?.trip_id) || !isUuid(data?.broker_id) && data?.stop_type === "customer") {
+        return buildError("A valid trip and broker are required", 400)
+      }
+
+      const { data: result, error } = await supabaseAdmin.rpc("save_atc_stop", {
+        p_stop_id: stopId ?? null,
+        p_trip_id: data.trip_id,
+        p_updated_by: auth.userId,
+        p_stop_type: data.stop_type,
+        p_broker_id: data.broker_id ?? null,
+        p_customer_id: data.customer_id ?? null,
+        p_store_name: data.store_name ?? null,
+        p_quantity_offloaded: data.quantity_offloaded,
+        p_stop_location: data.stop_location ?? null,
+        p_stop_time: data.stop_time,
+        p_area: data.area ?? null,
+        p_price_per_bag: data.price_per_bag ?? null,
+        p_price_reason: data.price_reason ?? null,
+      })
+
+      if (error) {
+        console.error("ATC stop save failed", error)
+        return buildError(error.message, 400)
+      }
+      return NextResponse.json({ data: result })
+    }
+
+    if (action === "delete_stop") {
+      auth = await requireRole(req, ["ATCOfficer", "Admin", "SuperAdmin", "Supervisor"])
+      if (!isUuid(data?.stop_id)) {
+        return buildError("Invalid stop ID", 400)
+      }
+
+      const { data: result, error } = await supabaseAdmin.rpc("delete_stop_with_dependencies", {
+        p_stop_id: data.stop_id,
+      })
+
+      if (error) {
+        console.error("ATC stop delete failed", error)
+        return buildError(error.message, 400)
+      }
+      return NextResponse.json({ data: result })
+    }
 
     if (action !== "transaction") {
       if (!table || !includes(ALLOWED_TABLES, table)) {
@@ -248,11 +395,23 @@ export async function POST(req: NextRequest) {
 
       case "upsert": {
         if (!data) return buildError("data is required for upsert", 400)
-        const upsertOptions = conflict ? { onConflict: conflict } : {}
-        const { data: result, error } = await supabaseAdmin.from(table!).upsert([data], upsertOptions).select()
+        let upsertData = data
+        if (table === "Trips" && isDriverOnlyTripUser(auth)) {
+          if (data.driver_id !== undefined && data.driver_id !== auth.userId) {
+            return buildError("Drivers can only update their own trips", 403)
+          }
+          upsertData = { ...data, driver_id: auth.userId }
+        }
+        const driverOnlyTripUpsert = table === "Trips" && isDriverOnlyTripUser(auth)
+        const { data: result, error } = driverOnlyTripUpsert
+          ? await upsertDriverTrip(upsertData, conflict, auth.userId)
+          : await supabaseAdmin.from(table!).upsert([upsertData], conflict ? { onConflict: conflict } : {}).select()
         if (error) {
           console.error("Mutation failed", error)
           return buildMutationError(error)
+        }
+        if (table === "Trips" && (!result || result.length === 0)) {
+          return buildError("Trip not found or not accessible", 404)
         }
         return NextResponse.json({ data: result })
       }
@@ -262,14 +421,26 @@ export async function POST(req: NextRequest) {
         if (!filters || Object.keys(filters).length === 0) {
           return buildError("filters are required for update", 400)
         }
-        let query = supabaseAdmin.from(table!).update(data)
+        let updateData = data
+        const driverOnlyTripUpdate = table === "Trips" && isDriverOnlyTripUser(auth)
+        if (driverOnlyTripUpdate) {
+          if (data.driver_id !== undefined && data.driver_id !== auth.userId) {
+            return buildError("Drivers can only update their own trips", 403)
+          }
+          updateData = { ...data, driver_id: auth.userId }
+        }
+        let query = supabaseAdmin.from(table!).update(updateData)
         for (const [key, value] of Object.entries(filters)) {
           query = query.eq(key, value)
         }
+        if (driverOnlyTripUpdate) query = query.eq("driver_id", auth.userId)
         const { data: result, error } = await query.select()
         if (error) {
           console.error("Mutation failed", error)
           return buildMutationError(error)
+        }
+        if (table === "Trips" && (!result || result.length === 0)) {
+          return buildError("Trip not found or not accessible", 404)
         }
         const row = result?.[0] as Record<string, unknown> | undefined
 
@@ -334,10 +505,14 @@ export async function POST(req: NextRequest) {
         for (const [key, value] of Object.entries(filters)) {
           query = query.eq(key, value)
         }
+        if (table === "Trips" && isDriverOnlyTripUser(auth)) query = query.eq("driver_id", auth.userId)
         const { data: result, error } = await query.select()
         if (error) {
           console.error("Mutation failed", error)
           return buildMutationError(error)
+        }
+        if (table === "Trips" && (!result || result.length === 0)) {
+          return buildError("Trip not found or not accessible", 404)
         }
         return NextResponse.json({ data: result })
       }
@@ -353,11 +528,26 @@ export async function POST(req: NextRequest) {
           if (!includes(ALLOWED_TABLES, sa.table)) {
             return buildError(`Table "${sa.table}" is not supported by this endpoint`, 400)
           }
-          if (sa.table === "Trips" && sa.action === "insert" && sa.data) {
-            const prepared = await prepareTripInsert(sa.data, auth)
-            if (prepared.conflict) return buildError(ACTIVE_TRIP_ERROR, 409)
-            if (prepared.error) return buildError(prepared.error, 500)
-            sa.data = prepared.data
+          if (sa.table === "Trips") {
+            if (sa.action === "insert" && sa.data) {
+              const prepared = await prepareTripInsert(sa.data, auth)
+              if (prepared.conflict) return buildError(ACTIVE_TRIP_ERROR, 409)
+              if (prepared.error) return buildError(prepared.error, 500)
+              sa.data = prepared.data
+            } else if (isDriverOnlyTripUser(auth)) {
+              if (sa.data?.driver_id !== undefined && sa.data.driver_id !== auth.userId) {
+                return buildError("Drivers can only update their own trips", 403)
+              }
+              if (sa.data && (sa.action === "update" || sa.action === "upsert")) {
+                sa.data = { ...sa.data, driver_id: auth.userId }
+              }
+              if (sa.filters && (sa.action === "update" || sa.action === "delete")) {
+                if (sa.filters.driver_id !== undefined && sa.filters.driver_id !== auth.userId) {
+                  return buildError("Drivers can only update their own trips", 403)
+                }
+                sa.filters = { ...sa.filters, driver_id: auth.userId }
+              }
+            }
           }
         }
 
@@ -391,6 +581,9 @@ export async function POST(req: NextRequest) {
                   console.error("Sub-action failed", error)
                   throwSubActionError(error)
                 }
+                if (sa.table === "Trips" && (!r || r.length === 0)) {
+                  throw new MutationError("Trip not found or not accessible", 404)
+                }
                 execResult = r
                 break
               }
@@ -408,6 +601,9 @@ export async function POST(req: NextRequest) {
                   console.error("Sub-action failed", error)
                   throwSubActionError(error)
                 }
+                if (sa.table === "Trips" && (!r || r.length === 0)) {
+                  throw new MutationError("Trip not found or not accessible", 404)
+                }
                 execResult = r
                 break
               }
@@ -424,16 +620,24 @@ export async function POST(req: NextRequest) {
                   console.error("Sub-action failed", error)
                   throwSubActionError(error)
                 }
+                if (sa.table === "Trips" && (!r || r.length === 0)) {
+                  throw new MutationError("Trip not found or not accessible", 404)
+                }
                 execResult = r
                 break
               }
               case "upsert": {
                 if (!sa.data) throw new Error("data is required for upsert")
-                const opts = sa.conflict ? { onConflict: sa.conflict } : {}
-                const { data: r, error } = await supabaseAdmin.from(sa.table).upsert([sa.data], opts).select()
+                const driverOnlyTripUpsert = sa.table === "Trips" && isDriverOnlyTripUser(auth)
+                const { data: r, error } = driverOnlyTripUpsert
+                  ? await upsertDriverTrip(sa.data, sa.conflict, auth.userId)
+                  : await supabaseAdmin.from(sa.table).upsert([sa.data], sa.conflict ? { onConflict: sa.conflict } : {}).select()
                 if (error) {
                   console.error("Sub-action failed", error)
                   throwSubActionError(error)
+                }
+                if (sa.table === "Trips" && (!r || r.length === 0)) {
+                  throw new MutationError("Trip not found or not accessible", 404)
                 }
                 execResult = r
                 break

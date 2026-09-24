@@ -31,8 +31,17 @@ type Stop = {
   confirmed: boolean
   disputed: boolean
   dispute_reason: string | null
+  confirmation_id: string | null
+  confirmation_broker_id: string | null
   price_per_bag: number | null
+  area: string | null
+  company_price: number | null
+  price_reason: string | null
+  confirmed_at: string | null
   discount_status: string | null
+  on_credit: boolean
+  credit_approval_id: string | null
+  credit_status: string | null
   is_credit_approved: boolean
 }
 
@@ -146,13 +155,14 @@ export default function MonitorTrips() {
   const [trips, setTrips] = useState<Trip[]>([])
   const [loading, setLoading] = useState(true)
   const [filterStatus, setFilterStatus] = useState("Active")
+  const [atcSearch, setAtcSearch] = useState("")
   const [plateSearch, setPlateSearch] = useState("")
   const [plateDropOpen, setPlateDropOpen] = useState(false)
   const [dateDropOpen, setDateDropOpen] = useState(false)
   const [dateMode, setDateMode] = useState<"single" | "range">("single")
   const [filterDateFrom, setFilterDateFrom] = useState("")
   const [filterDateTo, setFilterDateTo] = useState("")
-  const hasActiveFilters = !!plateSearch || !!filterDateFrom || !!filterDateTo
+  const hasActiveFilters = !!atcSearch || !!plateSearch || !!filterDateFrom || !!filterDateTo
   const uniquePlates = [...new Set(trips.map(t => t.plate_number))].sort()
   const matchedPlates = plateSearch ? uniquePlates.filter(p => p.toLowerCase().includes(plateSearch.trim().toLowerCase())) : []
   const [viewMode, setViewMode] = useState<ViewMode>(isMobile ? "card" : "table")
@@ -161,10 +171,11 @@ export default function MonitorTrips() {
   const [selectedDiscrepancies, setSelectedDiscrepancies] = useState<Discrepancy[]>([])
   const [selectedLoadMore, setSelectedLoadMore] = useState<LoadMoreEntry[]>([])
   const [selectedPlate, setSelectedPlate] = useState("")
-  const [selectedTrip, setSelectedTrip] = useState<Pick<Trip, "trip_id" | "plate_number" | "atc" | "order_no" | "child_order_no" | "amount_charged" | "payment_mode" | "trip_status" | "recorded" | "posted" | "isDD" | "remaining" | "loaded_quantity"> | null>(null)
+  const [selectedTrip, setSelectedTrip] = useState<Pick<Trip, "trip_id" | "plate_number" | "product" | "atc" | "order_no" | "child_order_no" | "amount_charged" | "payment_mode" | "trip_status" | "recorded" | "posted" | "isDD" | "remaining" | "loaded_quantity"> | null>(null)
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null)
   const [postingTrip, setPostingTrip] = useState<string | null>(null)
   const [postLoading, setPostLoading] = useState(false)
+  const [postError, setPostError] = useState("")
   const [resolvingDisputeReason, setResolvingDisputeReason] = useState<string | null>(null)
   const [resolvingStops, setResolvingStops] = useState<ResolveStopForm[]>([])
   const [resolveSubmitting, setResolveSubmitting] = useState(false)
@@ -199,7 +210,7 @@ export default function MonitorTrips() {
 
     const { data: allStopsRaw } = await supabase
       .from("Stops")
-      .select("stop_id, trip_id, quantity_offloaded, latitude, longitude, stop_time, stop_location, broker_id, customer_id, confirmed, disputed, dispute_reason, store_name, stop_type, discount_status")
+      .select("stop_id, trip_id, quantity_offloaded, latitude, longitude, stop_time, stop_location, broker_id, customer_id, confirmed, disputed, dispute_reason, store_name, stop_type, discount_status, on_credit, credit_approval_id")
       .in("trip_id", tripIds)
       .order("stop_time", { ascending: true })
 
@@ -231,22 +242,34 @@ export default function MonitorTrips() {
     }
 
     const stopIds = allStops.map(s => s.stop_id).filter(Boolean)
-    const confirmationMap = new Map<string, { price_per_bag: number }>()
-    const creditApprovedStopSet = new Set<string>()
+    const confirmationMap = new Map<string, {
+      confirmation_id: string
+      stop_id: string
+      broker_id: string | null
+      customer_id: string | null
+      price_per_bag: number
+      area: string | null
+      company_price: number | null
+      price_reason: string | null
+      confirmed_at: string | null
+    }>()
+    const creditApprovalMap = new Map<string, { id: string; status: string; adjusted_price: number | null }>()
     if (stopIds.length > 0) {
       const { data: confirmationsData } = await supabase
         .from("Stop_Confirmations")
-        .select("stop_id, price_per_bag")
+        .select("confirmation_id, stop_id, broker_id, customer_id, price_per_bag, area, company_price, price_reason, confirmed_at")
         .in("stop_id", stopIds)
-      for (const c of confirmationsData || []) confirmationMap.set(c.stop_id, c)
+        .order("confirmed_at", { ascending: false })
+      for (const c of confirmationsData || []) {
+        if (!confirmationMap.has(c.stop_id)) confirmationMap.set(c.stop_id, c)
+      }
 
       const { data: creditApprovals } = await supabase
         .from("credit_approvals")
-        .select("source_id")
-        .eq("status", "Approved")
+        .select("id, source_id, status, adjusted_price")
         .eq("source_type", "stop")
         .in("source_id", stopIds)
-      for (const ca of creditApprovals || []) creditApprovedStopSet.add(ca.source_id)
+      for (const ca of creditApprovals || []) creditApprovalMap.set(ca.source_id, ca)
     }
 
     const discByTrip = new Map<string, Discrepancy[]>()
@@ -294,6 +317,7 @@ export default function MonitorTrips() {
         }
 
         const confirmation = confirmationMap.get(stop.stop_id)
+        const creditApproval = creditApprovalMap.get(stop.stop_id)
 
         return {
           stop_id: stop.stop_id,
@@ -312,9 +336,18 @@ export default function MonitorTrips() {
           confirmed: stop.confirmed,
           disputed: stop.disputed,
           dispute_reason: stop.dispute_reason,
+          confirmation_id: confirmation?.confirmation_id ?? null,
+          confirmation_broker_id: confirmation?.broker_id ?? null,
           price_per_bag: confirmation?.price_per_bag ?? null,
+          area: confirmation?.area ?? null,
+          company_price: confirmation?.company_price ?? null,
+          price_reason: confirmation?.price_reason ?? null,
+          confirmed_at: confirmation?.confirmed_at ?? null,
           discount_status: stop.discount_status ?? "none",
-          is_credit_approved: creditApprovedStopSet.has(stop.stop_id),
+          on_credit: stop.on_credit || !!creditApproval,
+          credit_approval_id: stop.credit_approval_id ?? creditApproval?.id ?? null,
+          credit_status: creditApproval?.status ?? null,
+          is_credit_approved: creditApproval?.status === "Approved",
         }
       })
 
@@ -369,7 +402,7 @@ export default function MonitorTrips() {
 
     const { data: allStopsRaw } = await supabase
       .from("Stops")
-      .select("stop_id, trip_id, quantity_offloaded, latitude, longitude, stop_time, stop_location, broker_id, customer_id, confirmed, disputed, dispute_reason, store_name, stop_type, discount_status")
+      .select("stop_id, trip_id, quantity_offloaded, latitude, longitude, stop_time, stop_location, broker_id, customer_id, confirmed, disputed, dispute_reason, store_name, stop_type, discount_status, on_credit, credit_approval_id")
       .in("trip_id", ddTripIds)
       .order("stop_time", { ascending: true })
 
@@ -401,22 +434,34 @@ export default function MonitorTrips() {
     }
 
     const stopIds = allStops.map(s => s.stop_id).filter(Boolean)
-    const confirmationMap = new Map<string, { price_per_bag: number }>()
-    const creditApprovedStopSet = new Set<string>()
+    const confirmationMap = new Map<string, {
+      confirmation_id: string
+      stop_id: string
+      broker_id: string | null
+      customer_id: string | null
+      price_per_bag: number
+      area: string | null
+      company_price: number | null
+      price_reason: string | null
+      confirmed_at: string | null
+    }>()
+    const creditApprovalMap = new Map<string, { id: string; status: string; adjusted_price: number | null }>()
     if (stopIds.length > 0) {
       const { data: confirmationsData } = await supabase
         .from("Stop_Confirmations")
-        .select("stop_id, price_per_bag")
+        .select("confirmation_id, stop_id, broker_id, customer_id, price_per_bag, area, company_price, price_reason, confirmed_at")
         .in("stop_id", stopIds)
-      for (const c of confirmationsData || []) confirmationMap.set(c.stop_id, c)
+        .order("confirmed_at", { ascending: false })
+      for (const c of confirmationsData || []) {
+        if (!confirmationMap.has(c.stop_id)) confirmationMap.set(c.stop_id, c)
+      }
 
       const { data: creditApprovals } = await supabase
         .from("credit_approvals")
-        .select("source_id")
-        .eq("status", "Approved")
+        .select("id, source_id, status, adjusted_price")
         .eq("source_type", "stop")
         .in("source_id", stopIds)
-      for (const ca of creditApprovals || []) creditApprovedStopSet.add(ca.source_id)
+      for (const ca of creditApprovals || []) creditApprovalMap.set(ca.source_id, ca)
     }
 
     const ddDiscByTrip = new Map<string, Discrepancy[]>()
@@ -463,6 +508,7 @@ export default function MonitorTrips() {
         }
 
         const confirmation = confirmationMap.get(stop.stop_id)
+        const creditApproval = creditApprovalMap.get(stop.stop_id)
 
         return {
           stop_id: stop.stop_id,
@@ -481,9 +527,18 @@ export default function MonitorTrips() {
           confirmed: stop.confirmed,
           disputed: stop.disputed,
           dispute_reason: stop.dispute_reason,
+          confirmation_id: confirmation?.confirmation_id ?? null,
+          confirmation_broker_id: confirmation?.broker_id ?? null,
           price_per_bag: confirmation?.price_per_bag ?? null,
+          area: confirmation?.area ?? null,
+          company_price: confirmation?.company_price ?? null,
+          price_reason: confirmation?.price_reason ?? null,
+          confirmed_at: confirmation?.confirmed_at ?? null,
           discount_status: stop.discount_status ?? "none",
-          is_credit_approved: creditApprovedStopSet.has(stop.stop_id),
+          on_credit: stop.on_credit || !!creditApproval,
+          credit_approval_id: stop.credit_approval_id ?? creditApproval?.id ?? null,
+          credit_status: creditApproval?.status ?? null,
+          is_credit_approved: creditApproval?.status === "Approved",
         }
       })
 
@@ -550,8 +605,13 @@ export default function MonitorTrips() {
 
   function handlePostTripClick() {
     if (!selectedStops || !selectedTrip) return
-    const allConfirmed = selectedStops.every((s) => s.confirmed) && !selectedStops.some((s) => s.disputed)
+    const allConfirmed = selectedStops.length > 0
+      && selectedStops.every((s) => s.confirmed)
+      && !selectedStops.some((s) => s.disputed)
+      && selectedStops.every((s) => s.stop_type === "store" || (s.price_per_bag !== null && s.price_per_bag > 0))
+      && selectedTrip.remaining === 0
     if (!allConfirmed) return
+    setPostError("")
     setPostingTrip(selectedTrip.trip_id)
   }
 
@@ -744,43 +804,31 @@ async function fetchResolveData() {
   async function confirmPostTrip() {
     if (!postingTrip || !selectedTrip) return
     setPostLoading(true)
+    setPostError("")
 
     try {
-      const { data: { user }, error: authError } = await supabase.auth.getUser()
-      if (authError || !user) {
-        console.error("Auth error:", authError)
-        setPostLoading(false)
-        return
-      }
-
       const isDD = (selectedTrip as Trip).isDD
-      const table = isDD ? "dd_trips" : "Trips"
-      const filterKey = isDD ? "dd_trip_id" : "trip_id"
-
-      const r1 = await apiMutate("trips", {
-        action: "update",
-        table,
+      const { error } = await apiMutate("trips", {
+        action: "record_trip",
         data: {
-          recorded: true,
-          recorded_by: user.id,
-          recorded_at: new Date().toISOString(),
+          trip_id: postingTrip,
+          is_dd: isDD,
         },
-        filters: { [filterKey]: postingTrip },
       })
 
-      if (r1.error) {
-        console.error("PostTrip update failed:", r1.error)
-      } else {
-        console.log("PostTrip success:", r1.data)
+      if (error) {
+        console.error("PostTrip update failed:", error)
+        setPostError(error)
+        return
       }
+      setPostingTrip(null)
+      closeModals()
+      loadAll()
     } catch (err) {
       console.error("PostTrip exception:", err)
+      setPostError(err instanceof Error ? err.message : "Failed to record trip. Please try again.")
     } finally {
       setPostLoading(false)
-      setPostingTrip(null)
-      setSelectedStops(null)
-      setSelectedTrip(null)
-      loadAll()
     }
   }
 
@@ -798,7 +846,12 @@ async function fetchResolveData() {
     : filterStatus === "Disputed"
     ? trips.filter((t) => t.stops.some((s) => s.disputed))
     : trips
-  ).filter((t) => !plateSearch || t.plate_number.toLowerCase().includes(plateSearch.trim().toLowerCase()))
+  ).filter((t) => {
+    if (!atcSearch) return true
+    const q = atcSearch.trim().toLowerCase()
+    return (t.atc ?? "").toLowerCase().includes(q) || (t.child_order_no ?? "").toLowerCase().includes(q)
+  })
+  .filter((t) => !plateSearch || t.plate_number.toLowerCase().includes(plateSearch.trim().toLowerCase()))
   .filter((t) => {
     const tripDate = t.created_at.slice(0, 10)
     if (dateMode === "single") return !filterDateFrom || tripDate === filterDateFrom
@@ -809,9 +862,11 @@ async function fetchResolveData() {
 
   function closeModals() {
     setSelectedDriver(null)
+    setSelectedTrip(null)
     setSelectedStops(null)
     setSelectedDiscrepancies([])
     setSelectedLoadMore([])
+    setSelectedPlate("")
     setPostingTrip(null)
     setShowActionsDropdown(false)
     setIsEditingTrip(false)
@@ -957,6 +1012,22 @@ async function fetchResolveData() {
       </div>
 
       <div style={{ display: "flex", gap: 12, marginBottom: 24, flexWrap: "wrap" }}>
+        <div style={{ position: "relative", flex: isMobile ? "1 1 100%" : "1 1 200px" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, background: "white", border: `1.5px solid ${atcSearch ? "#0070f3" : "#e2e8f0"}`, borderRadius: 8, padding: 0 }}>
+            <Icon icon="mdi:file-document-outline" style={{ color: atcSearch ? "#0070f3" : "#888", flexShrink: 0, marginLeft: 12 }} />
+            <input
+              type="text"
+              placeholder="Search ATC, child order no."
+              value={atcSearch}
+              onChange={e => setAtcSearch(e.target.value)}
+              style={{ border: "none", outline: "none", fontSize: FONT_SIZE.sm, width: "100%", color: "#333", background: "transparent", padding: "10px 12px" }}
+            />
+            {atcSearch && (
+              <button onClick={() => setAtcSearch("")} style={{ border: "none", background: "none", cursor: "pointer", color: "#aaa", padding: 0, lineHeight: 1, marginRight: 12, flexShrink: 0 }}>✕</button>
+            )}
+          </div>
+        </div>
+
         <div style={{ position: "relative", flex: isMobile ? "1 1 100%" : "1 1 180px" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8, background: "white", border: `1.5px solid ${plateSearch ? "#0070f3" : "#e2e8f0"}`, borderRadius: 8, padding: 0 }}>
             <Icon icon="mdi:truck-outline" style={{ color: plateSearch ? "#0070f3" : "#888", flexShrink: 0, marginLeft: 12 }} />
@@ -1094,7 +1165,7 @@ async function fetchResolveData() {
 
         {hasActiveFilters && (
           <button
-            onClick={() => { setPlateSearch(""); setFilterDateFrom(""); setFilterDateTo(""); setDateMode("single") }}
+            onClick={() => { setAtcSearch(""); setPlateSearch(""); setFilterDateFrom(""); setFilterDateTo(""); setDateMode("single") }}
             style={{ padding: "8px 14px", borderRadius: 8, border: "1px solid #e2e8f0", background: "white", color: "#64748b", fontSize: FONT_SIZE.sm, cursor: "pointer", display: "flex", alignItems: "center", gap: 6, whiteSpace: "nowrap", minHeight: 40, transition: "all 0.2s" }}
             onMouseEnter={e => { e.currentTarget.style.background = "#f8fafc"; e.currentTarget.style.borderColor = "#cbd5e1" }}
             onMouseLeave={e => { e.currentTarget.style.background = "white"; e.currentTarget.style.borderColor = "#e2e8f0" }}
@@ -1214,7 +1285,7 @@ async function fetchResolveData() {
                       </div>
                       
                       <button
-                        onClick={() => { setSelectedStops(trip.stops); setSelectedDiscrepancies(trip.discrepancies); setSelectedLoadMore(trip.load_more_entries); setSelectedPlate(trip.plate_number); setSelectedTrip({ trip_id: trip.trip_id, plate_number: trip.plate_number, atc: trip.atc, order_no: trip.order_no, child_order_no: trip.child_order_no, amount_charged: trip.amount_charged, payment_mode: trip.payment_mode, trip_status: trip.trip_status, recorded: trip.recorded, posted: trip.posted, isDD: trip.isDD, remaining: trip.remaining, loaded_quantity: trip.loaded_quantity }); }}
+                        onClick={() => { setSelectedStops(trip.stops); setSelectedDiscrepancies(trip.discrepancies); setSelectedLoadMore(trip.load_more_entries); setSelectedPlate(trip.plate_number); setSelectedTrip({ trip_id: trip.trip_id, plate_number: trip.plate_number, product: trip.product, atc: trip.atc, order_no: trip.order_no, child_order_no: trip.child_order_no, amount_charged: trip.amount_charged, payment_mode: trip.payment_mode, trip_status: trip.trip_status, recorded: trip.recorded, posted: trip.posted, isDD: trip.isDD, remaining: trip.remaining, loaded_quantity: trip.loaded_quantity }); }}
                         style={{ padding: "8px 16px", background: "#f0f7ff", color: "#0070f3", border: "1px solid #bfdbfe", borderRadius: 8, cursor: "pointer", fontWeight: 600, fontSize: FONT_SIZE.sm, transition: "all 0.2s" }}
                         onMouseEnter={e => { e.currentTarget.style.background = "#e0efff" }}
                         onMouseLeave={e => { e.currentTarget.style.background = "#f0f7ff" }}
@@ -1281,7 +1352,7 @@ async function fetchResolveData() {
                         <td style={{ padding: "12px 16px", color: "#64748b", fontSize: FONT_SIZE.sm }}>{trip.payment_mode || "—"}</td>
                         <td style={{ padding: "12px 16px", color: "#0f172a", fontSize: FONT_SIZE.base, fontWeight: 500 }}>{trip.loaded_quantity}</td>
                         <td style={{ padding: "12px 16px", color: trip.remaining === 0 ? "#ef4444" : trip.remaining < trip.loaded_quantity * 0.2 ? "#f5a623" : "#16a34a", fontSize: FONT_SIZE.base, fontWeight: 600 }}>{trip.remaining}</td>
-                        <td style={{ padding: "12px 16px", cursor: "pointer" }} onClick={() => { setSelectedStops(trip.stops); setSelectedDiscrepancies(trip.discrepancies); setSelectedLoadMore(trip.load_more_entries); setSelectedPlate(trip.plate_number); setSelectedTrip({ trip_id: trip.trip_id, plate_number: trip.plate_number, atc: trip.atc, order_no: trip.order_no, child_order_no: trip.child_order_no, amount_charged: trip.amount_charged, payment_mode: trip.payment_mode, trip_status: trip.trip_status, recorded: trip.recorded, posted: trip.posted, isDD: trip.isDD, remaining: trip.remaining, loaded_quantity: trip.loaded_quantity }); }}>
+                        <td style={{ padding: "12px 16px", cursor: "pointer" }} onClick={() => { setSelectedStops(trip.stops); setSelectedDiscrepancies(trip.discrepancies); setSelectedLoadMore(trip.load_more_entries); setSelectedPlate(trip.plate_number); setSelectedTrip({ trip_id: trip.trip_id, plate_number: trip.plate_number, product: trip.product, atc: trip.atc, order_no: trip.order_no, child_order_no: trip.child_order_no, amount_charged: trip.amount_charged, payment_mode: trip.payment_mode, trip_status: trip.trip_status, recorded: trip.recorded, posted: trip.posted, isDD: trip.isDD, remaining: trip.remaining, loaded_quantity: trip.loaded_quantity }); }}>
                           <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
                             <span style={{ color: "#0070f3", fontSize: FONT_SIZE.sm, fontWeight: 500, textDecoration: "underline" }}>{trip.stop_count} {trip.stop_count === 1 ? "stop" : "stops"}</span>
                             {confirmed > 0 && <div style={{ display: "flex", alignItems: "center", gap: 2, padding: "2px 6px", background: "#f0fdf4", borderRadius: 12 }}><Icon icon="mdi:check-circle" width="12" height="12" style={{ color: "#16a34a" }} /><span style={{ fontSize: 10, color: "#16a34a", fontWeight: "bold" }}>{confirmed}</span></div>}
@@ -1410,7 +1481,8 @@ async function fetchResolveData() {
                         )}
 
                         <p style={{ margin: "6px 0", color: "#475569", fontSize: FONT_SIZE.sm }}><strong>Offloaded:</strong> <span style={{ color: "#0f172a" }}>{stop.quantity_offloaded} bags</span></p>
-                        {stop.confirmed && stop.price_per_bag && <p style={{ margin: "6px 0", color: "#475569", fontSize: FONT_SIZE.sm }}><strong>Price:</strong> <span style={{ color: "#0f172a" }}>₦{stop.price_per_bag.toLocaleString()}/bag</span></p>}
+                        {stop.stop_type === "customer" && stop.price_per_bag !== null && stop.price_per_bag > 0 && <p style={{ margin: "6px 0", color: "#475569", fontSize: FONT_SIZE.sm }}><strong>Price:</strong> <span style={{ color: "#0f172a" }}>₦{stop.price_per_bag.toLocaleString()}/bag</span>{stop.area ? ` · ${stop.area}` : ""}</p>}
+                        {stop.stop_type === "customer" && (!stop.price_per_bag || stop.price_per_bag <= 0) && <p style={{ margin: "6px 0", color: "#c2410c", fontSize: FONT_SIZE.sm, fontWeight: 600 }}>Price required before recording</p>}
                         {stop.stop_type === "customer" && (
                           <span style={{ display: "inline-block", marginTop: 4, padding: "4px 12px", borderRadius: 6, fontSize: FONT_SIZE.xs, fontWeight: 600, background: stop.is_credit_approved ? "#eff6ff" : "#f0fdf4", color: stop.is_credit_approved ? "#0070f3" : "#16a34a", border: stop.is_credit_approved ? "1px solid #93c5fd" : "1px solid #86efac" }}>{stop.is_credit_approved ? "Credit" : "Cash"}</span>
                         )}
@@ -1483,7 +1555,7 @@ async function fetchResolveData() {
 
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, position: "relative" }}>
                   {selectedTrip && !selectedTrip.recorded && (() => {
-                    const allConfirmed = selectedStops && selectedStops.length > 0 && selectedStops.every((s) => s.confirmed) && !selectedStops.some((s) => s.disputed) && selectedTrip.remaining === 0
+                    const allConfirmed = selectedStops && selectedStops.length > 0 && selectedStops.every((s) => s.confirmed) && !selectedStops.some((s) => s.disputed) && selectedStops.every((s) => s.stop_type === "store" || (s.price_per_bag !== null && s.price_per_bag > 0)) && selectedTrip.remaining === 0
                     return (
                       <div style={{ position: "relative" }}>
                         <button
@@ -1534,7 +1606,7 @@ async function fetchResolveData() {
                               }}
                               onMouseEnter={e => { if (allConfirmed) e.currentTarget.style.background = "#f0fdf4" }}
                               onMouseLeave={e => { e.currentTarget.style.background = "white" }}
-                              title={!allConfirmed ? "All stops must be confirmed, none disputed, and all bags offloaded" : ""}
+                              title={!allConfirmed ? "All stops must be confirmed and priced, none disputed, and all bags offloaded" : ""}
                             >
                               <Icon icon="mdi:check-circle-outline" width={18} />
                               Record Trip
@@ -1588,8 +1660,9 @@ async function fetchResolveData() {
           <div style={{ background: "white", borderRadius: 12, padding: 32, width: "100%", maxWidth: 420, boxShadow: "0 25px 50px -12px rgba(0, 0, 0, 0.25)", animation: "slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1)" }}>
             <h3 style={{ margin: "0 0 12px 0", color: "#0f172a", fontSize: FONT_SIZE.xl, fontWeight: 700 }}>Record Trip?</h3>
             <p style={{ margin: "0 0 24px 0", color: "#64748b", fontSize: FONT_SIZE.base, lineHeight: 1.5 }}>
-              This will mark the trip as <strong>Recorded</strong>. Only trips with all stops confirmed can be recorded.
+              This will mark the trip as <strong>Recorded</strong>. All customer stops must be confirmed and priced, all bags must be accounted for, and no stop can be disputed.
             </p>
+            {postError && <p style={{ margin: "0 0 16px", padding: 12, background: "#fef2f2", borderLeft: "4px solid #ef4444", borderRadius: 4, color: "#b91c1c", fontSize: FONT_SIZE.sm }}>{postError}</p>}
 
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
               <button onClick={() => setPostingTrip(null)} disabled={postLoading} style={{ padding: "12px 16px", background: "white", color: "#475569", border: "1px solid #cbd5e1", borderRadius: 8, cursor: "pointer", fontWeight: 600, fontSize: FONT_SIZE.md, minHeight: 44, transition: "background 0.2s" }} onMouseEnter={e => e.currentTarget.style.background = "#f8fafc"} onMouseLeave={e => e.currentTarget.style.background = "white"}>
@@ -1792,12 +1865,14 @@ async function fetchResolveData() {
           trip={{
             trip_id: selectedTrip.trip_id,
             plate_number: selectedTrip.plate_number,
+            product: selectedTrip.product,
             loaded_quantity: selectedTrip.loaded_quantity,
             stops: selectedStops,
             discrepancies: selectedDiscrepancies,
           }}
           isMobile={isMobile}
-          onClose={() => { setIsEditingTrip(false); setSelectedTrip(null); loadAll() }}
+          canEdit={canEdit}
+          onClose={() => { closeModals(); loadAll() }}
         />
       )}
     </div>

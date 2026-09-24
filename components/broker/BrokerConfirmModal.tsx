@@ -316,8 +316,9 @@ export default function BrokerConfirmModal({ isOpen, onClose, brokerId, isMobile
         })
 
         subActions.push({
-          action: "insert",
+          action: "upsert",
           table: "Stop_Confirmations",
+          conflict: "stop_id",
           data: {
             stop_id: stop.stop_id,
             broker_id: brokerId,

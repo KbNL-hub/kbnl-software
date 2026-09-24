@@ -2,7 +2,7 @@ import { supabase } from "./supabase"
 
 const pendingMutations = new Map<string, Promise<unknown>>()
 
-export type MutationAction = "insert" | "update" | "delete" | "upsert"
+export type MutationAction = "insert" | "update" | "delete" | "upsert" | "save_stop" | "delete_stop" | "record_trip"
 
 export type SubAction = {
   action: MutationAction
