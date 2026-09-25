@@ -642,7 +642,7 @@ export default function Reports() {
         .from("store_sales")
         .select("total_quantity, total_amount")
         .eq("broker_id", b.broker_id)
-        .eq("status", "Confirmed")
+.in("status", ["Confirmed", "Pending"])
         .gte("sold_at", from)
         .lte("sold_at", to)
 
@@ -731,7 +731,7 @@ export default function Reports() {
         .from("store_sales")
         .select("sale_id, store_name, customer_name, total_quantity, total_amount, sold_at, status, items")
         .eq("broker_id", broker.broker_id)
-        .in("status", ["Confirmed", "Pending"])
+.in("status", ["Confirmed", "Posted", "Pending"])
         .gte("sold_at", from)
         .lte("sold_at", to)
         .order("sold_at", { ascending: false })
@@ -830,7 +830,7 @@ export default function Reports() {
     const { data: sales, error: salesErr } = await supabase
       .from("store_sales")
       .select("store_name, total_quantity, total_amount")
-      .eq("status", "Confirmed")
+.in("status", ["Confirmed", "Posted", "Pending"])
       .gte("sold_at", from)
       .lte("sold_at", to)
 
@@ -899,12 +899,28 @@ export default function Reports() {
 
     if (tripsErr) throw new Error(`Failed to fetch trips: ${tripsErr.message}`)
 
+    const { data: load_mores, error: lmErr } = await supabase
+      .from("trip_load_more")
+      .select("loading_point_name, quantity")
+      .gte("created_at", from)
+      .lte("created_at", to)
+
+    if (lmErr) throw new Error(`Failed to fetch trip load more: ${lmErr.message}`)
+
     const centreMap: Record<string, { trips_count: number; total_loaded: number }> = {}
     for (const t of trips || []) {
       const centre = t.material_centre || "Unknown"
       if (!centreMap[centre]) centreMap[centre] = { trips_count: 0, total_loaded: 0 }
       centreMap[centre].trips_count++
       centreMap[centre].total_loaded += t.loaded_quantity || 0
+    }
+
+    if (load_mores) {
+      for (const l of load_mores) {
+        const lp = l.loading_point_name || "Unknown"
+        if (!centreMap[lp]) centreMap[lp] = { trips_count: 0, total_loaded: 0 }
+        centreMap[lp].total_loaded += l.quantity || 0
+      }
     }
 
     const summaries: FactoryLoadingSummary[] = Object.entries(centreMap)
@@ -921,7 +937,7 @@ export default function Reports() {
     const { data: expenses, error: expensesErr } = await supabase
       .from("cash_expenses")
       .select("office_name, total_amount")
-      .eq("status", "Authorised")
+      .in("status", ["Pending", "Authorised", "Posted"])
       .gte("created_at", from)
       .lte("created_at", to)
 
