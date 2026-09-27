@@ -961,7 +961,10 @@ export default function DriverDashboard() {
               {!isMobile && "Report"}
             </button>
             <button
-              onClick={async () => { await supabase.auth.signOut(); window.location.href = "/login" }}
+              onClick={async () => { 
+                await supabase.auth.signOut()
+                window.location.href = "/login"
+              }}
               className="logout-btn"
               style={{ padding: "8px 14px", background: "rgba(239, 68, 68, 0.05)", color: "#ef4444", border: "1.5px solid #fecaca", borderRadius: 8, cursor: "pointer", fontSize: FONT_SIZE.sm, minHeight: 40, display: "flex", alignItems: "center", gap: 6, fontWeight: 600, transition: "all 0.2s", whiteSpace: "nowrap" }}
             >
