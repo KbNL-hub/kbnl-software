@@ -152,13 +152,43 @@ type BrokerPaymentsRecord = {
   total_amount: number
 }
 
+type TripPaymentSummary = {
+  group_key: string
+  group_label: string
+  trips_count: number
+  total_bags: number
+  total_tonnage: number
+  total_amount: number
+  pending_count: number
+}
+
+type TripPaymentRecord = {
+  id: string
+  trip_id: string
+  plate_number: string
+  trip_ref: string
+  product: string
+  tonnage: number
+  quantity_loaded: number
+  sc_rate: number | null
+  cost_per_ton: number | null
+  amount: number | null
+  location_name: string | null
+  actual_location: string | null
+  trip_status: string
+  date: string
+}
+
 type DrillDown =
   | { kind: "driver"; driver: DriverSummary; trips: DriverTrip[] }
   | { kind: "truck"; truck: TruckSummary; maintenance: TruckMaintenance[]; fuel: TruckFuel[] }
   | { kind: "broker"; broker: BrokerSummary; records: BrokerRecord[] }
   | { kind: "broker-payments"; broker: BrokerPaymentsSummary; records: BrokerPaymentsRecord[] }
+  | { kind: "trip-payments"; group: TripPaymentSummary; records: TripPaymentRecord[]; tripType: TripType }
 
 type ViewMode = "card" | "table"
+
+type TripType = "SC" | "MDD"
 
 type ReportType =
   | "driver-performance"
@@ -171,6 +201,7 @@ type ReportType =
   | "truck-health"
   | "side-trips"
   | "broker-payments"
+  | "trip-payments"
 
 // ── Constants ──────────────────────────────────────────────────────────────
 const PRODUCT_MANUFACTURER: Record<string, string> = {
@@ -190,6 +221,7 @@ const REPORT_OPTIONS: { group: string; value: ReportType; label: string }[] = [
   { group: "Finance", value: "cash-expenses", label: "Cash Office Expenses" },
   { group: "Finance", value: "truck-health", label: "Truck Health / Expenses" },
   { group: "Finance", value: "broker-payments", label: "Broker Payments" },
+  { group: "Finance", value: "trip-payments", label: "Trip Payments" },
 ]
 
 
@@ -227,6 +259,26 @@ function isValidPaymentDate(raw: unknown): raw is string {
   const d = parseInt(match[3], 10)
   const roundTripped = new Date(Date.UTC(y, m, d)).toISOString().slice(0, 10)
   return roundTripped === pd
+}
+
+// Bucket key for MDD trips that have no destination assigned yet
+const AWAITING_LOCATION_KEY = "__awaiting_location__"
+
+// Order no (with optional child) takes priority; ATC is the fallback
+function formatTripPaymentRef(trip: Record<string, unknown> | null | undefined): string {
+  if (!trip) return "—"
+  const orderNo = trip.order_no as string | null
+  if (orderNo) {
+    const child = trip.child_order_no as string | null
+    return child ? `${orderNo} / ${child}` : orderNo
+  }
+  return (trip.ATC as string | null) || "—"
+}
+
+// MDD groups by destination, SC groups by product
+function tripPaymentGroupKey(record: TripPaymentRecord, type: TripType): string {
+  if (type === "MDD") return record.location_name || AWAITING_LOCATION_KEY
+  return record.product || "unspecified"
 }
 
 // ── Export helpers ────────────────────────────────────────────────────────
@@ -279,6 +331,12 @@ export default function Reports() {
   const [cashOfficeExpenseSummaries, setCashOfficeExpenseSummaries] = useState<CashOfficeExpenseSummary[]>([])
   const [sideTripSummaries, setSideTripSummaries] = useState<SideTripSummary[]>([])
   const [brokerPaymentsSummaries, setBrokerPaymentsSummaries] = useState<BrokerPaymentsSummary[]>([])
+  const [tripPaymentType, setTripPaymentType] = useState<TripType>("SC")
+  // The trip type the currently loaded data belongs to. Kept separate from the
+  // toggle state so labels/columns can never describe a different type than the rows.
+  const [tripPaymentDataType, setTripPaymentDataType] = useState<TripType>("SC")
+  const [tripPaymentSummaries, setTripPaymentSummaries] = useState<TripPaymentSummary[]>([])
+  const [tripPaymentRecords, setTripPaymentRecords] = useState<TripPaymentRecord[]>([])
   const [drillDown, setDrillDown] = useState<DrillDown | null>(null)
   const [drillLoading, setDrillLoading] = useState(false)
   const [reportError, setReportError] = useState<string | null>(null)
@@ -321,7 +379,7 @@ export default function Reports() {
     }
   }
 
-  async function handleGenerate() {
+  async function handleGenerate(overrideTripType?: TripType) {
     if (quickFilter === "custom") {
       if (!fromDate || !toDate) return setDateError("Select both a from and to date")
       if (new Date(fromDate) > new Date(toDate)) return setDateError("From date cannot be after to date")
@@ -343,6 +401,7 @@ export default function Reports() {
         case "truck-health": await fetchTruckReports(); break
         case "side-trips": await fetchSideTripReports(); break
         case "broker-payments": await fetchBrokerPaymentsReports(); break
+        case "trip-payments": await fetchTripPaymentReports(overrideTripType ?? tripPaymentType); break
       }
       setHasLoaded(true)
     } catch (err) {
@@ -1109,6 +1168,82 @@ export default function Reports() {
     }
   }
 
+  // ── Trip payments reports ────────────────────────────────────────────────
+  async function fetchTripPaymentReports(type: TripType) {
+    const { from, to } = getRange()
+
+    const { data: payments, error: paymentsErr } = await supabase
+      .from("trip_payments")
+      .select("id, trip_id, trip_type, plate_number, tonnage, quantity_loaded, value, sc_rate, payment_expected, actual_location, created_at, Trips(order_no, child_order_no, ATC, product, trip_status), locations(location, cost_per_ton)")
+      .eq("trip_type", type)
+      .gte("created_at", from)
+      .lte("created_at", to)
+      .order("created_at", { ascending: false })
+
+    if (paymentsErr) throw new Error(`Failed to fetch trip payments: ${paymentsErr.message}`)
+
+    const records: TripPaymentRecord[] = (payments || []).map((p) => {
+      const trip = (Array.isArray(p.Trips) ? p.Trips[0] : p.Trips) as Record<string, unknown> | null
+      const location = (Array.isArray(p.locations) ? p.locations[0] : p.locations) as { location: string; cost_per_ton: number } | null
+      // SC money is `value` (rate per bag x bags); MDD money is `payment_expected`
+      const amount = type === "SC" ? p.value : p.payment_expected
+      return {
+        id: p.id,
+        trip_id: p.trip_id,
+        plate_number: p.plate_number,
+        trip_ref: formatTripPaymentRef(trip),
+        product: (trip?.product as string) || "—",
+        tonnage: Number(p.tonnage || 0),
+        quantity_loaded: Number(p.quantity_loaded || 0),
+        sc_rate: p.sc_rate == null ? null : Number(p.sc_rate),
+        cost_per_ton: location?.cost_per_ton == null ? null : Number(location.cost_per_ton),
+        amount: amount == null ? null : Number(amount),
+        location_name: location?.location ?? null,
+        actual_location: p.actual_location ?? null,
+        trip_status: (trip?.trip_status as string) || "—",
+        date: p.created_at as string,
+      }
+    })
+
+    const groupMap: Record<string, TripPaymentSummary> = {}
+    for (const r of records) {
+      const key = tripPaymentGroupKey(r, type)
+      if (!groupMap[key]) {
+        groupMap[key] = {
+          group_key: key,
+          group_label: key === AWAITING_LOCATION_KEY ? "Awaiting location" : key,
+          trips_count: 0,
+          total_bags: 0,
+          total_tonnage: 0,
+          total_amount: 0,
+          pending_count: 0,
+        }
+      }
+      const g = groupMap[key]
+      g.trips_count++
+      g.total_bags += r.quantity_loaded
+      g.total_tonnage += r.tonnage
+      if (r.amount == null) g.pending_count++
+      else g.total_amount += r.amount
+    }
+
+    setTripPaymentRecords(records)
+    setTripPaymentDataType(type)
+    setTripPaymentSummaries(
+      Object.values(groupMap).sort((a, b) => b.total_amount - a.total_amount)
+    )
+  }
+
+  // Rows are already in memory from fetchTripPaymentReports, so this is a local filter
+  function openTripPaymentDrillDown(group: TripPaymentSummary) {
+    setDrillDown({
+      kind: "trip-payments",
+      group,
+      tripType: tripPaymentDataType,
+      records: tripPaymentRecords.filter(r => tripPaymentGroupKey(r, tripPaymentDataType) === group.group_key),
+    })
+  }
+
   // ── Export helpers ────────────────────────────────────────────────────────
   function exportDriverSummary(format: "csv" | "xlsx") {
     const rows = driverSummaries.map((d) => ({
@@ -1316,7 +1451,76 @@ export default function Reports() {
     }
   }
 
+  function exportTripPaymentsSummary(format: "csv" | "xlsx") {
+    const isMdd = tripPaymentDataType === "MDD"
+    const rows = tripPaymentSummaries.map((g) => isMdd
+      ? {
+          Location: g.group_label,
+          Trips: g.trips_count,
+          "Total Bags": g.total_bags,
+          "Total Tonnage (T)": Math.round(g.total_tonnage * 100) / 100,
+          "Payment Expected (₦)": g.total_amount,
+          "Awaiting Location": g.pending_count,
+        }
+      : {
+          Product: g.group_label,
+          Trips: g.trips_count,
+          "Total Bags": g.total_bags,
+          "Total Tonnage (T)": Math.round(g.total_tonnage * 100) / 100,
+          "Total Value (₦)": g.total_amount,
+          "Avg per Trip (₦)": g.trips_count ? Math.round((g.total_amount / g.trips_count) * 100) / 100 : 0,
+        })
+    const name = isMdd ? "mdd_trip_payments" : "sc_trip_payments"
+    const sheet = isMdd ? "MDD Trip Payments" : "SC Trip Payments"
+    if (format === "csv") downloadCSV(`${name}.csv`, rows)
+    else downloadXLSX(`${name}.xlsx`, rows, sheet)
+  }
+
+  function exportTripPaymentsDetail(format: "csv" | "xlsx") {
+    if (drillDown?.kind !== "trip-payments") return
+    const isMdd = drillDown.tripType === "MDD"
+    const rows = drillDown.records.map((r) => isMdd
+      ? {
+          Plate: r.plate_number,
+          "Order / ATC": r.trip_ref,
+          "No. of Bags": r.quantity_loaded,
+          "Tonnage (T)": r.tonnage,
+          Location: r.location_name ?? "Awaiting location",
+          "Cost per Ton (₦)": r.cost_per_ton ?? "—",
+          "Payment Expected (₦)": r.amount ?? "Awaiting location",
+          "Actual Location": r.actual_location ?? "—",
+          Status: r.trip_status,
+          Date: new Date(r.date).toLocaleDateString(),
+        }
+      : {
+          Plate: r.plate_number,
+          "Order / ATC": r.trip_ref,
+          Product: r.product,
+          "Quantity Loaded (bags)": r.quantity_loaded,
+          "Tonnage (T)": r.tonnage,
+          "Rate per Bag (₦)": r.sc_rate ?? "—",
+          "Value (₦)": r.amount ?? "—",
+          Status: r.trip_status,
+          Date: new Date(r.date).toLocaleDateString(),
+        })
+    const group = drillDown.group.group_label.replace(/[^\w\-]+/g, "_")
+    const name = `${drillDown.tripType.toLowerCase()}_${group}_trips`
+    const sheet = isMdd ? "MDD Trip Detail" : "SC Trip Detail"
+    if (format === "csv") downloadCSV(`${name}.csv`, rows)
+    else downloadXLSX(`${name}.xlsx`, rows, sheet)
+  }
+
   // ── Render ────────────────────────────────────────────────────────────────
+  const tripPaymentTotals = tripPaymentSummaries.reduce(
+    (acc, g) => ({
+      trips: acc.trips + g.trips_count,
+      bags: acc.bags + g.total_bags,
+      amount: acc.amount + g.total_amount,
+      pending: acc.pending + g.pending_count,
+    }),
+    { trips: 0, bags: 0, amount: 0, pending: 0 }
+  )
+
   return (
     <div style={{ minHeight: "100vh", background: "#f8fafc", padding: isMobile ? "16px" : "32px", fontFamily: "'Inter', sans-serif" }}>
       <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
@@ -1407,8 +1611,50 @@ export default function Reports() {
           </div>
         )}
 
+        {/* Trip type switcher — Trip Payments only, sits just above Generate */}
+        {reportType === "trip-payments" && (
+          <div style={{ marginBottom: 16 }}>
+            <label style={{ display: "block", fontSize: FONT_SIZE.xs, color: "#475569", fontWeight: 500, marginBottom: 12, textTransform: "uppercase", letterSpacing: "0.5px" }}>
+              Trip Type
+            </label>
+            <div style={{ display: "flex", background: "#f1f5f9", borderRadius: 10, padding: 4, gap: 4 }}>
+              {(["SC", "MDD"] as TripType[]).map((t) => (
+                <button
+                  key={t}
+                  onClick={() => {
+                    if (t === tripPaymentType) return
+                    setTripPaymentType(t)
+                    setDrillDown(null)
+                    // Pass the new type explicitly — state is not readable yet in this closure
+                    if (hasLoaded) handleGenerate(t)
+                    else setHasLoaded(false)
+                  }}
+                  disabled={loading}
+                  aria-pressed={tripPaymentType === t}
+                  style={{
+                    flex: 1,
+                    padding: "10px 16px",
+                    minHeight: 40,
+                    background: tripPaymentType === t ? "white" : "transparent",
+                    color: tripPaymentType === t ? "#0070f3" : "#64748b",
+                    border: tripPaymentType === t ? "1px solid #e2e8f0" : "1px solid transparent",
+                    borderRadius: 8,
+                    cursor: loading ? "not-allowed" : "pointer",
+                    fontWeight: tripPaymentType === t ? 700 : 500,
+                    fontSize: FONT_SIZE.md,
+                    opacity: loading ? 0.6 : 1,
+                    transition: "all 0.2s ease",
+                  }}
+                >
+                  {t}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
         <button
-          onClick={handleGenerate}
+          onClick={() => handleGenerate()}
           disabled={loading}
           style={{
             width: isMobile ? "100%" : "auto",
@@ -2520,6 +2766,178 @@ borderRadius: 6,
                 ]}
                 rows={drillDown.records}
                 rowKey={(row) => row.customer_id}
+              />
+            )}
+          </ReportModal>
+        </div>
+      )}
+
+      {/* Trip Payments */}
+      {!loading && hasLoaded && reportType === "trip-payments" && (
+        <div>
+          {tripPaymentSummaries.length === 0 ? (
+            <EmptyState
+              icon="💰"
+              title="No data available"
+              description={`No ${tripPaymentDataType} trip payments found in this period.`}
+            />
+          ) : (
+            <div>
+              {/* Totals strip */}
+              <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(auto-fit, minmax(180px, 1fr))", gap: 12, marginBottom: 20 }}>
+                <ReportCard>
+                  <ReportCardField label="Trips" value={tripPaymentTotals.trips.toLocaleString()} />
+                </ReportCard>
+                <ReportCard>
+                  <ReportCardField label="Bags" value={tripPaymentTotals.bags.toLocaleString()} />
+                </ReportCard>
+                <ReportCard>
+                  <ReportCardField
+                    label={tripPaymentDataType === "SC" ? "Total Value" : "Total Payment Expected"}
+                    value={`₦${tripPaymentTotals.amount.toLocaleString()}`}
+                  />
+                </ReportCard>
+                <ReportCard>
+                  <ReportCardField
+                    label={tripPaymentDataType === "SC" ? "Products" : "Awaiting Location"}
+                    value={tripPaymentDataType === "SC" ? tripPaymentSummaries.length : tripPaymentTotals.pending}
+                  />
+                </ReportCard>
+              </div>
+
+              <div style={{ display: "flex", flexDirection: isMobile ? "column" : "row", justifyContent: "space-between", alignItems: isMobile ? "flex-start" : "center", gap: 12, marginBottom: 16 }}>
+                <div>
+                  <h2 style={{ margin: 0, color: "#0f172a", fontSize: FONT_SIZE.lg, fontWeight: 600 }}>{tripPaymentDataType} Trip Payments</h2>
+                  <p style={{ margin: "4px 0 0", color: "#64748b", fontSize: FONT_SIZE.sm }}>
+                    {tripPaymentSummaries.length} {tripPaymentDataType === "SC" ? "products" : "locations"} · {tripPaymentTotals.trips} trips
+                  </p>
+                </div>
+                <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+                  <div style={{ display: "flex", background: "white", border: "1px solid #e2e8f0", borderRadius: 8, padding: 4, gap: 0 }}>
+                    <button onClick={() => setViewMode("card")} aria-label="Show card view" aria-pressed={viewMode === "card"} style={{ padding: "8px 12px", background: viewMode === "card" ? "#0070f3" : "transparent", color: viewMode === "card" ? "white" : "#64748b", border: "none", borderRadius: 6, cursor: "pointer", fontSize: FONT_SIZE.xs, fontWeight: 600, minWidth: 44, height: 40, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M3 3h8v8H3V3zm10 0h8v8h-8V3zM3 13h8v8H3v-8zm10 0h8v8h-8v-8z" /></svg>
+                    </button>
+                    <button onClick={() => setViewMode("table")} aria-label="Show table view" aria-pressed={viewMode === "table"} style={{ padding: "8px 12px", background: viewMode === "table" ? "#0070f3" : "transparent", color: viewMode === "table" ? "white" : "#64748b", border: "none", borderRadius: 6, cursor: "pointer", fontSize: FONT_SIZE.xs, fontWeight: 600, minWidth: 44, height: 40, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M3 4h18v2H3V4zm0 7h18v2H3v-2zm0 7h18v2H3v-2z" /></svg>
+                    </button>
+                  </div>
+                  <ExportActions onExportCSV={() => exportTripPaymentsSummary("csv")} onExportXLSX={() => exportTripPaymentsSummary("xlsx")} />
+                </div>
+              </div>
+
+              {viewMode === "card" ? (
+                <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(auto-fill, minmax(320px, 1fr))", gap: 12 }}>
+                  {tripPaymentSummaries.map((g) => (
+                    <ReportCard key={g.group_key}>
+                      <div>
+                        <div style={{ marginBottom: 12, display: "flex", alignItems: "center", gap: 8 }}>
+                          <h3 style={{ margin: 0, color: "#0f172a", fontSize: FONT_SIZE.lg, fontWeight: 600 }}>{g.group_label}</h3>
+                          {g.group_key === AWAITING_LOCATION_KEY && (
+                            <span style={{ padding: "3px 10px", borderRadius: 999, background: "#fffbeb", color: "#b45309", fontSize: FONT_SIZE.xs, fontWeight: 700, whiteSpace: "nowrap" }}>Needs attention</span>
+                          )}
+                        </div>
+                        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, padding: "12px 0", borderTop: "1px solid #f1f5f9", borderBottom: "1px solid #f1f5f9" }}>
+                          <ReportCardField label="Trips" value={g.trips_count} />
+                          <ReportCardField label="Bags" value={g.total_bags} />
+                          <ReportCardField label="Tonnage" value={`${g.total_tonnage.toLocaleString()} T`} />
+                          <ReportCardField label={tripPaymentDataType === "SC" ? "Total Value" : "Payment Expected"} value={`₦${g.total_amount.toLocaleString()}`} />
+                          {tripPaymentDataType === "MDD" && (
+                            <ReportCardField label="Awaiting Location" value={g.pending_count} />
+                          )}
+                        </div>
+                        <button
+                          onClick={() => openTripPaymentDrillDown(g)}
+                          style={{ width: "100%", marginTop: 12, padding: "10px 14px", background: "#0070f3", color: "white", border: "none", borderRadius: 8, cursor: "pointer", fontWeight: 600, fontSize: FONT_SIZE.md, minHeight: 40, display: "flex", alignItems: "center", justifyContent: "center" }}
+                          onMouseEnter={(e) => (e.currentTarget.style.background = "#0057c7")}
+                          onMouseLeave={(e) => (e.currentTarget.style.background = "#0070f3")}
+                        >
+                          View Trips
+                        </button>
+                      </div>
+                    </ReportCard>
+                  ))}
+                </div>
+              ) : (
+                <DataTable
+                  columns={[
+                    { key: "group_label", label: tripPaymentDataType === "SC" ? "Product" : "Location" },
+                    { key: "trips_count", label: "Trips" },
+                    { key: "total_bags", label: "Bags" },
+                    { key: "total_tonnage", label: "Tonnage", render: (value) => `${(value as number).toLocaleString()} T` },
+                    { key: "total_amount", label: tripPaymentDataType === "SC" ? "Total Value" : "Payment Expected", render: (value) => `₦${(value as number).toLocaleString()}` },
+                    ...(tripPaymentDataType === "MDD"
+                      ? [{
+                          key: "pending_count",
+                          label: "Awaiting",
+                          render: (value: unknown) => (value as number) > 0
+                            ? <span style={{ color: "#b45309", fontWeight: 700 }}>{value as number}</span>
+                            : "—",
+                        }]
+                      : []),
+                    {
+                      key: "actions",
+                      label: "Actions",
+                      render: (_value, group: TripPaymentSummary) => (
+                        <button
+                          onClick={() => openTripPaymentDrillDown(group)}
+                          style={{ padding: "6px 10px", background: "white", color: "#0070f3", border: "1px solid #e2e8f0", borderRadius: 6, cursor: "pointer", fontWeight: 500, fontSize: FONT_SIZE.xs, display: "flex", alignItems: "center", gap: 6 }}
+                          onMouseEnter={(e) => (e.currentTarget.style.background = "#eff6ff")}
+                          onMouseLeave={(e) => (e.currentTarget.style.background = "white")}
+                        >
+                          View Details
+                        </button>
+                      ),
+                    },
+                  ]}
+                  rows={tripPaymentSummaries}
+                  rowKey={(row) => row.group_key}
+                />
+              )}
+            </div>
+          )}
+
+          <ReportModal
+            isOpen={drillDown?.kind === "trip-payments"}
+            onClose={() => setDrillDown(null)}
+            title={drillDown?.kind === "trip-payments" ? `${drillDown.group.group_label} — ${drillDown.tripType} Trips` : ""}
+            subtitle={drillDown?.kind === "trip-payments" ? `${drillDown.records.length} trips in period` : ""}
+            isMobile={isMobile}
+            actions={
+              drillDown?.kind === "trip-payments" ? (
+                <ExportActions onExportCSV={() => exportTripPaymentsDetail("csv")} onExportXLSX={() => exportTripPaymentsDetail("xlsx")} />
+              ) : null
+            }
+          >
+            {drillDown?.kind === "trip-payments" && (
+              <DataTable
+                columns={drillDown.tripType === "SC" ? [
+                  { key: "plate_number", label: "Plate" },
+                  { key: "trip_ref", label: "Order / ATC" },
+                  { key: "quantity_loaded", label: "Bags" },
+                  { key: "tonnage", label: "Tonnage", render: (value) => `${(value as number).toLocaleString()} T` },
+                  { key: "sc_rate", label: "Rate/Bag", render: (value) => value == null ? "—" : `₦${(value as number).toLocaleString()}` },
+                  { key: "amount", label: "Value", render: (value) => value == null ? "—" : `₦${(value as number).toLocaleString()}` },
+                  { key: "trip_status", label: "Status" },
+                  { key: "date", label: "Date", render: (value) => new Date(value as string).toLocaleDateString() },
+                ] : [
+                  { key: "plate_number", label: "Plate" },
+                  { key: "trip_ref", label: "Order / ATC" },
+                  { key: "quantity_loaded", label: "Bags" },
+                  { key: "tonnage", label: "Tonnage", render: (value) => `${(value as number).toLocaleString()} T` },
+                  { key: "cost_per_ton", label: "Cost/Ton", render: (value) => value == null ? "—" : `₦${(value as number).toLocaleString()}` },
+                  {
+                    key: "amount",
+                    label: "Payment Expected",
+                    render: (value) => value == null
+                      ? <span style={{ padding: "4px 10px", borderRadius: 999, background: "#fffbeb", color: "#b45309", fontSize: FONT_SIZE.xs, fontWeight: 700, whiteSpace: "nowrap" }}>Awaiting location</span>
+                      : `₦${(value as number).toLocaleString()}`,
+                  },
+                  { key: "actual_location", label: "Actual Location", render: (value) => (value as string) || "—" },
+                  { key: "trip_status", label: "Status" },
+                  { key: "date", label: "Date", render: (value) => new Date(value as string).toLocaleDateString() },
+                ]}
+                rows={drillDown.records}
+                rowKey={(row) => row.id}
               />
             )}
           </ReportModal>
