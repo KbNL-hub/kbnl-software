@@ -126,6 +126,7 @@ export default function DriverDashboard() {
   const [loading, setLoading] = useState(true)
   const [submitting, setSubmitting] = useState(false)
   const [message, setMessage] = useState("")
+  const [fuelFeedback, setFuelFeedback] = useState("")
 
   // ATF
   const [loadMoreEntries, setLoadMoreEntries] = useState<LoadMoreEntry[]>([])
@@ -457,7 +458,8 @@ export default function DriverDashboard() {
       return
     }
     setConfirmingATF(true)
-    await apiMutate("fuel", {
+    setRateError("")
+    const { data, error } = await apiMutate("fuel", {
       action: "rpc",
       function: "confirm_fuel_receipt",
       params: {
@@ -467,9 +469,19 @@ export default function DriverDashboard() {
       },
     })
     setConfirmingATF(false)
+
+    if (error) { setRateError(error); return }
+
+    const result = data as { success?: boolean; error?: string } | null
+    if (result && result.success === false) {
+      setRateError(result.error || "Could not confirm the fuel receipt")
+      return
+    }
+
     setShowRateModal(false)
     setRatePerLitre("")
     setRateError("")
+    setFuelFeedback("Fuel receipt confirmed. The cost has been charged to the Haulage fund.")
     refetchATFs()
   }
 
@@ -1080,6 +1092,12 @@ export default function DriverDashboard() {
             <p style={{ margin: "0 0 24px", fontSize: FONT_SIZE.sm, color: "#64748b" }}>
               Your Truck Officer initiates fuel requests on your behalf.
             </p>
+            {fuelFeedback && (
+              <div style={{ padding: 12, background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: 8, marginBottom: 16, color: "#166534", fontSize: FONT_SIZE.sm, fontWeight: 600 }}>
+                <Icon icon="mdi:check-circle" width={16} style={{ verticalAlign: "middle", marginRight: 8 }} />
+                {fuelFeedback}
+              </div>
+            )}
 
             {/* Active ATF */}
             {activeATF && (() => {
@@ -1905,6 +1923,10 @@ export default function DriverDashboard() {
                 </p>
               </div>
             </div>
+
+            <p style={{ margin: "0 0 16px", padding: "10px 12px", background: "#fffbeb", border: "1px solid #fde68a", borderRadius: 8, fontSize: FONT_SIZE.xs, color: "#92400e", lineHeight: 1.5 }}>
+              Enter how much 1 litre was sold for below.
+            </p>
 
             <div style={{ marginBottom: 16 }}>
               <label style={labelStyle}>Rate per litre (₦) *</label>

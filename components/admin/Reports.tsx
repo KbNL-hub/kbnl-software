@@ -9,7 +9,7 @@ import { ExportActions } from "./ExportActions"
 import { EmptyState } from "./EmptyState"
 import { LoadingState } from "./LoadingState"
 import { ReportModal } from "./ReportModal"
-import { ReportCard, ReportCardField, ReportCardSection } from "./ReportCard"
+import { ReportCard, ReportCardField } from "./ReportCard"
 import { QuickFilterPills } from "./QuickFilterPills"
 import { DateRangeSelector } from "./DateRangeSelector"
 
@@ -127,6 +127,29 @@ type CashOfficeExpenseSummary = {
   total_amount: number
 }
 
+// The Haulage fund is the company's truck money. Unlike the per-truck tables,
+// bulk procurement cannot be attributed to a truck, so the fund is reported at
+// company level, broken down by what the money was spent on.
+type HaulageCategory = "ATF" | "Maintenance" | "Procurement"
+
+type HaulageFundSummary = {
+  category: HaulageCategory
+  label: string
+  entries_count: number
+  total_amount: number
+}
+
+type HaulageFundTotals = {
+  categories: HaulageFundSummary[]
+  total_in: number
+  total_out: number
+  net: number
+  opening_balance: number
+  closing_balance: number
+  live_balance: number
+  current_threshold: number
+}
+
 type SideTripSummary = {
   driver_id: string
   driver_name: string
@@ -198,6 +221,7 @@ type ReportType =
   | "product-volume"
   | "factory-loading"
   | "cash-expenses"
+  | "haulage-fund"
   | "truck-health"
   | "side-trips"
   | "broker-payments"
@@ -219,6 +243,7 @@ const REPORT_OPTIONS: { group: string; value: ReportType; label: string }[] = [
   { group: "Operations", value: "factory-loading", label: "Factory Loading Summary" },
   { group: "Operations", value: "side-trips", label: "Side Trips by Driver" },
   { group: "Finance", value: "cash-expenses", label: "Cash Office Expenses" },
+  { group: "Finance", value: "haulage-fund", label: "Haulage Fund (Fuel, Maintenance, Procurement)" },
   { group: "Finance", value: "truck-health", label: "Truck Health / Expenses" },
   { group: "Finance", value: "broker-payments", label: "Broker Payments" },
   { group: "Finance", value: "trip-payments", label: "Trip Payments" },
@@ -329,6 +354,7 @@ export default function Reports() {
   const [productVolumeSummaries, setProductVolumeSummaries] = useState<ProductVolumeSummary[]>([])
   const [factoryLoadingSummaries, setFactoryLoadingSummaries] = useState<FactoryLoadingSummary[]>([])
   const [cashOfficeExpenseSummaries, setCashOfficeExpenseSummaries] = useState<CashOfficeExpenseSummary[]>([])
+  const [haulageFund, setHaulageFund] = useState<HaulageFundTotals | null>(null)
   const [sideTripSummaries, setSideTripSummaries] = useState<SideTripSummary[]>([])
   const [brokerPaymentsSummaries, setBrokerPaymentsSummaries] = useState<BrokerPaymentsSummary[]>([])
   const [tripPaymentType, setTripPaymentType] = useState<TripType>("SC")
@@ -398,6 +424,7 @@ export default function Reports() {
         case "product-volume": await fetchProductVolumeReports(); break
         case "factory-loading": await fetchFactoryLoadingReports(); break
         case "cash-expenses": await fetchCashExpenseReports(); break
+        case "haulage-fund": await fetchHaulageFundReport(); break
         case "truck-health": await fetchTruckReports(); break
         case "side-trips": await fetchSideTripReports(); break
         case "broker-payments": await fetchBrokerPaymentsReports(); break
@@ -1017,6 +1044,94 @@ export default function Reports() {
     setCashOfficeExpenseSummaries(summaries)
   }
 
+  // ── Haulage fund ─────────────────────────────────────────────────────────
+  // Reads the whole ledger, not just the selected period, so the opening and
+  // closing balances reconcile against the live fund balance.
+  async function fetchHaulageFundReport() {
+    const { from, to } = getRange()
+
+    const [all, balanceRes] = await Promise.all([
+      (async () => {
+        const pageSize = 1000
+        const entries: { entry_type: string; direction: string; amount: number; created_at: string }[] = []
+        for (let offset = 0; ; offset += pageSize) {
+          const { data, error } = await supabase
+            .from("haulage_transactions")
+            .select("entry_type, direction, amount, created_at")
+            .order("created_at", { ascending: true })
+            .range(offset, offset + pageSize - 1)
+          if (error) throw new Error(`Failed to fetch Haulage transactions: ${error.message}`)
+          const page = data ?? []
+          entries.push(...page)
+          if (page.length < pageSize) return entries
+        }
+      })(),
+      supabase
+        .from("maintenance_balance")
+        .select("current_balance, low_balance_threshold")
+        .eq("id", 1)
+        .single(),
+    ])
+
+    if (balanceRes.error) {
+      throw new Error(`Failed to fetch Haulage balance: ${balanceRes.error.message}`)
+    }
+
+    const liveBalance = Number(balanceRes.data?.current_balance ?? 0)
+    const fromTimestamp = new Date(from).getTime()
+    const toTimestamp = new Date(to).getTime()
+
+    // Everything after the period is what turns the closing balance back into
+    // today's live balance, so the opening balance is the live balance minus it.
+    const after = all.filter((e) => new Date(e.created_at).getTime() > toTimestamp)
+    const afterNet = after.reduce((sum, e) => sum + (e.direction === "debit" ? -1 : 1) * Number(e.amount || 0), 0)
+
+    const inRange = all.filter((e) => {
+      const createdAt = new Date(e.created_at).getTime()
+      return createdAt >= fromTimestamp && createdAt <= toTimestamp
+    })
+
+    let totalIn = 0
+    let totalOut = 0
+    const byCategory = new Map<HaulageCategory, { entries_count: number; total_amount: number }>()
+    for (const e of inRange) {
+      const amount = Number(e.amount || 0)
+      if (e.direction === "credit") {
+        totalIn += amount
+        continue
+      }
+      totalOut += amount
+      if (e.entry_type === "ATF" || e.entry_type === "Maintenance" || e.entry_type === "Procurement") {
+        const c = byCategory.get(e.entry_type) ?? { entries_count: 0, total_amount: 0 }
+        c.entries_count++
+        c.total_amount += amount
+        byCategory.set(e.entry_type, c)
+      }
+    }
+
+    const categories: HaulageFundSummary[] = (["ATF", "Maintenance", "Procurement"] as HaulageCategory[]).map(
+      category => ({
+        category,
+        label: { ATF: "Fuel (ATF)", Maintenance: "Maintenance", Procurement: "Bulk Procurement" }[category],
+        ...(byCategory.get(category) ?? { entries_count: 0, total_amount: 0 }),
+      })
+    )
+
+    const openingBalance = liveBalance - afterNet
+    const closingBalance = openingBalance + totalIn - totalOut
+
+    setHaulageFund({
+      categories,
+      total_in: totalIn,
+      total_out: totalOut,
+      net: totalIn - totalOut,
+      opening_balance: openingBalance,
+      closing_balance: closingBalance,
+      live_balance: liveBalance,
+      current_threshold: Number(balanceRes.data?.low_balance_threshold ?? 0),
+    })
+  }
+
   // ── Side trips by driver (#9) ────────────────────────────────────────────
   async function fetchSideTripReports() {
     const { from, to } = getRange()
@@ -1411,6 +1526,26 @@ export default function Reports() {
     }))
     if (format === "csv") downloadCSV("cash_office_expenses.csv", rows)
     else downloadXLSX("cash_office_expenses.xlsx", rows, "Cash Office Expenses")
+  }
+
+  function exportHaulageFund(format: "csv" | "xlsx") {
+    if (!haulageFund) return
+    const rows = [
+      ...haulageFund.categories.map((c) => ({
+        Section: "Spend by category",
+        Item: c.label,
+        Entries: c.entries_count,
+        "Amount (₦)": c.total_amount,
+      })),
+      { Section: "Period summary", Item: "Total in (top-ups / deposits)", Entries: "", "Amount (₦)": haulageFund.total_in },
+      { Section: "Period summary", Item: "Total out (fund spend)", Entries: "", "Amount (₦)": haulageFund.total_out },
+      { Section: "Period summary", Item: "Net", Entries: "", "Amount (₦)": haulageFund.net },
+      { Section: "Reconciliation", Item: "Opening balance", Entries: "", "Amount (₦)": haulageFund.opening_balance },
+      { Section: "Reconciliation", Item: "Closing balance", Entries: "", "Amount (₦)": haulageFund.closing_balance },
+      { Section: "Reconciliation", Item: "Live fund balance", Entries: "", "Amount (₦)": haulageFund.live_balance },
+    ]
+    if (format === "csv") downloadCSV("haulage_fund.csv", rows)
+    else downloadXLSX("haulage_fund.xlsx", rows, "Haulage Fund")
   }
 
   function exportSideTrips(format: "csv" | "xlsx") {
@@ -2613,6 +2748,88 @@ borderRadius: 6,
                 rows={cashOfficeExpenseSummaries}
                 rowKey={(row) => row.office_name}
               />
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Haulage Fund */}
+      {!loading && hasLoaded && reportType === "haulage-fund" && (
+        <div>
+          {!haulageFund ? (
+            <EmptyState icon="🚛" title="No data available" description="No Haulage fund data found." />
+          ) : (
+            <div>
+              <div style={{ display: "flex", flexDirection: isMobile ? "column" : "row", justifyContent: "space-between", alignItems: isMobile ? "flex-start" : "center", gap: 12, marginBottom: 16 }}>
+                <div>
+                  <h2 style={{ margin: 0, color: "#0f172a", fontSize: FONT_SIZE.lg, fontWeight: 600 }}>Haulage Fund</h2>
+                  <p style={{ margin: "4px 0 0", color: "#64748b", fontSize: FONT_SIZE.sm }}>
+                    The company fund covering fuel, maintenance and bulk procurement
+                  </p>
+                </div>
+                <ExportActions onExportCSV={() => exportHaulageFund("csv")} onExportXLSX={() => exportHaulageFund("xlsx")} />
+              </div>
+
+              {/* Period movement */}
+              <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(3, 1fr)", gap: 12, marginBottom: 24 }}>
+                {[
+                  { label: "Total in", value: haulageFund.total_in, color: "#16a34a" },
+                  { label: "Total out", value: haulageFund.total_out, color: "#dc2626" },
+                  { label: "Net movement", value: haulageFund.net, color: haulageFund.net >= 0 ? "#16a34a" : "#dc2626" },
+                ].map(card => (
+                  <div key={card.label} style={{ background: "white", border: "1px solid #e2e8f0", borderRadius: 12, padding: 16 }}>
+                    <p style={{ margin: 0, fontSize: FONT_SIZE.xs, color: "#94a3b8", textTransform: "uppercase", letterSpacing: 0.5, fontWeight: 700 }}>{card.label}</p>
+                    <p style={{ margin: "6px 0 0", fontSize: FONT_SIZE["2xl"], fontWeight: 800, color: card.value < 0 ? "#dc2626" : card.color, letterSpacing: "-0.5px" }}>
+                      ₦{card.value.toLocaleString()}
+                    </p>
+                  </div>
+                ))}
+              </div>
+
+              <h3 style={{ margin: "0 0 12px", color: "#0f172a", fontSize: FONT_SIZE.base, fontWeight: 700 }}>Spend by category</h3>
+              <DataTable
+                columns={[
+                  { key: "label", label: "Category" },
+                  { key: "entries_count", label: "Entries" },
+                  { key: "total_amount", label: "Total Amount", render: (value) => `₦${(value as number).toLocaleString()}` },
+                ]}
+                rows={haulageFund.categories}
+                rowKey={(row) => row.category}
+              />
+
+              {/* Reconciliation */}
+              <h3 style={{ margin: "24px 0 12px", color: "#0f172a", fontSize: FONT_SIZE.base, fontWeight: 700 }}>Balance reconciliation</h3>
+              <div style={{ background: "white", border: "1px solid #e2e8f0", borderRadius: 12, overflow: "hidden" }}>
+                {[
+                  { label: "Opening balance (start of period)", value: haulageFund.opening_balance, strong: false },
+                  { label: "Total in", value: haulageFund.total_in, strong: false },
+                  { label: "Total out", value: -haulageFund.total_out, strong: false },
+                  { label: "Closing balance (end of period)", value: haulageFund.closing_balance, strong: true },
+                  { label: "Live fund balance now", value: haulageFund.live_balance, strong: true },
+                ].map((row, i) => (
+                  <div key={row.label} style={{
+                    display: "flex", justifyContent: "space-between", gap: 12,
+                    padding: "12px 16px",
+                    borderTop: i === 0 ? "none" : "1px solid #f1f5f9",
+                    background: row.strong ? "#f8fafc" : "white",
+                    fontWeight: row.strong ? 700 : 400,
+                    fontSize: row.strong ? FONT_SIZE.base : FONT_SIZE.sm,
+                    color: row.value < 0 ? "#dc2626" : "#0f172a",
+                  }}>
+                    <span style={{ color: row.value < 0 ? "#dc2626" : row.strong ? "#0f172a" : "#64748b" }}>{row.label}</span>
+                    <span>₦{row.value.toLocaleString()}</span>
+                  </div>
+                ))}
+              </div>
+
+              {haulageFund.live_balance < 0 && (
+                <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 12, padding: 12, background: "#fef2f2", border: "1px solid #fecaca", borderRadius: 8 }}>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#dc2626" strokeWidth="2"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+                  <span style={{ fontSize: FONT_SIZE.xs, color: "#b91c1c", fontWeight: 600 }}>
+                    The fund is overdrawn. Top it up from Transactions &rarr; Haulage.
+                  </span>
+                </div>
+              )}
             </div>
           )}
         </div>

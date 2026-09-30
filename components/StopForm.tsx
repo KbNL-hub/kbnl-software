@@ -13,7 +13,10 @@ type Props = { tripId: string; loadedQuantity?: number; offloadedSoFar?: number;
 
 export default function StopForm({ tripId, loadedQuantity: initialLoaded = 0, offloadedSoFar: initialOffloaded = 0, onStopLogged }: Props) {
   const { submitAction } = useOfflineTripAction()
-  const [loadedQuantity, setLoadedQuantity] = useState(initialLoaded)
+  // Only holds the value read from the trip. When the parent supplies
+  // loadedQuantity it is authoritative and this stays null, so there is no
+  // need to mirror the prop into state.
+  const [tripLoadedQuantity, setTripLoadedQuantity] = useState<number | null>(null)
   const [offloadedSoFar, setOffloadedSoFar] = useState(initialOffloaded)
   const [stopType, setStopType] = useState<"customer" | "store">("customer")
 
@@ -33,6 +36,7 @@ export default function StopForm({ tripId, loadedQuantity: initialLoaded = 0, of
   const [message, setMessage] = useState("")
   const [submitting, setSubmitting] = useState(false)
 
+  const loadedQuantity = initialLoaded > 0 ? initialLoaded : (tripLoadedQuantity ?? 0)
   const remaining = loadedQuantity - offloadedSoFar
   const parsedQty = Number(quantityOffloaded)
   const inputQty = Number.isFinite(parsedQty) ? parsedQty : 0
@@ -45,7 +49,7 @@ export default function StopForm({ tripId, loadedQuantity: initialLoaded = 0, of
       const { data: tripData } = await supabase
         .from("Trips").select("loaded_quantity").eq("trip_id", tripId).single()
       if (!tripData || cancelled) return
-      setLoadedQuantity(tripData.loaded_quantity)
+      setTripLoadedQuantity(tripData.loaded_quantity)
 
       const { data: stopsData, error: stopsErr } = await supabase
         .from("Stops").select("quantity_offloaded").eq("trip_id", tripId)
@@ -75,10 +79,9 @@ export default function StopForm({ tripId, loadedQuantity: initialLoaded = 0, of
       setOffloadedSoFar(totalOffloaded + totalShortage + totalCaked)
     }
 
-    // Always set loadedQuantity from props if provided
+    // The parent already told us the loaded quantity, so only the offloaded
+    // total needs re-reading from the DB to prevent stale state.
     if (initialLoaded > 0) {
-      setLoadedQuantity(initialLoaded)
-      // But always re-fetch offloadedSoFar from DB to prevent stale state
       fetchOffloadedOnly()
       return () => { cancelled = true }
     }

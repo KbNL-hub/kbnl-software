@@ -14,6 +14,7 @@ type MaintenanceReport = {
   status: "Pending" | "Validated" | "Rejected"
   rejection_reason: string | null
   reported_at: string
+  validated_at: string | null
 }
 
 type BulkProcurement = {
@@ -25,13 +26,22 @@ type BulkProcurement = {
   distributions: { plate_number: string; amount_allocated: number }[]
 }
 
+type HaulageEntry = {
+  entry_id: string
+  entry_type: "TopUp" | "Deposit" | "ATF" | "Maintenance" | "Procurement"
+  direction: "credit" | "debit"
+  amount: number
+  description: string | null
+  source_id: string | null
+  created_at: string
+}
+
 type FeedItem =
   | { kind: "report"; data: MaintenanceReport; date: string }
   | { kind: "procurement"; data: BulkProcurement; date: string }
 
 type Props = {
-  reports: MaintenanceReport[]
-  procurements: BulkProcurement[]
+  haulageEntries: HaulageEntry[]
   balanceMap: Record<string, number>
   filter: string
   setFilter: (v: string) => void
@@ -48,7 +58,15 @@ type Props = {
   PAGE_SIZE: number
 }
 
-const maintenanceFilters = ["All", "Pending", "Validated", "Rejected", "Bulk Procurement"]
+const maintenanceFilters = ["All", "Pending", "Validated", "Rejected", "Bulk Procurement", "Fund Activity"]
+
+const ENTRY_LABELS: Record<HaulageEntry["entry_type"], string> = {
+  TopUp: "Top-up",
+  Deposit: "Deposit",
+  ATF: "Fuel (ATF)",
+  Maintenance: "Maintenance",
+  Procurement: "Procurement",
+}
 
 const filterColor = (filter: string, activeFilter: string) => {
   if (filter === "All") return { bg: activeFilter === "All" ? "rgba(0, 112, 243, 0.1)" : "white", color: activeFilter === "All" ? "#0070f3" : "#64748b", border: activeFilter === "All" ? "#0070f3" : "#e2e8f0" }
@@ -56,6 +74,7 @@ const filterColor = (filter: string, activeFilter: string) => {
   if (filter === "Validated") return { bg: activeFilter === "Validated" ? "rgba(22, 163, 74, 0.1)" : "white", color: activeFilter === "Validated" ? "#16a34a" : "#64748b", border: activeFilter === "Validated" ? "#16a34a" : "#e2e8f0" }
   if (filter === "Rejected") return { bg: activeFilter === "Rejected" ? "rgba(239, 68, 68, 0.1)" : "white", color: activeFilter === "Rejected" ? "#ef4444" : "#64748b", border: activeFilter === "Rejected" ? "#ef4444" : "#e2e8f0" }
   if (filter === "Bulk Procurement") return { bg: activeFilter === "Bulk Procurement" ? "rgba(124, 58, 237, 0.1)" : "white", color: activeFilter === "Bulk Procurement" ? "#7c3aed" : "#64748b", border: activeFilter === "Bulk Procurement" ? "#7c3aed" : "#e2e8f0" }
+  if (filter === "Fund Activity") return { bg: activeFilter === "Fund Activity" ? "rgba(180, 83, 9, 0.1)" : "white", color: activeFilter === "Fund Activity" ? "#b45309" : "#64748b", border: activeFilter === "Fund Activity" ? "#b45309" : "#e2e8f0" }
   return { bg: "white", color: "#64748b", border: "#e2e8f0" }
 }
 
@@ -69,11 +88,14 @@ const statusColor = (status: string) => {
 }
 
 export default function MaintenanceSection({
+  haulageEntries,
   balanceMap, filter, setFilter,
   setFeedPage, filteredFeed, filteredFeedAll,
   feedTotalPages, safeFeedPage, lastUpdated, onRefresh,
   onValidate, onReject, PAGE_SIZE,
 }: Props) {
+  const showFundActivity = filter === "Fund Activity"
+
   return (
     <div>
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 16, alignItems: "center" }}>
@@ -92,6 +114,59 @@ export default function MaintenanceSection({
         </button>
       </div>
 
+      {showFundActivity ? (
+        haulageEntries.length === 0 ? (
+          <p style={{ color: "#64748b", fontSize: FONT_SIZE.base }}>No Haulage fund activity yet.</p>
+        ) : (
+          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+            {haulageEntries.map(e => {
+              const isCredit = e.direction === "credit"
+              const after = balanceMap[e.entry_id]
+              const negative = after !== undefined && after < 0
+              return (
+                <div key={e.entry_id} className="card-hover" style={{
+                  background: "white",
+                  border: `1px solid ${isCredit ? "#bbf7d0" : "#e2e8f0"}`,
+                  borderRadius: 12, padding: 16, boxShadow: "0 1px 3px rgba(0,0,0,0.05)", transition: "all 0.2s"
+                }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, flexWrap: "wrap" }}>
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                        <span style={{ fontWeight: 700, fontSize: FONT_SIZE.base, color: "#0f172a" }}>{ENTRY_LABELS[e.entry_type]}</span>
+                        <span style={{
+                          padding: "2px 8px", borderRadius: 12, fontSize: 10, fontWeight: 700,
+                          background: isCredit ? "#f0fdf4" : "#fef2f2",
+                          color: isCredit ? "#16a34a" : "#dc2626",
+                          border: `1px solid ${isCredit ? "#bbf7d0" : "#fecaca"}`
+                        }}>{isCredit ? "Credit" : "Debit"}</span>
+                      </div>
+                      {e.description && <p style={{ margin: "6px 0 0", fontSize: FONT_SIZE.sm, color: "#64748b" }}>{e.description}</p>}
+                      <p style={{ margin: "6px 0 0", fontSize: FONT_SIZE.xs, color: "#94a3b8" }}>{formatDateTime(e.created_at)}</p>
+                    </div>
+                    <div style={{ textAlign: "right" }}>
+                      <p style={{ margin: 0, fontWeight: 700, fontSize: FONT_SIZE.lg, color: isCredit ? "#16a34a" : "#dc2626" }}>
+                        {isCredit ? "+" : "−"}₦{e.amount.toLocaleString()}
+                      </p>
+                      {after !== undefined && (
+                        <span style={{
+                          marginTop: 4, fontSize: FONT_SIZE.xs, fontWeight: 600, display: "inline-block",
+                          color: negative ? "#b91c1c" : "#64748b",
+                          background: negative ? "#fee2e2" : "#f8fafc",
+                          border: `1px solid ${negative ? "#fecaca" : "#e2e8f0"}`,
+                          padding: "2px 8px", borderRadius: 4
+                        }}>
+                          Balance after: ₦{after.toLocaleString()}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        )
+      ) : (
+        <>
       {filteredFeed.length === 0 && <p style={{ color: "#64748b", fontSize: FONT_SIZE.base }}>No entries.</p>}
       {filteredFeedAll.length > PAGE_SIZE && (
         <div style={{ display: "flex", justifyContent: "center", gap: 8, marginBottom: 16 }}>
@@ -121,7 +196,7 @@ export default function MaintenanceSection({
                   <p style={{ margin: 0, fontSize: FONT_SIZE.xs, color: "#94a3b8" }}>Total Amount</p>
                   <p style={{ margin: "2px 0 0", fontWeight: 700, color: "#0070f3", fontSize: FONT_SIZE.base }}>₦{p.total_amount.toLocaleString()}</p>
                   {balanceMap[p.procurement_id] !== undefined && (
-                    <span style={{ marginTop: 4, fontSize: FONT_SIZE.xs, fontWeight: 600, color: "#16a34a", background: "#f0fdf4", padding: "2px 8px", borderRadius: 4, display: "inline-block" }}>
+                    <span style={{ marginTop: 4, fontSize: FONT_SIZE.xs, fontWeight: 600, color: balanceMap[p.procurement_id] < 0 ? "#b91c1c" : "#16a34a", background: balanceMap[p.procurement_id] < 0 ? "#fee2e2" : "#f0fdf4", padding: "2px 8px", borderRadius: 4, display: "inline-block" }}>
                       Balance after: ₦{balanceMap[p.procurement_id].toLocaleString()}
                     </span>
                   )}
@@ -147,7 +222,7 @@ export default function MaintenanceSection({
                 <p style={{ margin: 0, fontSize: FONT_SIZE.xs, color: "#94a3b8" }}>Amount</p>
                 <p style={{ margin: "2px 0 0", fontWeight: 700, color: "#0070f3", fontSize: FONT_SIZE.base }}>₦{r.amount.toLocaleString()}</p>
                 {r.status === "Validated" && balanceMap[r.report_id] !== undefined && (
-                  <span style={{ marginTop: 4, fontSize: FONT_SIZE.xs, fontWeight: 600, color: "#16a34a", background: "#f0fdf4", padding: "2px 8px", borderRadius: 4, display: "inline-block" }}>
+                  <span style={{ marginTop: 4, fontSize: FONT_SIZE.xs, fontWeight: 600, color: balanceMap[r.report_id] < 0 ? "#b91c1c" : "#16a34a", background: balanceMap[r.report_id] < 0 ? "#fee2e2" : "#f0fdf4", padding: "2px 8px", borderRadius: 4, display: "inline-block" }}>
                     Balance after: ₦{balanceMap[r.report_id].toLocaleString()}
                   </span>
                 )}
@@ -173,6 +248,8 @@ export default function MaintenanceSection({
           )
         })}
       </div>
+        </>
+      )}
     </div>
   )
 }

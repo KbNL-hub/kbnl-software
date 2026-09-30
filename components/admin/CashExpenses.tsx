@@ -52,7 +52,42 @@ type ExpenseItem = {
   amount: number
 }
 
-const OFFICES = ["Calabar", "Ikom", "Ogoja", "Uyo", "Haulage"]
+type HaulageEntryType = "TopUp" | "Deposit" | "ATF" | "Maintenance" | "Procurement"
+
+type HaulageEntry = {
+  entry_id: string
+  entry_type: HaulageEntryType
+  direction: "credit" | "debit"
+  amount: number
+  description: string | null
+  source_id: string | null
+  created_by: string | null
+  created_at: string
+}
+
+const OFFICES = ["Calabar", "Ikom", "Ogoja", "Uyo"]
+const HAULAGE = "Haulage"
+const TABS = [...OFFICES, HAULAGE]
+
+// Haulage is a fund, not an office. Its records are already authorised by the
+// Truck Admin when the underlying maintenance / procurement / ATF is actioned,
+// so the tab is a read-only transaction history.
+const HAULAGE_FILTERS = ["All", "Top-ups", "ATF", "Maintenance", "Procurement"] as const
+const OFFICE_FILTERS = ["All", "Pending", "Authorised", "Rejected", "Top-ups"] as const
+
+const HAULAGE_TYPE_META: Record<HaulageEntryType, { label: string; icon: string; debit: string }> = {
+  TopUp: { label: "Balance Top-up", icon: "M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6", debit: "#4f46e5" },
+  Deposit: { label: "Fund Deposit", icon: "M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6", debit: "#4f46e5" },
+  ATF: { label: "Fuel (ATF)", icon: "M3 22h11M4 9h10M14 22V4a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v18M14 13h2a2 2 0 0 1 2 2v2a2 2 0 0 0 2 2 2 2 0 0 0 2-2V9.83a2 2 0 0 0-.59-1.42L18 5", debit: "#dc2626" },
+  Maintenance: { label: "Maintenance", icon: "M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z", debit: "#dc2626" },
+  Procurement: { label: "Bulk Procurement", icon: "M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4zM3 6h18M16 10a4 4 0 0 1-8 0", debit: "#dc2626" },
+}
+
+type LogEntry =
+  | { kind: "haulage"; id: string; timestamp: string; data: HaulageEntry }
+  | { kind: "expense"; id: string; timestamp: string; data: CashExpense }
+  | { kind: "deposit"; id: string; timestamp: string; data: CashDeposit }
+  | { kind: "topup"; id: string; timestamp: string; data: TopUp }
 
 // Responsive breakpoint hook
 function useBreakpoint() {
@@ -88,13 +123,15 @@ export default function CashExpenses() {
   const [expenses, setExpenses] = useState<CashExpense[]>([])
   const [deposits, setDeposits] = useState<CashDeposit[]>([])
   const [topUps, setTopUps] = useState<TopUp[]>([])
+  const [haulageEntries, setHaulageEntries] = useState<HaulageEntry[]>([])
+  const [haulageLoadError, setHaulageLoadError] = useState("")
   const [clerksMap, setClerksMap] = useState<Record<string, string>>({})
   const [clerkPicsMap, setClerkPicsMap] = useState<Record<string, string>>({})
   const [adminsMap, setAdminsMap] = useState<Record<string, string>>({})
   const [loading, setLoading] = useState(true)
 
   // Filter state
-  const [filter, setFilter] = useState<"All" | "Pending" | "Authorised" | "Rejected" | "Top-ups">("All")
+  const [filter, setFilter] = useState<string>("All")
 
   const [showRejectModal, setShowRejectModal] = useState(false)
   const [rejectId, setRejectId] = useState<string | null>(null)
@@ -116,7 +153,31 @@ export default function CashExpenses() {
   }, [])
 
   useEffect(() => {
-    if (selectedOffice) {
+    if (!selectedOffice) return
+    if (selectedOffice === HAULAGE) {
+      let current = true
+      void (async () => {
+        try {
+          const [balanceResult, entries] = await Promise.all([
+            supabase
+              .from("maintenance_balance")
+              .select("current_balance")
+              .eq("id", 1)
+              .single(),
+            fetchHaulageEntries(),
+          ])
+          if (balanceResult.error) throw new Error(balanceResult.error.message)
+          if (!current) return
+          setOfficeBalance(Number(balanceResult.data.current_balance))
+          setHaulageEntries(entries)
+        } catch (error) {
+          if (current) {
+            setHaulageLoadError(error instanceof Error ? error.message : "Failed to load Haulage fund data")
+          }
+        }
+      })()
+      return () => { current = false }
+    } else {
       fetchOfficeBalance()
       fetchExpenses()
       fetchDeposits()
@@ -177,7 +238,7 @@ export default function CashExpenses() {
   }
 
   async function fetchOfficeBalance() {
-    if (selectedOffice === "Haulage") {
+    if (selectedOffice === HAULAGE) {
       const { data } = await supabase
         .from("maintenance_balance")
         .select("current_balance")
@@ -195,6 +256,23 @@ export default function CashExpenses() {
       setOfficeBalance(data.current_balance)
     } else {
       setOfficeBalance(0)
+    }
+  }
+
+  async function fetchHaulageEntries(): Promise<HaulageEntry[]> {
+    const pageSize = 1000
+    const entries: HaulageEntry[] = []
+    for (let offset = 0; ; offset += pageSize) {
+      const { data, error } = await supabase
+        .from("haulage_transactions")
+        .select("entry_id, entry_type, direction, amount, description, source_id, created_by, created_at")
+        .order("created_at", { ascending: false })
+        .order("entry_id", { ascending: false })
+        .range(offset, offset + pageSize - 1)
+      if (error) throw new Error(error.message)
+      const page = (data || []) as HaulageEntry[]
+      entries.push(...page)
+      if (page.length < pageSize) return entries
     }
   }
 
@@ -225,8 +303,26 @@ export default function CashExpenses() {
     setTopUps(data || [])
   }
 
+  // Reconstructs the balance as it stood immediately after each record, by
+  // walking the records backwards from the live balance.
   const balanceMap = useMemo(() => {
     const map: Record<string, number> = {}
+
+    if (selectedOffice === HAULAGE) {
+      const records = haulageEntries.map(e => ({
+        id: e.entry_id,
+        amount: e.direction === "debit" ? e.amount : -e.amount,
+        timestamp: e.created_at,
+      }))
+      records.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
+      let running = officeBalance
+      for (const rec of records) {
+        map[rec.id] = running
+        running += rec.amount
+      }
+      return map
+    }
+
     const records: { id: string; amount: number; timestamp: string }[] = [
       ...expenses.filter(e => e.status === "Authorised" && e.resolved_at !== null).map(e => ({
         id: e.expense_id, amount: e.total_amount, timestamp: e.resolved_at ?? e.created_at
@@ -245,7 +341,7 @@ export default function CashExpenses() {
       running += rec.amount
     }
     return map
-  }, [expenses, deposits, topUps, officeBalance])
+  }, [expenses, deposits, topUps, haulageEntries, officeBalance, selectedOffice])
 
   async function fetchExpenseItems(expenseId: string) {
     if (expenseItems[expenseId]) return
@@ -329,14 +425,29 @@ export default function CashExpenses() {
       setSubmitting(false)
     }
   }
-  const isAssigned = isCashAuthorizer ? assignedOffices.includes(selectedOffice) : true
+  // Haulage is a fund, not an office, so authorisation is the Truck Admin's job
+  // at the point the maintenance report / procurement / ATF is actioned.
+  const isHaulage = selectedOffice === HAULAGE
+  const isAssigned = !isHaulage && (isCashAuthorizer ? assignedOffices.includes(selectedOffice) : true)
+  // Haulage is a fund, not an office, so it never appears in an office assignment.
+  const offices = assignedOffices.filter(o => o !== HAULAGE)
 
   const filteredExpenses = expenses.filter(e => {
     if (filter === "All") return true
     return e.status === filter
   })
 
-  const logEntries = useMemo(() => {
+  const logEntries = useMemo<LogEntry[]>(() => {
+    if (isHaulage) {
+      return haulageEntries
+        .filter(e => {
+          if (filter === "All") return true
+          if (filter === "Top-ups") return e.direction === "credit"
+          return e.entry_type === filter
+        })
+        .map(e => ({ kind: "haulage" as const, id: e.entry_id, timestamp: e.created_at, data: e }))
+    }
+
     const expenseEntries = filteredExpenses.map(e => ({
       kind: "expense" as const,
       id: e.expense_id,
@@ -368,7 +479,7 @@ export default function CashExpenses() {
     return [...expenseEntries, ...depositEntries, ...topUpEntries].sort(
       (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
     )
-  }, [filteredExpenses, deposits, topUps, filter])
+  }, [filteredExpenses, deposits, topUps, filter, haulageEntries, isHaulage])
 
   const { page, setPage, totalPages, paginatedItems, totalItems } = usePagination(logEntries)
 
@@ -417,9 +528,9 @@ export default function CashExpenses() {
           <h1 style={{ margin: 0, color: "#0f172a", fontSize: isMobile ? FONT_SIZE["2xl"] : FONT_SIZE["3xl"], fontWeight: 700, letterSpacing: "-0.5px" }}>
             Cash Expenses
           </h1>
-          {assignedOffices.length > 0 ? (
+          {offices.length > 0 ? (
             <p style={{ margin: "8px 0 0", color: "#64748b", fontSize: FONT_SIZE.base, display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-              Your assigned offices: <strong style={{ color: "#0f172a" }}>{assignedOffices.join(", ")}</strong>
+              Your assigned offices: <strong style={{ color: "#0f172a" }}>{offices.join(", ")}</strong>
             </p>
           ) : (
             <p style={{ margin: "8px 0 0", color: "#ef4444", fontSize: FONT_SIZE.base, display: "flex", alignItems: "center", gap: 6, fontWeight: 500 }}>
@@ -431,10 +542,10 @@ export default function CashExpenses() {
 
         {/* Office Selection Pills */}
         <div style={{ display: "flex", gap: 6, background: "#f1f5f9", padding: 4, borderRadius: 10, overflowX: "auto", maxWidth: "100%" }}>
-          {OFFICES.map(o => (
+          {TABS.map(o => (
             <button
               key={o}
-              onClick={() => setSelectedOffice(o)}
+              onClick={() => { setFilter("All"); setSelectedOffice(o) }}
               style={{
                 padding: "8px 16px",
                 border: "none",
@@ -442,8 +553,8 @@ export default function CashExpenses() {
                 cursor: "pointer",
                 fontWeight: selectedOffice === o ? 600 : 500,
                 fontSize: FONT_SIZE.sm,
-                background: selectedOffice === o ? "white" : "transparent",
-                color: selectedOffice === o ? "#0f172a" : "#64748b",
+                background: selectedOffice === o ? (o === HAULAGE ? "#fef3c7" : "white") : "transparent",
+                color: selectedOffice === o ? (o === HAULAGE ? "#92400e" : "#0f172a") : "#64748b",
                 boxShadow: selectedOffice === o ? "0 1px 3px rgba(0,0,0,0.1)" : "none",
                 transition: "all 0.2s ease",
                 whiteSpace: "nowrap"
@@ -477,29 +588,49 @@ export default function CashExpenses() {
         <div style={{ position: "relative", zIndex: 1 }}>
           <span style={{ display: "flex", alignItems: "center", gap: 8, fontSize: FONT_SIZE.xs, color: "#64748b", textTransform: "uppercase", fontWeight: 700, letterSpacing: 0.5, marginBottom: 8 }}>
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="12" cy="12" r="2"/><path d="M6 12h.01M18 12h.01"/></svg>
-            {selectedOffice === "Haulage" ? "Haulage Maintenance Fund Balance" : `${selectedOffice} Office Cash Balance`}
+            {isHaulage ? "Haulage Balance" : `${selectedOffice} Office Cash Balance`}
           </span>
-          <h1 style={{ margin: "0 0 12px", fontSize: isMobile ? 32 : 48, color: "#0f172a", fontWeight: 800, display: "flex", alignItems: "baseline", gap: 6, letterSpacing: "-1px" }}>
+          <h1 style={{ margin: "0 0 12px", fontSize: isMobile ? 32 : 48, color: officeBalance < 0 ? "#dc2626" : "#0f172a", fontWeight: 800, display: "flex", alignItems: "baseline", gap: 6, letterSpacing: "-1px" }}>
             <span style={{ fontSize: isMobile ? 24 : 32, color: "#94a3b8", fontWeight: 600 }}>₦</span>
             {officeBalance.toLocaleString()}
           </h1>
-          <div style={{ display: "flex", alignItems: "center", gap: 8, background: isAssigned ? "#f0fdf4" : "#fffbeb", padding: "6px 12px", borderRadius: 20, width: "fit-content" }}>
-            <span style={{ width: 8, height: 8, borderRadius: "50%", background: isAssigned ? "#16a34a" : "#f5a623" }} />
-            <span style={{ fontSize: FONT_SIZE.xs, color: isAssigned ? "#16a34a" : "#b45309", fontWeight: 600 }}>
-              {isAssigned ? `Active Assignment` : `Read-only Access`}
-            </span>
-          </div>
+          {isHaulage ? (
+            <div style={{ display: "flex", alignItems: "center", gap: 8, background: "#fffbeb", padding: "6px 12px", borderRadius: 20, width: "fit-content", maxWidth: 560, flexWrap: "wrap" }}>
+              <span style={{ width: 8, height: 8, borderRadius: "50%", background: officeBalance < 0 ? "#ef4444" : "#f5a623", flexShrink: 0 }} />
+              <span style={{ fontSize: FONT_SIZE.xs, color: officeBalance < 0 ? "#b91c1c" : "#b45309", fontWeight: 600 }}>
+                {officeBalance < 0 ? "Overdrawn" : "Fund Balance"}
+              </span>
+              <span style={{ fontSize: FONT_SIZE.xs, color: "#92400e" }}>
+                &mdash; funds maintenance, bulk procurement and fuel. Each entry was already authorised by the Truck Admin.
+              </span>
+            </div>
+          ) : (
+            <div style={{ display: "flex", alignItems: "center", gap: 8, background: isAssigned ? "#f0fdf4" : "#fffbeb", padding: "6px 12px", borderRadius: 20, width: "fit-content" }}>
+              <span style={{ width: 8, height: 8, borderRadius: "50%", background: isAssigned ? "#16a34a" : "#f5a623" }} />
+              <span style={{ fontSize: FONT_SIZE.xs, color: isAssigned ? "#16a34a" : "#b45309", fontWeight: 600 }}>
+                {isAssigned ? `Active Assignment` : `Read-only Access`}
+              </span>
+            </div>
+          )}
         </div>
       </div>
+
+      {isHaulage && haulageLoadError && (
+        <div role="alert" style={{ padding: 12, background: "#fef2f2", border: "1px solid #fecaca", borderRadius: 8, marginBottom: 20, color: "#b91c1c", fontSize: FONT_SIZE.sm }}>
+          Failed to load Haulage fund data: {haulageLoadError}
+        </div>
+      )}
 
       {/* Filters & Expenses List */}
       <div style={{ background: "white", borderRadius: 16, border: "1px solid #e2e8f0", padding: isMobile ? 20 : 32, boxShadow: "0 1px 3px rgba(0,0,0,0.05)" }}>
         <div style={{ display: "flex", flexDirection: isMobile ? "column" : "row", justifyContent: "space-between", alignItems: isMobile ? "flex-start" : "center", gap: 16, marginBottom: 24 }}>
-          <h3 style={{ margin: 0, color: "#0f172a", fontSize: FONT_SIZE.xl, fontWeight: 700 }}>Expense Logs</h3>
+          <h3 style={{ margin: 0, color: "#0f172a", fontSize: FONT_SIZE.xl, fontWeight: 700 }}>
+            {isHaulage ? "Haulage Transaction History" : "Expense Logs"}
+          </h3>
 
           {/* Status Filters */}
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-            {(["All", "Pending", "Authorised", "Rejected", "Top-ups"] as const).map(f => {
+            {(isHaulage ? HAULAGE_FILTERS : OFFICE_FILTERS).map(f => {
               const isActive = filter === f
               let bg = "white"
               let color = "#64748b"
@@ -510,6 +641,7 @@ export default function CashExpenses() {
                 else if (f === "Authorised") { bg = "#f0fdf4"; color = "#16a34a"; borderColor = "#16a34a" }
                 else if (f === "Rejected") { bg = "#fef2f2"; color = "#ef4444"; borderColor = "#ef4444" }
                 else if (f === "Top-ups") { bg = "#eef2ff"; color = "#4f46e5"; borderColor = "#4f46e5" }
+                else if (isHaulage) { bg = "#fef3c7"; color = "#92400e"; borderColor = "#fcd34d" }
                 else { bg = "#0f172a"; color = "white"; borderColor = "#0f172a" }
               }
 
@@ -548,11 +680,73 @@ export default function CashExpenses() {
             <div style={{ width: 48, height: 48, background: "white", borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 16px", boxShadow: "0 1px 3px rgba(0,0,0,0.1)" }}>
               <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
             </div>
-            <p style={{ color: "#64748b", fontSize: FONT_SIZE.base, margin: 0, fontWeight: 500 }}>No expense logs found for this filter.</p>
+            <p style={{ color: "#64748b", fontSize: FONT_SIZE.base, margin: 0, fontWeight: 500 }}>
+              {isHaulage ? "No Haulage fund activity found for this filter." : "No expense logs found for this filter."}
+            </p>
           </div>
         ) : (
           <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
             {paginatedItems.map(entry => {
+              if (entry.kind === "haulage") {
+                const e = entry.data
+                const meta = HAULAGE_TYPE_META[e.entry_type]
+                const isCredit = e.direction === "credit"
+                const accent = isCredit ? "#16a34a" : meta.debit
+                const balanceAfter = balanceMap[e.entry_id]
+                const negative = balanceAfter !== undefined && balanceAfter < 0
+                const author = adminsMap[e.created_by || ""] || (e.entry_type === "ATF" ? "Driver" : "Truck Admin")
+
+                return (
+                  <div key={e.entry_id} style={{
+                    border: `1px solid ${isCredit ? "#bbf7d0" : "#fecaca"}`,
+                    borderRadius: 12,
+                    overflow: "hidden",
+                    background: isCredit ? "#f0fdf4" : "#fef2f2",
+                    boxShadow: "0 1px 3px rgba(0,0,0,0.05)"
+                  }}>
+                    <div style={{ padding: isMobile ? "16px" : "20px 24px" }}>
+                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8, flexWrap: "wrap", gap: 8 }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                          <span style={{ display: "flex", alignItems: "center", gap: 6, fontWeight: 600, color: isCredit ? "#166534" : "#991b1b", fontSize: FONT_SIZE.md }}>
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d={meta.icon} /></svg>
+                            {meta.label}
+                          </span>
+                          <span style={{
+                            padding: "4px 10px", borderRadius: 16, fontSize: FONT_SIZE.xs, fontWeight: 600,
+                            background: isCredit ? "#f0fdf4" : "#fef2f2", color: accent,
+                            border: `1px solid ${isCredit ? "#bbf7d0" : "#fecaca"}`
+                          }}>{isCredit ? "Credit" : "Debit"}</span>
+                        </div>
+                        <div style={{ fontSize: FONT_SIZE.lg, fontWeight: 700, color: isCredit ? "#16a34a" : "#dc2626", letterSpacing: "-0.5px" }}>
+                          {isCredit ? "+" : "−"}₦{e.amount.toLocaleString()}
+                        </div>
+                      </div>
+
+                      <div style={{ fontSize: FONT_SIZE.xs, color: "#64748b" }}>
+                        <strong style={{ color: "#334155" }}>{author}</strong>
+                        <span style={{ margin: "0 6px" }}>·</span>
+                        <span>{new Date(e.created_at).toLocaleString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}</span>
+                      </div>
+
+                      {e.description && (
+                        <p style={{ margin: "8px 0 0", color: "#475569", fontSize: FONT_SIZE.sm, fontStyle: "italic" }}>&quot;{e.description}&quot;</p>
+                      )}
+
+                      {balanceAfter !== undefined && (
+                        <div style={{
+                          marginTop: 10, fontSize: FONT_SIZE.xs, fontWeight: 600,
+                          color: negative ? "#b91c1c" : isCredit ? "#166534" : "#991b1b",
+                          background: negative ? "#fee2e2" : isCredit ? "#dcfce7" : "#fee2e2",
+                          padding: "4px 10px", borderRadius: 6, display: "inline-block",
+                          border: `1px solid ${negative ? "#fecaca" : isCredit ? "#bbf7d0" : "#fecaca"}`
+                        }}>
+                          Balance after: ₦{balanceAfter.toLocaleString()}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )
+              }
               if (entry.kind === "deposit") {
                 const dep = entry.data
                 const depositorName = adminsMap[dep.deposited_by] || "Cash Officer"

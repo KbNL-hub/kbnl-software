@@ -260,6 +260,15 @@ export function notifyTruckAdminFuelTopUp(companyName: string, amount: number) {
   })
 }
 
+export function notifyTruckAdminLowHaulageBalance(balance: number, threshold: number) {
+  return notify(['TruckAdmin'], {
+    title: 'Haulage Balance Low',
+    body: `Haulage fund is ₦${balance.toLocaleString()}, below the ₦${threshold.toLocaleString()} threshold. Tap to top up.`,
+    url: '/truck-admin',
+    tag: 'haulage-low-balance',
+  })
+}
+
 // ─── TruckOfficer ────────────────────────────────────────
 
 export function notifyTruckOfficerReportActioned(reportId: string, plateNumber: string, status: string) {
@@ -610,6 +619,15 @@ export function notifyAdminLowDieselBalance(stationName: string, balance: number
     body: `${stationName} — ${balance}L remaining. Tap to review.`,
     url: '/admin?section=diesel-manager',
     tag: `admin-diesel-${stationName}`,
+  })
+}
+
+export function notifyAdminLowHaulageBalance(balance: number, threshold: number) {
+  return notify(adminRoles, {
+    title: 'Haulage Balance Below Threshold',
+    body: `The Haulage fund is ₦${balance.toLocaleString()}, below the ₦${threshold.toLocaleString()} threshold. It covers fuel, maintenance and procurement. Tap to review.`,
+    url: '/admin?section=cash-expenses',
+    tag: 'admin-haulage-low',
   })
 }
 

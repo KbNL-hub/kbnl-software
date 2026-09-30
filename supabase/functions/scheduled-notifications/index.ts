@@ -26,6 +26,7 @@ serve(async (req) => {
       sales_pending: 0,
       credits_exceeded: 0,
       low_fuel: 0,
+      low_haulage: 0,
       driver_reminders: 0,
       errors: [] as string[],
     };
@@ -144,7 +145,40 @@ serve(async (req) => {
       results.errors.push(`fuel: ${(e as Error).message}`);
     }
 
-    // 5. Driver stop reminder (daily) — all drivers with active trips
+    // 5. Low Haulage fund balance
+    // The Haulage fund covers fuel, maintenance and bulk procurement, so it can
+    // be drained by any of them without the fund itself tracking it.
+    try {
+      const { data: haulage, error: haulageError } = await supabase
+        .from("maintenance_balance")
+        .select("current_balance, low_balance_threshold")
+        .eq("id", 1)
+        .single();
+
+      if (haulageError) throw haulageError;
+
+      if (haulage) {
+        // A threshold of 0 means none has been configured, so only alert on an
+        // actual overdraft.
+        const isLow = haulage.current_balance < 0 ||
+          (haulage.low_balance_threshold > 0 && haulage.current_balance < haulage.low_balance_threshold);
+        if (isLow) {
+          await callNotificationApi("low-haulage-admin", {
+            balance: haulage.current_balance,
+            threshold: haulage.low_balance_threshold,
+          });
+          await callNotificationApi("low-haulage-truck-admin", {
+            balance: haulage.current_balance,
+            threshold: haulage.low_balance_threshold,
+          });
+          results.low_haulage++;
+        }
+      }
+    } catch (e) {
+      results.errors.push(`haulage: ${(e as Error).message}`);
+    }
+
+    // 6. Driver stop reminder (daily) — all drivers with active trips
     try {
       const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
       const { data: activeTrips } = await supabase

@@ -35,14 +35,7 @@ type MaintenanceReport = {
   status: "Pending" | "Validated" | "Rejected"
   rejection_reason: string | null
   reported_at: string
-}
-
-type MaintenanceDeposit = {
-  deposit_id: string
-  amount: number
-  note: string | null
-  deposited_by: string
-  created_at: string
+  validated_at: string | null
 }
 
 type BulkProcurement = {
@@ -52,6 +45,19 @@ type BulkProcurement = {
   notes: string | null
   logged_at: string
   distributions: { plate_number: string; amount_allocated: number }[]
+}
+
+// The Haulage fund ledger. Every debit the Truck Admin authorises (and every
+// top-up into the fund) lands here, so the money trail is the same one the
+// admin sees in Cash Expenses.
+type HaulageEntry = {
+  entry_id: string
+  entry_type: "TopUp" | "Deposit" | "ATF" | "Maintenance" | "Procurement"
+  direction: "credit" | "debit"
+  amount: number
+  description: string | null
+  source_id: string | null
+  created_at: string
 }
 
 type FeedItem =
@@ -108,7 +114,7 @@ export default function TruckAdminDashboard() {
   const [admin, setAdmin] = useState<TruckAdmin | null>(null)
   const [reports, setReports] = useState<MaintenanceReport[]>([])
   const [procurements, setProcurements] = useState<BulkProcurement[]>([])
-  const [deposits, setDeposits] = useState<MaintenanceDeposit[]>([])
+  const [haulageEntries, setHaulageEntries] = useState<HaulageEntry[]>([])
   const [maintenanceBalance, setMaintenanceBalance] = useState<number | null>(null)
   const { data: atfsFromHook, refetch: refetchATFs } = useATFs({ all: true })
   const [loading, setLoading] = useState(true)
@@ -125,6 +131,7 @@ export default function TruckAdminDashboard() {
 
   const [validating, setValidating] = useState<MaintenanceReport | null>(null)
   const [validateLoading, setValidateLoading] = useState(false)
+  const [validateError, setValidateError] = useState("")
   const [rejecting, setRejecting] = useState<MaintenanceReport | null>(null)
   const [rejectReason, setRejectReason] = useState("")
   const [rejectError, setRejectError] = useState("")
@@ -222,14 +229,14 @@ export default function TruckAdminDashboard() {
       const section = params.get("section")
       if (isSectionKey(section)) setActive(section)
 
-      await Promise.all([fetchReports(), fetchProcurements(), fetchMaintenanceBalance(), fetchDeposits()])
+      await Promise.all([fetchReports(), fetchProcurements(), fetchMaintenanceBalance(), fetchHaulageEntries()])
       setLoading(false)
     }
     init()
   }, [router])
 
   usePolling(() => {
-    fetchReports(); fetchProcurements(); fetchMaintenanceBalance(); refetchATFs(); fetchDeposits()
+    fetchReports(); fetchProcurements(); fetchMaintenanceBalance(); refetchATFs(); fetchHaulageEntries()
     if (active === "side-trips") fetchSideTrips()
   }, 120000, !!admin)
 
@@ -257,7 +264,7 @@ export default function TruckAdminDashboard() {
   async function fetchReports() {
     const { data: raw } = await supabase
       .from("maintenance_reports")
-      .select("report_id, plate_number, manager_id, maintenance_type, maintenance_location, amount, notes, status, rejection_reason, reported_at")
+      .select("report_id, plate_number, manager_id, maintenance_type, maintenance_location, amount, notes, status, rejection_reason, reported_at, validated_at")
       .order("reported_at", { ascending: false })
     if (!raw) { setReports([]); return }
 
@@ -292,30 +299,41 @@ export default function TruckAdminDashboard() {
     setProcurements(enriched)
   }
 
-  async function fetchDeposits() {
-    const { data } = await supabase.from("maintenance_deposits").select("*").order("created_at", { ascending: false })
-    if (data) setDeposits(data)
+  async function fetchHaulageEntries() {
+    const { data } = await supabase
+      .from("haulage_transactions")
+      .select("entry_id, entry_type, direction, amount, description, source_id, created_at")
+      .order("created_at", { ascending: false })
+    if (data) setHaulageEntries(data as HaulageEntry[])
   }
 
   async function handleValidate() {
     if (!validating) return
     setValidateLoading(true)
+    setValidateError("")
 
     const { data, error } = await apiMutate("maintenance", {
       action: "rpc",
       function: "validate_maintenance_report",
       params: { p_report_id: validating.report_id },
     })
-    if (error) { setValidateLoading(false); return }
+    if (error) { setValidateLoading(false); setValidateError(error); return }
 
-    if (data && typeof data === "object" && "new_balance" in (data as Record<string, unknown>)) {
-      setMaintenanceBalance((data as { new_balance: number }).new_balance)
+    const result = data as { success?: boolean; error?: string; new_balance?: number } | null
+    if (result && result.success === false) {
+      setValidateLoading(false)
+      setValidateError(result.error || "Failed to validate report")
+      return
+    }
+
+    if (result && typeof result.new_balance === "number") {
+      setMaintenanceBalance(result.new_balance)
     } else {
-      setMaintenanceBalance(Math.max(0, (maintenanceBalance ?? 0) - validating.amount))
+      setMaintenanceBalance((maintenanceBalance ?? 0) - validating.amount)
     }
     setValidateLoading(false)
     setValidating(null)
-    fetchReports()
+    await Promise.all([fetchReports(), fetchMaintenanceBalance(), fetchHaulageEntries()])
   }
 
   async function handleReject() {
@@ -396,38 +414,40 @@ export default function TruckAdminDashboard() {
     setProcLoading(false)
     if (error) { setProcError(error); return }
 
-    if (data && typeof data === "object" && "new_balance" in (data as Record<string, unknown>)) {
-      setMaintenanceBalance((data as { new_balance: number }).new_balance)
+    const result = data as { success?: boolean; error?: string; new_balance?: number } | null
+    if (result && result.success === false) { setProcError(result.error || "Failed to log procurement"); return }
+
+    if (result && typeof result.new_balance === "number") {
+      setMaintenanceBalance(result.new_balance)
     } else {
-      setMaintenanceBalance((prev) => Math.max(0, (prev ?? 0) - totalNum))
+      setMaintenanceBalance((prev) => (prev ?? 0) - totalNum)
     }
     setProcItem(""); setProcTotal(""); setProcNotes(""); setProcError("")
-    await fetchProcurements()
+    await Promise.all([fetchProcurements(), fetchReports(), fetchMaintenanceBalance(), fetchHaulageEntries()])
     navigate("maintenance"); setFilter("Bulk Procurement")
   }
 
+  // The ledger is the authoritative money trail, so balances are derived from it
+  // rather than re-derived from each source table. It covers fuel spend too,
+  // which the previous per-table reconstruction could never see.
   const balanceMap = useMemo(() => {
     const map: Record<string, number> = {}
-    const records: { id: string; amount: number; created_at: string }[] = [
-      ...reports.filter(r => r.status === "Validated").map(r => ({
-        id: r.report_id, amount: r.amount, created_at: r.reported_at
-      })),
-      ...procurements.map(p => ({
-        id: p.procurement_id, amount: p.total_amount, created_at: p.logged_at
-      })),
-      ...deposits.map(d => ({
-        id: d.deposit_id, amount: -d.amount, created_at: d.created_at
-      })),
-    ]
+    const records = haulageEntries.map(e => ({
+      id: e.entry_id,
+      sourceId: e.source_id,
+      amount: e.direction === "debit" ? e.amount : -e.amount,
+      created_at: e.created_at,
+    }))
     records.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
 
     let running = maintenanceBalance ?? 0
     for (const rec of records) {
       map[rec.id] = running
+      if (rec.sourceId) map[rec.sourceId] = running
       running += rec.amount
     }
     return map
-  }, [reports, procurements, deposits, maintenanceBalance])
+  }, [haulageEntries, maintenanceBalance])
 
   const feedItems: FeedItem[] = [
     ...reports.map(r => ({ kind: "report" as const, data: r, date: r.reported_at })),
@@ -752,19 +772,31 @@ export default function TruckAdminDashboard() {
           {/* Content area */}
           <div style={{ flex: 1, padding: isNarrow ? "20px 16px 40px" : "32px", overflow: "auto" }}>
 
-            {/* Maintenance Balance strip */}
+            {/* Haulage Balance strip — the fund covering fuel, maintenance and procurement */}
             <div style={{ background: "white", border: "1px solid #e2e8f0", borderRadius: 12, padding: isMobile ? 16 : 24, marginBottom: 24, boxShadow: "0 1px 3px rgba(0,0,0,0.05)" }}>
-              <p style={{ margin: "0 0 8px 0", fontWeight: 600, fontSize: FONT_SIZE.sm, color: "#94a3b8", letterSpacing: 0.5 }}>Maintenance Balance</p>
-              <p style={{ margin: 0, fontSize: isMobile ? FONT_SIZE["2xl"] : FONT_SIZE.xl, fontWeight: 700, color: "#0070f3" }}>
-                ₦{maintenanceBalance !== null ? maintenanceBalance.toLocaleString() : "—"}
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 12 }}>
+                <div>
+                  <p style={{ margin: "0 0 8px 0", fontWeight: 600, fontSize: FONT_SIZE.sm, color: "#94a3b8", letterSpacing: 0.5 }}>Haulage Balance</p>
+                  <p style={{ margin: 0, fontSize: isMobile ? FONT_SIZE["2xl"] : FONT_SIZE.xl, fontWeight: 700, color: (maintenanceBalance ?? 0) < 0 ? "#dc2626" : "#0070f3" }}>
+                    ₦{maintenanceBalance !== null ? maintenanceBalance.toLocaleString() : "—"}
+                  </p>
+                </div>
+                {(maintenanceBalance ?? 0) < 0 && (
+                  <span style={{ display: "flex", alignItems: "center", gap: 6, padding: "6px 12px", borderRadius: 20, background: "#fef2f2", border: "1px solid #fecaca", color: "#b91c1c", fontSize: FONT_SIZE.xs, fontWeight: 600 }}>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+                    Overdrawn
+                  </span>
+                )}
+              </div>
+              <p style={{ margin: "12px 0 0", fontSize: FONT_SIZE.xs, color: "#64748b" }}>
+                Covers maintenance, bulk procurement and fuel (ATF). Every debit here is recorded in the Haulage transaction history.
               </p>
             </div>
 
             {/* ══ SECTION RENDERING ══ */}
             {active === "maintenance" && (
               <MaintenanceSection
-                reports={reports}
-                procurements={procurements}
+                haulageEntries={haulageEntries}
                 balanceMap={balanceMap}
                 filter={filter}
                 setFilter={setFilter}
@@ -776,7 +808,7 @@ export default function TruckAdminDashboard() {
                 safeFeedPage={safeFeedPage}
                 lastUpdated={lastUpdated}
                 onRefresh={() => { fetchReports(); fetchProcurements() }}
-                onValidate={(r) => setValidating(r)}
+                onValidate={(r) => { setValidateError(""); setValidating(r) }}
                 onReject={(r) => { setRejecting(r); setRejectReason(""); setRejectError("") }}
                 PAGE_SIZE={PAGE_SIZE}
               />
@@ -895,10 +927,25 @@ export default function TruckAdminDashboard() {
               <p style={{ margin: "0 0 8px" }}><strong>Officer:</strong> {validating.manager_name}</p>
               <p style={{ margin: 0 }}><strong>Amount:</strong> <span style={{ color: "#0070f3", fontWeight: 700 }}>₦{validating.amount.toLocaleString()}</span></p>
             </div>
-            <p style={{ fontSize: FONT_SIZE.sm, color: "#64748b", marginBottom: 24 }}>
-              Balance after: <strong style={{ color: (maintenanceBalance ?? 0) - validating.amount < 0 ? "#ef4444" : "#0f172a" }}>₦{Math.max(0, (maintenanceBalance ?? 0) - validating.amount).toLocaleString()}</strong>
-              {(maintenanceBalance ?? 0) - validating.amount < 0 && <span style={{ color: "#ef4444", marginLeft: 8 }}>Insufficient</span>}
-            </p>
+            {(() => {
+              const projected = (maintenanceBalance ?? 0) - validating.amount
+              return (
+                <div style={{ marginBottom: 24 }}>
+                  <p style={{ fontSize: FONT_SIZE.sm, color: "#64748b", margin: "0 0 8px" }}>
+                    Haulage balance after:{" "}
+                    <strong style={{ color: projected < 0 ? "#dc2626" : "#0f172a" }}>₦{projected.toLocaleString()}</strong>
+                    {projected < 0 && <span style={{ color: "#dc2626", marginLeft: 8, fontWeight: 600 }}>Overdrawn</span>}
+                  </p>
+                  <p style={{ fontSize: FONT_SIZE.xs, color: "#64748b", margin: 0, lineHeight: 1.5 }}>
+                    This is debited from the shared Haulage fund, which also covers fuel and bulk procurement.
+                    The validation will still go through if it overdraws the fund.
+                  </p>
+                </div>
+              )
+            })()}
+
+            {validateError && <div style={{ padding: 12, background: "#fef2f2", borderLeft: "4px solid #ef4444", borderRadius: 4, marginBottom: 16, color: "#b91c1c", fontSize: FONT_SIZE.sm, fontWeight: 600 }}>{validateError}</div>}
+
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
               <button onClick={() => setValidating(null)} style={{ padding: "12px 16px", background: "white", border: "1px solid #cbd5e1", color: "#475569", borderRadius: 8, cursor: "pointer", fontWeight: 700, fontSize: FONT_SIZE.md, minHeight: 44 }}>Cancel</button>
               <button onClick={handleValidate} disabled={validateLoading} style={{ padding: "12px 16px", background: "#16a34a", color: "white", border: "none", borderRadius: 8, cursor: validateLoading ? "not-allowed" : "pointer", fontWeight: 700, fontSize: FONT_SIZE.md, minHeight: 44, opacity: validateLoading ? 0.7 : 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>

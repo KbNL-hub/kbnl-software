@@ -37,7 +37,20 @@ export default function NewBookingModal({ isOpen, onClose, brokerId, isMobile, c
   const [paymentDate, setPaymentDate] = useState("")
   const [message, setMessage] = useState("")
   const [submitting, setSubmitting] = useState(false)
-  const [customerPhone, setCustomerPhone] = useState("")
+  // The phone is editable when the customer has none on file, so it cannot be
+  // fully derived. Instead it is reset whenever its source changes, using
+  // React's "adjust state during render" pattern rather than an effect.
+  const phoneSource = editBooking
+    ? editBooking.customer_phone || ""
+    : selectedCustomer
+      ? selectedCustomer.phone_number || ""
+      : ""
+  const [customerPhone, setCustomerPhone] = useState(phoneSource)
+  const [lastPhoneSource, setLastPhoneSource] = useState(phoneSource)
+  if (phoneSource !== lastPhoneSource) {
+    setLastPhoneSource(phoneSource)
+    setCustomerPhone(phoneSource)
+  }
 
   const areaProducts = area ? Object.keys(companyPriceMap[area] || {}).sort() : []
   const editInitDoneRef = useRef(false)
@@ -78,17 +91,6 @@ export default function NewBookingModal({ isOpen, onClose, brokerId, isMobile, c
       setMessage("")
     }
   }, [isOpen, editBooking])
-
-  // eslint-disable-next-line react-hooks/set-state-in-effect
-  useEffect(() => {
-    if (editBooking) {
-      setCustomerPhone(editBooking.customer_phone || "")
-    } else if (selectedCustomer) {
-      setCustomerPhone(selectedCustomer.phone_number || "")
-    } else {
-      setCustomerPhone("")
-    }
-  }, [selectedCustomer, editBooking])
 
   useEffect(() => {
     if (editCleanupDoneRef.current) { editCleanupDoneRef.current = false; return }

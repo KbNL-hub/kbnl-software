@@ -5,7 +5,7 @@ import { FONT_SIZE } from "@/lib/constants"
 import { usePolling } from "@/lib/hooks/usePolling"
 import DieselConsumptionSection from "@/components/truck-admin/DieselConsumptionSection"
 
-import { useState, useEffect, useMemo } from "react"
+import { useState, useEffect } from "react"
 import ModernInput from "@/components/ModernInput"
 import { supabase } from "@/lib/supabase"
 import { apiMutate } from "@/lib/api-mutation"
@@ -13,16 +13,6 @@ import { formatAmount, parseAmount } from "@/lib/formatAmount"
 import { usePermissions } from "@/lib/PermissionContext"
 import { usePagination } from "@/lib/hooks/usePagination"
 import PaginationControls from "@/components/PaginationControls"
-
-type FuelDeposit = {
-  deposit_id: string
-  company_id: string
-  amount: number
-  note: string | null
-  status: string
-  deposited_at: string
-  confirmed_at: string | null
-}
 
 type ATF = {
   request_id: string
@@ -93,7 +83,6 @@ export default function DieselManager() {
   const canEdit = getAccess("diesel-manager").canEdit
   const { isMobile } = useBreakpoint()
   const [atfs, setAtfs] = useState<ATF[]>([])
-  const [deposits, setDeposits] = useState<FuelDeposit[]>([])
   const [companies, setCompanies] = useState<FuelCompany[]>([])
   const [fuelEstimates, setFuelEstimates] = useState<FuelEstimate[]>([])
   const [loading, setLoading] = useState(true)
@@ -141,7 +130,7 @@ export default function DieselManager() {
   usePolling(fetchAll, 120000)
 
   async function fetchAll() {
-    await Promise.all([fetchATFs(), fetchCompanies(), fetchDeposits(), fetchEstimates()])
+    await Promise.all([fetchATFs(), fetchCompanies(), fetchEstimates()])
     setLastUpdated(new Date())
     setLoading(false)
   }
@@ -170,14 +159,6 @@ export default function DieselManager() {
     }))
 
     setAtfs(enriched)
-  }
-
-  async function fetchDeposits() {
-    const { data } = await supabase
-      .from("fuel_deposits")
-      .select("deposit_id, company_id, amount, note, status, deposited_at, confirmed_at")
-      .order("deposited_at", { ascending: false })
-    if (data) setDeposits(data)
   }
 
   async function fetchCompanies() {
@@ -329,33 +310,6 @@ export default function DieselManager() {
 
   const { page, setPage, totalPages, paginatedItems, totalItems } = usePagination(filteredATFs)
 
-  const balanceMap = useMemo(() => {
-    const map: Record<string, number> = {}
-    const perCompany = new Map<string, { id: string; amount: number; created_at: string }[]>()
-    for (const a of atfs) {
-      if (a.atf_status !== "Dispensed" && a.atf_status !== "Confirmed" || !a.total_amount) continue
-      const r = perCompany.get(a.company_id) || []
-      r.push({ id: a.request_id, amount: a.total_amount, created_at: a.dispensed_at ?? a.requested_at })
-      perCompany.set(a.company_id, r)
-    }
-    for (const d of deposits) {
-      if (d.status !== "Confirmed") continue
-      const r = perCompany.get(d.company_id) || []
-      r.push({ id: d.deposit_id, amount: -d.amount, created_at: d.confirmed_at ?? d.deposited_at })
-      perCompany.set(d.company_id, r)
-    }
-    const balances = new Map(companies.map(c => [c.company_id, c.current_balance]))
-    for (const [companyId, records] of perCompany) {
-      records.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
-      let running = balances.get(companyId) ?? 0
-      for (const rec of records) {
-        map[rec.id] = running
-        running += rec.amount
-      }
-    }
-    return map
-  }, [atfs, deposits, companies])
-
   const modalOverlayStyle: React.CSSProperties = {
     position: "fixed", inset: 0, background: "rgba(15, 23, 42, 0.6)", backdropFilter: "blur(4px)",
     display: "flex", alignItems: isMobile ? "flex-end" : "center", justifyContent: "center",
@@ -443,10 +397,19 @@ export default function DieselManager() {
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#64748b" strokeWidth="2" style={{ transition: "transform 0.2s ease", transform: stationsCollapsed ? "rotate(-90deg)" : "rotate(0deg)" }}><polyline points="6 9 12 15 18 9" /></svg>
             <h2 style={{ margin: 0, fontSize: FONT_SIZE.base, fontWeight: 700, color: "#0f172a" }}>Fuel Stations</h2>
           </div>
-          <span style={{ fontSize: FONT_SIZE.xs, color: "#94a3b8" }}>{companies.length} station{companies.length !== 1 ? "s" : ""}</span>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", justifyContent: "flex-end" }}>
+            <span style={{ fontSize: FONT_SIZE.xs, color: "#94a3b8" }}>{companies.length} station{companies.length !== 1 ? "s" : ""}</span>
+          </div>
         </div>
 
         {!stationsCollapsed && (<>
+
+          <div style={{ padding: "10px 16px", background: "#fffbeb", borderBottom: "1px solid #fde68a" }}>
+            <p style={{ margin: 0, fontSize: FONT_SIZE.xs, color: "#92400e", lineHeight: 1.5 }}>
+              Station balances are a float funded by top-ups. Refills no longer draw down a station &mdash;
+              the fuel cost is charged to the <strong>Haulage fund</strong> when the driver confirms the receipt.
+            </p>
+          </div>
 
         {companies.length === 0 ? (
           <div style={{ padding: "32px 16px", textAlign: "center" }}>
@@ -733,9 +696,9 @@ export default function DieselManager() {
                         <div style={{ flex: 1, background: "#f0f7ff", borderRadius: 8, padding: "10px 12px", border: "1px solid #e0f2fe" }}>
                           <p style={{ margin: 0, fontSize: FONT_SIZE.xs, color: "#0284c7" }}>Total</p>
                           <p style={{ margin: "2px 0 0", fontWeight: 700, color: "#0369a1", fontSize: FONT_SIZE.md }}>₦{atf.total_amount.toLocaleString()}</p>
-                          {atf.atf_status === "Confirmed" && balanceMap[atf.request_id] !== undefined && (
-                            <span style={{ marginTop: 4, fontSize: FONT_SIZE.xs, fontWeight: 600, color: "#16a34a", background: "#f0fdf4", padding: "2px 8px", borderRadius: 4, display: "inline-block" }}>
-                              Balance after: ₦{balanceMap[atf.request_id].toLocaleString()}
+                          {atf.atf_status === "Confirmed" && (
+                            <span style={{ marginTop: 4, fontSize: FONT_SIZE.xs, fontWeight: 600, color: "#64748b", background: "#f8fafc", padding: "2px 8px", borderRadius: 4, display: "inline-block" }}>
+                              Charged to Haulage fund
                             </span>
                           )}
                         </div>
