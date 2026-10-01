@@ -461,17 +461,11 @@ export default function TripEditModal({ trip, isMobile, canEdit, onClose }: Prop
 
     try {
       if (discForm.isNew) {
-        const { data: { user }, error: authError } = await supabase.auth.getUser()
-        if (authError || !user) {
-          setMessage("Unable to identify the current officer")
-          return
-        }
         const { data, error } = await apiMutate("trips", {
           action: "insert",
           table: "trip_discrepancies",
           data: {
             trip_id: trip.trip_id,
-            driver_id: user.id,
             shortage: discForm.shortage,
             caked_bags: discForm.caked_bags,
             discrepancy_type: discForm.discrepancy_type,

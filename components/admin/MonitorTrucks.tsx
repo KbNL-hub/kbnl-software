@@ -194,7 +194,6 @@ export default function MonitorTrucks({ viewOnly = false }: { viewOnly?: boolean
   const [availableDrivers, setAvailableDrivers] = useState<{ driver_id: string; full_name: string; phone_number: string | null }[]>([])
   const [allTrucks, setAllTrucks] = useState<{ plate_number: string; kbnl_truck_no?: string; truck_size: string | null }[]>([])
   const [allProducts, setAllProducts] = useState<string[]>([])
-  const [discDriverId, setDiscDriverId] = useState<string | null>(null)
 
   async function fetchActiveTrucks() {
     const { data: trips, error } = await supabase.rpc("get_active_mdd_trucks_remaining")
@@ -640,12 +639,11 @@ export default function MonitorTrucks({ viewOnly = false }: { viewOnly?: boolean
     setTimeout(() => setShowStartTripForm(false), 2000)
   }
 
-  function openDiscModal(tripId: string, label: string, remaining: number, driverId?: string) {
+  function openDiscModal(tripId: string, label: string, remaining: number) {
     if (discCloseTimerRef.current) { clearTimeout(discCloseTimerRef.current); discCloseTimerRef.current = null }
     setDiscTripId(tripId)
     setDiscTripLabel(label)
     setDiscTripRemaining(remaining)
-    setDiscDriverId(driverId || null)
     setDiscType("shortage")
     setDiscShortage("")
     setDiscCaked("")
@@ -686,19 +684,11 @@ export default function MonitorTrucks({ viewOnly = false }: { viewOnly?: boolean
     setDiscSubmitting(true)
     setDiscError("")
 
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) {
-      setDiscError("Not authenticated")
-      setDiscSubmitting(false)
-      return
-    }
-
     const result = await apiMutate("trips", {
       action: "insert",
       table: "trip_discrepancies",
       data: {
         trip_id: discTripId,
-        driver_id: discDriverId || user.id,
         shortage: discType === 'shortage' ? shortage : 0,
         caked_bags: discType === 'caked' ? caked : 0,
         discrepancy_type: discType,
@@ -1053,7 +1043,7 @@ export default function MonitorTrucks({ viewOnly = false }: { viewOnly?: boolean
                       {!viewOnly && truck.trip_status !== "Completed" && (
                         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, borderTop: "1px solid #f1f5f9", paddingTop: 12, marginTop: 4 }}>
                           <button
-                            onClick={() => openDiscModal(truck.trip_id, `${truck.plate_number} — ${truck.driver_name}`, truck.remaining, truck.driver_id ?? undefined)}
+                            onClick={() => openDiscModal(truck.trip_id, `${truck.plate_number} — ${truck.driver_name}`, truck.remaining)}
                             disabled={!canEdit}
                             style={{
                               padding: "10px 12px", background: !canEdit ? "#e2e8f0" : "white", color: !canEdit ? "#94a3b8" : "#f5a623",
@@ -1167,7 +1157,7 @@ export default function MonitorTrucks({ viewOnly = false }: { viewOnly?: boolean
                             <td style={{ padding: "12px 16px", textAlign: "right" }}>
                               {truck.trip_status !== "Completed" && (
                               <div style={{ display: "flex", gap: 6, justifyContent: "flex-end" }}>
-                                <button onClick={() => openDiscModal(truck.trip_id, `${truck.plate_number} — ${truck.driver_name}`, truck.remaining, truck.driver_id ?? undefined)} disabled={!canEdit} title="Report shortage or caked bags" style={{ padding: "6px 10px", cursor: !canEdit ? "not-allowed" : "pointer", borderRadius: 6, border: "1.5px solid #f5a623", color: !canEdit ? "#94a3b8" : "#f5a623", background: !canEdit ? "#e2e8f0" : "#fffbeb", fontSize: FONT_SIZE.xs, fontWeight: 600, transition: "all 0.2s", minHeight: 32, whiteSpace: "nowrap", display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 4 }}
+                                <button onClick={() => openDiscModal(truck.trip_id, `${truck.plate_number} — ${truck.driver_name}`, truck.remaining)} disabled={!canEdit} title="Report shortage or caked bags" style={{ padding: "6px 10px", cursor: !canEdit ? "not-allowed" : "pointer", borderRadius: 6, border: "1.5px solid #f5a623", color: !canEdit ? "#94a3b8" : "#f5a623", background: !canEdit ? "#e2e8f0" : "#fffbeb", fontSize: FONT_SIZE.xs, fontWeight: 600, transition: "all 0.2s", minHeight: 32, whiteSpace: "nowrap", display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 4 }}
                                   onMouseEnter={e => { if (canEdit) e.currentTarget.style.background = "#fef3c7" }}
                                   onMouseLeave={e => { if (canEdit) e.currentTarget.style.background = "#fffbeb" }}><Icon icon="mdi:alert-outline" width={14} /> Disc</button>
                                 <button onClick={() => openDdStopForm({ dd_trip_id: truck.trip_id, plate_number: truck.plate_number, product: truck.product || "", loaded_quantity: truck.loaded_quantity, trip_status: truck.trip_status } as DDTrip, "mdd")} disabled={!canEdit} title="Log stop" style={{ padding: "6px 10px", cursor: !canEdit ? "not-allowed" : "pointer", borderRadius: 6, border: "1.5px solid #8b5cf6", color: !canEdit ? "#94a3b8" : "#8b5cf6", background: !canEdit ? "#e2e8f0" : "#f5f3ff", fontSize: FONT_SIZE.xs, fontWeight: 600, transition: "all 0.2s", minHeight: 32, whiteSpace: "nowrap", display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 4 }}

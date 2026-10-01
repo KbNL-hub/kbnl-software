@@ -124,6 +124,28 @@ async function prepareTripInsert(data: Record<string, unknown>, auth: AuthContex
   return { data: nextData }
 }
 
+async function prepareDiscrepancyInsert(data: Record<string, unknown>, auth: AuthContext): Promise<PreparedTripInsert> {
+  const tripId = typeof data.trip_id === "string" ? data.trip_id : null
+  if (!tripId) return { data, error: "trip_id is required" }
+
+  const { data: trip, error } = await supabaseAdmin
+    .from("Trips")
+    .select("driver_id")
+    .eq("trip_id", tripId)
+    .maybeSingle()
+
+  if (error) return { data, error: error.message }
+  if (!trip) return { data, error: "Trip not found" }
+
+  const tripDriverId = (trip as { driver_id?: string | null }).driver_id ?? null
+  if (!tripDriverId) return { data, error: "This trip has no driver assigned" }
+  if (isDriverOnlyTripUser(auth) && tripDriverId !== auth.userId) {
+    return { data, error: "Drivers can only report discrepancies on their own trips", conflict: true }
+  }
+
+  return { data: { ...data, driver_id: tripDriverId } }
+}
+
 async function upsertDriverTrip(data: Record<string, unknown>, conflict: string | undefined, driverId: string) {
   if (!conflict) return supabaseAdmin.from("Trips").insert([data]).select()
 
@@ -372,6 +394,12 @@ export async function POST(req: NextRequest) {
           if (prepared.error) return buildError(prepared.error, 500)
           insertData = prepared.data
         }
+        if (table === "trip_discrepancies") {
+          const prepared = await prepareDiscrepancyInsert(data, auth)
+          if (prepared.conflict) return buildError(prepared.error!, 403)
+          if (prepared.error) return buildError(prepared.error, 400)
+          insertData = prepared.data
+        }
         const { data: result, error } = await supabaseAdmin.from(table!).insert([insertData]).select()
         if (error) {
           console.error("Mutation failed", error)
@@ -576,7 +604,14 @@ export async function POST(req: NextRequest) {
             switch (sa.action) {
               case "insert": {
                 if (!sa.data) throw new Error("data is required for insert")
-                const { data: r, error } = await supabaseAdmin.from(sa.table).insert([sa.data]).select()
+                let insertData = sa.data
+                if (sa.table === "trip_discrepancies") {
+                  const prepared = await prepareDiscrepancyInsert(insertData, auth)
+                  if (prepared.conflict) throw new MutationError(prepared.error!, 403)
+                  if (prepared.error) throw new MutationError(prepared.error, 400)
+                  insertData = prepared.data
+                }
+                const { data: r, error } = await supabaseAdmin.from(sa.table).insert([insertData]).select()
                 if (error) {
                   console.error("Sub-action failed", error)
                   throwSubActionError(error)

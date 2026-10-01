@@ -48,6 +48,7 @@ export default function Transactions() {
   const [toAccount, setToAccount] = useState<string>("Calabar")
   const [amount, setAmount] = useState("")
   const [description, setDescription] = useState("")
+  const [otherSource, setOtherSource] = useState("")
 
   const [message, setMessage] = useState("")
   const [error, setError] = useState("")
@@ -96,7 +97,8 @@ export default function Transactions() {
   const currentBalance = balances[toAccount]
   const amountNum = parseAmount(amount)
   const amountValid = amountNum > 0
-  const canSend = !!fromAccount && amountValid && !!adminUser
+  const isOther = fromAccount === "Other"
+  const canSend = !!fromAccount && amountValid && !!adminUser && (!isOther || otherSource.trim() !== "")
 
   function handleSelectDestination(dest: string) {
     setToAccount(dest)
@@ -123,7 +125,7 @@ export default function Transactions() {
         action: "rpc",
         function: "create_transaction",
         params: {
-          p_from_account: fromAccount,
+          p_from_account: isOther ? `Other: ${otherSource.trim()}` : fromAccount,
           p_to_account: toAccount,
           p_amount: amountNum,
           p_description: description.trim() || null,
@@ -148,6 +150,7 @@ export default function Transactions() {
 
       setAmount("")
       setDescription("")
+      setOtherSource("")
       setMessage(`₦${amountNum.toLocaleString()} sent to ${toAccount} successfully!`)
       await fetchTransactions()
       setTimeout(() => setMessage(""), 3000)
@@ -258,7 +261,18 @@ export default function Transactions() {
             >
               <option value="">Select bank account…</option>
               {BANKS.map(b => <option key={b} value={b}>{b}</option>)}
+              <option value="Other">Other</option>
             </ModernInput>
+            {isOther && (
+              <div style={{ marginTop: 8 }}>
+                <ModernInput
+                  type="text"
+                  placeholder="e.g. Petty Cash, Cash on hand…"
+                  value={otherSource}
+                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => { setOtherSource(e.target.value); setError("") }}
+                />
+              </div>
+            )}
           </div>
 
           {/* To Destination */}
