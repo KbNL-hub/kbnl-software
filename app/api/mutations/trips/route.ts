@@ -138,12 +138,23 @@ async function prepareDiscrepancyInsert(data: Record<string, unknown>, auth: Aut
   if (!trip) return { data, error: "Trip not found" }
 
   const tripDriverId = (trip as { driver_id?: string | null }).driver_id ?? null
-  if (!tripDriverId) return { data, error: "This trip has no driver assigned" }
-  if (isDriverOnlyTripUser(auth) && tripDriverId !== auth.userId) {
+  if (isDriverOnlyTripUser(auth) && tripDriverId && tripDriverId !== auth.userId) {
     return { data, error: "Drivers can only report discrepancies on their own trips", conflict: true }
   }
 
-  return { data: { ...data, driver_id: tripDriverId } }
+  // trip_discrepancies.driver_id has an FK to Drivers. DD trips (and any trip whose
+  // driver_id is not a registered driver) must fall back to null instead of an id
+  // that would violate trip_discrepancies_driver_id_fkey.
+  if (!tripDriverId) return { data: { ...data, driver_id: null } }
+
+  const { data: driver, error: driverError } = await supabaseAdmin
+    .from("Drivers")
+    .select("driver_id")
+    .eq("driver_id", tripDriverId)
+    .maybeSingle()
+
+  if (driverError) return { data, error: driverError.message }
+  return { data: { ...data, driver_id: driver ? tripDriverId : null } }
 }
 
 async function upsertDriverTrip(data: Record<string, unknown>, conflict: string | undefined, driverId: string) {
