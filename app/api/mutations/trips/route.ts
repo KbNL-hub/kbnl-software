@@ -413,8 +413,18 @@ export async function POST(req: NextRequest) {
             const tripId = row.trip_id as string
             const plate = row.plate_number as string
             const mc = row.material_centre as string
+            const driverId = row.driver_id as string | null
+            let driverName = "Unknown driver"
+            if (driverId) {
+              const { data: driver } = await supabaseAdmin
+                .from("Drivers")
+                .select("full_name")
+                .eq("driver_id", driverId)
+                .single()
+              if (driver?.full_name) driverName = driver.full_name
+            }
             notifyBrokerNewTripStarted(tripId, mc).catch(console.error)
-            notifyATCNewTripStarted(tripId, plate, mc).catch(console.error)
+            notifyATCNewTripStarted(tripId, driverName, plate, mc).catch(console.error)
             notifyAdminTripStarted(tripId, plate, mc).catch(console.error)
           }
         }

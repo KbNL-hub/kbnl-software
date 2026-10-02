@@ -96,6 +96,22 @@ function isBookingBroker(roles: string[]) {
     !roles.some(r => ["Admin", "SuperAdmin"].includes(r))
 }
 
+function toAmount(value: unknown): number {
+  return Number(value) || 0
+}
+
+// store_sales.total_amount is 0 for broker sales logged before prices are
+// entered, so fall back to recomputing from the items array.
+function storeSaleAmount(row: Record<string, unknown>): number {
+  const total = toAmount(row.total_amount)
+  if (total > 0) return total
+  const items = Array.isArray(row.items) ? (row.items as Array<Record<string, unknown>>) : []
+  return items.reduce(
+    (sum, item) => sum + (toAmount(item.quantity) * toAmount(item.price_per_bag)),
+    0,
+  )
+}
+
 async function enforceBrokerScope(
   table: string,
   action: string,
@@ -237,12 +253,12 @@ export async function POST(req: NextRequest) {
           // Look up expense details for the notification
           const { data: expense } = await supabaseAdmin
             .from("cash_expenses")
-            .select("title, amount, officer_id")
+            .select("title, total_amount")
             .eq("expense_id", expenseId)
             .single()
           if (expense) {
             const title = (expense as Record<string, unknown>).title as string || "Expense"
-            const amount = (expense as Record<string, unknown>).amount as number || 0
+            const amount = toAmount((expense as Record<string, unknown>).total_amount ?? (expense as Record<string, unknown>).amount)
             notifyCashOfficerExpenseActioned(expenseId, "Authorised", title, amount).catch(console.error)
           }
         }
@@ -398,7 +414,7 @@ export async function POST(req: NextRequest) {
           // Customer Payment Logged (in transaction)
           if (c.table === "customer_payments" && c.action === "insert") {
             const customerName = row.customer_name as string || "Customer"
-            const amount = row.amount as number || 0
+            const amount = toAmount(row.amount)
             const brokerId = row.broker_id as string
             notifyDeskOfficerNewPayment(customerName, amount).catch(console.error)
             if (brokerId) {
@@ -410,7 +426,7 @@ export async function POST(req: NextRequest) {
           if (c.table === "customer_payments" && c.action === "update" && row.status === "Posted") {
             const brokerId = row.broker_id as string
             const customerName = row.customer_name as string || "Customer"
-            const amount = row.amount as number || 0
+            const amount = toAmount(row.amount)
             if (brokerId) {
               notifyBrokerPaymentPosted(brokerId, customerName, amount).catch(console.error)
             }
@@ -434,7 +450,7 @@ export async function POST(req: NextRequest) {
                 notifyStoreOfficerSaleConfirmed(saleId).catch(console.error)
               } else if (row.status === "Posted" && brokerId) {
                 const storeName = row.store_name as string || "Store"
-                const amount = row.total_amount as number || 0
+                const amount = storeSaleAmount(row)
                 notifyBrokerStoreSalePosted(brokerId, storeName, amount).catch(console.error)
               }
             }
@@ -548,7 +564,7 @@ export async function POST(req: NextRequest) {
         // Customer Payment Logged
         if (table === "customer_payments" && row) {
           const customerName = (row.customer_name as string) || (data.customer_name as string) || "Customer"
-          const amount = (row.amount as number) || (data.amount as number) || 0
+          const amount = toAmount(row.amount ?? data.amount)
           const brokerId = (row.broker_id as string) || (data.broker_id as string)
           notifyDeskOfficerNewPayment(customerName, amount).catch(console.error)
           if (brokerId) {
@@ -560,7 +576,7 @@ export async function POST(req: NextRequest) {
         if (table === "cash_expenses" && row) {
           const expenseId = row.expense_id as string
           const title = (row.title as string) || (data.title as string) || "Expense"
-          const amount = (row.amount as number) || (data.amount as number) || 0
+          const amount = toAmount(row.total_amount ?? row.amount ?? data.total_amount ?? data.amount)
           if (expenseId) {
             notifyCashAuthorizerNewExpense(expenseId, "Cash Officer", title, amount).catch(console.error)
           }
@@ -647,9 +663,10 @@ export async function POST(req: NextRequest) {
           }
           // Notify broker for every updated sale
           for (const postRow of postResult || []) {
-            const brokerId = (postRow as Record<string, unknown>).broker_id as string
-            const storeName = (postRow as Record<string, unknown>).store_name as string || "Store"
-            const amount = (postRow as Record<string, unknown>).total_amount as number || 0
+            const saleRow = postRow as Record<string, unknown>
+            const brokerId = saleRow.broker_id as string
+            const storeName = saleRow.store_name as string || "Store"
+            const amount = storeSaleAmount(saleRow)
             if (brokerId) {
               notifyBrokerStoreSalePosted(brokerId, storeName, amount).catch(console.error)
             }
@@ -674,7 +691,7 @@ export async function POST(req: NextRequest) {
         if (table === "customer_payments" && data.status === "Posted" && row) {
           const brokerId = row.broker_id as string
           const customerName = row.customer_name as string || "Customer"
-          const amount = row.amount as number || 0
+          const amount = toAmount(row.amount)
           if (brokerId) {
             notifyBrokerPaymentPosted(brokerId, customerName, amount).catch(console.error)
           }
@@ -684,7 +701,7 @@ export async function POST(req: NextRequest) {
         if (table === "cash_expenses" && data.status === "Rejected" && row) {
           const expenseId = (filters.expense_id ?? row.expense_id) as string
           const title = row.title as string || "Expense"
-          const amount = row.amount as number || 0
+          const amount = toAmount(row.total_amount ?? row.amount)
           if (expenseId) {
             notifyCashOfficerExpenseActioned(expenseId, "Rejected", title, amount).catch(console.error)
           }

@@ -1,5 +1,9 @@
 import { sendToRole, sendToUser, SendNotificationOptions } from './push'
 
+function formatNaira(amount: number | null | undefined): string | null {
+  return amount && amount > 0 ? `₦${amount.toLocaleString()}` : null
+}
+
 async function notify(roles: string[], payload: SendNotificationOptions) {
   const results = await Promise.allSettled(roles.map(role => sendToRole(role, payload)))
   results.forEach((result, i) => {
@@ -88,18 +92,24 @@ export function notifyBrokerStopResolved(brokerId: string, plateNumber: string) 
 }
 
 export function notifyBrokerPaymentPosted(brokerId: string, customerName: string, amount: number) {
+  const naira = formatNaira(amount)
   return sendToUser(brokerId, {
     title: 'Customer Payment Posted',
-    body: `₦${amount.toLocaleString()} payment from ${customerName} has been posted.`,
+    body: naira
+      ? `${naira} payment from ${customerName} has been posted.`
+      : `A payment from ${customerName} has been posted.`,
     url: '/admin?section=customer-payments',
     tag: `payment-posted-${brokerId}`,
   })
 }
 
 export function notifyBrokerStoreSalePosted(brokerId: string, storeName: string, amount: number) {
+  const naira = formatNaira(amount)
   return sendToUser(brokerId, {
     title: 'Store Sale Posted',
-    body: `₦${amount.toLocaleString()} sale at ${storeName} has been posted.`,
+    body: naira
+      ? `${naira} sale at ${storeName} has been posted.`
+      : `A sale at ${storeName} has been posted.`,
     url: '/admin?section=store-sales',
     tag: `store-sale-posted-${brokerId}`,
   })
@@ -180,7 +190,7 @@ export function notifyBrokerPricesUpdated() {
 export function notifyBrokerRouteSet(tripId: string, plateNumber: string) {
   return notify(['Broker'], {
     title: 'Truck Route Set',
-    body: `Route has been set for trip ${tripId} (${plateNumber}). Tap to view.`,
+    body: `Route has been set for ${plateNumber}. Tap to view.`,
     url: '/admin?section=monitor-trips',
     tag: `route-set-${tripId}`,
   })
@@ -424,9 +434,10 @@ export function notifyStoreSupervisorDeliveryArrived(storeName: string, product:
 // ─── CashOfficer ─────────────────────────────────────────
 
 export function notifyCashOfficerExpenseActioned(expenseId: string, status: string, title: string, amount: number) {
+  const naira = formatNaira(amount)
   return notify(['CashOfficer'], {
     title: `Expense ${status}`,
-    body: `Your expense "${title}" (₦${amount.toLocaleString()}) has been ${status.toLowerCase()}. Tap to view.`,
+    body: `Your expense "${title}"${naira ? ` (${naira})` : ''} has been ${status.toLowerCase()}. Tap to view.`,
     url: '/cash-officer',
     tag: `expense-actioned-${expenseId}`,
   })
@@ -444,9 +455,10 @@ export function notifyCashOfficerBalanceAlert(officeName: string) {
 // ─── CashAuthorizer ──────────────────────────────────────
 
 export function notifyCashAuthorizerNewExpense(expenseId: string, officerName: string, title: string, amount: number) {
+  const naira = formatNaira(amount)
   return notify(['CashAuthorizer'], {
     title: 'New Expense Pending Authorisation',
-    body: `₦${amount.toLocaleString()} expense "${title}" from ${officerName}. Tap to review.`,
+    body: `${naira ? `${naira} expense` : 'A new expense'} "${title}" from ${officerName}. Tap to review.`,
     url: '/admin?section=cash-expenses',
     tag: `expense-pending-${expenseId}`,
   })
@@ -455,9 +467,12 @@ export function notifyCashAuthorizerNewExpense(expenseId: string, officerName: s
 // ─── DeskOfficer ─────────────────────────────────────────
 
 export function notifyDeskOfficerNewPayment(customerName: string, amount: number) {
+  const naira = formatNaira(amount)
   return notify(['DeskOfficer'], {
     title: 'New Customer Payment',
-    body: `₦${amount.toLocaleString()} payment from ${customerName} logged. Tap to process.`,
+    body: naira
+      ? `${naira} payment from ${customerName} logged. Tap to process.`
+      : `A payment from ${customerName} logged. Tap to process.`,
     url: '/admin?section=customer-payments',
     tag: `payment-${customerName}`,
   })
@@ -501,10 +516,10 @@ export function notifyDeskOfficerNewDeskExpense(expenseId: string) {
 
 // ─── ATCOfficer ──────────────────────────────────────────
 
-export function notifyATCNewTripStarted(tripId: string, plateNumber: string, materialCentre: string) {
+export function notifyATCNewTripStarted(tripId: string, driverName: string, plateNumber: string, materialCentre: string) {
   return notify(['ATCOfficer'], {
     title: 'New Trip Started',
-    body: `Trip ${tripId} started — ${plateNumber}, ${materialCentre}. Tap to monitor.`,
+    body: `New trip started by ${driverName} — ${plateNumber}, ${materialCentre}. Tap to monitor.`,
     url: '/admin?section=monitor-trips',
     tag: `atc-trip-${tripId}`,
   })
@@ -513,7 +528,7 @@ export function notifyATCNewTripStarted(tripId: string, plateNumber: string, mat
 export function notifyATCTripStatusChanged(tripId: string, plateNumber: string, newStatus: string) {
   return notify(['ATCOfficer'], {
     title: 'Trip Status Changed',
-    body: `Trip ${tripId} (${plateNumber}) — ${newStatus}. Tap to monitor.`,
+    body: `Trip status changed to ${newStatus} for ${plateNumber}. Tap to monitor.`,
     url: '/admin?section=monitor-trips',
     tag: `atc-trip-status-${tripId}`,
   })
