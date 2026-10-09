@@ -187,7 +187,10 @@ async function createTripPaymentRecord(row: Record<string, unknown>) {
     const tripId = row.trip_id as string
     const plate = row.plate_number as string
     if (!tripId || !plate) return
-    const tripType = row.trip_type === "MDD" ? "MDD" : "SC"
+    // Only SC and MDD trips are payable. DD trips get a mirror row in
+    // "Trips" (for the Stops FK) but carry no payment of their own.
+    if (row.trip_type !== "SC" && row.trip_type !== "MDD") return
+    const tripType = row.trip_type
     const quantityLoaded = Math.max(0, Math.round(Number(row.loaded_quantity) || 0))
 
     let scRate = SC_RATE_FALLBACK
@@ -517,7 +520,21 @@ export async function POST(req: NextRequest) {
         // Stop Disputed
         if (table === "Stops" && data.disputed === true && row) {
           const plate = row.plate_number as string
-          const brokerName = (data.disputed_by as string) || "Broker"
+          const disputedBy = (data.disputed_by as string) || (row.broker_id as string) || ""
+          let brokerName = "Broker"
+          if (disputedBy) {
+            if (isUuid(disputedBy)) {
+              const { data: broker } = await supabaseAdmin
+                .from("Brokers")
+                .select("broker_name")
+                .eq("broker_id", disputedBy)
+                .maybeSingle()
+              if (broker?.broker_name) brokerName = broker.broker_name
+            } else {
+              // Legacy rows stored a name directly
+              brokerName = disputedBy
+            }
+          }
           notifyATCDisputedStop(plate, brokerName).catch(console.error)
           notifyAdminStopDisputed(plate, brokerName).catch(console.error)
         }

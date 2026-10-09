@@ -759,6 +759,7 @@ export default function MonitorTrucks({ viewOnly = false }: { viewOnly?: boolean
       table: "Trips",
       data: {
         trip_id: tripId,
+        trip_type: "DD",
         plate_number: plate,
         product: ddProduct,
         material_centre: ddLoadName,
