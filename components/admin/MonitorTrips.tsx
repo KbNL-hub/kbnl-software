@@ -2,16 +2,16 @@
 
 import { FONT_SIZE } from "@/lib/constants"
 import { usePolling } from "@/lib/hooks/usePolling"
-import { usePagination } from "@/lib/hooks/usePagination"
 import CustomerSelector from "@/components/CustomerSelector"
 import TripEditModal from "@/components/admin/TripEditModal"
 import { fetchStores } from "@/lib/stores"
 
-import { useState, useEffect, useCallback } from "react"
+import { useState, useEffect, useCallback, useRef } from "react"
 import PaginationControls from "@/components/PaginationControls"
 import { Icon } from "@iconify/react"
 import { supabase } from "@/lib/supabase"
 import { selectInChunks } from "@/lib/supabase-batch"
+import { fetchMonitorTripPage, type MonitorTripRow } from "@/lib/monitor-trips"
 import { apiMutate } from "@/lib/api-mutation"
 import { usePermissions } from "@/lib/PermissionContext"
 
@@ -75,6 +75,7 @@ type Trip = {
   loaded_quantity: number
   remaining: number
   stop_count: number
+  stop_summary: StopSummary
   stops: Stop[]
   discrepancies: Discrepancy[]
   load_more_entries: LoadMoreEntry[]
@@ -105,7 +106,53 @@ type ResolveStopForm = {
   tempId: string
 }
 
+// Everything the list view needs to know about a trip's stops, computed from
+// five columns instead of loading every stop row.
+type StopSummary = {
+  total: number
+  confirmed: number
+  pending: number
+  disputed: number
+  awaiting_review: number
+  returned: number
+}
+
+function summariseStops(
+  rows: { confirmed: boolean; disputed: boolean; discount_status: string | null }[],
+): StopSummary {
+  const summary: StopSummary = { total: rows.length, confirmed: 0, pending: 0, disputed: 0, awaiting_review: 0, returned: 0 }
+  for (const row of rows) {
+    const ds = row.discount_status ?? "none"
+    if (row.disputed) summary.disputed += 1
+    if (ds === "pending") summary.awaiting_review += 1
+    else if (ds === "returned") summary.returned += 1
+    else if (row.confirmed) summary.confirmed += 1
+    else summary.pending += 1
+  }
+  return summary
+}
+
 type ViewMode = "card" | "table"
+
+// The list query, kept in one object so that changing a filter and returning to
+// page 1 are a single state update rather than two racing ones.
+type ListQueryState = {
+  status: string
+  atc: string
+  plate: string
+  dateFrom: string
+  dateTo: string
+  page: number
+}
+
+const INITIAL_LIST_QUERY: ListQueryState = {
+  status: "Active",
+  atc: "",
+  plate: "",
+  dateFrom: "",
+  dateTo: "",
+  page: 0,
+}
 
 type StopConfirmation = {
   confirmation_id: string
@@ -119,7 +166,7 @@ type StopConfirmation = {
   confirmed_at: string | null
 }
 
-type CreditApproval = { id: string; status: string; adjusted_price: number | null }
+type CreditApproval = { id: string; source_id: string; status: string; adjusted_price: number | null }
 
 type FetchResult = { trips: Trip[]; pricingError: string | null }
 
@@ -171,16 +218,14 @@ export default function MonitorTrips() {
   const canEdit = getAccess("monitor-trips").canEdit
   const [trips, setTrips] = useState<Trip[]>([])
   const [loading, setLoading] = useState(true)
-  const [filterStatus, setFilterStatus] = useState("Active")
+  const [query, setQuery] = useState<ListQueryState>(INITIAL_LIST_QUERY)
   const [atcSearch, setAtcSearch] = useState("")
   const [plateSearch, setPlateSearch] = useState("")
   const [plateDropOpen, setPlateDropOpen] = useState(false)
   const [dateDropOpen, setDateDropOpen] = useState(false)
   const [dateMode, setDateMode] = useState<"single" | "range">("single")
-  const [filterDateFrom, setFilterDateFrom] = useState("")
-  const [filterDateTo, setFilterDateTo] = useState("")
-  const hasActiveFilters = !!atcSearch || !!plateSearch || !!filterDateFrom || !!filterDateTo
-  const uniquePlates = [...new Set(trips.map(t => t.plate_number))].sort()
+  const hasActiveFilters = !!query.atc || !!query.plate || !!query.dateFrom || !!query.dateTo
+  const [uniquePlates, setUniquePlates] = useState<string[]>([])
   const matchedPlates = plateSearch ? uniquePlates.filter(p => p.toLowerCase().includes(plateSearch.trim().toLowerCase())) : []
   const [viewMode, setViewMode] = useState<ViewMode>(isMobile ? "card" : "table")
   const [selectedDriver, setSelectedDriver] = useState<Pick<Trip, "driver_name" | "driver_phone" | "driver_status"> | null>(null)
@@ -198,6 +243,8 @@ export default function MonitorTrips() {
   const [resolveSubmitting, setResolveSubmitting] = useState(false)
   const [resolveLoading, setResolveLoading] = useState(false)
   const [resolveMessage, setResolveMessage] = useState("")
+  const [listTotal, setListTotal] = useState(0)
+  const [listStats, setListStats] = useState({ pending_record: 0, disputed_trip: 0 })
   const [allBrokers, setAllBrokers] = useState<{ broker_id: string; broker_name: string }[]>([])
   const [storeLocations, setStoreLocations] = useState<string[]>([])
   const [resolvingTripId, setResolvingTripId] = useState<string | null>(null)
@@ -205,458 +252,514 @@ export default function MonitorTrips() {
   const [showActionsDropdown, setShowActionsDropdown] = useState(false)
   const [isEditingTrip, setIsEditingTrip] = useState(false)
   const [pricingError, setPricingError] = useState<string | null>(null)
+  const [detailLoading, setDetailLoading] = useState(false)
+  // Tracks which trip the modal is showing so the in-flight fetch in
+  // openTripDetails can tell whether the modal has since been pointed
+  // somewhere else.
+  const detailTripIdRef = useRef<string | null>(null)
+  const [serverQueryUnavailable, setServerQueryUnavailable] = useState(false)
+  // Latched once the RPC is found so a transient error does not silently flip
+  // the page back to the heavier browser-side query.
+  const serverQueryRef = useRef(true)
 
-  async function fetchTrips(): Promise<FetchResult> {
-    const { data: tripsData, error } = await supabase
-      .from("Trips")
-      .select("trip_id, plate_number, driver_id, product, material_centre, loaded_quantity, trip_status, ATC, order_no, child_order_no, amount_charged, payment_mode, created_at, updated_at, recorded, posted")
-      .order("created_at", { ascending: false })
+// The list only renders per-trip counters, so stops are fetched as five
+// aggregate columns. Everything stop-shaped (prices, broker/customer names,
+// coordinates, confirmations) is loaded on demand for a single trip by
+// fetchTripDetail when the user opens it.
+async function fetchTrips(): Promise<FetchResult> {
+  const { data: tripsData, error } = await supabase
+    .from("Trips")
+    .select("trip_id, plate_number, driver_id, product, material_centre, loaded_quantity, trip_status, ATC, order_no, child_order_no, amount_charged, payment_mode, created_at, updated_at, recorded, posted")
+    .order("created_at", { ascending: false })
 
-    if (error || !tripsData) return { trips: [], pricingError: null }
+  if (error || !tripsData) return { trips: [], pricingError: null }
 
-    const tripIds = tripsData.map(t => t.trip_id)
+  const tripIds = tripsData.map(t => t.trip_id)
 
-    const driverIds = tripsData.map(t => t.driver_id).filter(Boolean)
-    const driverMap = new Map<string, { full_name: string; phone_number: string; status: string }>()
-    if (driverIds.length > 0) {
-      const { data: driversData } = await supabase
-        .from("Drivers")
-        .select("driver_id, full_name, phone_number, status")
-        .in("driver_id", driverIds)
-      for (const d of driversData || []) driverMap.set(d.driver_id, d)
-    }
+  const driverIds = tripsData.map(t => t.driver_id).filter(Boolean)
+  const driverMap = new Map<string, { full_name: string; phone_number: string; status: string }>()
+  if (driverIds.length > 0) {
+    const { data: driversData } = await supabase
+      .from("Drivers")
+      .select("driver_id, full_name, phone_number, status")
+      .in("driver_id", driverIds)
+    for (const d of driversData || []) driverMap.set(d.driver_id, d)
+  }
 
-    const stopsResult = await selectInChunks(
+  const [stopsResult, discResult, loadMoreResult] = await Promise.all([
+    selectInChunks(
       ids => supabase
         .from("Stops")
-        .select("stop_id, trip_id, quantity_offloaded, latitude, longitude, stop_time, stop_location, broker_id, customer_id, confirmed, disputed, dispute_reason, store_name, stop_type, discount_status, on_credit, credit_approval_id")
-        .in("trip_id", ids)
-        .order("stop_time", { ascending: true }),
+        .select("trip_id, quantity_offloaded, confirmed, disputed, discount_status")
+        .in("trip_id", ids),
       tripIds,
-    )
-    const allStopsRaw = stopsResult.data
-
-    const stopsByTrip = new Map<string, typeof allStopsRaw>()
-    for (const stop of allStopsRaw) {
-      if (!stopsByTrip.has(stop.trip_id)) stopsByTrip.set(stop.trip_id, [])
-      stopsByTrip.get(stop.trip_id)!.push(stop)
-    }
-
-    const allStops = allStopsRaw
-    const brokerIds = [...new Set(allStops.filter(s => s.stop_type === "customer").map(s => s.broker_id).filter(Boolean))]
-    const brokerMap = new Map<string, { broker_name: string }>()
-    if (brokerIds.length > 0) {
-      const { data: brokersData } = await supabase
-        .from("Brokers")
-        .select("broker_id, broker_name")
-        .in("broker_id", brokerIds)
-      for (const b of brokersData || []) brokerMap.set(b.broker_id, b)
-    }
-
-    const customerIds = [...new Set(allStops.filter(s => s.stop_type === "customer" && s.customer_id).map(s => s.customer_id).filter(Boolean))]
-    const customerMap = new Map<string, { full_name: string; phone_number: string | null }>()
-    if (customerIds.length > 0) {
-      const customersResult = await selectInChunks(
-        ids => supabase
-          .from("Customers")
-          .select("customer_id, full_name, phone_number")
-          .in("customer_id", ids),
-        customerIds,
-      )
-      for (const c of customersResult.data) customerMap.set(c.customer_id, c)
-    }
-
-    const stopIds = allStops.map(s => s.stop_id).filter(Boolean)
-    const confirmationMap = new Map<string, StopConfirmation>()
-    const creditApprovalMap = new Map<string, CreditApproval>()
-    const pricingErrors: string[] = []
-    if (stopIds.length > 0) {
-      const confirmationsResult = await selectInChunks<StopConfirmation>(
-        ids => supabase
-          .from("Stop_Confirmations")
-          .select("confirmation_id, stop_id, broker_id, customer_id, price_per_bag, area, company_price, price_reason, confirmed_at")
-          .in("stop_id", ids)
-          .order("confirmed_at", { ascending: false }),
-        stopIds,
-      )
-      for (const c of confirmationsResult.data) {
-        if (!confirmationMap.has(c.stop_id)) confirmationMap.set(c.stop_id, c)
-      }
-      if (confirmationsResult.error) {
-        console.error("Failed to load stop prices", confirmationsResult.error)
-        pricingErrors.push("stop prices")
-      }
-
-      const creditResult = await selectInChunks(
-        ids => supabase
-          .from("credit_approvals")
-          .select("id, source_id, status, adjusted_price")
-          .eq("source_type", "stop")
-          .in("source_id", ids),
-        stopIds,
-      )
-      for (const ca of creditResult.data) creditApprovalMap.set(ca.source_id, ca)
-      if (creditResult.error) {
-        console.error("Failed to load credit approvals", creditResult.error)
-        pricingErrors.push("credit approvals")
-      }
-    }
-    const pricingError = pricingErrors.length > 0 ? pricingErrors.join(" and ") : null
-
-    const discByTrip = new Map<string, Discrepancy[]>()
-    const discResult = await selectInChunks(
+    ),
+    selectInChunks(
       ids => supabase
         .from("trip_discrepancies")
-        .select("discrepancy_id, trip_id, shortage, caked_bags, notes, reported_at")
-        .in("trip_id", ids)
-        .order("reported_at", { ascending: true }),
+        .select("trip_id, shortage, caked_bags")
+        .in("trip_id", ids),
       tripIds,
-    )
-    for (const d of discResult.data) {
-      if (!discByTrip.has(d.trip_id)) discByTrip.set(d.trip_id, [])
-      discByTrip.get(d.trip_id)!.push(d)
-    }
-
-    const loadMoreByTrip = new Map<string, LoadMoreEntry[]>()
-    const loadMoreResult = await selectInChunks(
+    ),
+    selectInChunks(
       ids => supabase
         .from("trip_load_more")
         .select("id, trip_id, quantity, loading_point_type, loading_point_name, product, created_at")
-        .in("trip_id", ids)
-        .order("created_at", { ascending: false }),
+        .in("trip_id", ids),
       tripIds,
-    )
-    for (const lm of loadMoreResult.data) {
-      if (!loadMoreByTrip.has(lm.trip_id)) loadMoreByTrip.set(lm.trip_id, [])
-      loadMoreByTrip.get(lm.trip_id)!.push(lm)
-    }
+    ),
+  ])
 
-    const enriched = tripsData.map((trip) => {
-      const driver = driverMap.get(trip.driver_id)
-      const stopsRaw = stopsByTrip.get(trip.trip_id) || []
+  if (stopsResult.error) console.error("Failed to load trip stops", stopsResult.error)
 
-      const stops: Stop[] = stopsRaw.map((stop) => {
-        let broker_name = null
-        let customer_name = null
-        let customer_phone = null
-
-        if (stop.stop_type === "customer") {
-          const broker = brokerMap.get(stop.broker_id)
-          broker_name = broker?.broker_name ?? "Unknown"
-
-          if (stop.customer_id) {
-            const customer = customerMap.get(stop.customer_id)
-            customer_name = customer?.full_name ?? "Not provided"
-            customer_phone = customer?.phone_number ?? null
-          } else {
-            customer_name = "Not provided"
-          }
-        }
-
-        const confirmation = confirmationMap.get(stop.stop_id)
-        const creditApproval = creditApprovalMap.get(stop.stop_id)
-
-        return {
-          stop_id: stop.stop_id,
-          stop_type: stop.stop_type,
-          broker_id: stop.broker_id ?? null,
-          broker_name,
-          customer_id: stop.customer_id ?? null,
-          customer_name,
-          customer_phone,
-          quantity_offloaded: stop.quantity_offloaded,
-          latitude: stop.latitude,
-          longitude: stop.longitude,
-          stop_time: stop.stop_time,
-          stop_location: stop.stop_location,
-          store_name: stop.store_name ?? null,
-          confirmed: stop.confirmed,
-          disputed: stop.disputed,
-          dispute_reason: stop.dispute_reason,
-          confirmation_id: confirmation?.confirmation_id ?? null,
-          confirmation_broker_id: confirmation?.broker_id ?? null,
-          price_per_bag: confirmation?.price_per_bag ?? null,
-          area: confirmation?.area ?? null,
-          company_price: confirmation?.company_price ?? null,
-          price_reason: confirmation?.price_reason ?? null,
-          confirmed_at: confirmation?.confirmed_at ?? null,
-          discount_status: stop.discount_status ?? "none",
-          on_credit: stop.on_credit || !!creditApproval,
-          credit_approval_id: stop.credit_approval_id ?? creditApproval?.id ?? null,
-          credit_status: creditApproval?.status ?? null,
-          is_credit_approved: creditApproval?.status === "Approved",
-        }
-      })
-
-      const discrepancies: Discrepancy[] = discByTrip.get(trip.trip_id) || []
-      const load_more_entries: LoadMoreEntry[] = loadMoreByTrip.get(trip.trip_id) || []
-
-      const totalOffloaded = stops.reduce((sum, s) => sum + s.quantity_offloaded, 0)
-      const totalShortage = discrepancies.reduce((sum, d) => sum + (d.shortage || 0), 0)
-      const totalCaked = discrepancies.reduce((sum, d) => sum + (d.caked_bags || 0), 0)
-
-      return {
-        trip_id: trip.trip_id,
-        plate_number: trip.plate_number,
-        driver_id: trip.driver_id,
-        driver_name: driver?.full_name ?? "Unknown",
-        driver_phone: driver?.phone_number ?? "—",
-        driver_status: driver?.status ?? "—",
-        product: trip.product,
-        material_centre: trip.material_centre,
-        loaded_quantity: trip.loaded_quantity,
-        remaining: trip.loaded_quantity - totalOffloaded - totalShortage - totalCaked,
-        stop_count: stops.length,
-        stops,
-        discrepancies,
-        load_more_entries,
-        trip_status: trip.trip_status,
-        atc: trip.ATC ?? null,
-        order_no: trip.order_no ?? null,
-        child_order_no: trip.child_order_no ?? null,
-        amount_charged: trip.amount_charged ?? null,
-        payment_mode: trip.payment_mode ?? null,
-        created_at: trip.created_at,
-        completed_at: trip.trip_status === "Completed" ? trip.updated_at ?? null : null,
-        recorded: trip.recorded ?? false,
-        posted: trip.posted ?? false,
-        route_points: null,
-      }
-    })
-
-    return { trips: enriched, pricingError }
+  const stopsByTrip = new Map<string, typeof stopsResult.data>()
+  for (const stop of stopsResult.data) {
+    if (!stopsByTrip.has(stop.trip_id)) stopsByTrip.set(stop.trip_id, [])
+    stopsByTrip.get(stop.trip_id)!.push(stop)
   }
 
-  async function fetchDdTrips(): Promise<FetchResult> {
-    const { data: ddTripsData, error } = await supabase
-      .from("dd_trips")
-      .select("dd_trip_id, plate_number, driver_name, driver_phone, product, loading_point, loaded_quantity, trip_status, atc, order_no, child_order_no, route_points, created_at, recorded, posted, posted_at")
-      .order("created_at", { ascending: false })
+  const discTotalsByTrip = new Map<string, { shortage: number; caked: number }>()
+  for (const d of discResult.data) {
+    const cur = discTotalsByTrip.get(d.trip_id) ?? { shortage: 0, caked: 0 }
+    cur.shortage += d.shortage || 0
+    cur.caked += d.caked_bags || 0
+    discTotalsByTrip.set(d.trip_id, cur)
+  }
 
-    if (error || !ddTripsData) return { trips: [], pricingError: null }
+  const loadMoreByTrip = new Map<string, LoadMoreEntry[]>()
+  for (const lm of loadMoreResult.data) {
+    if (!loadMoreByTrip.has(lm.trip_id)) loadMoreByTrip.set(lm.trip_id, [])
+    loadMoreByTrip.get(lm.trip_id)!.push(lm)
+  }
 
-    const ddTripIds = ddTripsData.map(t => t.dd_trip_id)
+  const enriched: Trip[] = tripsData.map((trip) => {
+    const driver = driverMap.get(trip.driver_id)
+    const stopsRaw = stopsByTrip.get(trip.trip_id) || []
+    const discTotals = discTotalsByTrip.get(trip.trip_id) ?? { shortage: 0, caked: 0 }
 
-    const stopsResult = await selectInChunks(
+    const totalOffloaded = stopsRaw.reduce((sum, s) => sum + (s.quantity_offloaded || 0), 0)
+
+    return {
+      trip_id: trip.trip_id,
+      plate_number: trip.plate_number,
+      driver_id: trip.driver_id,
+      driver_name: driver?.full_name ?? "Unknown",
+      driver_phone: driver?.phone_number ?? "—",
+      driver_status: driver?.status ?? "—",
+      product: trip.product,
+      material_centre: trip.material_centre,
+      loaded_quantity: trip.loaded_quantity,
+      remaining: trip.loaded_quantity - totalOffloaded - discTotals.shortage - discTotals.caked,
+      stop_count: stopsRaw.length,
+      stop_summary: summariseStops(stopsRaw),
+      stops: [],
+      discrepancies: [],
+      load_more_entries: loadMoreByTrip.get(trip.trip_id) ?? [],
+      trip_status: trip.trip_status,
+      atc: trip.ATC ?? null,
+      order_no: trip.order_no ?? null,
+      child_order_no: trip.child_order_no ?? null,
+      amount_charged: trip.amount_charged ?? null,
+      payment_mode: trip.payment_mode ?? null,
+      created_at: trip.created_at,
+      completed_at: trip.trip_status === "Completed" ? trip.updated_at ?? null : null,
+      recorded: trip.recorded ?? false,
+      posted: trip.posted ?? false,
+      route_points: null,
+    }
+  })
+
+  return { trips: enriched, pricingError: null }
+}
+
+async function fetchDdTrips(): Promise<FetchResult> {
+  const { data: ddTripsData, error } = await supabase
+    .from("dd_trips")
+    .select("dd_trip_id, plate_number, driver_name, driver_phone, product, loading_point, loaded_quantity, trip_status, atc, order_no, child_order_no, route_points, created_at, recorded, posted, posted_at")
+    .order("created_at", { ascending: false })
+
+  if (error || !ddTripsData) return { trips: [], pricingError: null }
+
+  const ddTripIds = ddTripsData.map(t => t.dd_trip_id)
+
+  const [ddStopsResult, ddDiscResult, ddLoadMoreResult] = await Promise.all([
+    selectInChunks(
       ids => supabase
         .from("Stops")
-        .select("stop_id, trip_id, quantity_offloaded, latitude, longitude, stop_time, stop_location, broker_id, customer_id, confirmed, disputed, dispute_reason, store_name, stop_type, discount_status, on_credit, credit_approval_id")
-        .in("trip_id", ids)
-        .order("stop_time", { ascending: true }),
+        .select("trip_id, quantity_offloaded, confirmed, disputed, discount_status")
+        .in("trip_id", ids),
       ddTripIds,
-    )
-    const allStopsRaw = stopsResult.data
-
-    const stopsByTrip = new Map<string, typeof allStopsRaw>()
-    for (const stop of allStopsRaw) {
-      if (!stopsByTrip.has(stop.trip_id)) stopsByTrip.set(stop.trip_id, [])
-      stopsByTrip.get(stop.trip_id)!.push(stop)
-    }
-
-    const allStops = allStopsRaw
-    const brokerIds = [...new Set(allStops.filter(s => s.stop_type === "customer").map(s => s.broker_id).filter(Boolean))]
-    const brokerMap = new Map<string, { broker_name: string }>()
-    if (brokerIds.length > 0) {
-      const { data: brokersData } = await supabase
-        .from("Brokers")
-        .select("broker_id, broker_name")
-        .in("broker_id", brokerIds)
-      for (const b of brokersData || []) brokerMap.set(b.broker_id, b)
-    }
-
-    const customerIds = [...new Set(allStops.filter(s => s.stop_type === "customer" && s.customer_id).map(s => s.customer_id).filter(Boolean))]
-    const customerMap = new Map<string, { full_name: string; phone_number: string | null }>()
-    if (customerIds.length > 0) {
-      const customersResult = await selectInChunks(
-        ids => supabase
-          .from("Customers")
-          .select("customer_id, full_name, phone_number")
-          .in("customer_id", ids),
-        customerIds,
-      )
-      for (const c of customersResult.data) customerMap.set(c.customer_id, c)
-    }
-
-    const stopIds = allStops.map(s => s.stop_id).filter(Boolean)
-    const confirmationMap = new Map<string, StopConfirmation>()
-    const creditApprovalMap = new Map<string, CreditApproval>()
-    const pricingErrors: string[] = []
-    if (stopIds.length > 0) {
-      const confirmationsResult = await selectInChunks<StopConfirmation>(
-        ids => supabase
-          .from("Stop_Confirmations")
-          .select("confirmation_id, stop_id, broker_id, customer_id, price_per_bag, area, company_price, price_reason, confirmed_at")
-          .in("stop_id", ids)
-          .order("confirmed_at", { ascending: false }),
-        stopIds,
-      )
-      for (const c of confirmationsResult.data) {
-        if (!confirmationMap.has(c.stop_id)) confirmationMap.set(c.stop_id, c)
-      }
-      if (confirmationsResult.error) {
-        console.error("Failed to load stop prices", confirmationsResult.error)
-        pricingErrors.push("stop prices")
-      }
-
-      const creditResult = await selectInChunks(
-        ids => supabase
-          .from("credit_approvals")
-          .select("id, source_id, status, adjusted_price")
-          .eq("source_type", "stop")
-          .in("source_id", ids),
-        stopIds,
-      )
-      for (const ca of creditResult.data) creditApprovalMap.set(ca.source_id, ca)
-      if (creditResult.error) {
-        console.error("Failed to load credit approvals", creditResult.error)
-        pricingErrors.push("credit approvals")
-      }
-    }
-    const pricingError = pricingErrors.length > 0 ? pricingErrors.join(" and ") : null
-
-    const ddDiscByTrip = new Map<string, Discrepancy[]>()
-    const ddDiscResult = await selectInChunks(
+    ),
+    selectInChunks(
       ids => supabase
         .from("trip_discrepancies")
-        .select("discrepancy_id, trip_id, shortage, caked_bags, notes, reported_at")
-        .in("trip_id", ids)
-        .order("reported_at", { ascending: true }),
+        .select("trip_id, shortage, caked_bags")
+        .in("trip_id", ids),
       ddTripIds,
-    )
-    for (const d of ddDiscResult.data) {
-      if (!ddDiscByTrip.has(d.trip_id)) ddDiscByTrip.set(d.trip_id, [])
-      ddDiscByTrip.get(d.trip_id)!.push(d)
-    }
-
-    const loadMoreByTrip = new Map<string, LoadMoreEntry[]>()
-    const ddLoadMoreResult = await selectInChunks(
+    ),
+    selectInChunks(
       ids => supabase
         .from("trip_load_more")
         .select("id, trip_id, quantity, loading_point_type, loading_point_name, product, created_at")
-        .in("trip_id", ids)
-        .order("created_at", { ascending: false }),
+        .in("trip_id", ids),
       ddTripIds,
-    )
-    for (const lm of ddLoadMoreResult.data) {
-      if (!loadMoreByTrip.has(lm.trip_id)) loadMoreByTrip.set(lm.trip_id, [])
-      loadMoreByTrip.get(lm.trip_id)!.push(lm)
-    }
+    ),
+  ])
 
-    const ddTrips: Trip[] = ddTripsData.map((ddTrip) => {
-      const stopsRaw = stopsByTrip.get(ddTrip.dd_trip_id) || []
+  if (ddStopsResult.error) console.error("Failed to load side trip stops", ddStopsResult.error)
 
-      const stops: Stop[] = stopsRaw.map((stop) => {
-        let broker_name = null
-        let customer_name = null
-        let customer_phone = null
-
-        if (stop.stop_type === "customer") {
-          const broker = brokerMap.get(stop.broker_id)
-          broker_name = broker?.broker_name ?? "Unknown"
-
-          if (stop.customer_id) {
-            const customer = customerMap.get(stop.customer_id)
-            customer_name = customer?.full_name ?? "Not provided"
-            customer_phone = customer?.phone_number ?? null
-          } else {
-            customer_name = "Not provided"
-          }
-        }
-
-        const confirmation = confirmationMap.get(stop.stop_id)
-        const creditApproval = creditApprovalMap.get(stop.stop_id)
-
-        return {
-          stop_id: stop.stop_id,
-          stop_type: stop.stop_type,
-          broker_id: stop.broker_id ?? null,
-          broker_name,
-          customer_id: stop.customer_id ?? null,
-          customer_name,
-          customer_phone,
-          quantity_offloaded: stop.quantity_offloaded,
-          latitude: stop.latitude,
-          longitude: stop.longitude,
-          stop_time: stop.stop_time,
-          stop_location: stop.stop_location,
-          store_name: stop.store_name ?? null,
-          confirmed: stop.confirmed,
-          disputed: stop.disputed,
-          dispute_reason: stop.dispute_reason,
-          confirmation_id: confirmation?.confirmation_id ?? null,
-          confirmation_broker_id: confirmation?.broker_id ?? null,
-          price_per_bag: confirmation?.price_per_bag ?? null,
-          area: confirmation?.area ?? null,
-          company_price: confirmation?.company_price ?? null,
-          price_reason: confirmation?.price_reason ?? null,
-          confirmed_at: confirmation?.confirmed_at ?? null,
-          discount_status: stop.discount_status ?? "none",
-          on_credit: stop.on_credit || !!creditApproval,
-          credit_approval_id: stop.credit_approval_id ?? creditApproval?.id ?? null,
-          credit_status: creditApproval?.status ?? null,
-          is_credit_approved: creditApproval?.status === "Approved",
-        }
-      })
-
-      const load_more_entries: LoadMoreEntry[] = loadMoreByTrip.get(ddTrip.dd_trip_id) || []
-
-      const discrepancies: Discrepancy[] = ddDiscByTrip.get(ddTrip.dd_trip_id) || []
-
-      const totalOffloaded = stops.reduce((sum, s) => sum + s.quantity_offloaded, 0)
-      const totalShortage = discrepancies.reduce((sum, d) => sum + (d.shortage || 0), 0)
-      const totalCaked = discrepancies.reduce((sum, d) => sum + (d.caked_bags || 0), 0)
-
-      return {
-        trip_id: ddTrip.dd_trip_id,
-        plate_number: ddTrip.plate_number,
-        driver_id: "",
-        driver_name: ddTrip.driver_name ?? "DD Driver",
-        driver_phone: ddTrip.driver_phone ?? "—",
-        driver_status: "Active",
-        product: ddTrip.product,
-        material_centre: ddTrip.loading_point,
-        loaded_quantity: ddTrip.loaded_quantity,
-        remaining: ddTrip.loaded_quantity - totalOffloaded - totalShortage - totalCaked,
-        stop_count: stops.length,
-        stops,
-        discrepancies,
-        load_more_entries,
-        trip_status: ddTrip.trip_status,
-        atc: ddTrip.atc ?? null,
-        order_no: ddTrip.order_no ?? null,
-        child_order_no: ddTrip.child_order_no ?? null,
-        amount_charged: null,
-        payment_mode: null,
-        created_at: ddTrip.created_at,
-        completed_at: ddTrip.trip_status === "Completed" ? ddTrip.posted_at ?? null : null,
-        isDD: true,
-        recorded: ddTrip.recorded ?? false,
-        posted: ddTrip.posted ?? false,
-        route_points: ddTrip.route_points ?? null,
-      }
-    })
-
-    return { trips: ddTrips, pricingError }
+  const stopsByTrip = new Map<string, typeof ddStopsResult.data>()
+  for (const stop of ddStopsResult.data) {
+    if (!stopsByTrip.has(stop.trip_id)) stopsByTrip.set(stop.trip_id, [])
+    stopsByTrip.get(stop.trip_id)!.push(stop)
   }
 
-  const loadAll = useCallback(async () => {
-    const [normal, dd] = await Promise.all([
-      fetchTrips().catch(() => ({ trips: [] as Trip[], pricingError: null })),
-      fetchDdTrips().catch(() => ({ trips: [] as Trip[], pricingError: null })),
+  const discTotalsByTrip = new Map<string, { shortage: number; caked: number }>()
+  for (const d of ddDiscResult.data) {
+    const cur = discTotalsByTrip.get(d.trip_id) ?? { shortage: 0, caked: 0 }
+    cur.shortage += d.shortage || 0
+    cur.caked += d.caked_bags || 0
+    discTotalsByTrip.set(d.trip_id, cur)
+  }
+
+  const loadMoreByTrip = new Map<string, LoadMoreEntry[]>()
+  for (const lm of ddLoadMoreResult.data) {
+    if (!loadMoreByTrip.has(lm.trip_id)) loadMoreByTrip.set(lm.trip_id, [])
+    loadMoreByTrip.get(lm.trip_id)!.push(lm)
+  }
+
+  const ddTrips: Trip[] = ddTripsData.map((ddTrip) => {
+    const stopsRaw = stopsByTrip.get(ddTrip.dd_trip_id) || []
+    const discTotals = discTotalsByTrip.get(ddTrip.dd_trip_id) ?? { shortage: 0, caked: 0 }
+
+    const totalOffloaded = stopsRaw.reduce((sum, s) => sum + (s.quantity_offloaded || 0), 0)
+
+    return {
+      trip_id: ddTrip.dd_trip_id,
+      plate_number: ddTrip.plate_number,
+      driver_id: "",
+      driver_name: ddTrip.driver_name ?? "DD Driver",
+      driver_phone: ddTrip.driver_phone ?? "—",
+      driver_status: "Active",
+      product: ddTrip.product,
+      material_centre: ddTrip.loading_point,
+      loaded_quantity: ddTrip.loaded_quantity,
+      remaining: ddTrip.loaded_quantity - totalOffloaded - discTotals.shortage - discTotals.caked,
+      stop_count: stopsRaw.length,
+      stop_summary: summariseStops(stopsRaw),
+      stops: [],
+      discrepancies: [],
+      load_more_entries: loadMoreByTrip.get(ddTrip.dd_trip_id) ?? [],
+      trip_status: ddTrip.trip_status,
+      atc: ddTrip.atc ?? null,
+      order_no: ddTrip.order_no ?? null,
+      child_order_no: ddTrip.child_order_no ?? null,
+      amount_charged: null,
+      payment_mode: null,
+      created_at: ddTrip.created_at,
+      completed_at: ddTrip.trip_status === "Completed" ? ddTrip.posted_at ?? null : null,
+      isDD: true,
+      recorded: ddTrip.recorded ?? false,
+      posted: ddTrip.posted ?? false,
+      route_points: ddTrip.route_points ?? null,
+    }
+  })
+
+  return { trips: ddTrips, pricingError: null }
+}
+
+
+  // Loads everything the stops-detail modal needs for exactly one trip: full
+  // stop rows, their confirmations, and the credit/customers/brokers needed to
+  // label them. Runs on click rather than on every poll.
+  async function fetchTripDetail(tripId: string): Promise<{ stops: Stop[]; discrepancies: Discrepancy[]; pricingError: string | null }> {
+    const { data: allStopsRaw } = await supabase
+      .from("Stops")
+      .select("stop_id, trip_id, quantity_offloaded, latitude, longitude, stop_time, stop_location, broker_id, customer_id, confirmed, disputed, dispute_reason, store_name, stop_type, discount_status, on_credit, credit_approval_id")
+      .eq("trip_id", tripId)
+      .order("stop_time", { ascending: true })
+
+    const allStops = allStopsRaw ?? []
+    const stopIds = allStops.map(s => s.stop_id).filter(Boolean)
+
+    const brokerIds = [...new Set(allStops.filter(s => s.stop_type === "customer").map(s => s.broker_id).filter(Boolean))]
+    const customerIds = [...new Set(allStops.filter(s => s.stop_type === "customer" && s.customer_id).map(s => s.customer_id).filter(Boolean))]
+
+    const [brokerRes, customerRes, confirmationsRes, creditRes, discRes] = await Promise.all([
+      brokerIds.length > 0
+        ? supabase.from("Brokers").select("broker_id, broker_name").in("broker_id", brokerIds)
+        : Promise.resolve({ data: [], error: null }),
+      customerIds.length > 0
+        ? supabase.from("Customers").select("customer_id, full_name, phone_number").in("customer_id", customerIds)
+        : Promise.resolve({ data: [], error: null }),
+      stopIds.length > 0
+        ? selectInChunks<StopConfirmation>(
+            ids => supabase
+              .from("Stop_Confirmations")
+              .select("confirmation_id, stop_id, broker_id, customer_id, price_per_bag, area, company_price, price_reason, confirmed_at")
+              .in("stop_id", ids)
+              .order("confirmed_at", { ascending: false }),
+            stopIds,
+          )
+        : Promise.resolve({ data: [] as StopConfirmation[], error: null }),
+      stopIds.length > 0
+        ? selectInChunks(
+            ids => supabase
+              .from("credit_approvals")
+              .select("id, source_id, status, adjusted_price")
+              .eq("source_type", "stop")
+              .in("source_id", ids),
+            stopIds,
+          )
+        : Promise.resolve({ data: [] as CreditApproval[], error: null }),
+      supabase
+        .from("trip_discrepancies")
+        .select("discrepancy_id, trip_id, shortage, caked_bags, notes, reported_at")
+        .eq("trip_id", tripId)
+        .order("reported_at", { ascending: true }),
     ])
-    const ddTripIds = new Set(dd.trips.map(t => t.trip_id))
-    const allTrips = [...normal.trips.filter(t => !ddTripIds.has(t.trip_id)), ...dd.trips]
-    setTrips(allTrips)
-    setPricingError(normal.pricingError ?? dd.pricingError)
+
+    const brokerMap = new Map<string, string>((brokerRes.data ?? []).map(b => [b.broker_id, b.broker_name]))
+    const customerMap = new Map<string, { full_name: string; phone_number: string | null }>(
+      (customerRes.data ?? []).map(c => [c.customer_id, c])
+    )
+    const confirmationMap = new Map<string, StopConfirmation>()
+    for (const c of confirmationsRes.data) {
+      if (!confirmationMap.has(c.stop_id)) confirmationMap.set(c.stop_id, c)
+    }
+    const creditApprovalMap = new Map<string, CreditApproval>()
+    for (const ca of creditRes.data) creditApprovalMap.set(ca.source_id, ca)
+
+    const pricingErrors: string[] = []
+    if (confirmationsRes.error) {
+      console.error("Failed to load stop prices", confirmationsRes.error)
+      pricingErrors.push("stop prices")
+    }
+    if (creditRes.error) {
+      console.error("Failed to load credit approvals", creditRes.error)
+      pricingErrors.push("credit approvals")
+    }
+
+    const stops: Stop[] = allStops.map((stop) => {
+      let broker_name = null
+      let customer_name = null
+      let customer_phone = null
+
+      if (stop.stop_type === "customer") {
+        const broker = stop.broker_id ? brokerMap.get(stop.broker_id) : undefined
+        broker_name = broker ?? "Unknown"
+
+        if (stop.customer_id) {
+          const customer = customerMap.get(stop.customer_id)
+          customer_name = customer?.full_name ?? "Not provided"
+          customer_phone = customer?.phone_number ?? null
+        } else {
+          customer_name = "Not provided"
+        }
+      }
+
+      const confirmation = confirmationMap.get(stop.stop_id)
+      const creditApproval = creditApprovalMap.get(stop.stop_id)
+
+      return {
+        stop_id: stop.stop_id,
+        stop_type: stop.stop_type,
+        broker_id: stop.broker_id ?? null,
+        broker_name,
+        customer_id: stop.customer_id ?? null,
+        customer_name,
+        customer_phone,
+        quantity_offloaded: stop.quantity_offloaded,
+        latitude: stop.latitude,
+        longitude: stop.longitude,
+        stop_time: stop.stop_time,
+        stop_location: stop.stop_location,
+        store_name: stop.store_name ?? null,
+        confirmed: stop.confirmed,
+        disputed: stop.disputed,
+        dispute_reason: stop.dispute_reason,
+        confirmation_id: confirmation?.confirmation_id ?? null,
+        confirmation_broker_id: confirmation?.broker_id ?? null,
+        price_per_bag: confirmation?.price_per_bag ?? null,
+        area: confirmation?.area ?? null,
+        company_price: confirmation?.company_price ?? null,
+        price_reason: confirmation?.price_reason ?? null,
+        confirmed_at: confirmation?.confirmed_at ?? null,
+        discount_status: stop.discount_status ?? "none",
+        on_credit: stop.on_credit || !!creditApproval,
+        credit_approval_id: stop.credit_approval_id ?? creditApproval?.id ?? null,
+        credit_status: creditApproval?.status ?? null,
+        is_credit_approved: creditApproval?.status === "Approved",
+      }
+    })
+
+    return {
+      stops,
+      discrepancies: (discRes.data ?? []) as Discrepancy[],
+      pricingError: pricingErrors.length > 0 ? pricingErrors.join(" and ") : null,
+    }
+  }
+
+// Shape returned by list_monitor_trips into the Trip the render code expects.
+// stops/discrepancies stay empty here; they are fetched for one trip on click.
+function toTrip(row: MonitorTripRow): Trip {
+  return {
+    trip_id: row.trip_id,
+    plate_number: row.plate_number,
+    driver_id: row.driver_id ?? "",
+    driver_name: row.driver_name,
+    driver_phone: row.driver_phone,
+    driver_status: row.driver_status,
+    product: row.product,
+    material_centre: row.material_centre,
+    loaded_quantity: Number(row.loaded_quantity),
+    remaining: Number(row.remaining),
+    stop_count: row.stop_count,
+    stop_summary: row.stop_summary,
+    stops: [],
+    discrepancies: [],
+    load_more_entries: (row.load_more ?? []) as LoadMoreEntry[],
+    trip_status: row.trip_status,
+    atc: row.atc,
+    order_no: row.order_no,
+    child_order_no: row.child_order_no,
+    amount_charged: row.amount_charged,
+    payment_mode: row.payment_mode,
+    created_at: row.created_at,
+    completed_at: row.completed_at,
+    isDD: row.is_dd,
+    recorded: row.recorded,
+    posted: row.posted,
+    route_points: row.route_points,
+  }
+}
+
+const loadServerPage = useCallback(async () => {
+  const result = await fetchMonitorTripPage({
+    status: query.status,
+    search: query.atc,
+    plate: query.plate,
+    dateFrom: query.dateFrom,
+    dateTo: query.dateTo,
+    dateMode,
+    page: query.page,
+  })
+
+  if (!result.ok) {
+    if (result.unavailable) {
+      serverQueryRef.current = false
+      setServerQueryUnavailable(true)
+      return false
+    }
+    console.error("Monitor trips query failed", result.error)
+    return false
+  }
+
+  setTrips(result.data.items.map(toTrip))
+  setListTotal(result.data.total)
+  setListStats(result.data.stats)
+  setUniquePlates(result.data.plates)
+  return true
+}, [query.status, query.atc, query.plate, query.dateFrom, query.dateTo, query.page, dateMode])
+
+// Browser-side path used when migration 060 has not been applied yet. Pulls
+// every trip and filters here, exactly as the page did before.
+const loadBrowserPage = useCallback(async () => {
+  const [normal, dd] = await Promise.all([
+    fetchTrips().catch(() => ({ trips: [] as Trip[], pricingError: null })),
+    fetchDdTrips().catch(() => ({ trips: [] as Trip[], pricingError: null })),
+  ])
+  const ddTripIds = new Set(dd.trips.map(t => t.trip_id))
+  const allTrips = [...normal.trips.filter(t => !ddTripIds.has(t.trip_id)), ...dd.trips]
+  setTrips(allTrips)
+  setPricingError(normal.pricingError ?? dd.pricingError)
+  setUniquePlates([...new Set(allTrips.map(t => t.plate_number))].sort())
+  setListStats({
+    pending_record: allTrips.filter(t => !t.recorded).length,
+    disputed_trip: allTrips.filter(t => t.stop_summary.disputed > 0).length,
+  })
+  return true
+}, [])
+
+const loadAll = useCallback(async () => {
+  // A missing function has already latched the browser-side fallback inside
+  // loadServerPage; a genuine error keeps the previous rows rather than
+  // blanking the page.
+  if (serverQueryRef.current && (await loadServerPage())) {
     setLastUpdated(new Date())
     setLoading(false)
-  }, [])
+    return
+  }
+  await loadBrowserPage()
+  setLastUpdated(new Date())
+  setLoading(false)
+}, [loadServerPage, loadBrowserPage])
 
-   
+  // Opens the stops modal immediately from the summary already in memory, then
+  // fills in the detail for that one trip. Stops, prices and customer names are
+  // no longer carried on every poll.
+  async function openTripDetails(trip: Trip) {
+    setSelectedPlate(trip.plate_number)
+    setSelectedTrip({
+      trip_id: trip.trip_id,
+      plate_number: trip.plate_number,
+      product: trip.product,
+      atc: trip.atc,
+      order_no: trip.order_no,
+      child_order_no: trip.child_order_no,
+      amount_charged: trip.amount_charged,
+      payment_mode: trip.payment_mode,
+      trip_status: trip.trip_status,
+      recorded: trip.recorded,
+      posted: trip.posted,
+      isDD: trip.isDD,
+      remaining: trip.remaining,
+      loaded_quantity: trip.loaded_quantity,
+    })
+    setSelectedStops([])
+    setSelectedDiscrepancies([])
+    setSelectedLoadMore([])
+    setPricingError(null)
+    setPostError("")
+    setShowActionsDropdown(false)
+    detailTripIdRef.current = trip.trip_id
+    setDetailLoading(true)
+
+    try {
+      const detail = await fetchTripDetail(trip.trip_id)
+      // A poll may have swapped the list out from under us while this was in
+      // flight; only apply the result if the modal is still on the same trip.
+      if (detailTripIdRef.current !== trip.trip_id) return
+      setSelectedStops(detail.stops)
+      setSelectedDiscrepancies(detail.discrepancies)
+      setPricingError(detail.pricingError)
+    } catch (err) {
+      console.error("Failed to load trip detail", err)
+      if (detailTripIdRef.current === trip.trip_id) {
+        setPostError("Couldn't load the stops for this trip. Close and try again.")
+      }
+    } finally {
+      if (detailTripIdRef.current === trip.trip_id) setDetailLoading(false)
+    }
+  }
+
+
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     loadAll()
   }, [loadAll])
+
+  // Text filters now cost a round trip, so debounce them before they are
+  // applied to the query. The timeout keeps the setState out of the effect
+  // body, which would otherwise trigger a cascading render.
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setQuery(prev => {
+        if (prev.atc === atcSearch && prev.plate === plateSearch) return prev
+        return { ...prev, atc: atcSearch, plate: plateSearch, page: 0 }
+      })
+    }, 350)
+    return () => clearTimeout(timer)
+  }, [atcSearch, plateSearch])
 
   usePolling(loadAll, 120000)
 
@@ -893,33 +996,44 @@ async function fetchResolveData() {
     }
   }
 
-  const disputedTripCount = trips.filter((t) => t.stops.some((s) => s.disputed)).length
-  const pendingRecordCount = trips.filter((t) => !t.recorded).length
+  const disputedTripCount = listStats.disputed_trip
+  const pendingRecordCount = listStats.pending_record
 
-  const filteredTrips = (filterStatus === "All"
+  // On the server-query path `trips` is already the current page. On the
+  // browser-side fallback the page still has to slice the full list locally.
+  const PAGE_SIZE = 100
+  const usingServerQuery = !serverQueryUnavailable
+  const locallyFiltered = usingServerQuery
     ? trips
-    : filterStatus === "Active"
-    ? trips.filter((t) => t.trip_status === "In transit" || t.trip_status === "On hold")
-    : filterStatus === "Pending"
-    ? trips.filter((t) => !t.recorded)
-    : filterStatus === "Posted"
-    ? trips.filter((t) => t.recorded)
-    : filterStatus === "Disputed"
-    ? trips.filter((t) => t.stops.some((s) => s.disputed))
-    : trips
-  ).filter((t) => {
-    if (!atcSearch) return true
-    const q = atcSearch.trim().toLowerCase()
-    return (t.atc ?? "").toLowerCase().includes(q) || (t.child_order_no ?? "").toLowerCase().includes(q)
-  })
-  .filter((t) => !plateSearch || t.plate_number.toLowerCase().includes(plateSearch.trim().toLowerCase()))
-  .filter((t) => {
-    const tripDate = t.created_at.slice(0, 10)
-    if (dateMode === "single") return !filterDateFrom || tripDate === filterDateFrom
-    return (!filterDateFrom || tripDate >= filterDateFrom) && (!filterDateTo || tripDate <= filterDateTo)
-  })
+    : (query.status === "All"
+      ? trips
+      : query.status === "Active"
+      ? trips.filter((t) => t.trip_status === "In transit" || t.trip_status === "On hold")
+      : query.status === "Pending"
+      ? trips.filter((t) => !t.recorded)
+      : query.status === "Posted"
+      ? trips.filter((t) => t.recorded)
+      : query.status === "Disputed"
+      ? trips.filter((t) => t.stop_summary.disputed > 0)
+      : trips
+    ).filter((t) => {
+      if (!query.atc) return true
+      const q = query.atc.trim().toLowerCase()
+      return (t.atc ?? "").toLowerCase().includes(q) || (t.child_order_no ?? "").toLowerCase().includes(q)
+    })
+      .filter((t) => !query.plate || t.plate_number.toLowerCase().includes(query.plate.trim().toLowerCase()))
+      .filter((t) => {
+        const tripDate = t.created_at.slice(0, 10)
+        if (dateMode === "single") return !query.dateFrom || tripDate === query.dateFrom
+        return (!query.dateFrom || tripDate >= query.dateFrom) && (!query.dateTo || tripDate <= query.dateTo)
+      })
 
-  const { page, setPage, totalPages, paginatedItems, totalItems } = usePagination(filteredTrips)
+  const totalItems = usingServerQuery ? listTotal : locallyFiltered.length
+  const totalPages = Math.ceil(totalItems / PAGE_SIZE) || 1
+  const safePage = Math.min(query.page, totalPages - 1)
+  const paginatedItems = usingServerQuery
+    ? trips
+    : locallyFiltered.slice(safePage * PAGE_SIZE, safePage * PAGE_SIZE + PAGE_SIZE)
 
   function closeModals() {
     setSelectedDriver(null)
@@ -932,6 +1046,8 @@ async function fetchResolveData() {
     setShowActionsDropdown(false)
     setIsEditingTrip(false)
     setPostError("")
+    setDetailLoading(false)
+    detailTripIdRef.current = null
   }
 
   return (
@@ -1022,6 +1138,18 @@ async function fetchResolveData() {
         </div>
       </div>
 
+      {serverQueryUnavailable && (
+        <div style={{ margin: "0 0 20px 0", padding: "12px 14px", background: "#fff7ed", border: "1px solid #fdba74", borderRadius: 8 }}>
+          <p style={{ margin: 0, color: "#c2410c", fontSize: FONT_SIZE.sm, fontWeight: 600 }}>
+            Running the legacy trip query
+          </p>
+          <p style={{ margin: "4px 0 0", color: "#9a3412", fontSize: FONT_SIZE.xs }}>
+            Migration 060 has not been applied, so this list is loading every trip and filtering in the browser.
+            Apply <code>supabase/migrations/060_monitor_trips_list.sql</code> to switch to the paged query.
+          </p>
+        </div>
+      )}
+
       {lastUpdated && (
         <p style={{ margin: "0 0 20px 0", color: "#94a3b8", fontSize: FONT_SIZE.xs }}>
           Updated: {lastUpdated.toLocaleTimeString()}
@@ -1030,12 +1158,12 @@ async function fetchResolveData() {
 
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 24, overflowX: "auto", paddingBottom: 4 }}>
         {filterOptions.map((option) => {
-          const isActive = filterStatus === option
+          const isActive = query.status === option
           const pill = getPillStyle(option, isActive)
           return (
             <button
               key={option}
-              onClick={() => setFilterStatus(option)}
+              onClick={() => setQuery(prev => ({ ...prev, status: option, page: 0 }))}
               style={{
                 padding: "8px 14px",
                 borderRadius: 24,
@@ -1131,7 +1259,7 @@ async function fetchResolveData() {
               alignItems: "center",
               gap: 8,
               background: "white",
-              border: `1.5px solid ${filterDateFrom ? "#0070f3" : "#e2e8f0"}`,
+              border: `1.5px solid ${query.dateFrom ? "#0070f3" : "#e2e8f0"}`,
               borderRadius: 8,
               padding: "8px 12px",
               cursor: "pointer",
@@ -1140,13 +1268,13 @@ async function fetchResolveData() {
               boxSizing: "border-box",
             }}
           >
-            <Icon icon="mdi:calendar-outline" style={{ color: filterDateFrom ? "#0070f3" : "#888", flexShrink: 0 }} />
-            <span style={{ fontSize: FONT_SIZE.sm, color: filterDateFrom ? "#333" : "#aaa", flex: 1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-              {filterDateFrom ? (dateMode === "range" && filterDateTo ? `${filterDateFrom} → ${filterDateTo}` : filterDateFrom) : "Filter by date…"}
+            <Icon icon="mdi:calendar-outline" style={{ color: query.dateFrom ? "#0070f3" : "#888", flexShrink: 0 }} />
+            <span style={{ fontSize: FONT_SIZE.sm, color: query.dateFrom ? "#333" : "#aaa", flex: 1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+              {query.dateFrom ? (dateMode === "range" && query.dateTo ? `${query.dateFrom} → ${query.dateTo}` : query.dateFrom) : "Filter by date…"}
             </span>
-            {filterDateFrom ? (
+            {query.dateFrom ? (
               <button
-                onClick={e => { e.stopPropagation(); setFilterDateFrom(""); setFilterDateTo(""); setDateMode("single"); setDateDropOpen(false) }}
+                onClick={e => { e.stopPropagation(); setQuery(prev => ({ ...prev, dateFrom: "", dateTo: "", page: 0 })); setDateMode("single"); setDateDropOpen(false) }}
                 style={{ border: "none", background: "none", cursor: "pointer", color: "#aaa", padding: 0, lineHeight: 1, flexShrink: 0 }}
               >
                 ✕
@@ -1174,7 +1302,7 @@ async function fetchResolveData() {
                 {(["single", "range"] as const).map(m => (
                   <button
                     key={m}
-                    onClick={() => { setDateMode(m); setFilterDateFrom(""); setFilterDateTo("") }}
+                    onClick={() => { setDateMode(m); setQuery(prev => ({ ...prev, dateFrom: "", dateTo: "", page: 0 })) }}
                     style={{
                       flex: 1,
                       padding: "5px 0",
@@ -1198,8 +1326,8 @@ async function fetchResolveData() {
                   <label style={{ display: "block", fontSize: FONT_SIZE.xs, color: "#888", marginBottom: 4 }}>Select date</label>
                   <input
                     type="date"
-                    value={filterDateFrom}
-                    onChange={e => { setFilterDateFrom(e.target.value); setDateDropOpen(false) }}
+                    value={query.dateFrom}
+                    onChange={e => { setQuery(prev => ({ ...prev, dateFrom: e.target.value, page: 0 })); setDateDropOpen(false) }}
                     style={{ width: "100%", padding: "8px 10px", border: "1px solid #e2e8f0", borderRadius: 6, fontSize: FONT_SIZE.sm, color: "#333", boxSizing: "border-box" }}
                     autoFocus
                   />
@@ -1208,13 +1336,13 @@ async function fetchResolveData() {
                 <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                   <div>
                     <label style={{ display: "block", fontSize: FONT_SIZE.xs, color: "#888", marginBottom: 4 }}>From</label>
-                    <input type="date" value={filterDateFrom} onChange={e => setFilterDateFrom(e.target.value)} style={{ width: "100%", padding: "8px 10px", border: "1px solid #e2e8f0", borderRadius: 6, fontSize: FONT_SIZE.sm, color: "#333", boxSizing: "border-box" }} autoFocus />
+                    <input type="date" value={query.dateFrom} onChange={e => setQuery(prev => ({ ...prev, dateFrom: e.target.value, page: 0 }))} style={{ width: "100%", padding: "8px 10px", border: "1px solid #e2e8f0", borderRadius: 6, fontSize: FONT_SIZE.sm, color: "#333", boxSizing: "border-box" }} autoFocus />
                   </div>
                   <div>
                     <label style={{ display: "block", fontSize: FONT_SIZE.xs, color: "#888", marginBottom: 4 }}>To</label>
-                    <input type="date" value={filterDateTo} min={filterDateFrom || undefined} onChange={e => setFilterDateTo(e.target.value)} style={{ width: "100%", padding: "8px 10px", border: "1px solid #e2e8f0", borderRadius: 6, fontSize: FONT_SIZE.sm, color: "#333", boxSizing: "border-box" }} />
+                    <input type="date" value={query.dateTo} min={query.dateFrom || undefined} onChange={e => setQuery(prev => ({ ...prev, dateTo: e.target.value, page: 0 }))} style={{ width: "100%", padding: "8px 10px", border: "1px solid #e2e8f0", borderRadius: 6, fontSize: FONT_SIZE.sm, color: "#333", boxSizing: "border-box" }} />
                   </div>
-                  {filterDateFrom && filterDateTo && (
+                  {query.dateFrom && query.dateTo && (
                     <button onClick={() => setDateDropOpen(false)} style={{ padding: "8px 0", background: "#0070f3", color: "white", border: "none", borderRadius: 6, cursor: "pointer", fontSize: FONT_SIZE.sm, fontWeight: "bold" }}>
                       Apply Range
                     </button>
@@ -1227,7 +1355,7 @@ async function fetchResolveData() {
 
         {hasActiveFilters && (
           <button
-            onClick={() => { setAtcSearch(""); setPlateSearch(""); setFilterDateFrom(""); setFilterDateTo(""); setDateMode("single") }}
+            onClick={() => { setAtcSearch(""); setPlateSearch(""); setQuery(prev => ({ ...prev, atc: "", plate: "", dateFrom: "", dateTo: "", page: 0 })); setDateMode("single") }}
             style={{ padding: "8px 14px", borderRadius: 8, border: "1px solid #e2e8f0", background: "white", color: "#64748b", fontSize: FONT_SIZE.sm, cursor: "pointer", display: "flex", alignItems: "center", gap: 6, whiteSpace: "nowrap", minHeight: 40, transition: "all 0.2s" }}
             onMouseEnter={e => { e.currentTarget.style.background = "#f8fafc"; e.currentTarget.style.borderColor = "#cbd5e1" }}
             onMouseLeave={e => { e.currentTarget.style.background = "white"; e.currentTarget.style.borderColor = "#e2e8f0" }}
@@ -1243,14 +1371,14 @@ async function fetchResolveData() {
           <div style={{ width: 40, height: 40, borderRadius: "50%", border: "3px solid #e2e8f0", borderTopColor: "#0070f3", animation: "spin 1s linear infinite" }} />
           <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
         </div>
-      ) : filteredTrips.length === 0 ? (
+      ) : totalItems === 0 ? (
         <div style={{ textAlign: "center", padding: "64px 24px", background: "white", borderRadius: 12, border: "1px solid #e2e8f0", boxShadow: "0 1px 3px rgba(0, 0, 0, 0.05)" }}>
           <div style={{ width: 64, height: 64, background: "#f1f5f9", borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 16px" }}>
             <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2"/></svg>
           </div>
           <h3 style={{ margin: "0 0 8px", color: "#0f172a", fontSize: FONT_SIZE.xl, fontWeight: 600 }}>No trips found</h3>
           <p style={{ color: "#64748b", fontSize: FONT_SIZE.base, margin: 0 }}>
-            {hasActiveFilters ? "No trips match your filters." : filterStatus === "All" ? "No trips in the system." : `No trips with status "${filterStatus}".`}
+            {hasActiveFilters ? "No trips match your filters." : query.status === "All" ? "No trips in the system." : `No trips with status "${query.status}".`}
           </p>
         </div>
       ) : (
@@ -1259,11 +1387,7 @@ async function fetchResolveData() {
           {viewMode === "card" && (
             <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(auto-fill, minmax(340px, 1fr))", gap: 16 }}>
               {paginatedItems.map((trip) => {
-                const confirmed = trip.stops.filter(s => s.confirmed && s.discount_status !== "pending" && s.discount_status !== "returned").length
-                const pending = trip.stops.filter(s => !s.confirmed && !s.disputed && s.discount_status !== "pending" && s.discount_status !== "returned").length
-                const disputed = trip.stops.filter(s => s.disputed).length
-                const awaitingReview = trip.stops.filter(s => s.discount_status === "pending").length
-                const returned = trip.stops.filter(s => s.discount_status === "returned").length
+                const { confirmed, pending, disputed, awaiting_review: awaitingReview, returned } = trip.stop_summary
 
                 return (
                   <div key={trip.trip_id} style={{ background: "white", borderRadius: 12, padding: 20, border: "1px solid #e2e8f0", boxShadow: "0 1px 3px rgba(0, 0, 0, 0.05)", transition: "all 0.2s ease" }} onMouseEnter={e => !isMobile && (e.currentTarget.style.boxShadow = "0 4px 12px rgba(0, 0, 0, 0.08)", e.currentTarget.style.borderColor = "#cbd5e1")} onMouseLeave={e => !isMobile && (e.currentTarget.style.boxShadow = "0 1px 3px rgba(0, 0, 0, 0.05)", e.currentTarget.style.borderColor = "#e2e8f0")}>
@@ -1347,7 +1471,7 @@ async function fetchResolveData() {
                       </div>
                       
                       <button
-                        onClick={() => { setSelectedStops(trip.stops); setSelectedDiscrepancies(trip.discrepancies); setSelectedLoadMore(trip.load_more_entries); setSelectedPlate(trip.plate_number); setSelectedTrip({ trip_id: trip.trip_id, plate_number: trip.plate_number, product: trip.product, atc: trip.atc, order_no: trip.order_no, child_order_no: trip.child_order_no, amount_charged: trip.amount_charged, payment_mode: trip.payment_mode, trip_status: trip.trip_status, recorded: trip.recorded, posted: trip.posted, isDD: trip.isDD, remaining: trip.remaining, loaded_quantity: trip.loaded_quantity }); }}
+                        onClick={() => openTripDetails(trip)}
                         style={{ padding: "8px 16px", background: "#f0f7ff", color: "#0070f3", border: "1px solid #bfdbfe", borderRadius: 8, cursor: "pointer", fontWeight: 600, fontSize: FONT_SIZE.sm, transition: "all 0.2s" }}
                         onMouseEnter={e => { e.currentTarget.style.background = "#e0efff" }}
                         onMouseLeave={e => { e.currentTarget.style.background = "#f0f7ff" }}
@@ -1385,11 +1509,7 @@ async function fetchResolveData() {
                 </thead>
                 <tbody>
                   {paginatedItems.map((trip) => {
-                    const confirmed = trip.stops.filter(s => s.confirmed && s.discount_status !== "pending" && s.discount_status !== "returned").length
-                    const pending = trip.stops.filter(s => !s.confirmed && !s.disputed && s.discount_status !== "pending" && s.discount_status !== "returned").length
-                    const disputed = trip.stops.filter(s => s.disputed).length
-                    const awaitingReview = trip.stops.filter(s => s.discount_status === "pending").length
-                    const returned = trip.stops.filter(s => s.discount_status === "returned").length
+                    const { confirmed, pending, disputed, awaiting_review: awaitingReview, returned } = trip.stop_summary
 
                     return (
                       <tr key={trip.trip_id} style={{ borderBottom: "1px solid #e2e8f0", transition: "background 0.2s ease" }} onMouseEnter={e => e.currentTarget.style.background = "#f8fafc"} onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
@@ -1414,7 +1534,7 @@ async function fetchResolveData() {
                         <td style={{ padding: "12px 16px", color: "#64748b", fontSize: FONT_SIZE.sm }}>{trip.payment_mode || "—"}</td>
                         <td style={{ padding: "12px 16px", color: "#0f172a", fontSize: FONT_SIZE.base, fontWeight: 500 }}>{trip.loaded_quantity}</td>
                         <td style={{ padding: "12px 16px", color: trip.remaining === 0 ? "#ef4444" : trip.remaining < trip.loaded_quantity * 0.2 ? "#f5a623" : "#16a34a", fontSize: FONT_SIZE.base, fontWeight: 600 }}>{trip.remaining}</td>
-                        <td style={{ padding: "12px 16px", cursor: "pointer" }} onClick={() => { setSelectedStops(trip.stops); setSelectedDiscrepancies(trip.discrepancies); setSelectedLoadMore(trip.load_more_entries); setSelectedPlate(trip.plate_number); setSelectedTrip({ trip_id: trip.trip_id, plate_number: trip.plate_number, product: trip.product, atc: trip.atc, order_no: trip.order_no, child_order_no: trip.child_order_no, amount_charged: trip.amount_charged, payment_mode: trip.payment_mode, trip_status: trip.trip_status, recorded: trip.recorded, posted: trip.posted, isDD: trip.isDD, remaining: trip.remaining, loaded_quantity: trip.loaded_quantity }); }}>
+                        <td style={{ padding: "12px 16px", cursor: "pointer" }} onClick={() => openTripDetails(trip)}>
                           <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
                             <span style={{ color: "#0070f3", fontSize: FONT_SIZE.sm, fontWeight: 500, textDecoration: "underline" }}>{trip.stop_count} {trip.stop_count === 1 ? "stop" : "stops"}</span>
                             {confirmed > 0 && <div style={{ display: "flex", alignItems: "center", gap: 2, padding: "2px 6px", background: "#f0fdf4", borderRadius: 12 }}><Icon icon="mdi:check-circle" width="12" height="12" style={{ color: "#16a34a" }} /><span style={{ fontSize: 10, color: "#16a34a", fontWeight: "bold" }}>{confirmed}</span></div>}
@@ -1446,8 +1566,8 @@ async function fetchResolveData() {
         </>
       )}
 
-      {filteredTrips.length > 0 && (
-        <PaginationControls page={page} totalPages={totalPages} totalItems={totalItems} onPageChange={setPage} />
+      {totalItems > 0 && (
+        <PaginationControls page={safePage} totalPages={totalPages} totalItems={totalItems} onPageChange={next => setQuery(prev => ({ ...prev, page: next }))} />
       )}
 
       {(selectedDriver || selectedStops) && (
@@ -1513,6 +1633,7 @@ async function fetchResolveData() {
 
                 {pricingError && (
                   <div style={{ background: "#fff7ed", border: "1px solid #fdba74", borderRadius: 8, padding: "12px 14px", marginBottom: 16 }}>
+
                     <p style={{ margin: 0, color: "#c2410c", fontSize: FONT_SIZE.sm, fontWeight: 600 }}>
                       Couldn&apos;t load {pricingError} for these stops
                     </p>
@@ -1522,7 +1643,12 @@ async function fetchResolveData() {
                   </div>
                 )}
 
-                {selectedStops.length === 0 && selectedDiscrepancies.length === 0 ? (
+                {detailLoading ? (
+                  <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "24px 0", color: "#64748b", fontSize: FONT_SIZE.base }}>
+                    <div style={{ width: 18, height: 18, borderRadius: "50%", border: "2px solid #e2e8f0", borderTopColor: "#0070f3", animation: "spin 0.8s linear infinite", flexShrink: 0 }} />
+                    Loading stops…
+                  </div>
+                ) : selectedStops.length === 0 && selectedDiscrepancies.length === 0 ? (
                   <p style={{ color: "#94a3b8", fontSize: FONT_SIZE.base }}>No stops logged yet.</p>
                 ) : (
                   <div style={{ display: "flex", flexDirection: "column", gap: 12, marginBottom: 20 }}>
