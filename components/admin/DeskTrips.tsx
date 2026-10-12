@@ -8,6 +8,7 @@ import PaginationControls from "@/components/PaginationControls"
 import { useState, useEffect, useCallback } from "react"
 import { Icon } from "@iconify/react"
 import { supabase } from "@/lib/supabase"
+import { selectInChunks } from "@/lib/supabase-batch"
 import { apiMutate } from "@/lib/api-mutation"
 import { usePermissions } from "@/lib/PermissionContext"
 
@@ -140,19 +141,22 @@ export default function DeskTrips() {
       for (const d of driversData || []) driverMap.set(d.driver_id, d)
     }
 
-    const { data: allStopsRaw } = await supabase
-      .from("Stops")
-      .select("stop_id, trip_id, quantity_offloaded, latitude, longitude, stop_time, stop_location, broker_id, customer_id, confirmed, disputed, dispute_reason, store_name, stop_type")
-      .in("trip_id", tripIds)
-      .order("stop_time", { ascending: true })
+    const allStopsRaw = await selectInChunks(
+      ids => supabase
+        .from("Stops")
+        .select("stop_id, trip_id, quantity_offloaded, latitude, longitude, stop_time, stop_location, broker_id, customer_id, confirmed, disputed, dispute_reason, store_name, stop_type")
+        .in("trip_id", ids)
+        .order("stop_time", { ascending: true }),
+      tripIds,
+    ).then(r => r.data)
 
     const stopsByTrip = new Map<string, typeof allStopsRaw>()
-    for (const stop of allStopsRaw || []) {
+    for (const stop of allStopsRaw) {
       if (!stopsByTrip.has(stop.trip_id)) stopsByTrip.set(stop.trip_id, [])
       stopsByTrip.get(stop.trip_id)!.push(stop)
     }
 
-    const allStops = allStopsRaw || []
+    const allStops = allStopsRaw
     const brokerIds = [...new Set(allStops.filter(s => s.stop_type === "customer").map(s => s.broker_id).filter(Boolean))]
     const brokerMap = new Map<string, { broker_name: string }>()
     if (brokerIds.length > 0) {
@@ -166,41 +170,54 @@ export default function DeskTrips() {
     const customerIds = [...new Set(allStops.filter(s => s.stop_type === "customer" && s.customer_id).map(s => s.customer_id).filter(Boolean))]
     const customerMap = new Map<string, { full_name: string; phone_number: string | null }>()
     if (customerIds.length > 0) {
-      const { data: customersData } = await supabase
-        .from("Customers")
-        .select("customer_id, full_name, phone_number")
-        .in("customer_id", customerIds)
-      for (const c of customersData || []) customerMap.set(c.customer_id, c)
+      const customersData = await selectInChunks(
+        ids => supabase
+          .from("Customers")
+          .select("customer_id, full_name, phone_number")
+          .in("customer_id", ids),
+        customerIds,
+      ).then(r => r.data)
+      for (const c of customersData) customerMap.set(c.customer_id, c)
     }
 
     const stopIds = allStops.map(s => s.stop_id).filter(Boolean)
     const confirmationMap = new Map<string, { price_per_bag: number }>()
     if (stopIds.length > 0) {
-      const { data: confirmationsData } = await supabase
-        .from("Stop_Confirmations")
-        .select("stop_id, price_per_bag")
-        .in("stop_id", stopIds)
-      for (const c of confirmationsData || []) confirmationMap.set(c.stop_id, c)
+      const confirmationsResult = await selectInChunks<{ stop_id: string; price_per_bag: number }>(
+        ids => supabase
+          .from("Stop_Confirmations")
+          .select("stop_id, price_per_bag")
+          .in("stop_id", ids),
+        stopIds,
+      )
+      for (const c of confirmationsResult.data) confirmationMap.set(c.stop_id, c)
+      if (confirmationsResult.error) console.error("Failed to load stop prices", confirmationsResult.error)
     }
 
     const discByTrip = new Map<string, Discrepancy[]>()
-    const { data: allDiscRaw } = await supabase
-      .from("trip_discrepancies")
-      .select("discrepancy_id, trip_id, shortage, caked_bags, notes, reported_at")
-      .in("trip_id", tripIds)
-      .order("reported_at", { ascending: true })
-    for (const d of allDiscRaw || []) {
+    const discResult = await selectInChunks(
+      ids => supabase
+        .from("trip_discrepancies")
+        .select("discrepancy_id, trip_id, shortage, caked_bags, notes, reported_at")
+        .in("trip_id", ids)
+        .order("reported_at", { ascending: true }),
+      tripIds,
+    )
+    for (const d of discResult.data) {
       if (!discByTrip.has(d.trip_id)) discByTrip.set(d.trip_id, [])
       discByTrip.get(d.trip_id)!.push(d)
     }
 
     const loadMoreByTrip = new Map<string, LoadMoreEntry[]>()
-    const { data: allLoadMoreRaw } = await supabase
-      .from("trip_load_more")
-      .select("id, trip_id, quantity, loading_point_type, loading_point_name, product, created_at")
-      .in("trip_id", tripIds)
-      .order("created_at", { ascending: false })
-    for (const lm of allLoadMoreRaw || []) {
+    const loadMoreResult = await selectInChunks(
+      ids => supabase
+        .from("trip_load_more")
+        .select("id, trip_id, quantity, loading_point_type, loading_point_name, product, created_at")
+        .in("trip_id", ids)
+        .order("created_at", { ascending: false }),
+      tripIds,
+    )
+    for (const lm of loadMoreResult.data) {
       if (!loadMoreByTrip.has(lm.trip_id)) loadMoreByTrip.set(lm.trip_id, [])
       loadMoreByTrip.get(lm.trip_id)!.push(lm)
     }
@@ -296,19 +313,22 @@ export default function DeskTrips() {
 
     const ddTripIds = ddTripsData.map(t => t.dd_trip_id)
 
-    const { data: allStopsRaw } = await supabase
-      .from("Stops")
-      .select("stop_id, trip_id, quantity_offloaded, latitude, longitude, stop_time, stop_location, broker_id, customer_id, confirmed, disputed, dispute_reason, store_name, stop_type")
-      .in("trip_id", ddTripIds)
-      .order("stop_time", { ascending: true })
+    const allStopsRaw = await selectInChunks(
+      ids => supabase
+        .from("Stops")
+        .select("stop_id, trip_id, quantity_offloaded, latitude, longitude, stop_time, stop_location, broker_id, customer_id, confirmed, disputed, dispute_reason, store_name, stop_type")
+        .in("trip_id", ids)
+        .order("stop_time", { ascending: true }),
+      ddTripIds,
+    ).then(r => r.data)
 
     const stopsByTrip = new Map<string, typeof allStopsRaw>()
-    for (const stop of allStopsRaw || []) {
+    for (const stop of allStopsRaw) {
       if (!stopsByTrip.has(stop.trip_id)) stopsByTrip.set(stop.trip_id, [])
       stopsByTrip.get(stop.trip_id)!.push(stop)
     }
 
-    const allStops = allStopsRaw || []
+    const allStops = allStopsRaw
     const brokerIds = [...new Set(allStops.filter(s => s.stop_type === "customer").map(s => s.broker_id).filter(Boolean))]
     const brokerMap = new Map<string, { broker_name: string }>()
     if (brokerIds.length > 0) {
@@ -322,41 +342,54 @@ export default function DeskTrips() {
     const customerIds = [...new Set(allStops.filter(s => s.stop_type === "customer" && s.customer_id).map(s => s.customer_id).filter(Boolean))]
     const customerMap = new Map<string, { full_name: string; phone_number: string | null }>()
     if (customerIds.length > 0) {
-      const { data: customersData } = await supabase
-        .from("Customers")
-        .select("customer_id, full_name, phone_number")
-        .in("customer_id", customerIds)
-      for (const c of customersData || []) customerMap.set(c.customer_id, c)
+      const customersData = await selectInChunks(
+        ids => supabase
+          .from("Customers")
+          .select("customer_id, full_name, phone_number")
+          .in("customer_id", ids),
+        customerIds,
+      ).then(r => r.data)
+      for (const c of customersData) customerMap.set(c.customer_id, c)
     }
 
     const stopIds = allStops.map(s => s.stop_id).filter(Boolean)
     const confirmationMap = new Map<string, { price_per_bag: number }>()
     if (stopIds.length > 0) {
-      const { data: confirmationsData } = await supabase
-        .from("Stop_Confirmations")
-        .select("stop_id, price_per_bag")
-        .in("stop_id", stopIds)
-      for (const c of confirmationsData || []) confirmationMap.set(c.stop_id, c)
+      const confirmationsResult = await selectInChunks<{ stop_id: string; price_per_bag: number }>(
+        ids => supabase
+          .from("Stop_Confirmations")
+          .select("stop_id, price_per_bag")
+          .in("stop_id", ids),
+        stopIds,
+      )
+      for (const c of confirmationsResult.data) confirmationMap.set(c.stop_id, c)
+      if (confirmationsResult.error) console.error("Failed to load stop prices", confirmationsResult.error)
     }
 
     const ddDiscByTrip = new Map<string, Discrepancy[]>()
-    const { data: allDiscRaw } = await supabase
-      .from("trip_discrepancies")
-      .select("discrepancy_id, trip_id, shortage, caked_bags, notes, reported_at")
-      .in("trip_id", ddTripIds)
-      .order("reported_at", { ascending: true })
-    for (const d of allDiscRaw || []) {
+    const ddDiscResult = await selectInChunks(
+      ids => supabase
+        .from("trip_discrepancies")
+        .select("discrepancy_id, trip_id, shortage, caked_bags, notes, reported_at")
+        .in("trip_id", ids)
+        .order("reported_at", { ascending: true }),
+      ddTripIds,
+    )
+    for (const d of ddDiscResult.data) {
       if (!ddDiscByTrip.has(d.trip_id)) ddDiscByTrip.set(d.trip_id, [])
       ddDiscByTrip.get(d.trip_id)!.push(d)
     }
 
     const loadMoreByTrip = new Map<string, LoadMoreEntry[]>()
-    const { data: allLoadMoreRaw } = await supabase
-      .from("trip_load_more")
-      .select("id, trip_id, quantity, loading_point_type, loading_point_name, product, created_at")
-      .in("trip_id", ddTripIds)
-      .order("created_at", { ascending: false })
-    for (const lm of allLoadMoreRaw || []) {
+    const ddLoadMoreResult = await selectInChunks(
+      ids => supabase
+        .from("trip_load_more")
+        .select("id, trip_id, quantity, loading_point_type, loading_point_name, product, created_at")
+        .in("trip_id", ids)
+        .order("created_at", { ascending: false }),
+      ddTripIds,
+    )
+    for (const lm of ddLoadMoreResult.data) {
       if (!loadMoreByTrip.has(lm.trip_id)) loadMoreByTrip.set(lm.trip_id, [])
       loadMoreByTrip.get(lm.trip_id)!.push(lm)
     }

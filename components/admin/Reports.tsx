@@ -4,6 +4,7 @@ import { FONT_SIZE } from "@/lib/constants"
 
 import { useState, useEffect } from "react"
 import { supabase } from "@/lib/supabase"
+import { selectInChunks } from "@/lib/supabase-batch"
 import { DataTable } from "./DataTable"
 import { ExportActions } from "./ExportActions"
 import { EmptyState } from "./EmptyState"
@@ -474,12 +475,15 @@ export default function Reports() {
       let store_bags = 0
 
       if (tripIds.length > 0) {
-        const { data: stops } = await supabase
-          .from("Stops")
-          .select("quantity_offloaded")
-          .in("trip_id", tripIds)
+        const stops = await selectInChunks(
+          ids => supabase
+            .from("Stops")
+            .select("quantity_offloaded")
+            .in("trip_id", ids),
+          tripIds,
+        ).then(r => r.data)
 
-        stops_count = (stops || []).length
+        stops_count = stops.length
       }
 
       for (const t of trips || []) {
@@ -701,18 +705,19 @@ export default function Reports() {
       let total_revenue = 0
 
       if (stopIds.length > 0) {
-        const { data: confirmations, error: confirmationsErr } = await supabase
-          .from("Stop_Confirmations")
-          .select("stop_id, price_per_bag")
-          .in("stop_id", stopIds)
+        const confirmationsResult = await selectInChunks<{ stop_id: string; price_per_bag: number }>(
+          ids => supabase
+            .from("Stop_Confirmations")
+            .select("stop_id, price_per_bag")
+            .in("stop_id", ids),
+          stopIds,
+        )
 
-        if (confirmationsErr) throw new Error(`Failed to fetch stop confirmations: ${confirmationsErr.message}`)
+        if (confirmationsResult.error) throw new Error(`Failed to fetch stop confirmations: ${confirmationsResult.error.message}`)
 
         const priceMap: Record<string, number> = {}
-        if (confirmations) {
-          for (const c of confirmations) {
-            priceMap[c.stop_id] = c.price_per_bag ?? 0
-          }
+        for (const c of confirmationsResult.data) {
+          priceMap[c.stop_id] = c.price_per_bag ?? 0
         }
 
         for (const stop of stops || []) {
@@ -882,15 +887,18 @@ export default function Reports() {
       let total_bags = 0
 
       if (tripIds.length > 0) {
-        const { data: stops, error: stopsErr } = await supabase
-          .from("Stops")
-          .select("quantity_offloaded")
-          .in("trip_id", tripIds)
+        const stopsResult = await selectInChunks(
+          ids => supabase
+            .from("Stops")
+            .select("quantity_offloaded")
+            .in("trip_id", ids),
+          tripIds,
+        )
 
-        if (stopsErr) throw new Error(`Failed to fetch stops for truck ${t.plate_number}: ${stopsErr.message}`)
+        if (stopsResult.error) throw new Error(`Failed to fetch stops for truck ${t.plate_number}: ${stopsResult.error.message}`)
 
-        stops_count = (stops || []).length
-        total_bags = (stops || []).reduce((sum, s) => sum + (s.quantity_offloaded || 0), 0)
+        stops_count = stopsResult.data.length
+        total_bags = stopsResult.data.reduce((sum, s) => sum + (s.quantity_offloaded || 0), 0)
       }
 
       const trips_count = trips?.length ?? 0

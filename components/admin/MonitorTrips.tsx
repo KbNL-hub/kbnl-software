@@ -11,6 +11,7 @@ import { useState, useEffect, useCallback } from "react"
 import PaginationControls from "@/components/PaginationControls"
 import { Icon } from "@iconify/react"
 import { supabase } from "@/lib/supabase"
+import { selectInChunks } from "@/lib/supabase-batch"
 import { apiMutate } from "@/lib/api-mutation"
 import { usePermissions } from "@/lib/PermissionContext"
 
@@ -106,6 +107,22 @@ type ResolveStopForm = {
 
 type ViewMode = "card" | "table"
 
+type StopConfirmation = {
+  confirmation_id: string
+  stop_id: string
+  broker_id: string | null
+  customer_id: string | null
+  price_per_bag: number
+  area: string | null
+  company_price: number | null
+  price_reason: string | null
+  confirmed_at: string | null
+}
+
+type CreditApproval = { id: string; status: string; adjusted_price: number | null }
+
+type FetchResult = { trips: Trip[]; pricingError: string | null }
+
 function useBreakpoint() {
   const [isDesktop, setIsDesktop] = useState(false)
   const [isMobile, setIsMobile] = useState(true)
@@ -187,14 +204,15 @@ export default function MonitorTrips() {
   const [resolveOriginalQuantity, setResolveOriginalQuantity] = useState(0)
   const [showActionsDropdown, setShowActionsDropdown] = useState(false)
   const [isEditingTrip, setIsEditingTrip] = useState(false)
+  const [pricingError, setPricingError] = useState<string | null>(null)
 
-  async function fetchTrips() {
+  async function fetchTrips(): Promise<FetchResult> {
     const { data: tripsData, error } = await supabase
       .from("Trips")
       .select("trip_id, plate_number, driver_id, product, material_centre, loaded_quantity, trip_status, ATC, order_no, child_order_no, amount_charged, payment_mode, created_at, updated_at, recorded, posted")
       .order("created_at", { ascending: false })
 
-    if (error || !tripsData) return []
+    if (error || !tripsData) return { trips: [], pricingError: null }
 
     const tripIds = tripsData.map(t => t.trip_id)
 
@@ -208,19 +226,23 @@ export default function MonitorTrips() {
       for (const d of driversData || []) driverMap.set(d.driver_id, d)
     }
 
-    const { data: allStopsRaw } = await supabase
-      .from("Stops")
-      .select("stop_id, trip_id, quantity_offloaded, latitude, longitude, stop_time, stop_location, broker_id, customer_id, confirmed, disputed, dispute_reason, store_name, stop_type, discount_status, on_credit, credit_approval_id")
-      .in("trip_id", tripIds)
-      .order("stop_time", { ascending: true })
+    const stopsResult = await selectInChunks(
+      ids => supabase
+        .from("Stops")
+        .select("stop_id, trip_id, quantity_offloaded, latitude, longitude, stop_time, stop_location, broker_id, customer_id, confirmed, disputed, dispute_reason, store_name, stop_type, discount_status, on_credit, credit_approval_id")
+        .in("trip_id", ids)
+        .order("stop_time", { ascending: true }),
+      tripIds,
+    )
+    const allStopsRaw = stopsResult.data
 
     const stopsByTrip = new Map<string, typeof allStopsRaw>()
-    for (const stop of allStopsRaw || []) {
+    for (const stop of allStopsRaw) {
       if (!stopsByTrip.has(stop.trip_id)) stopsByTrip.set(stop.trip_id, [])
       stopsByTrip.get(stop.trip_id)!.push(stop)
     }
 
-    const allStops = allStopsRaw || []
+    const allStops = allStopsRaw
     const brokerIds = [...new Set(allStops.filter(s => s.stop_type === "customer").map(s => s.broker_id).filter(Boolean))]
     const brokerMap = new Map<string, { broker_name: string }>()
     if (brokerIds.length > 0) {
@@ -234,62 +256,77 @@ export default function MonitorTrips() {
     const customerIds = [...new Set(allStops.filter(s => s.stop_type === "customer" && s.customer_id).map(s => s.customer_id).filter(Boolean))]
     const customerMap = new Map<string, { full_name: string; phone_number: string | null }>()
     if (customerIds.length > 0) {
-      const { data: customersData } = await supabase
-        .from("Customers")
-        .select("customer_id, full_name, phone_number")
-        .in("customer_id", customerIds)
-      for (const c of customersData || []) customerMap.set(c.customer_id, c)
+      const customersResult = await selectInChunks(
+        ids => supabase
+          .from("Customers")
+          .select("customer_id, full_name, phone_number")
+          .in("customer_id", ids),
+        customerIds,
+      )
+      for (const c of customersResult.data) customerMap.set(c.customer_id, c)
     }
 
     const stopIds = allStops.map(s => s.stop_id).filter(Boolean)
-    const confirmationMap = new Map<string, {
-      confirmation_id: string
-      stop_id: string
-      broker_id: string | null
-      customer_id: string | null
-      price_per_bag: number
-      area: string | null
-      company_price: number | null
-      price_reason: string | null
-      confirmed_at: string | null
-    }>()
-    const creditApprovalMap = new Map<string, { id: string; status: string; adjusted_price: number | null }>()
+    const confirmationMap = new Map<string, StopConfirmation>()
+    const creditApprovalMap = new Map<string, CreditApproval>()
+    const pricingErrors: string[] = []
     if (stopIds.length > 0) {
-      const { data: confirmationsData } = await supabase
-        .from("Stop_Confirmations")
-        .select("confirmation_id, stop_id, broker_id, customer_id, price_per_bag, area, company_price, price_reason, confirmed_at")
-        .in("stop_id", stopIds)
-        .order("confirmed_at", { ascending: false })
-      for (const c of confirmationsData || []) {
+      const confirmationsResult = await selectInChunks<StopConfirmation>(
+        ids => supabase
+          .from("Stop_Confirmations")
+          .select("confirmation_id, stop_id, broker_id, customer_id, price_per_bag, area, company_price, price_reason, confirmed_at")
+          .in("stop_id", ids)
+          .order("confirmed_at", { ascending: false }),
+        stopIds,
+      )
+      for (const c of confirmationsResult.data) {
         if (!confirmationMap.has(c.stop_id)) confirmationMap.set(c.stop_id, c)
       }
+      if (confirmationsResult.error) {
+        console.error("Failed to load stop prices", confirmationsResult.error)
+        pricingErrors.push("stop prices")
+      }
 
-      const { data: creditApprovals } = await supabase
-        .from("credit_approvals")
-        .select("id, source_id, status, adjusted_price")
-        .eq("source_type", "stop")
-        .in("source_id", stopIds)
-      for (const ca of creditApprovals || []) creditApprovalMap.set(ca.source_id, ca)
+      const creditResult = await selectInChunks(
+        ids => supabase
+          .from("credit_approvals")
+          .select("id, source_id, status, adjusted_price")
+          .eq("source_type", "stop")
+          .in("source_id", ids),
+        stopIds,
+      )
+      for (const ca of creditResult.data) creditApprovalMap.set(ca.source_id, ca)
+      if (creditResult.error) {
+        console.error("Failed to load credit approvals", creditResult.error)
+        pricingErrors.push("credit approvals")
+      }
     }
+    const pricingError = pricingErrors.length > 0 ? pricingErrors.join(" and ") : null
 
     const discByTrip = new Map<string, Discrepancy[]>()
-    const { data: allDiscRaw } = await supabase
-      .from("trip_discrepancies")
-      .select("discrepancy_id, trip_id, shortage, caked_bags, notes, reported_at")
-      .in("trip_id", tripIds)
-      .order("reported_at", { ascending: true })
-    for (const d of allDiscRaw || []) {
+    const discResult = await selectInChunks(
+      ids => supabase
+        .from("trip_discrepancies")
+        .select("discrepancy_id, trip_id, shortage, caked_bags, notes, reported_at")
+        .in("trip_id", ids)
+        .order("reported_at", { ascending: true }),
+      tripIds,
+    )
+    for (const d of discResult.data) {
       if (!discByTrip.has(d.trip_id)) discByTrip.set(d.trip_id, [])
       discByTrip.get(d.trip_id)!.push(d)
     }
 
     const loadMoreByTrip = new Map<string, LoadMoreEntry[]>()
-    const { data: allLoadMoreRaw } = await supabase
-      .from("trip_load_more")
-      .select("id, trip_id, quantity, loading_point_type, loading_point_name, product, created_at")
-      .in("trip_id", tripIds)
-      .order("created_at", { ascending: false })
-    for (const lm of allLoadMoreRaw || []) {
+    const loadMoreResult = await selectInChunks(
+      ids => supabase
+        .from("trip_load_more")
+        .select("id, trip_id, quantity, loading_point_type, loading_point_name, product, created_at")
+        .in("trip_id", ids)
+        .order("created_at", { ascending: false }),
+      tripIds,
+    )
+    for (const lm of loadMoreResult.data) {
       if (!loadMoreByTrip.has(lm.trip_id)) loadMoreByTrip.set(lm.trip_id, [])
       loadMoreByTrip.get(lm.trip_id)!.push(lm)
     }
@@ -387,32 +424,36 @@ export default function MonitorTrips() {
       }
     })
 
-    return enriched
+    return { trips: enriched, pricingError }
   }
 
-  async function fetchDdTrips() {
+  async function fetchDdTrips(): Promise<FetchResult> {
     const { data: ddTripsData, error } = await supabase
       .from("dd_trips")
       .select("dd_trip_id, plate_number, driver_name, driver_phone, product, loading_point, loaded_quantity, trip_status, atc, order_no, child_order_no, route_points, created_at, recorded, posted, posted_at")
       .order("created_at", { ascending: false })
 
-    if (error || !ddTripsData) return []
+    if (error || !ddTripsData) return { trips: [], pricingError: null }
 
     const ddTripIds = ddTripsData.map(t => t.dd_trip_id)
 
-    const { data: allStopsRaw } = await supabase
-      .from("Stops")
-      .select("stop_id, trip_id, quantity_offloaded, latitude, longitude, stop_time, stop_location, broker_id, customer_id, confirmed, disputed, dispute_reason, store_name, stop_type, discount_status, on_credit, credit_approval_id")
-      .in("trip_id", ddTripIds)
-      .order("stop_time", { ascending: true })
+    const stopsResult = await selectInChunks(
+      ids => supabase
+        .from("Stops")
+        .select("stop_id, trip_id, quantity_offloaded, latitude, longitude, stop_time, stop_location, broker_id, customer_id, confirmed, disputed, dispute_reason, store_name, stop_type, discount_status, on_credit, credit_approval_id")
+        .in("trip_id", ids)
+        .order("stop_time", { ascending: true }),
+      ddTripIds,
+    )
+    const allStopsRaw = stopsResult.data
 
     const stopsByTrip = new Map<string, typeof allStopsRaw>()
-    for (const stop of allStopsRaw || []) {
+    for (const stop of allStopsRaw) {
       if (!stopsByTrip.has(stop.trip_id)) stopsByTrip.set(stop.trip_id, [])
       stopsByTrip.get(stop.trip_id)!.push(stop)
     }
 
-    const allStops = allStopsRaw || []
+    const allStops = allStopsRaw
     const brokerIds = [...new Set(allStops.filter(s => s.stop_type === "customer").map(s => s.broker_id).filter(Boolean))]
     const brokerMap = new Map<string, { broker_name: string }>()
     if (brokerIds.length > 0) {
@@ -426,62 +467,77 @@ export default function MonitorTrips() {
     const customerIds = [...new Set(allStops.filter(s => s.stop_type === "customer" && s.customer_id).map(s => s.customer_id).filter(Boolean))]
     const customerMap = new Map<string, { full_name: string; phone_number: string | null }>()
     if (customerIds.length > 0) {
-      const { data: customersData } = await supabase
-        .from("Customers")
-        .select("customer_id, full_name, phone_number")
-        .in("customer_id", customerIds)
-      for (const c of customersData || []) customerMap.set(c.customer_id, c)
+      const customersResult = await selectInChunks(
+        ids => supabase
+          .from("Customers")
+          .select("customer_id, full_name, phone_number")
+          .in("customer_id", ids),
+        customerIds,
+      )
+      for (const c of customersResult.data) customerMap.set(c.customer_id, c)
     }
 
     const stopIds = allStops.map(s => s.stop_id).filter(Boolean)
-    const confirmationMap = new Map<string, {
-      confirmation_id: string
-      stop_id: string
-      broker_id: string | null
-      customer_id: string | null
-      price_per_bag: number
-      area: string | null
-      company_price: number | null
-      price_reason: string | null
-      confirmed_at: string | null
-    }>()
-    const creditApprovalMap = new Map<string, { id: string; status: string; adjusted_price: number | null }>()
+    const confirmationMap = new Map<string, StopConfirmation>()
+    const creditApprovalMap = new Map<string, CreditApproval>()
+    const pricingErrors: string[] = []
     if (stopIds.length > 0) {
-      const { data: confirmationsData } = await supabase
-        .from("Stop_Confirmations")
-        .select("confirmation_id, stop_id, broker_id, customer_id, price_per_bag, area, company_price, price_reason, confirmed_at")
-        .in("stop_id", stopIds)
-        .order("confirmed_at", { ascending: false })
-      for (const c of confirmationsData || []) {
+      const confirmationsResult = await selectInChunks<StopConfirmation>(
+        ids => supabase
+          .from("Stop_Confirmations")
+          .select("confirmation_id, stop_id, broker_id, customer_id, price_per_bag, area, company_price, price_reason, confirmed_at")
+          .in("stop_id", ids)
+          .order("confirmed_at", { ascending: false }),
+        stopIds,
+      )
+      for (const c of confirmationsResult.data) {
         if (!confirmationMap.has(c.stop_id)) confirmationMap.set(c.stop_id, c)
       }
+      if (confirmationsResult.error) {
+        console.error("Failed to load stop prices", confirmationsResult.error)
+        pricingErrors.push("stop prices")
+      }
 
-      const { data: creditApprovals } = await supabase
-        .from("credit_approvals")
-        .select("id, source_id, status, adjusted_price")
-        .eq("source_type", "stop")
-        .in("source_id", stopIds)
-      for (const ca of creditApprovals || []) creditApprovalMap.set(ca.source_id, ca)
+      const creditResult = await selectInChunks(
+        ids => supabase
+          .from("credit_approvals")
+          .select("id, source_id, status, adjusted_price")
+          .eq("source_type", "stop")
+          .in("source_id", ids),
+        stopIds,
+      )
+      for (const ca of creditResult.data) creditApprovalMap.set(ca.source_id, ca)
+      if (creditResult.error) {
+        console.error("Failed to load credit approvals", creditResult.error)
+        pricingErrors.push("credit approvals")
+      }
     }
+    const pricingError = pricingErrors.length > 0 ? pricingErrors.join(" and ") : null
 
     const ddDiscByTrip = new Map<string, Discrepancy[]>()
-    const { data: allDiscRaw } = await supabase
-      .from("trip_discrepancies")
-      .select("discrepancy_id, trip_id, shortage, caked_bags, notes, reported_at")
-      .in("trip_id", ddTripIds)
-      .order("reported_at", { ascending: true })
-    for (const d of allDiscRaw || []) {
+    const ddDiscResult = await selectInChunks(
+      ids => supabase
+        .from("trip_discrepancies")
+        .select("discrepancy_id, trip_id, shortage, caked_bags, notes, reported_at")
+        .in("trip_id", ids)
+        .order("reported_at", { ascending: true }),
+      ddTripIds,
+    )
+    for (const d of ddDiscResult.data) {
       if (!ddDiscByTrip.has(d.trip_id)) ddDiscByTrip.set(d.trip_id, [])
       ddDiscByTrip.get(d.trip_id)!.push(d)
     }
 
     const loadMoreByTrip = new Map<string, LoadMoreEntry[]>()
-    const { data: allLoadMoreRaw } = await supabase
-      .from("trip_load_more")
-      .select("id, trip_id, quantity, loading_point_type, loading_point_name, product, created_at")
-      .in("trip_id", ddTripIds)
-      .order("created_at", { ascending: false })
-    for (const lm of allLoadMoreRaw || []) {
+    const ddLoadMoreResult = await selectInChunks(
+      ids => supabase
+        .from("trip_load_more")
+        .select("id, trip_id, quantity, loading_point_type, loading_point_name, product, created_at")
+        .in("trip_id", ids)
+        .order("created_at", { ascending: false }),
+      ddTripIds,
+    )
+    for (const lm of ddLoadMoreResult.data) {
       if (!loadMoreByTrip.has(lm.trip_id)) loadMoreByTrip.set(lm.trip_id, [])
       loadMoreByTrip.get(lm.trip_id)!.push(lm)
     }
@@ -580,17 +636,18 @@ export default function MonitorTrips() {
       }
     })
 
-    return ddTrips
+    return { trips: ddTrips, pricingError }
   }
 
   const loadAll = useCallback(async () => {
     const [normal, dd] = await Promise.all([
-      fetchTrips().catch(() => []),
-      fetchDdTrips().catch(() => [])
+      fetchTrips().catch(() => ({ trips: [] as Trip[], pricingError: null })),
+      fetchDdTrips().catch(() => ({ trips: [] as Trip[], pricingError: null })),
     ])
-    const ddTripIds = new Set(dd.map(t => t.trip_id))
-    const allTrips = [...normal.filter(t => !ddTripIds.has(t.trip_id)), ...dd]
+    const ddTripIds = new Set(dd.trips.map(t => t.trip_id))
+    const allTrips = [...normal.trips.filter(t => !ddTripIds.has(t.trip_id)), ...dd.trips]
     setTrips(allTrips)
+    setPricingError(normal.pricingError ?? dd.pricingError)
     setLastUpdated(new Date())
     setLoading(false)
   }, [])
@@ -605,6 +662,10 @@ export default function MonitorTrips() {
 
   function handlePostTripClick() {
     if (!selectedStops || !selectedTrip) return
+    if (pricingError) {
+      setPostError(`Couldn't load ${pricingError}, so prices can't be verified. Retry in a moment.`)
+      return
+    }
     const allConfirmed = selectedStops.length > 0
       && selectedStops.every((s) => s.confirmed)
       && !selectedStops.some((s) => s.disputed)
@@ -870,6 +931,7 @@ async function fetchResolveData() {
     setPostingTrip(null)
     setShowActionsDropdown(false)
     setIsEditingTrip(false)
+    setPostError("")
   }
 
   return (
@@ -1449,6 +1511,17 @@ async function fetchResolveData() {
                   </div>
                 )}
 
+                {pricingError && (
+                  <div style={{ background: "#fff7ed", border: "1px solid #fdba74", borderRadius: 8, padding: "12px 14px", marginBottom: 16 }}>
+                    <p style={{ margin: 0, color: "#c2410c", fontSize: FONT_SIZE.sm, fontWeight: 600 }}>
+                      Couldn&apos;t load {pricingError} for these stops
+                    </p>
+                    <p style={{ margin: "4px 0 0", color: "#9a3412", fontSize: FONT_SIZE.xs }}>
+                      Prices shown below may be incomplete. This is a loading failure, not missing data — retry in a moment.
+                    </p>
+                  </div>
+                )}
+
                 {selectedStops.length === 0 && selectedDiscrepancies.length === 0 ? (
                   <p style={{ color: "#94a3b8", fontSize: FONT_SIZE.base }}>No stops logged yet.</p>
                 ) : (
@@ -1482,7 +1555,8 @@ async function fetchResolveData() {
 
                         <p style={{ margin: "6px 0", color: "#475569", fontSize: FONT_SIZE.sm }}><strong>Offloaded:</strong> <span style={{ color: "#0f172a" }}>{stop.quantity_offloaded} bags</span></p>
                         {stop.stop_type === "customer" && stop.price_per_bag !== null && stop.price_per_bag > 0 && <p style={{ margin: "6px 0", color: "#475569", fontSize: FONT_SIZE.sm }}><strong>Price:</strong> <span style={{ color: "#0f172a" }}>₦{stop.price_per_bag.toLocaleString()}/bag</span>{stop.area ? ` · ${stop.area}` : ""}</p>}
-                        {stop.stop_type === "customer" && (!stop.price_per_bag || stop.price_per_bag <= 0) && <p style={{ margin: "6px 0", color: "#c2410c", fontSize: FONT_SIZE.sm, fontWeight: 600 }}>Price required before recording</p>}
+                        {stop.stop_type === "customer" && (!stop.price_per_bag || stop.price_per_bag <= 0) && !pricingError && !stop.confirmed && stop.discount_status !== "pending" && stop.credit_status !== "Pending" && <p style={{ margin: "6px 0", color: "#c2410c", fontSize: FONT_SIZE.sm, fontWeight: 600 }}>Price required before recording</p>}
+                        {stop.stop_type === "customer" && (!stop.price_per_bag || stop.price_per_bag <= 0) && !pricingError && stop.confirmed && <p style={{ margin: "6px 0", color: "#b45309", fontSize: FONT_SIZE.sm, fontWeight: 600 }}>No price was recorded for this stop</p>}
                         {stop.stop_type === "customer" && (
                           <span style={{ display: "inline-block", marginTop: 4, padding: "4px 12px", borderRadius: 6, fontSize: FONT_SIZE.xs, fontWeight: 600, background: stop.is_credit_approved ? "#eff6ff" : "#f0fdf4", color: stop.is_credit_approved ? "#0070f3" : "#16a34a", border: stop.is_credit_approved ? "1px solid #93c5fd" : "1px solid #86efac" }}>{stop.is_credit_approved ? "Credit" : "Cash"}</span>
                         )}
@@ -1554,8 +1628,12 @@ async function fetchResolveData() {
                 )}
 
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, position: "relative" }}>
+                  {postError && !postingTrip && (
+                    <p style={{ gridColumn: "1 / -1", margin: "0 0 10px", padding: 12, background: "#fef2f2", borderLeft: "4px solid #ef4444", borderRadius: 4, color: "#b91c1c", fontSize: FONT_SIZE.sm }}>{postError}</p>
+                  )}
                   {selectedTrip && !selectedTrip.recorded && (() => {
                     const allConfirmed = selectedStops && selectedStops.length > 0 && selectedStops.every((s) => s.confirmed) && !selectedStops.some((s) => s.disputed) && selectedStops.every((s) => s.stop_type === "store" || (s.price_per_bag !== null && s.price_per_bag > 0)) && selectedTrip.remaining === 0
+                    const canAttempt = allConfirmed || !!pricingError
                     return (
                       <div style={{ position: "relative" }}>
                         <button
@@ -1589,14 +1667,14 @@ async function fetchResolveData() {
                           <div style={{ position: "absolute", top: "calc(100% + 4px)", left: 0, right: 0, background: "white", border: "1px solid #e2e8f0", borderRadius: 8, boxShadow: "0 4px 16px rgba(0,0,0,0.12)", zIndex: 50, overflow: "hidden" }}>
                             <button
                               onClick={() => { setShowActionsDropdown(false); handlePostTripClick() }}
-                              disabled={!allConfirmed}
+                              disabled={!canAttempt}
                               style={{
                                 width: "100%",
                                 padding: "10px 16px",
                                 background: "white",
-                                color: !allConfirmed ? "#94a3b8" : "#16a34a",
+                                color: !canAttempt ? "#94a3b8" : allConfirmed ? "#16a34a" : "#b45309",
                                 border: "none",
-                                cursor: !allConfirmed ? "not-allowed" : "pointer",
+                                cursor: !canAttempt ? "not-allowed" : "pointer",
                                 fontWeight: 600,
                                 fontSize: FONT_SIZE.sm,
                                 textAlign: "left",
@@ -1606,7 +1684,7 @@ async function fetchResolveData() {
                               }}
                               onMouseEnter={e => { if (allConfirmed) e.currentTarget.style.background = "#f0fdf4" }}
                               onMouseLeave={e => { e.currentTarget.style.background = "white" }}
-                              title={!allConfirmed ? "All stops must be confirmed and priced, none disputed, and all bags offloaded" : ""}
+                              title={pricingError ? `Couldn't load ${pricingError}` : !allConfirmed ? "All stops must be confirmed and priced, none disputed, and all bags offloaded" : ""}
                             >
                               <Icon icon="mdi:check-circle-outline" width={18} />
                               Record Trip

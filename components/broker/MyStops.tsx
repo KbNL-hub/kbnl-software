@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from "react"
 import { Icon } from "@iconify/react"
 import { supabase } from "@/lib/supabase"
+import { selectInChunks } from "@/lib/supabase-batch"
 import { apiMutate } from "@/lib/api-mutation"
 import ModernInput from "@/components/ModernInput"
 import BrokerConfirmModal from "@/components/broker/BrokerConfirmModal"
@@ -120,13 +121,16 @@ export default function MyStops() {
     const denialMap: Record<string, { reason: string; by: string; at: string }> = {}
 
     if (returnedIds.length > 0) {
-      const { data: adjRows } = await supabase
-        .from("price_adjustments")
-        .select("source_id, denial_reason, reviewed_by, reviewed_at")
-        .eq("source_type", "stop")
-        .eq("status", "Denied")
-        .in("source_id", returnedIds)
-      for (const a of adjRows || []) {
+      const adjRows = await selectInChunks(
+        ids => supabase
+          .from("price_adjustments")
+          .select("source_id, denial_reason, reviewed_by, reviewed_at")
+          .eq("source_type", "stop")
+          .eq("status", "Denied")
+          .in("source_id", ids),
+        returnedIds,
+      ).then(r => r.data)
+      for (const a of adjRows) {
         if (a.denial_reason) denialMap[a.source_id] = { reason: a.denial_reason, by: a.reviewed_by ?? "Admin", at: a.reviewed_at ?? "" }
       }
 
@@ -169,13 +173,16 @@ export default function MyStops() {
 
     const stopIds = enriched.map(s => s.stop_id)
     if (stopIds.length > 0) {
-      const { data: adjustments } = await supabase
-        .from("price_adjustments")
-        .select("source_id, company_price, adjusted_price, price_reason")
-        .eq("source_type", "stop")
-        .in("source_id", stopIds)
+      const adjustments = await selectInChunks(
+        ids => supabase
+          .from("price_adjustments")
+          .select("source_id, company_price, adjusted_price, price_reason")
+          .eq("source_type", "stop")
+          .in("source_id", ids),
+        stopIds,
+      ).then(r => r.data)
       const adjMap: Record<string, { company_price: number; adjusted_price: number; price_reason: string }> = {}
-      for (const a of (adjustments || [])) adjMap[a.source_id] = { company_price: a.company_price, adjusted_price: a.adjusted_price, price_reason: a.price_reason }
+      for (const a of adjustments) adjMap[a.source_id] = { company_price: a.company_price, adjusted_price: a.adjusted_price, price_reason: a.price_reason }
       setStopAdjustments(adjMap)
     }
   }, [])

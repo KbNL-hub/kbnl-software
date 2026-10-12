@@ -8,6 +8,7 @@ import { usePagination } from "@/lib/hooks/usePagination"
 import { useState, useEffect, useCallback } from "react"
 import { Icon } from "@iconify/react"
 import { supabase } from "@/lib/supabase"
+import { selectInChunks } from "@/lib/supabase-batch"
 import { fetchStores } from "@/lib/stores"
 import ModernInput from "@/components/ModernInput"
 import PaginationControls from "@/components/PaginationControls"
@@ -219,13 +220,16 @@ export default function StoreSales() {
     const saleIds = data.map(s => s.sale_id)
     const creditApprovedSet = new Set<string>()
     if (saleIds.length > 0) {
-      const { data: creditApprovals } = await supabase
-        .from("credit_approvals")
-        .select("source_id")
-        .eq("status", "Approved")
-        .eq("source_type", "store_sale")
-        .in("source_id", saleIds)
-      for (const ca of creditApprovals || []) creditApprovedSet.add(ca.source_id)
+      const creditApprovals = await selectInChunks(
+        ids => supabase
+          .from("credit_approvals")
+          .select("source_id")
+          .eq("status", "Approved")
+          .eq("source_type", "store_sale")
+          .in("source_id", ids),
+        saleIds,
+      ).then(r => r.data)
+      for (const ca of creditApprovals) creditApprovedSet.add(ca.source_id)
     }
 
     return data.map(s => ({
@@ -258,11 +262,14 @@ export default function StoreSales() {
     const stopIds = [...new Set(confirmations.map(c => c.stop_id).filter(Boolean))]
     const stopMap = new Map<string, { plate_number: string | null; driver_name: string | null }>()
     if (stopIds.length > 0) {
-      const { data: stops } = await supabase
-        .from("Stops")
-        .select("stop_id, plate_number, driver_name")
-        .in("stop_id", stopIds)
-      for (const s of stops || []) {
+      const stops = await selectInChunks(
+        ids => supabase
+          .from("Stops")
+          .select("stop_id, plate_number, driver_name")
+          .in("stop_id", ids),
+        stopIds,
+      ).then(r => r.data)
+      for (const s of stops) {
         stopMap.set(s.stop_id, { plate_number: s.plate_number, driver_name: s.driver_name })
       }
     }

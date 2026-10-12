@@ -6,6 +6,7 @@ import { usePermissions } from "@/lib/PermissionContext"
 import { useState, useEffect, useCallback } from "react"
 import { Icon } from "@iconify/react"
 import { supabase } from "@/lib/supabase"
+import { selectInChunks } from "@/lib/supabase-batch"
 import { apiMutate } from "@/lib/api-mutation"
 import { usePagination } from "@/lib/hooks/usePagination"
 import PaginationControls from "@/components/PaginationControls"
@@ -152,20 +153,26 @@ export default function CreditApprovals() {
       const customerPhoneMap: Record<string, string | null> = {}
 
       if (stopSourceIds.length > 0) {
-        const { data: stops } = await supabase
-          .from("Stops")
-          .select("stop_id, customer_id")
-          .in("stop_id", stopSourceIds)
-        const stopCustomerIds = (stops || []).map(s => s.customer_id).filter(Boolean)
+        const stops = await selectInChunks(
+          ids => supabase
+            .from("Stops")
+            .select("stop_id, customer_id")
+            .in("stop_id", ids),
+          stopSourceIds,
+        ).then(r => r.data)
+        const stopCustomerIds = stops.map(s => s.customer_id).filter(Boolean)
         if (stopCustomerIds.length > 0) {
-          const { data: customers } = await supabase
-            .from("Customers")
-            .select("customer_id, full_name, phone_number")
-            .in("customer_id", stopCustomerIds)
+          const customers = await selectInChunks(
+            ids => supabase
+              .from("Customers")
+              .select("customer_id, full_name, phone_number")
+              .in("customer_id", ids),
+            stopCustomerIds,
+          ).then(r => r.data)
           const custMap: Record<string, string> = {}
           const phoneMap: Record<string, string | null> = {}
-          for (const c of customers || []) { custMap[c.customer_id] = c.full_name; phoneMap[c.customer_id] = c.phone_number ?? null }
-          for (const s of stops || []) {
+          for (const c of customers) { custMap[c.customer_id] = c.full_name; phoneMap[c.customer_id] = c.phone_number ?? null }
+          for (const s of stops) {
             if (s.customer_id) {
               customerMap[`stop:${s.stop_id}`] = custMap[s.customer_id] ?? ""
               customerPhoneMap[`stop:${s.stop_id}`] = phoneMap[s.customer_id] ?? null
@@ -173,29 +180,38 @@ export default function CreditApprovals() {
           }
         }
 
-        const { data: adjustments } = await supabase
-          .from("price_adjustments")
-          .select("source_id, credit_status")
-          .eq("source_type", "stop")
-          .in("source_id", stopSourceIds)
-        for (const a of adjustments || []) {
+        const adjustments = await selectInChunks(
+          ids => supabase
+            .from("price_adjustments")
+            .select("source_id, credit_status")
+            .eq("source_type", "stop")
+            .in("source_id", ids),
+          stopSourceIds,
+        ).then(r => r.data)
+        for (const a of adjustments) {
           discountMap[`stop:${a.source_id}`] = a.credit_status === "pending" || a.credit_status === "approved"
         }
       }
 
       if (saleSourceIds.length > 0) {
-        const { data: sales } = await supabase
-          .from("store_sales")
-          .select("sale_id, customer_name")
-          .in("sale_id", saleSourceIds)
-        for (const s of sales || []) customerMap[`store_sale:${s.sale_id}`] = s.customer_name ?? ""
+        const sales = await selectInChunks(
+          ids => supabase
+            .from("store_sales")
+            .select("sale_id, customer_name")
+            .in("sale_id", ids),
+          saleSourceIds,
+        ).then(r => r.data)
+        for (const s of sales) customerMap[`store_sale:${s.sale_id}`] = s.customer_name ?? ""
 
-        const { data: adjustments } = await supabase
-          .from("price_adjustments")
-          .select("source_id, credit_status")
-          .eq("source_type", "store_sale")
-          .in("source_id", saleSourceIds)
-        for (const a of adjustments || []) {
+        const adjustments = await selectInChunks(
+          ids => supabase
+            .from("price_adjustments")
+            .select("source_id, credit_status")
+            .eq("source_type", "store_sale")
+            .in("source_id", ids),
+          saleSourceIds,
+        ).then(r => r.data)
+        for (const a of adjustments) {
           discountMap[`store_sale:${a.source_id}`] = a.credit_status === "pending" || a.credit_status === "approved"
         }
       }

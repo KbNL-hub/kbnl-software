@@ -6,6 +6,7 @@ import { usePermissions } from "@/lib/PermissionContext"
 import { useState, useEffect, useCallback } from "react"
 import { Icon } from "@iconify/react"
 import { supabase } from "@/lib/supabase"
+import { selectInChunks } from "@/lib/supabase-batch"
 import { apiMutate } from "@/lib/api-mutation"
 import { usePagination } from "@/lib/hooks/usePagination"
 import PaginationControls from "@/components/PaginationControls"
@@ -129,32 +130,41 @@ export default function Discounts() {
       const customerNameMap: Record<string, string> = {}
 
       if (stopSourceIds.length > 0) {
-        const { data: stops } = await supabase
-          .from("Stops")
-          .select("stop_id, quantity_offloaded, customer_id")
-          .in("stop_id", stopSourceIds)
-        for (const s of stops || []) quantityMap[`stop:${s.stop_id}`] = s.quantity_offloaded
+        const stops = await selectInChunks(
+          ids => supabase
+            .from("Stops")
+            .select("stop_id, quantity_offloaded, customer_id")
+            .in("stop_id", ids),
+          stopSourceIds,
+        ).then(r => r.data)
+        for (const s of stops) quantityMap[`stop:${s.stop_id}`] = s.quantity_offloaded
 
-        const customerIds = (stops || []).map(s => s.customer_id).filter(Boolean)
+        const customerIds = stops.map(s => s.customer_id).filter(Boolean)
         const customerMap: Record<string, string> = {}
         if (customerIds.length > 0) {
-          const { data: customers } = await supabase
-            .from("Customers")
-            .select("customer_id, full_name")
-            .in("customer_id", customerIds)
-          for (const c of customers || []) customerMap[c.customer_id] = c.full_name
+          const customers = await selectInChunks(
+            ids => supabase
+              .from("Customers")
+              .select("customer_id, full_name")
+              .in("customer_id", ids),
+            customerIds,
+          ).then(r => r.data)
+          for (const c of customers) customerMap[c.customer_id] = c.full_name
         }
-        for (const s of stops || []) {
+        for (const s of stops) {
           customerNameMap[`stop_customer:${s.stop_id}`] = s.customer_id ? (customerMap[s.customer_id] ?? "") : ""
         }
       }
 
       if (saleSourceIds.length > 0) {
-        const { data: sales } = await supabase
-          .from("store_sales")
-          .select("sale_id, items, customer_name")
-          .in("sale_id", saleSourceIds)
-        for (const s of sales || []) {
+        const sales = await selectInChunks(
+          ids => supabase
+            .from("store_sales")
+            .select("sale_id, items, customer_name")
+            .in("sale_id", ids),
+          saleSourceIds,
+        ).then(r => r.data)
+        for (const s of sales) {
           const items = (s.items ?? []) as { product?: string; quantity?: number }[]
           for (const item of items) {
             if (item.product) quantityMap[`store_sale:${s.sale_id}:${item.product}`] = item.quantity || 0

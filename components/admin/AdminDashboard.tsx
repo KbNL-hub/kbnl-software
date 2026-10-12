@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react"
 import { Icon } from "@iconify/react"
 import { supabase } from "@/lib/supabase"
+import { selectInChunks } from "@/lib/supabase-batch"
 import { useBreakpoint } from "@/app/hooks/useBreakpoint"
 import { Role } from "@/lib/roles"
 import { toTitleCase } from "@/lib/title-case"
@@ -308,12 +309,15 @@ export default function AdminDashboard({ effectiveRole, fullName }: Props) {
     let revenue = 0
     const stopIds = (stopsResult.data || []).map(s => s.stop_id)
     if (stopIds.length > 0) {
-      const { data: confirmations } = await supabase
-        .from("Stop_Confirmations")
-        .select("stop_id, price_per_bag")
-        .in("stop_id", stopIds)
+      const confirmations = await selectInChunks<{ stop_id: string; price_per_bag: number }>(
+        ids => supabase
+          .from("Stop_Confirmations")
+          .select("stop_id, price_per_bag")
+          .in("stop_id", ids),
+        stopIds,
+      ).then(r => r.data)
       const priceMap: Record<string, number> = {}
-      for (const c of confirmations || []) {
+      for (const c of confirmations) {
         priceMap[c.stop_id] = (priceMap[c.stop_id] || 0) + (c.price_per_bag || 0)
       }
       for (const stop of stopsResult.data || []) {
