@@ -253,10 +253,14 @@ export default function MonitorTrips() {
   const [isEditingTrip, setIsEditingTrip] = useState(false)
   const [pricingError, setPricingError] = useState<string | null>(null)
   const [detailLoading, setDetailLoading] = useState(false)
+  const [detailFailed, setDetailFailed] = useState(false)
   // Tracks which trip the modal is showing so the in-flight fetch in
   // openTripDetails can tell whether the modal has since been pointed
   // somewhere else.
   const detailTripIdRef = useRef<string | null>(null)
+  // Incremented per list request so a slow response cannot overwrite the page
+  // a newer request already loaded.
+  const listSeqRef = useRef(0)
   const [serverQueryUnavailable, setServerQueryUnavailable] = useState(false)
   // Latched once the RPC is found so a transient error does not silently flip
   // the page back to the heavier browser-side query.
@@ -473,11 +477,15 @@ async function fetchDdTrips(): Promise<FetchResult> {
   // stop rows, their confirmations, and the credit/customers/brokers needed to
   // label them. Runs on click rather than on every poll.
   async function fetchTripDetail(tripId: string): Promise<{ stops: Stop[]; discrepancies: Discrepancy[]; pricingError: string | null }> {
-    const { data: allStopsRaw } = await supabase
+    const { data: allStopsRaw, error: stopsError } = await supabase
       .from("Stops")
       .select("stop_id, trip_id, quantity_offloaded, latitude, longitude, stop_time, stop_location, broker_id, customer_id, confirmed, disputed, dispute_reason, store_name, stop_type, discount_status, on_credit, credit_approval_id")
       .eq("trip_id", tripId)
       .order("stop_time", { ascending: true })
+
+    // A failed read must not look like a trip with no stops, so let it reach
+    // openTripDetails' catch rather than degrading to an empty list.
+    if (stopsError) throw stopsError
 
     const allStops = allStopsRaw ?? []
     const stopIds = allStops.map(s => s.stop_id).filter(Boolean)
@@ -518,6 +526,10 @@ async function fetchDdTrips(): Promise<FetchResult> {
         .eq("trip_id", tripId)
         .order("reported_at", { ascending: true }),
     ])
+
+    // Same reasoning as the Stops read: a failed query must not read as
+    // "this trip reported no discrepancies".
+    if (discRes.error) throw discRes.error
 
     const brokerMap = new Map<string, string>((brokerRes.data ?? []).map(b => [b.broker_id, b.broker_name]))
     const customerMap = new Map<string, { full_name: string; phone_number: string | null }>(
@@ -634,7 +646,14 @@ function toTrip(row: MonitorTripRow): Trip {
   }
 }
 
-const loadServerPage = useCallback(async () => {
+// "ok"          fresh response applied
+// "stale"       superseded by a newer request; leave state alone
+// "unavailable" the RPC is not installed; the caller should use the legacy path
+// "error"       the query failed; keep the rows already on screen
+type ListLoadOutcome = "ok" | "stale" | "unavailable" | "error"
+
+const loadServerPage = useCallback(async (): Promise<ListLoadOutcome> => {
+  const seq = ++listSeqRef.current
   const result = await fetchMonitorTripPage({
     status: query.status,
     search: query.atc,
@@ -645,21 +664,25 @@ const loadServerPage = useCallback(async () => {
     page: query.page,
   })
 
+  // A filter, page change or poll may have superseded this request while it was
+  // in flight; applying it now would show the wrong page.
+  if (seq !== listSeqRef.current) return "stale"
+
   if (!result.ok) {
     if (result.unavailable) {
       serverQueryRef.current = false
       setServerQueryUnavailable(true)
-      return false
+      return "unavailable"
     }
     console.error("Monitor trips query failed", result.error)
-    return false
+    return "error"
   }
 
   setTrips(result.data.items.map(toTrip))
   setListTotal(result.data.total)
   setListStats(result.data.stats)
   setUniquePlates(result.data.plates)
-  return true
+  return "ok"
 }, [query.status, query.atc, query.plate, query.dateFrom, query.dateTo, query.page, dateMode])
 
 // Browser-side path used when migration 060 has not been applied yet. Pulls
@@ -682,14 +705,18 @@ const loadBrowserPage = useCallback(async () => {
 }, [])
 
 const loadAll = useCallback(async () => {
-  // A missing function has already latched the browser-side fallback inside
-  // loadServerPage; a genuine error keeps the previous rows rather than
-  // blanking the page.
-  if (serverQueryRef.current && (await loadServerPage())) {
-    setLastUpdated(new Date())
+  // Await first so that no setState can run synchronously in the mount effect.
+  const outcome: ListLoadOutcome = serverQueryRef.current ? await loadServerPage() : "unavailable"
+
+  if (outcome !== "unavailable") {
+    // "stale" was superseded by a newer request and "error" is transient, so
+    // both keep the rows already on screen.
+    if (outcome === "ok") setLastUpdated(new Date())
     setLoading(false)
     return
   }
+
+  // Only a missing function is worth re-reading every trip for.
   await loadBrowserPage()
   setLastUpdated(new Date())
   setLoading(false)
@@ -718,9 +745,12 @@ const loadAll = useCallback(async () => {
     })
     setSelectedStops([])
     setSelectedDiscrepancies([])
-    setSelectedLoadMore([])
+    // fetchTripDetail does not load additional loads; the list already carries
+    // them, so clearing this would hide them from the modal for good.
+    setSelectedLoadMore(trip.load_more_entries)
     setPricingError(null)
     setPostError("")
+    setDetailFailed(false)
     setShowActionsDropdown(false)
     detailTripIdRef.current = trip.trip_id
     setDetailLoading(true)
@@ -735,8 +765,10 @@ const loadAll = useCallback(async () => {
       setPricingError(detail.pricingError)
     } catch (err) {
       console.error("Failed to load trip detail", err)
+      // The modal renders its own message for this, so postError stays
+      // reserved for action-level failures such as Record Trip.
       if (detailTripIdRef.current === trip.trip_id) {
-        setPostError("Couldn't load the stops for this trip. Close and try again.")
+        setDetailFailed(true)
       }
     } finally {
       if (detailTripIdRef.current === trip.trip_id) setDetailLoading(false)
@@ -1047,6 +1079,7 @@ async function fetchResolveData() {
     setIsEditingTrip(false)
     setPostError("")
     setDetailLoading(false)
+    setDetailFailed(false)
     detailTripIdRef.current = null
   }
 
@@ -1648,6 +1681,12 @@ async function fetchResolveData() {
                     <div style={{ width: 18, height: 18, borderRadius: "50%", border: "2px solid #e2e8f0", borderTopColor: "#0070f3", animation: "spin 0.8s linear infinite", flexShrink: 0 }} />
                     Loading stops…
                   </div>
+                ) : detailFailed ? (
+                  // selectedStops is still the empty placeholder here, so this
+                  // must not read as "this trip has no stops".
+                  <p style={{ color: "#c2410c", fontSize: FONT_SIZE.base, fontWeight: 600 }}>
+                    Stops couldn&apos;t be loaded for this trip. Close and try again.
+                  </p>
                 ) : selectedStops.length === 0 && selectedDiscrepancies.length === 0 ? (
                   <p style={{ color: "#94a3b8", fontSize: FONT_SIZE.base }}>No stops logged yet.</p>
                 ) : (
@@ -1817,14 +1856,16 @@ async function fetchResolveData() {
                             </button>
                             <button
                               onClick={() => { setShowActionsDropdown(false); setIsEditingTrip(true) }}
+                              disabled={detailLoading || detailFailed}
+                              title={detailLoading ? "Loading stops…" : detailFailed ? "Stops could not be loaded — close and try again" : ""}
                               style={{
                                 width: "100%",
                                 padding: "10px 16px",
                                 background: "white",
-                                color: "#0070f3",
+                                color: detailLoading || detailFailed ? "#94a3b8" : "#0070f3",
                                 border: "none",
                                 borderTop: "1px solid #f1f5f9",
-                                cursor: "pointer",
+                                cursor: detailLoading || detailFailed ? "not-allowed" : "pointer",
                                 fontWeight: 600,
                                 fontSize: FONT_SIZE.sm,
                                 textAlign: "left",
@@ -1832,7 +1873,7 @@ async function fetchResolveData() {
                                 alignItems: "center",
                                 gap: 8,
                               }}
-                              onMouseEnter={e => e.currentTarget.style.background = "#eff6ff"}
+                              onMouseEnter={e => { if (!detailLoading && !detailFailed) e.currentTarget.style.background = "#eff6ff" }}
                               onMouseLeave={e => e.currentTarget.style.background = "white"}
                             >
                               <Icon icon="mdi:pencil-outline" width={18} />
@@ -2064,7 +2105,9 @@ async function fetchResolveData() {
         </div>
       )}
 
-      {isEditingTrip && selectedTrip && selectedStops && (
+      {/* Editing writes the full stop set back, so it must never be reachable
+          while selectedStops is still the empty placeholder. */}
+      {isEditingTrip && selectedTrip && selectedStops && !detailLoading && !detailFailed && (
         <TripEditModal
           trip={{
             trip_id: selectedTrip.trip_id,
