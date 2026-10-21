@@ -1130,8 +1130,8 @@ export default function StoreSales() {
                             onMouseEnter={e => { e.currentTarget.style.background = "#fef2f2"; e.currentTarget.style.borderColor = "#dc2626" }}
                             onMouseLeave={e => { e.currentTarget.style.background = "white"; e.currentTarget.style.borderColor = "#ef4444" }}
                           >
-                            <Icon icon="mdi:close-circle" width={14} />
-                            {item.status === "Rejected" ? "Re-reject" : "Reject"}
+                            <Icon icon={item.status === "Rejected" ? "mdi:pencil-outline" : "mdi:close-circle"} width={14} />
+                            {item.status === "Rejected" ? "Edit Reason" : "Reject"}
                           </button>
                         </div>
                       )}
@@ -1330,8 +1330,8 @@ onClick={() => handleResubmit(item)}
                                 onMouseEnter={e => { e.currentTarget.style.background = "#fef2f2"; e.currentTarget.style.borderColor = "#dc2626" }}
                                 onMouseLeave={e => { e.currentTarget.style.background = "white"; e.currentTarget.style.borderColor = "#ef4444" }}
                               >
-                                <Icon icon="mdi:close-circle" width={13} />
-                                {item.status === "Rejected" ? "Re-reject" : "Reject"}
+                                <Icon icon={item.status === "Rejected" ? "mdi:pencil-outline" : "mdi:close-circle"} width={13} />
+                                {item.status === "Rejected" ? "Edit Reason" : "Reject"}
                               </button>
                             </div>
                           )}

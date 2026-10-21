@@ -27,10 +27,12 @@ type CashExpense = {
   clerk_id: string
   title: string
   total_amount: number
-  status: "Pending" | "Authorised" | "Rejected"
+  status: "Pending" | "Authorised" | "Rejected" | "Posted"
   authorised_by: string | null
   rejection_reason: string | null
   approval_notes: string | null
+  posted_by: string | null
+  posted_at: string | null
   created_at: string
   resolved_at: string | null
 }
@@ -73,7 +75,7 @@ const TABS = [...OFFICES, HAULAGE]
 // Truck Admin when the underlying maintenance / procurement / ATF is actioned,
 // so the tab is a read-only transaction history.
 const HAULAGE_FILTERS = ["All", "Top-ups", "ATF", "Maintenance", "Procurement"] as const
-const OFFICE_FILTERS = ["All", "Pending", "Authorised", "Rejected", "Top-ups"] as const
+const OFFICE_FILTERS = ["All", "Pending", "Authorised", "Posted", "Rejected", "Top-ups"] as const
 
 const HAULAGE_TYPE_META: Record<HaulageEntryType, { label: string; icon: string; debit: string }> = {
   TopUp: { label: "Balance Top-up", icon: "M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6", debit: "#4f46e5" },
@@ -324,7 +326,9 @@ export default function CashExpenses() {
     }
 
     const records: { id: string; amount: number; timestamp: string }[] = [
-      ...expenses.filter(e => e.status === "Authorised" && e.resolved_at !== null).map(e => ({
+      // A posted expense has already had the office balance deducted (that
+      // happens at authorisation), so it still counts against the balance.
+      ...expenses.filter(e => (e.status === "Authorised" || e.status === "Posted") && e.resolved_at !== null).map(e => ({
         id: e.expense_id, amount: e.total_amount, timestamp: e.resolved_at ?? e.created_at
       })),
       ...deposits.map(d => ({
@@ -639,6 +643,7 @@ export default function CashExpenses() {
               if (isActive) {
                 if (f === "Pending") { bg = "#eff6ff"; color = "#0070f3"; borderColor = "#0070f3" }
                 else if (f === "Authorised") { bg = "#f0fdf4"; color = "#16a34a"; borderColor = "#16a34a" }
+                else if (f === "Posted") { bg = "#f0fdfa"; color = "#0f766e"; borderColor = "#0f766e" }
                 else if (f === "Rejected") { bg = "#fef2f2"; color = "#ef4444"; borderColor = "#ef4444" }
                 else if (f === "Top-ups") { bg = "#eef2ff"; color = "#4f46e5"; borderColor = "#4f46e5" }
                 else if (isHaulage) { bg = "#fef3c7"; color = "#92400e"; borderColor = "#fcd34d" }
@@ -826,6 +831,7 @@ export default function CashExpenses() {
               
               if (exp.status === "Pending") { statusBg = "#eff6ff"; statusColor = "#0070f3"; statusBorder = "#bfdbfe" }
               else if (exp.status === "Authorised") { statusBg = "#f0fdf4"; statusColor = "#16a34a"; statusBorder = "#bbf7d0" }
+              else if (exp.status === "Posted") { statusBg = "#f0fdfa"; statusColor = "#0f766e"; statusBorder = "#99f6e4" }
               else if (exp.status === "Rejected") { statusBg = "#fef2f2"; statusColor = "#ef4444"; statusBorder = "#fecaca" }
 
               return (
@@ -922,10 +928,49 @@ export default function CashExpenses() {
                         </div>
                       )}
 
-                      {/* Resolution details (Authorised/Rejected info) */}
+                      {/* Resolution details (Authorised/Posted/Rejected info) */}
                       {exp.resolved_at && (
-                        <div style={{ background: exp.status === "Authorised" ? "#f0fdf4" : "#fef2f2", padding: 16, borderRadius: 12, marginTop: 16, border: `1px solid ${exp.status === "Authorised" ? "#bbf7d0" : "#fecaca"}` }}>
-                          {exp.status === "Authorised" ? (
+                        <div style={{
+                          background: exp.status === "Rejected" ? "#fef2f2" : exp.status === "Posted" ? "#f0fdfa" : "#f0fdf4",
+                          padding: 16, borderRadius: 12, marginTop: 16,
+                          border: `1px solid ${exp.status === "Rejected" ? "#fecaca" : exp.status === "Posted" ? "#99f6e4" : "#bbf7d0"}`,
+                        }}>
+                          {exp.status === "Rejected" ? (
+                            <div style={{ display: "flex", gap: 12, alignItems: "flex-start" }}>
+                              <div style={{ background: "#ef4444", color: "white", padding: 4, borderRadius: "50%" }}>
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                              </div>
+                              <div style={{ width: "100%" }}>
+                                <p style={{ margin: "0 0 4px 0", color: "#ef4444", fontSize: FONT_SIZE.sm, fontWeight: 600 }}>Rejected</p>
+                                <p style={{ margin: "0 0 12px 0", color: "#b91c1c", fontSize: FONT_SIZE.xs }}>By <strong>{adminsMap[exp.authorised_by || ""] || "Admin"}</strong> on {new Date(exp.resolved_at).toLocaleString()}</p>
+                                <div style={{ padding: 12, background: "white", borderRadius: 8, border: "1px solid #fecaca", color: "#7f1d1d", fontSize: FONT_SIZE.sm, fontStyle: "italic" }}>
+                                  &quot;{exp.rejection_reason}&quot;
+                                </div>
+                              </div>
+                            </div>
+                          ) : exp.status === "Posted" ? (
+                            <div style={{ display: "flex", gap: 12, alignItems: "flex-start" }}>
+                              <div style={{ background: "#0f766e", color: "white", padding: 4, borderRadius: "50%" }}>
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><polyline points="20 6 9 17 4 12"/></svg>
+                              </div>
+                              <div>
+                                <p style={{ margin: "0 0 4px 0", color: "#0f766e", fontSize: FONT_SIZE.sm, fontWeight: 600 }}>Posted</p>
+                                <p style={{ margin: 0, color: "#115e59", fontSize: FONT_SIZE.xs }}>
+                                  Authorised by <strong>{adminsMap[exp.authorised_by || ""] || "Admin"}</strong> on {new Date(exp.resolved_at).toLocaleString()}
+                                </p>
+                                {exp.posted_at && (
+                                  <p style={{ margin: "4px 0 0 0", color: "#0f766e", fontSize: FONT_SIZE.xs }}>
+                                    Posted by <strong>{adminsMap[exp.posted_by || ""] || "Desk Officer"}</strong> on {new Date(exp.posted_at).toLocaleString()}
+                                  </p>
+                                )}
+                                {exp.approval_notes && (
+                                  <div style={{ marginTop: 8, padding: 12, background: "white", borderRadius: 8, border: "1px solid #99f6e4", color: "#115e59", fontSize: FONT_SIZE.sm, fontStyle: "italic" }}>
+                                    &quot;{exp.approval_notes}&quot;
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          ) : (
                             <div style={{ display: "flex", gap: 12, alignItems: "flex-start" }}>
                               <div style={{ background: "#16a34a", color: "white", padding: 4, borderRadius: "50%" }}>
                                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><polyline points="20 6 9 17 4 12"/></svg>
@@ -938,19 +983,6 @@ export default function CashExpenses() {
                                     &quot;{exp.approval_notes}&quot;
                                   </div>
                                 )}
-                              </div>
-                            </div>
-                          ) : (
-                            <div style={{ display: "flex", gap: 12, alignItems: "flex-start" }}>
-                              <div style={{ background: "#ef4444", color: "white", padding: 4, borderRadius: "50%" }}>
-                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-                              </div>
-                              <div style={{ width: "100%" }}>
-                                <p style={{ margin: "0 0 4px 0", color: "#ef4444", fontSize: FONT_SIZE.sm, fontWeight: 600 }}>Rejected</p>
-                                <p style={{ margin: "0 0 12px 0", color: "#b91c1c", fontSize: FONT_SIZE.xs }}>By <strong>{adminsMap[exp.authorised_by || ""] || "Admin"}</strong> on {new Date(exp.resolved_at).toLocaleString()}</p>
-                                <div style={{ padding: 12, background: "white", borderRadius: 8, border: "1px solid #fecaca", color: "#7f1d1d", fontSize: FONT_SIZE.sm, fontStyle: "italic" }}>
-                                  &quot;{exp.rejection_reason}&quot;
-                                </div>
                               </div>
                             </div>
                           )}

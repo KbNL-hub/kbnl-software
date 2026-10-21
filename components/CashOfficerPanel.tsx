@@ -26,9 +26,12 @@ type CashExpense = {
   clerk_id: string
   title: string
   total_amount: number
-  status: "Pending" | "Authorised" | "Rejected"
+  status: "Pending" | "Authorised" | "Rejected" | "Posted"
   authorised_by: string | null
   rejection_reason: string | null
+  approval_notes: string | null
+  posted_by: string | null
+  posted_at: string | null
   created_at: string
   resolved_at: string | null
 }
@@ -120,7 +123,9 @@ export default function CashOfficerPanel({ clerkId, officeName }: Props) {
   const balanceMap = useMemo(() => {
     const map: Record<string, number> = {}
     const records: { id: string; amount: number; timestamp: string }[] = [
-      ...expenses.filter(e => e.status === "Authorised").map(e => ({
+      // A posted expense has already had the office balance deducted (that
+      // happens at authorisation), so it still counts against the balance.
+      ...expenses.filter(e => e.status === "Authorised" || e.status === "Posted").map(e => ({
         id: e.expense_id, amount: e.total_amount, timestamp: e.resolved_at ?? e.created_at
       })),
       ...deposits.map(d => ({
@@ -413,11 +418,12 @@ export default function CashOfficerPanel({ clerkId, officeName }: Props) {
       <div style={{ background: "white", borderRadius: 12, border: "1px solid #eee", padding: 24 }}>
         <h3 style={{ margin: "0 0 20px" }}>My Logged Expenses</h3>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 20 }}>
-          {["All", "Pending", "Authorised", "Rejected", "Top-ups"].map(f => {
+          {["All", "Pending", "Authorised", "Posted", "Rejected", "Top-ups"].map(f => {
             let activeColor = "white"
             let activeBg = "#171717"
             if (f === "Pending") { activeColor = "#0070f3"; activeBg = "rgba(0, 112, 243, 0.1)" }
             if (f === "Authorised") { activeColor = "#16a34a"; activeBg = "rgba(22, 163, 74, 0.1)" }
+            if (f === "Posted") { activeColor = "#0f766e"; activeBg = "rgba(15, 118, 110, 0.1)" }
             if (f === "Rejected") { activeColor = "#ef4444"; activeBg = "rgba(239, 68, 68, 0.1)" }
             if (f === "Top-ups") { activeColor = "#4f46e5"; activeBg = "rgba(79, 70, 229, 0.1)" }
             return (
@@ -483,6 +489,7 @@ export default function CashOfficerPanel({ clerkId, officeName }: Props) {
               let statusColor = "#666"
               if (exp.status === "Pending") { statusBg = "#ebf8ff"; statusColor = "#2b6cb0" }
               else if (exp.status === "Authorised") { statusBg = "#f0fff4"; statusColor = "#2f855a" }
+              else if (exp.status === "Posted") { statusBg = "#f0fdfa"; statusColor = "#0f766e" }
               else if (exp.status === "Rejected") { statusBg = "#fff5f5"; statusColor = "#c53030" }
 
               return (
@@ -499,7 +506,7 @@ export default function CashOfficerPanel({ clerkId, officeName }: Props) {
                       <span style={{ fontSize: 14, color: "#666" }}>₦</span>
                       {exp.total_amount.toLocaleString()}
                     </div>
-                    {exp.status === "Authorised" && balanceMap[exp.expense_id] !== undefined && (
+                    {(exp.status === "Authorised" || exp.status === "Posted") && balanceMap[exp.expense_id] !== undefined && (
                       <span style={{ marginTop: 4, fontSize: 11, fontWeight: 600, color: "#16a34a", background: "#f0fdf4", padding: "2px 8px", borderRadius: 4, display: "inline-block" }}>
                         Balance after: ₦{balanceMap[exp.expense_id].toLocaleString()}
                       </span>
@@ -665,16 +672,32 @@ export default function CashOfficerPanel({ clerkId, officeName }: Props) {
             </div>
 
             {viewingExpense.resolved_at && (
-              <div style={{ background: "#f3f4f6", padding: 12, borderRadius: 6, fontSize: 12, color: "#555", marginBottom: 20 }}>
-                {viewingExpense.status === "Authorised" ? (
-                  <div>✓ Authorised on {new Date(viewingExpense.resolved_at).toLocaleString()}</div>
-                ) : (
+              <div style={{
+                background: viewingExpense.status === "Rejected" ? "#fff5f5" : "#f0fdf4",
+                padding: 12, borderRadius: 6, fontSize: 12, color: viewingExpense.status === "Rejected" ? "#c53030" : "#166534",
+                marginBottom: 20,
+              }}>
+                {viewingExpense.status === "Rejected" ? (
                   <div>
                     ❌ Rejected on {new Date(viewingExpense.resolved_at).toLocaleString()}
                     <div style={{ marginTop: 4, paddingLeft: 12, borderLeft: "2px solid #ff4444", color: "#c53030" }}>
                       Reason: &quot;{viewingExpense.rejection_reason}&quot;
                     </div>
                   </div>
+                ) : viewingExpense.status === "Posted" ? (
+                  <div>
+                    ✓ Authorised on {new Date(viewingExpense.resolved_at).toLocaleString()}
+                    {viewingExpense.posted_at && (
+                      <div>📤 Posted on {new Date(viewingExpense.posted_at).toLocaleString()}</div>
+                    )}
+                    {viewingExpense.approval_notes && (
+                      <div style={{ marginTop: 4, paddingLeft: 12, borderLeft: "2px solid #16a34a", color: "#166534", fontStyle: "italic" }}>
+                        &quot;{viewingExpense.approval_notes}&quot;
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div>✓ Authorised on {new Date(viewingExpense.resolved_at).toLocaleString()}</div>
                 )}
               </div>
             )}

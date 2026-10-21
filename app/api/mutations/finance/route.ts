@@ -26,7 +26,7 @@ const supabaseAdmin = createClient(
 )
 
 const ALLOWED_TABLES = ["customer_payments", "broker_credits", "store_sales", "store_supply_confirmations", "store_supply_lines", "cash_expenses", "cash_expense_items", "cash_offices", "cash_deposits", "admin_office_assignments", "Customers", "Brokers", "store_stock", "store_officers", "stock_verifications", "price_adjustments", "credit_approvals", "customer_charts", "new_bookings", "booking_supply_events"] as const
-const ALLOWED_RPCS = ["decrement_store_stock", "add_cash_deposit", "authorise_cash_expense", "create_transaction", "supply_booking"] as const
+const ALLOWED_RPCS = ["decrement_store_stock", "adjust_store_stock", "log_store_sale", "update_store_sale", "add_cash_deposit", "authorise_cash_expense", "create_transaction", "supply_booking"] as const
 
 const TABLE_ROLES: Record<string, string[]> = {
   customer_payments: ["Broker", "Admin", "SuperAdmin", "DeskOfficer", "Supervisor"],
@@ -54,8 +54,22 @@ const TABLE_ROLES: Record<string, string[]> = {
 
 const STORE_SALE_POSTING_ROLES = ["Admin", "SuperAdmin", "DeskOfficer", "Supervisor"]
 
+// Who may reject a store sale. Rejecting a sale returns its bags to the
+// shelf, so a store officer is excluded: they raise the sale, they do not
+// void it. The broker may reject their own pending sale.
+const STORE_SALE_REJECTION_ROLES = ["Admin", "SuperAdmin", "Supervisor", "DeskOfficer", "Broker"]
+
+// Who may move a cash expense to 'Posted' (Desk Officer's Cash Movement
+// Register) and who may reject one. Deliberately excludes CashOfficer: a cash
+// officer raises the expense, they do not clear it.
+const CASH_EXPENSE_POSTING_ROLES = ["Admin", "SuperAdmin", "DeskOfficer", "CashAuthorizer"]
+const CASH_EXPENSE_RESOLUTION_ROLES = ["Admin", "SuperAdmin", "Broker", "CashAuthorizer", "DeskOfficer"]
+
 const RPC_ROLES: Record<string, string[]> = {
   decrement_store_stock: ["StoreOfficer", "Admin", "SuperAdmin"],
+  adjust_store_stock: ["StoreOfficer", "Admin", "SuperAdmin", "StoreSupervisor", "Supervisor"],
+  log_store_sale: ["StoreOfficer", "Admin", "SuperAdmin"],
+  update_store_sale: ["StoreOfficer", "Admin", "SuperAdmin"],
   add_cash_deposit: ["CashOfficer", "Admin", "SuperAdmin", "Broker", "CashAuthorizer", "DeskOfficer"],
   authorise_cash_expense: ["Admin", "SuperAdmin", "Broker", "CashAuthorizer", "DeskOfficer"],
   create_transaction: ["Admin", "SuperAdmin"],
@@ -64,6 +78,9 @@ const RPC_ROLES: Record<string, string[]> = {
 
 const RPC_PARAM_SCHEMAS: Record<string, string[]> = {
   decrement_store_stock: ["p_store", "p_product", "p_qty"],
+  adjust_store_stock: ["p_store", "p_product", "p_delta"],
+  log_store_sale: ["p_sale"],
+  update_store_sale: ["p_sale_id", "p_sale"],
   add_cash_deposit: ["p_office_name", "p_amount", "p_note", "p_deposited_by"],
   authorise_cash_expense: ["p_expense_id", "p_admin_id", "p_notes"],
   create_transaction: ["p_from_account", "p_to_account", "p_amount", "p_description", "p_created_by"],
@@ -98,6 +115,51 @@ function isBookingBroker(roles: string[]) {
 
 function toAmount(value: unknown): number {
   return Number(value) || 0
+}
+
+/**
+ * Guards status transitions that must not be made by a generic write.
+ *
+ * Both the single-update path and the transaction sub-action path call this,
+ * so a status cannot be changed by going around the dedicated endpoints.
+ * Returns an error to send back, or null when the transition is allowed.
+ */
+function validateStatusTransition(
+  table: string,
+  action: string,
+  data: Record<string, unknown> | undefined,
+  roles: string[],
+): { error: string; status: number } | null {
+  if (!data) return null
+  const status = data.status as string | undefined
+  if (!status) return null
+
+  if (table === "cash_expenses") {
+    // A cash expense only moves through its own endpoints: the authorisation
+    // RPC, which is the only path that also moves the office balance, and the
+    // dedicated post and reject branches in the update path. Any other status
+    // change is refused, so the expense state machine cannot be bypassed.
+    if (action === "insert") {
+      if (status !== "Pending") {
+        return { error: `A new cash expense must be created as Pending, not ${status}`, status: 400 }
+      }
+      return null
+    }
+    if (status === "Authorised") {
+      return { error: "Cash expenses can only be authorised through the authorisation endpoint", status: 400 }
+    }
+    return { error: `Cash expenses cannot be changed to ${status} here; use the dedicated endpoint`, status: 400 }
+  }
+
+  // Rejecting a sale returns its bags to the shelf, so it is limited to the
+  // roles that may void a sale.
+  if (table === "store_sales" && status === "Rejected") {
+    if (!roles.some(r => STORE_SALE_REJECTION_ROLES.includes(r))) {
+      return { error: "You do not have permission to reject store sales", status: 403 }
+    }
+  }
+
+  return null
 }
 
 // store_sales.total_amount is 0 for broker sales logged before prices are
@@ -237,15 +299,149 @@ export async function POST(req: NextRequest) {
         return buildError(`RPC function "${fnName}" is not supported by this endpoint`, 400)
       }
       const rolesForRpc = RPC_ROLES[fnName] || ["Admin"]
-      await requireRole(req, rolesForRpc)
+      const rpcAuth = await requireRole(req, rolesForRpc)
       const allowedKeys = RPC_PARAM_SCHEMAS[fnName] || []
-      const safeParams = Object.fromEntries(
+      let safeParams = Object.fromEntries(
         Object.entries(params || {}).filter(([k]) => allowedKeys.includes(k))
       )
+
+      // A sale is always recorded against the authenticated user, never a
+      // client supplied officer id.
+      if (fnName === "log_store_sale") {
+        const sale = { ...((safeParams.p_sale as Record<string, unknown> | undefined) || {}) }
+        sale.officer_id = rpcAuth.userId
+        safeParams = { ...safeParams, p_sale: sale }
+      }
+
+      // Store officers may only move stock for their own store. The RPC takes
+      // the store name from the payload, so the check has to happen here.
+      // Admins, supervisors and store supervisors are not store officers and
+      // are not scoped this way.
+      if (fnName === "log_store_sale" || fnName === "update_store_sale" || fnName === "adjust_store_stock") {
+        const isStoreOfficer = rpcAuth.roles.includes("StoreOfficer")
+        const isPrivileged = rpcAuth.roles.some(r => ["Admin", "SuperAdmin"].includes(r))
+        if (isStoreOfficer && !isPrivileged) {
+          const { data: officerRow } = await supabaseAdmin
+            .from("store_officers")
+            .select("store_name")
+            .eq("officer_id", rpcAuth.userId)
+            .maybeSingle()
+          const officerStore = (officerRow as Record<string, unknown> | null)?.store_name as string | undefined
+          if (!officerStore) {
+            return buildError("No store is assigned to your account", 403)
+          }
+          let targetStore: string | undefined
+          if (fnName === "log_store_sale") {
+            targetStore = (safeParams.p_sale as Record<string, unknown> | undefined)?.store_name as string | undefined
+          } else if (fnName === "adjust_store_stock") {
+            targetStore = safeParams.p_store as string | undefined
+          } else {
+            const { data: saleRow } = await supabaseAdmin
+              .from("store_sales")
+              .select("store_name")
+              .eq("sale_id", safeParams.p_sale_id as string)
+              .maybeSingle()
+            targetStore = (saleRow as Record<string, unknown> | null)?.store_name as string | undefined
+          }
+          if (targetStore !== officerStore) {
+            return buildError("You can only manage stock for your own store", 403)
+          }
+        }
+      }
+
       const result = await supabaseAdmin.rpc(fnName, safeParams)
       if (result.error) {
-        return buildError(result.error.message || "RPC failed", 500)
+        const message = result.error.message || "RPC failed"
+        // The stock functions raise a readable message when the shelf cannot
+        // cover a movement. That is a business rule, not a server fault.
+        if (message.includes("insufficient_stock")) {
+          return buildError(message.replace("insufficient_stock:", "").trim() || "Not enough stock", 400)
+        }
+        return buildError(message, 500)
       }
+      // Store Sale Logged — the sale row and every stock deduction were
+      // committed together by log_store_sale, so by this point the sale
+      // definitely exists and the stock definitely moved.
+      if (fnName === "log_store_sale") {
+        const payload = (result.data ?? null) as Record<string, unknown> | null
+        if (payload && payload.success === false) {
+          const reason = (payload.error as string) || "failed"
+          if (reason === "insufficient_stock") {
+            const product = (payload.product as string) || "stock"
+            const available = toAmount(payload.available)
+            const required = toAmount(payload.required)
+            return buildError(
+              `Insufficient ${product} stock — ${available} available, ${required} required. Nothing was saved.`,
+              400,
+            )
+          }
+          return buildError(`Could not log sale: ${reason}. Nothing was saved.`, 400)
+        }
+
+        const sale = (payload?.sale ?? null) as Record<string, unknown> | null
+        const saleId = (payload?.sale_id ?? sale?.sale_id) as string | undefined
+        if (sale && saleId) {
+          const status = sale.status as string
+          const brokerId = sale.broker_id as string
+          const saleType = sale.sale_type as string
+          const storeName = (sale.store_name as string) || "Store"
+
+          if (saleType !== "truck_load_out") {
+            if (status === "Pending" && brokerId) {
+              const brokerName = (sale.broker_name as string) || "Broker"
+              notifyBrokerPendingStoreSale(brokerId, storeName).catch(console.error)
+              notifyStoreOfficerPendingBrokerSale(storeName).catch(console.error)
+              notifyStoreSupervisorPendingBrokerSale(storeName, brokerName).catch(console.error)
+              notifyAdminPendingStoreSale(brokerName, storeName, 0).catch(console.error)
+              notifyDeskOfficerStoreSaleNeedsAttention(saleId).catch(console.error)
+            } else if (status === "Confirmed") {
+              notifyStoreOfficerSaleConfirmed(saleId).catch(console.error)
+            }
+          }
+        }
+      }
+
+      // Store Sale Edited — the sale row and every stock movement it implies
+      // were committed together by update_store_sale.
+      if (fnName === "update_store_sale") {
+        const payload = (result.data ?? null) as Record<string, unknown> | null
+        if (payload && payload.success === false) {
+          const reason = (payload.error as string) || "failed"
+          if (reason === "insufficient_stock") {
+            const product = (payload.product as string) || "stock"
+            const available = toAmount(payload.available)
+            const required = toAmount(payload.required)
+            return buildError(
+              `Insufficient ${product} — only ${available} bags available, ${required} needed. Nothing was changed.`,
+              400,
+            )
+          }
+          return buildError(`Could not update sale: ${reason}. Nothing was changed.`, 400)
+        }
+
+        const sale = (payload?.sale ?? null) as Record<string, unknown> | null
+        const saleId = (payload?.sale_id ?? sale?.sale_id) as string | undefined
+        if (sale && saleId) {
+          const status = sale.status as string
+          const brokerId = sale.broker_id as string
+          const saleType = sale.sale_type as string
+          const storeName = (sale.store_name as string) || "Store"
+
+          if (saleType !== "truck_load_out") {
+            if (status === "Pending" && brokerId) {
+              const brokerName = (sale.broker_name as string) || "Broker"
+              notifyBrokerPendingStoreSale(brokerId, storeName).catch(console.error)
+              notifyStoreOfficerPendingBrokerSale(storeName).catch(console.error)
+              notifyStoreSupervisorPendingBrokerSale(storeName, brokerName).catch(console.error)
+              notifyAdminPendingStoreSale(brokerName, storeName, 0).catch(console.error)
+              notifyDeskOfficerStoreSaleNeedsAttention(saleId).catch(console.error)
+            } else if (status === "Confirmed") {
+              notifyStoreOfficerSaleConfirmed(saleId).catch(console.error)
+            }
+          }
+        }
+      }
+
       // Cash Expense Authorised
       if (fnName === "authorise_cash_expense" && params) {
         const expenseId = params.p_expense_id as string
@@ -277,6 +473,12 @@ export async function POST(req: NextRequest) {
         if (!includes(ALLOWED_TABLES, sa.table)) {
           return buildError(`Table "${sa.table}" is not supported by this endpoint`, 400)
         }
+        // A sale has to be recorded through log_store_sale so that the stock is
+        // deducted in the same transaction. The compensating rollback in this
+        // path cannot put a deduction back, so an insert here is not safe.
+        if (sa.table === "store_sales" && sa.action === "insert") {
+          return buildError("Store sales must be recorded through the log sale endpoint so the stock is deducted in the same transaction", 400)
+        }
       }
 
       const auth = await requireRole(req, ["Broker", "Admin", "SuperAdmin", "DeskOfficer", "Supervisor", "StoreOfficer", "StoreSupervisor", "CashOfficer", "CashAuthorizer", "CreditManager"])
@@ -302,6 +504,12 @@ export async function POST(req: NextRequest) {
           // Set posted_by and posted_at server-side, enforce atomic status predicate
           sa.data.posted_by = auth.userId
           sa.data.posted_at = new Date().toISOString()
+        }
+        // The same status rules as the single-update path, so a transaction
+        // cannot be used to go around the dedicated endpoints.
+        const transitionError = validateStatusTransition(sa.table, sa.action, sa.data, auth.roles)
+        if (transitionError) {
+          return buildError(transitionError.error, transitionError.status)
         }
         const brokerScopeError = await enforceBrokerScope(sa.table, sa.action, sa.filters, sa.data, auth, supabaseAdmin)
         if (brokerScopeError) {
@@ -550,6 +758,16 @@ export async function POST(req: NextRequest) {
     switch (action) {
       case "insert": {
         if (!data) return buildError("data is required for insert", 400)
+
+        // A store sale must never be written without its stock moving with it.
+        // Sales are recorded through the log_store_sale RPC, which inserts the
+        // sale and deducts the stock in one transaction and applies the role,
+        // store and officer checks that belong with it. A generic insert would
+        // skip all of that.
+        if (table === "store_sales") {
+          return buildError("Store sales must be recorded through the log_store_sale endpoint", 400)
+        }
+
         const { data: result, error } = await supabaseAdmin.from(table).insert([data]).select()
         if (error) {
           console.error("Mutation failed", error)
@@ -592,27 +810,8 @@ export async function POST(req: NextRequest) {
           notifyDeskOfficerCreditAlert(customerName).catch(console.error)
         }
 
-        // Store Sale Created
-        if (table === "store_sales" && row) {
-          const status = (row.status as string) || (data.status as string)
-          const brokerId = (row.broker_id as string) || (data.broker_id as string)
-          const saleType = (row.sale_type as string) || (data.sale_type as string)
-          const saleId = row.sale_id as string
-
-          if (saleType === "truck_load_out") {
-            // Load-outs are dispatch records, not sales — skip notifications
-          } else if (status === "Pending" && brokerId) {
-            const storeName = (row.store_name as string) || (data.store_name as string) || "Store"
-            const brokerName = (row.broker_name as string) || (data.broker_name as string) || "Broker"
-            notifyBrokerPendingStoreSale(brokerId, storeName).catch(console.error)
-            notifyStoreOfficerPendingBrokerSale(storeName).catch(console.error)
-            notifyStoreSupervisorPendingBrokerSale(storeName, brokerName).catch(console.error)
-            notifyAdminPendingStoreSale(brokerName, storeName, 0).catch(console.error)
-            notifyDeskOfficerStoreSaleNeedsAttention(saleId).catch(console.error)
-          } else if (status === "Confirmed" && saleId) {
-            notifyStoreOfficerSaleConfirmed(saleId).catch(console.error)
-          }
-        }
+        // Store Sale Created is handled above, inside the log_store_sale
+        // branch, so the sale and its stock deduction are notified together.
 
         return NextResponse.json({ data: result })
       }
@@ -637,6 +836,13 @@ export async function POST(req: NextRequest) {
         if (!filters || Object.keys(filters).length === 0) {
           return buildError("filters are required for update", 400)
         }
+
+        // Store Sale Rejected — a rejected sale is void, so the bags it took
+        // go back on the shelf. That movement is made by the database trigger
+        // trg_store_sales_stock_sync, in the same transaction as this update,
+        // so the sale and the stock can never disagree. Who may reject is
+        // decided by validateStatusTransition below, which the transaction
+        // path uses as well.
 
         // Store Sale Posted — dedicated atomic posting transition
         if (table === "store_sales" && data.status === "Posted") {
@@ -674,6 +880,89 @@ export async function POST(req: NextRequest) {
           return NextResponse.json({ data: postResult })
         }
 
+        // Cash Expense status transitions.
+        //
+        // A cash expense moves Pending -> Authorised -> Posted, or
+        // Pending -> Rejected. 'Authorised' must go through
+        // authorise_cash_expense, which is the only path that also deducts the
+        // office balance. 'Posted' may only be applied to an already-Authorised
+        // expense, and 'Rejected' only to a still-Pending one. Without those
+        // predicates an already-Authorised or Posted expense could be flipped
+        // back to 'Rejected' by a stray update, which is what made posted
+        // expenses render as rejected on the drill-down.
+        if (table === "cash_expenses" && data.status === "Posted") {
+          if (!auth.roles.some(r => CASH_EXPENSE_POSTING_ROLES.includes(r))) {
+            return buildError("You do not have permission to post cash expenses", 403)
+          }
+          // Stamp the poster server side rather than trusting the client.
+          data.posted_by = auth.userId
+          data.posted_at = new Date().toISOString()
+          let postQuery = supabaseAdmin.from(table).update(data).eq("status", "Authorised")
+          for (const [k, v] of Object.entries(filters)) {
+            postQuery = postQuery.eq(k, v)
+          }
+          const { data: postResult, error: postError } = await postQuery.select()
+          if (postError) {
+            console.error("Cash expense post failed", postError)
+            return buildError("Failed to post expense. Try again.", 500)
+          }
+          if (!postResult || postResult.length === 0) {
+            return buildError("Expense is not in Authorised status", 400)
+          }
+          return NextResponse.json({ data: postResult })
+        }
+
+        if (table === "cash_expenses" && data.status === "Rejected") {
+          if (!auth.roles.some(r => CASH_EXPENSE_RESOLUTION_ROLES.includes(r))) {
+            return buildError("You do not have permission to reject cash expenses", 403)
+          }
+          // A cash officer cannot reject their own expense.
+          const rejectId = (filters.expense_id ?? filters.id) as string | undefined
+          if (!rejectId) {
+            return buildError("expense_id is required to reject an expense", 400)
+          }
+          const { data: existingRows } = await supabaseAdmin
+            .from(table)
+            .select("expense_id, clerk_id, status")
+            .eq("expense_id", rejectId)
+          const existing = existingRows?.[0] as Record<string, unknown> | undefined
+          if (existing && existing.clerk_id === auth.userId) {
+            return buildError("You cannot reject your own expense", 403)
+          }
+          if (existing && existing.status !== "Pending") {
+            return buildError(`Expense is already ${existing.status} and cannot be rejected`, 400)
+          }
+          // Only a Pending expense may be rejected.
+          let rejectQuery = supabaseAdmin.from(table).update(data).eq("status", "Pending")
+          for (const [k, v] of Object.entries(filters)) {
+            rejectQuery = rejectQuery.eq(k, v)
+          }
+          const { data: rejectResult, error: rejectError } = await rejectQuery.select()
+          if (rejectError) {
+            console.error("Cash expense reject failed", rejectError)
+            return buildError("Failed to reject expense. Try again.", 500)
+          }
+          if (!rejectResult || rejectResult.length === 0) {
+            return buildError("Expense is not in Pending status and cannot be rejected", 400)
+          }
+          const rejectedRow = rejectResult[0] as Record<string, unknown>
+          const expenseId = (filters.expense_id ?? rejectedRow.expense_id) as string
+          const title = (rejectedRow.title as string) || "Expense"
+          const amount = toAmount(rejectedRow.total_amount ?? rejectedRow.amount)
+          if (expenseId) {
+            notifyCashOfficerExpenseActioned(expenseId, "Rejected", title, amount).catch(console.error)
+          }
+          return NextResponse.json({ data: rejectResult })
+        }
+
+        // The status rules that apply to every write path: a cash expense may
+        // not be authorised by a generic write, and rejecting a sale needs a
+        // role that may void a sale.
+        const transitionError = validateStatusTransition(table, action, data, auth.roles)
+        if (transitionError) {
+          return buildError(transitionError.error, transitionError.status)
+        }
+
         let query = supabaseAdmin.from(table).update(data)
         query = applyFilters(query, filters)
         const { data: result, error } = await query.select()
@@ -687,6 +976,13 @@ export async function POST(req: NextRequest) {
         }
         const row = result?.[0] as Record<string, unknown> | undefined
 
+        // A stock update that matched no row is a silent failure: PostgREST
+        // reports no error, the caller believes the balance moved, and the
+        // stock ledger silently drifts. Fail loudly instead.
+        if (table === "store_stock" && (!result || result.length === 0)) {
+          return buildError("Stock row not found - nothing was changed", 400)
+        }
+
         // Customer Payment Posted
         if (table === "customer_payments" && data.status === "Posted" && row) {
           const brokerId = row.broker_id as string
@@ -694,16 +990,6 @@ export async function POST(req: NextRequest) {
           const amount = toAmount(row.amount)
           if (brokerId) {
             notifyBrokerPaymentPosted(brokerId, customerName, amount).catch(console.error)
-          }
-        }
-
-        // Cash Expense Rejected
-        if (table === "cash_expenses" && data.status === "Rejected" && row) {
-          const expenseId = (filters.expense_id ?? row.expense_id) as string
-          const title = row.title as string || "Expense"
-          const amount = toAmount(row.total_amount ?? row.amount)
-          if (expenseId) {
-            notifyCashOfficerExpenseActioned(expenseId, "Rejected", title, amount).catch(console.error)
           }
         }
 

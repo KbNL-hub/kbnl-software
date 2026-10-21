@@ -102,18 +102,73 @@ lib/
 - `cash_officers` — clerk_id (FK auth.users), full_name, phone_number, office_name, status ← NEW
 
 ### Store / Sales
-- `store_stock` — stock_id, store_name, product, balance, updated_at
+- `store_stock` — stock_id, store_name, product, balance, updated_at · UNIQUE (store_name, product)
 - `store_supply_confirmations` — confirmation_id, stop_id, officer_id, store_name, confirmed_at, discrepancy_quantity (nullable), discrepancy_note (nullable)
 - `store_supply_lines` — line_id, confirmation_id, product, quantity
-- `store_sales` — sale_id, officer_id, store_name, product, quantity, price_per_bag, total_amount (generated), customer_name, payment_mode, delivery_mode (self/tricycle/truck), tricycle_id, sold_at
+- `store_sales` — sale_id, officer_id, store_name, items (JSONB array of {product, quantity, price_per_bag, company_price, price_reason}), total_quantity, total_amount (both set by trigger `store_sales_items_totals`), customer_name, payment_mode, delivery_mode (self/tricycle/truck), tricycle_id, sold_at, status (Pending/Confirmed/Rejected/Posted), sale_type (direct/broker/truck_load_out), posted_by, posted_at
 - `tricycles` — tricycle_id, tricycle_number, store_name, created_at ← NEW
+
+**Stock is only ever written through the atomic RPCs in migrations 061/062 — never with a
+client-side read-modify-write.** `store_stock` rows are locked `FOR UPDATE` inside the
+function, so a concurrent sale cannot be clobbered by a stale balance.
+
+- `log_store_sale(p_sale jsonb)` — inserts the sale row AND deducts every line's stock in
+  one transaction. All-or-nothing: if any line is short of stock nothing is written.
+  Quantities are aggregated per product, so a sale listing the same product on two lines
+  is validated and deducted as one total.
+- `adjust_store_stock(p_store text, p_product text, p_delta int)` — atomic signed balance
+  adjustment (used for incoming supply). Refuses to take a balance negative.
+- `update_store_sale(p_sale_id uuid, p_sale jsonb)` — updates a logged sale. It does **not**
+  touch balances: the trigger below owns every stock movement that follows a sale being
+  updated.
+
+### The stock rule
+
+**A sale holds stock ⇔ its status is not `Rejected`.** A rejected sale is void — the goods
+did not leave the store — so the bags it took go back on the shelf.
+
+`trg_store_sales_stock_sync` (migration 063) enforces this on **every** update to
+`store_sales`, so it covers the admin reject, the broker reject, the resubmit, the store
+officer's edit, the price adjustment flows and any path added later. For a sale moving
+from OLD to NEW:
+
+| | old basket | new basket | stock movement |
+|---|---|---|---|
+| held → held | released | taken | `old_qty − new_qty` |
+| held → not held | released | — | `+old_qty` (a rejection) |
+| not held → held | — | taken | `−new_qty` (a resubmit) |
+| not held → not held | — | — | nothing |
+
+Consequences worth remembering:
+- Rejecting an already-rejected sale only edits the reason, so it is a **no-op** for stock.
+  The same bags can never be returned twice.
+- A resubmit takes the **new** basket, not the old one, because the old one was already
+  returned.
+- A `discount_status = 'returned'` sale is **not** a rejection: that is a price or credit
+  denial, the goods still left the store, so the sale keeps holding its stock. Only
+  `status = 'Rejected'` releases it.
+- A sale cannot be moved between stores.
+
+Migration 064 corrected the residue of the old bug: four sales had been rejected without
+their stock being returned, and those 83 bags were put back.
 
 ### Cash Transactions ← NEW
 - `cash_offices` — office_id, office_name (Uyo/Ikom/Calabar/Ogoja), current_balance
-- `cash_expenses` — expense_id, office_name, clerk_id, title, total_amount, status (Pending/Authorised/Rejected), authorised_by, rejection_reason, created_at, resolved_at
+- `cash_expenses` — expense_id, office_name, clerk_id, title, total_amount, status (Pending/Authorised/Rejected/**Posted**), authorised_by, rejection_reason, approval_notes, posted_by, posted_at, created_at, resolved_at
 - `cash_expense_items` — item_id, expense_id, item_name, amount
 - `cash_deposits` — deposit_id, office_name, amount, note, deposited_by, deposited_at
 - `admin_office_assignments` — admin_id (PK), office_name ← NEW
+
+**Cash expense status machine: `Pending → Authorised → Posted`, or `Pending → Rejected`.**
+- `Authorised` is only reachable via the `authorise_cash_expense` RPC — it is the only path
+  that also deducts the office balance.
+- `Posted` is the Desk Officer's Cash Movement Register step; only an `Authorised` expense
+  can be posted, and `posted_by`/`posted_at` are stamped server side.
+- `Rejected` is only reachable from `Pending`, and never by the officer who raised it.
+
+`resolved_at` is set at authorisation time and is **not** cleared by posting, so any UI
+that treats "has resolved_at but is not Authorised" as "Rejected" will mislabel every
+posted expense. Always switch on the full status, never on a binary Authorised/rejected test.
 
 ### Complaints
 - `driver_complaints` — complaint_id, driver_id, trip_id, plate_number, complaint_type, notes, resolved, reported_at

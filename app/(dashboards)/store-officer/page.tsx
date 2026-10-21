@@ -5,7 +5,7 @@ import React from "react"
 import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import { supabase } from "@/lib/supabase"
-import { apiMutate, SubAction } from "@/lib/api-mutation"
+import { apiMutate } from "@/lib/api-mutation"
 import RoleSwitcher from "@/components/RoleSwitcher"
 import { formatAmount, parseAmount } from "@/lib/formatAmount"
 import { Icon } from "@iconify/react"
@@ -472,36 +472,20 @@ export default function StoreOfficerDashboard() {
       return
     }
 
+    // Add the received bags to stock. The adjustment is applied inside the
+    // database against the locked row, so a sale that is deducted at the same
+    // moment cannot be clobbered by a stale balance read on the client.
     for (const line of supplyLines) {
       const qty = parseInt(line.quantity)
-      const { data: existing } = await supabase
-        .from("store_stock")
-        .select("balance")
-        .eq("store_name", officer.store_name)
-        .eq("product", line.product)
-        .single()
-
-      if (existing) {
-        const { error: stockError } = await apiMutate("finance", {
-          action: "update", table: "store_stock",
-          data: { balance: existing.balance + qty, updated_at: new Date().toISOString() },
-          filters: { store_name: officer.store_name, product: line.product },
-        })
-        if (stockError) {
-          setConfirmError("Supply confirmed but stock update failed. Contact support.")
-          setConfirmLoading(false)
-          return
-        }
-      } else {
-        const { error: stockError } = await apiMutate("finance", {
-          action: "insert", table: "store_stock",
-          data: { store_name: officer.store_name, product: line.product, balance: qty },
-        })
-        if (stockError) {
-          setConfirmError("Supply confirmed but stock insert failed. Contact support.")
-          setConfirmLoading(false)
-          return
-        }
+      const { error: stockError } = await apiMutate("finance", {
+        action: "rpc",
+        function: "adjust_store_stock",
+        params: { p_store: officer.store_name, p_product: line.product, p_delta: qty },
+      })
+      if (stockError) {
+        setConfirmError("Supply confirmed but stock update failed. Contact support.")
+        setConfirmLoading(false)
+        return
       }
     }
 
@@ -569,15 +553,13 @@ export default function StoreOfficerDashboard() {
       if (saleLines.some(l => parseAmount(l.price_per_bag) <= 0)) return setSaleError("Enter valid prices")
     }
 
-    const insufficientStock = saleLines.find(line => {
-      const stockItem = stock.find(s => s.product === line.product)
-      const qty = parseInt(line.quantity)
-      return !stockItem || stockItem.balance < qty
-    })
-
-    if (insufficientStock) {
-      const stockItem = stock.find(s => s.product === insufficientStock.product)
-      return setSaleError(`Insufficient ${insufficientStock.product} — only ${stockItem?.balance ?? 0} bags available`)
+    // Only reject a product this store does not carry. The balance itself is
+    // checked by the database inside the same transaction that records the
+    // sale -- this list is a snapshot that refreshes every two minutes, so
+    // trusting it here would refuse sales the database would happily accept.
+    const unknownProduct = saleLines.find(line => !stock.some(s => s.product === line.product))
+    if (unknownProduct) {
+      return setSaleError(`${unknownProduct.product} is not stocked at this store`)
     }
 
     setSaleLoading(true)
@@ -591,45 +573,53 @@ export default function StoreOfficerDashboard() {
         price_reason: null as string | null,
       }))
 
-      const { error: saleErr } = await apiMutate("finance", {
-        action: "insert",
-        table: "store_sales",
-        data: {
-          officer_id: officer.officer_id,
-          store_name: officer.store_name,
-          items,
-          customer_name: saleType === "truck_load_out" ? null : saleCustomer?.full_name.trim() || null,
-          payment_mode: saleType === "truck_load_out" ? "Load Out" : salePayment,
-          delivery_mode: saleType === "truck_load_out" ? "truck" : deliveryMode,
-          tricycle_id: deliveryMode === "tricycle" && saleType !== "truck_load_out" ? saleTricycleId : null,
-          truck_plate: (saleType === "truck_load_out" || deliveryMode === "truck") ? saleTruckPlate : null,
-          broker_id: saleType === "broker" ? saleBroker?.broker_id : null,
-          status: saleType === "broker" ? "Pending" : "Confirmed",
-          sale_type: saleType === "truck_load_out" ? "truck_load_out" : saleType === "broker" ? "broker" : "direct",
-          sold_at: saleDateWithTime(saleDate),
-          bank_name: salePayment === "Transfer" && saleType !== "truck_load_out" ? saleBank : null,
-          depositor_name: salePayment === "Transfer" && saleType !== "truck_load_out" ? saleDepositor.trim() : null,
-          driver_name: saleType === "truck_load_out" ? saleDriver?.full_name ?? null : null,
+      // One atomic call. The sale row and every stock deduction are committed
+      // together by the database, so a sale can never exist without its stock
+      // having moved, and a multi-line sale is all-or-nothing.
+      const { data: saleData, error: saleErr } = await apiMutate("finance", {
+        action: "rpc",
+        function: "log_store_sale",
+        params: {
+          p_sale: {
+            officer_id: officer.officer_id,
+            store_name: officer.store_name,
+            items,
+            customer_name: saleType === "truck_load_out" ? null : saleCustomer?.full_name.trim() || null,
+            payment_mode: saleType === "truck_load_out" ? "Load Out" : salePayment,
+            delivery_mode: saleType === "truck_load_out" ? "truck" : deliveryMode,
+            tricycle_id: deliveryMode === "tricycle" && saleType !== "truck_load_out" ? saleTricycleId : null,
+            truck_plate: (saleType === "truck_load_out" || deliveryMode === "truck") ? saleTruckPlate : null,
+            broker_id: saleType === "broker" ? saleBroker?.broker_id : null,
+            status: saleType === "broker" ? "Pending" : "Confirmed",
+            sale_type: saleType === "truck_load_out" ? "truck_load_out" : saleType === "broker" ? "broker" : "direct",
+            sold_at: saleDateWithTime(saleDate),
+            bank_name: salePayment === "Transfer" && saleType !== "truck_load_out" ? saleBank : null,
+            depositor_name: salePayment === "Transfer" && saleType !== "truck_load_out" ? saleDepositor.trim() : null,
+            driver_name: saleType === "truck_load_out" ? saleDriver?.full_name ?? null : null,
+          },
         },
       })
       if (saleErr) {
-        setSaleError("Failed to log sale")
+        setSaleError(saleErr)
         setSaleLoading(false)
         return
       }
 
-      for (const line of saleLines) {
-        const qty = parseInt(line.quantity)
-        const { error: stockError } = await apiMutate("finance", {
-          action: "rpc",
-          function: "decrement_store_stock",
-          params: { p_store: officer.store_name, p_product: line.product, p_qty: qty },
-        })
-        if (stockError) {
-          setSaleError(stockError === "insufficient_stock" ? `Insufficient ${line.product} stock` : "Sale logged but stock deduction failed. Contact support.")
-          setSaleLoading(false)
-          return
-        }
+      const saleResult = saleData as {
+        success?: boolean
+        error?: string
+        product?: string
+        available?: number
+        required?: number
+      } | null
+      if (saleResult && saleResult.success === false) {
+        setSaleError(
+          saleResult.error === "insufficient_stock"
+            ? `Insufficient ${saleResult.product} stock — ${saleResult.available} available, ${saleResult.required} required. Nothing was saved.`
+            : "Could not log sale. Nothing was saved.",
+        )
+        setSaleLoading(false)
+        return
       }
 
       setSaleLoading(false)
@@ -746,8 +736,6 @@ export default function StoreOfficerDashboard() {
       if (editLines.some(l => parseAmount(l.price_per_bag) <= 0)) return setEditError("Enter valid prices")
     }
 
-    const stockDeltas = new Map<string, number>()
-    const oldItems = editingGroup.items || []
     const newItems = editLines.map(line => ({
       product: line.product,
       quantity: parseInt(line.quantity),
@@ -756,73 +744,56 @@ export default function StoreOfficerDashboard() {
       price_reason: null as string | null,
     }))
 
-    for (const old of oldItems) {
-      stockDeltas.set(old.product, (stockDeltas.get(old.product) || 0) + old.quantity)
-    }
-    for (const item of newItems) {
-      stockDeltas.set(item.product, (stockDeltas.get(item.product) || 0) - item.quantity)
-    }
-    const stockAdjustments = [...stockDeltas.entries()]
-      .filter(([, delta]) => delta !== 0)
-      .map(([product, delta]) => ({ product, delta }))
-
+    // The stock delta is worked out by the database from the sale as it is
+    // stored, so there is nothing to compute here.
     setEditLoading(true)
     setEditError("")
 
     try {
-      const sub_actions: SubAction[] = []
-
-      sub_actions.push({
-        action: "update", table: "store_sales",
-        data: {
-          items: newItems,
-          customer_name: saleType === "truck_load_out" ? null : (editCustomer?.full_name || "").trim() || null,
-          payment_mode: saleType === "truck_load_out" ? "Load Out" : editPayment,
-          delivery_mode: saleType === "truck_load_out" ? "truck" : editDeliveryMode,
-          tricycle_id: editDeliveryMode === "tricycle" && saleType !== "truck_load_out" ? editTricycleId : null,
-          truck_plate: (saleType === "truck_load_out" || editDeliveryMode === "truck") ? editTruckPlate : null,
-          bank_name: editPayment === "Transfer" && saleType !== "truck_load_out" ? editBank : null,
-          depositor_name: editPayment === "Transfer" && saleType !== "truck_load_out" ? editDepositor.trim() : null,
-          driver_name: saleType === "truck_load_out" ? editDriver?.full_name ?? null : null,
-          sold_at: editingGroup.sold_at,
-          status: saleType === "broker" ? "Pending" : "Confirmed",
-          rejection_reason: null,
+      // The sale row and the stock movement it implies are updated together by
+      // the database. The stock delta is recomputed server side from the sale
+      // as it is stored, so it cannot drift from what was actually sold, and a
+      // deduction cannot be clobbered by a stale balance read here.
+      const { data: updateData, error } = await apiMutate("finance", {
+        action: "rpc",
+        function: "update_store_sale",
+        params: {
+          p_sale_id: editingGroup.sale_id,
+          p_sale: {
+            items: newItems,
+            customer_name: saleType === "truck_load_out" ? null : (editCustomer?.full_name || "").trim() || null,
+            payment_mode: saleType === "truck_load_out" ? "Load Out" : editPayment,
+            delivery_mode: saleType === "truck_load_out" ? "truck" : editDeliveryMode,
+            tricycle_id: editDeliveryMode === "tricycle" && saleType !== "truck_load_out" ? editTricycleId : null,
+            truck_plate: (saleType === "truck_load_out" || editDeliveryMode === "truck") ? editTruckPlate : null,
+            bank_name: editPayment === "Transfer" && saleType !== "truck_load_out" ? editBank : null,
+            depositor_name: editPayment === "Transfer" && saleType !== "truck_load_out" ? editDepositor.trim() : null,
+            driver_name: saleType === "truck_load_out" ? editDriver?.full_name ?? null : null,
+            sold_at: editingGroup.sold_at,
+            status: saleType === "broker" ? "Pending" : "Confirmed",
+            rejection_reason: null,
+          },
         },
-        filters: { sale_id: editingGroup.sale_id },
       })
-
-      for (const adj of stockAdjustments) {
-        const { data: stockRow } = await supabase
-          .from("store_stock")
-          .select("balance")
-          .eq("store_name", officer.store_name)
-          .eq("product", adj.product)
-          .single()
-        const available = stockRow?.balance ?? 0
-        if (adj.delta < 0 && available < -adj.delta) {
-          setEditLoading(false)
-          return setEditError(`Insufficient ${adj.product} — only ${available} bags available`)
-        }
-        if (stockRow) {
-          sub_actions.push({
-            action: "update", table: "store_stock",
-            data: { balance: available + adj.delta, updated_at: new Date().toISOString() },
-            filters: { store_name: officer.store_name, product: adj.product },
-          })
-        } else {
-          sub_actions.push({
-            action: "insert", table: "store_stock",
-            data: { store_name: officer.store_name, product: adj.product, balance: available + adj.delta },
-          })
-        }
-      }
-
-      console.log("[Resubmit] sub_actions:", JSON.stringify(sub_actions, null, 2))
-      const { error } = await apiMutate("finance", { action: "transaction", sub_actions })
       if (error) {
         console.error("[Resubmit] server error:", error)
         setEditLoading(false)
         return setEditError(error || "Failed to update sale. Nothing was changed — please retry.")
+      }
+      const updateResult = updateData as {
+        success?: boolean
+        error?: string
+        product?: string
+        available?: number
+        required?: number
+      } | null
+      if (updateResult && updateResult.success === false) {
+        setEditLoading(false)
+        return setEditError(
+          updateResult.error === "insufficient_stock"
+            ? `Insufficient ${updateResult.product} — only ${updateResult.available} bags available, ${updateResult.required} needed. Nothing was changed.`
+            : "Could not update sale. Nothing was changed.",
+        )
       }
     } catch {
       setEditLoading(false)
