@@ -157,6 +157,92 @@ async function prepareDiscrepancyInsert(data: Record<string, unknown>, auth: Aut
   return { data: { ...data, driver_id: driver ? tripDriverId : null } }
 }
 
+/**
+ * A trip may only be completed once every loaded bag has been accounted for by
+ * a stop, a shortage or caked bags. Without this check an admin can mark a trip
+ * Completed while bags are still on the truck, and the driver's dashboard then
+ * stops offering "Continue Your Trip" because it only looks for active trips.
+ */
+async function getTripRemaining(tripId: string, loadedQuantityOverride?: number): Promise<number | null> {
+  const [{ data: trip, error: tripError }, { data: stops, error: stopsError }, { data: discrepancies, error: discrepanciesError }] =
+    await Promise.all([
+      supabaseAdmin.from("Trips").select("loaded_quantity").eq("trip_id", tripId).maybeSingle(),
+      supabaseAdmin.from("Stops").select("quantity_offloaded").eq("trip_id", tripId),
+      supabaseAdmin.from("trip_discrepancies").select("shortage, caked_bags").eq("trip_id", tripId),
+    ])
+
+  if (tripError) throw new Error(tripError.message)
+  if (stopsError) throw new Error(stopsError.message)
+  if (discrepanciesError) throw new Error(discrepanciesError.message)
+  if (!trip) return null
+
+  const offloaded = (stops ?? []).reduce((sum, stop) => sum + Number(stop.quantity_offloaded || 0), 0)
+  const shortage = (discrepancies ?? []).reduce(
+    (sum, discrepancy) => sum + Number(discrepancy.shortage || 0) + Number(discrepancy.caked_bags || 0),
+    0,
+  )
+
+  // Completion must be judged against the quantity the write will leave behind,
+  // not the current row, otherwise raising loaded_quantity in the same update
+  // would let unaccounted bags slip through.
+  const loadedQuantity = loadedQuantityOverride ?? Number(trip.loaded_quantity)
+  return loadedQuantity - offloaded - shortage
+}
+
+function unaccountedBagsError(remaining: number) {
+  return `This trip still has ${remaining} bag${remaining === 1 ? "" : "s"} unaccounted for. Log the remaining stops or record a shortage/caked-bag discrepancy before completing it.`
+}
+
+/** `undefined` = quantity untouched, `null` = invalid quantity supplied. */
+function parseLoadedQuantity(value: unknown): number | null | undefined {
+  if (value === undefined) return undefined
+  const parsed =
+    typeof value === "number"
+      ? value
+      : typeof value === "string" && value.trim() !== ""
+        ? Number(value)
+        : Number.NaN
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : null
+}
+
+/**
+ * Resolves the rows a completion write will touch so the balance is checked even
+ * when the write filters on plate_number (or anything other than trip_id).
+ */
+async function resolveTripIdsForCompletion(filters: Record<string, unknown>): Promise<string[]> {
+  let query = supabaseAdmin.from("Trips").select("trip_id")
+  for (const [key, value] of Object.entries(filters)) query = query.eq(key, value)
+  const { data, error } = await query
+  if (error) throw new Error(error.message)
+  return (data ?? []).map(row => row.trip_id as string)
+}
+
+async function completionGuardError(
+  data: Record<string, unknown>,
+  filters: Record<string, unknown>,
+): Promise<{ error: string; status: number } | null> {
+  const proposedLoadedQuantity = parseLoadedQuantity(data.loaded_quantity)
+  if (proposedLoadedQuantity === null) {
+    return { error: "loaded_quantity must be a non-negative number", status: 400 }
+  }
+
+  const tripIds = await resolveTripIdsForCompletion(filters)
+  for (const tripId of tripIds) {
+    const remaining = await getTripRemaining(tripId, proposedLoadedQuantity)
+    if (remaining !== null && remaining > 0) {
+      return { error: unaccountedBagsError(remaining), status: 409 }
+    }
+  }
+  return null
+}
+
+/** Identity columns an upsert would match on, or null when it cannot be resolved. */
+function tripUpsertIdentity(data: Record<string, unknown>, conflict: string | undefined) {
+  const keys = conflict ? conflict.split(",").map(value => value.trim()).filter(Boolean) : ["trip_id"]
+  if (keys.length === 0 || keys.some(key => data[key] === undefined)) return null
+  return Object.fromEntries(keys.map(key => [key, data[key]]))
+}
+
 async function upsertDriverTrip(data: Record<string, unknown>, conflict: string | undefined, driverId: string) {
   if (!conflict) return supabaseAdmin.from("Trips").insert([data]).select()
 
@@ -455,6 +541,20 @@ export async function POST(req: NextRequest) {
           upsertData = { ...data, driver_id: auth.userId }
         }
         const driverOnlyTripUpsert = table === "Trips" && isDriverOnlyTripUser(auth)
+        if (table === "Trips" && data.trip_status === "Completed") {
+          const upsertFilters = tripUpsertIdentity(upsertData, conflict)
+          const completionFilters =
+            upsertFilters && driverOnlyTripUpsert ? { ...upsertFilters, driver_id: auth.userId } : upsertFilters
+          if (completionFilters) {
+            let guard: { error: string; status: number } | null
+            try {
+              guard = await completionGuardError(upsertData, completionFilters)
+            } catch {
+              return buildError("Unable to verify this trip's bag balance. Please try again.", 500)
+            }
+            if (guard) return buildError(guard.error, guard.status)
+          }
+        }
         const { data: result, error } = driverOnlyTripUpsert
           ? await upsertDriverTrip(upsertData, conflict, auth.userId)
           : await supabaseAdmin.from(table!).upsert([upsertData], conflict ? { onConflict: conflict } : {}).select()
@@ -480,6 +580,19 @@ export async function POST(req: NextRequest) {
             return buildError("Drivers can only update their own trips", 403)
           }
           updateData = { ...data, driver_id: auth.userId }
+        }
+        if (table === "Trips" && data.trip_status === "Completed") {
+          const completionFilters = driverOnlyTripUpdate ? { ...filters, driver_id: auth.userId } : filters
+          let guard: { error: string; status: number } | null
+          try {
+            guard = await completionGuardError(data, completionFilters)
+          } catch {
+            return buildError("Unable to verify this trip's bag balance. Please try again.", 500)
+          }
+          if (guard) return buildError(guard.error, guard.status)
+        }
+        if (table === "Trips" && data.trip_status && data.updated_at === undefined) {
+          updateData = { ...updateData, updated_at: new Date().toISOString() }
         }
         let query = supabaseAdmin.from(table!).update(updateData)
         for (const [key, value] of Object.entries(filters)) {
@@ -665,6 +778,18 @@ export async function POST(req: NextRequest) {
                 if (!sa.filters || Object.keys(sa.filters).length === 0) {
                   throw new Error("filters are required for update")
                 }
+                if (sa.table === "Trips" && sa.data.trip_status === "Completed") {
+                  let guard: { error: string; status: number } | null
+                  try {
+                    guard = await completionGuardError(sa.data, sa.filters)
+                  } catch {
+                    throw new MutationError("Unable to verify this trip's bag balance. Please try again.", 500)
+                  }
+                  if (guard) throw new MutationError(guard.error, guard.status)
+                }
+                if (sa.table === "Trips" && sa.data.trip_status && sa.data.updated_at === undefined) {
+                  sa.data = { ...sa.data, updated_at: new Date().toISOString() }
+                }
                 let q = supabaseAdmin.from(sa.table).update(sa.data)
                 for (const [k, v] of Object.entries(sa.filters)) {
                   q = q.eq(k, v)
@@ -702,6 +827,20 @@ export async function POST(req: NextRequest) {
               case "upsert": {
                 if (!sa.data) throw new Error("data is required for upsert")
                 const driverOnlyTripUpsert = sa.table === "Trips" && isDriverOnlyTripUser(auth)
+                if (sa.table === "Trips" && sa.data.trip_status === "Completed") {
+                  const upsertFilters = tripUpsertIdentity(sa.data, sa.conflict)
+                  const completionFilters =
+                    upsertFilters && driverOnlyTripUpsert ? { ...upsertFilters, driver_id: auth.userId } : upsertFilters
+                  if (completionFilters) {
+                    let guard: { error: string; status: number } | null
+                    try {
+                      guard = await completionGuardError(sa.data, completionFilters)
+                    } catch {
+                      throw new MutationError("Unable to verify this trip's bag balance. Please try again.", 500)
+                    }
+                    if (guard) throw new MutationError(guard.error, guard.status)
+                  }
+                }
                 const { data: r, error } = driverOnlyTripUpsert
                   ? await upsertDriverTrip(sa.data, sa.conflict, auth.userId)
                   : await supabaseAdmin.from(sa.table).upsert([sa.data], sa.conflict ? { onConflict: sa.conflict } : {}).select()

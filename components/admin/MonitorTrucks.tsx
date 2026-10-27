@@ -337,14 +337,28 @@ export default function MonitorTrucks({ viewOnly = false }: { viewOnly?: boolean
 
     const trips = (data || []) as DDTrip[]
     let offloadedByTrip = new Map<string, number>()
+    let shortageByTrip = new Map<string, number>()
     if (trips.length > 0) {
-      const { data: stops } = await supabase
-        .from("Stops")
-        .select("trip_id, quantity_offloaded")
-        .in("trip_id", trips.map(t => t.dd_trip_id))
+      const tripIds = trips.map(t => t.dd_trip_id)
+      const [{ data: stops }, { data: discrepancies }] = await Promise.all([
+        supabase
+          .from("Stops")
+          .select("trip_id, quantity_offloaded")
+          .in("trip_id", tripIds),
+        supabase
+          .from("trip_discrepancies")
+          .select("trip_id, shortage, caked_bags")
+          .in("trip_id", tripIds),
+      ])
       if (stops) {
         offloadedByTrip = stops.reduce((map, s) => {
           map.set(s.trip_id, (map.get(s.trip_id) || 0) + (s.quantity_offloaded || 0))
+          return map
+        }, new Map<string, number>())
+      }
+      if (discrepancies) {
+        shortageByTrip = discrepancies.reduce((map, d) => {
+          map.set(d.trip_id, (map.get(d.trip_id) || 0) + (d.shortage || 0) + (d.caked_bags || 0))
           return map
         }, new Map<string, number>())
       }
@@ -352,13 +366,33 @@ export default function MonitorTrucks({ viewOnly = false }: { viewOnly?: boolean
 
     const enriched = trips.map(trip => ({
       ...trip,
-      remaining: Math.max(0, (trip.loaded_quantity || 0) - (offloadedByTrip.get(trip.dd_trip_id) || 0)),
+      remaining: Math.max(0, (trip.loaded_quantity || 0) - (offloadedByTrip.get(trip.dd_trip_id) || 0) - (shortageByTrip.get(trip.dd_trip_id) || 0)),
     }))
 
     setDdTrips(enriched)
     setDdLoading(false)
     setDdLastUpdated(new Date())
     return enriched
+  }
+
+  function markMddTripCompleted(truck: ActiveTruck) {
+    if (truck.remaining > 0) {
+      alert(`${truck.remaining} bag${truck.remaining === 1 ? "" : "s"} are still unaccounted for on ${truck.plate_number}. Log the remaining stops or record a shortage/caked-bag discrepancy before completing this trip.`)
+      return
+    }
+    if (window.confirm(`Mark ${truck.plate_number} as completed? This will end the trip for the driver.`)) {
+      updateMddTripStatus(truck.trip_id, "Completed")
+    }
+  }
+
+  function markDdTripCompleted(trip: DDTrip) {
+    if (trip.remaining > 0) {
+      alert(`${trip.remaining} bag${trip.remaining === 1 ? "" : "s"} are still unaccounted for on ${trip.plate_number}. Log the remaining stops or record a shortage/caked-bag discrepancy before completing this trip.`)
+      return
+    }
+    if (window.confirm(`Mark ${trip.plate_number} as completed? This will end the trip for the driver.`)) {
+      updateDdTripStatus(trip.dd_trip_id, "Completed")
+    }
   }
 
   async function updateDdTripStatus(tripId: string, status: string) {
@@ -703,6 +737,10 @@ export default function MonitorTrucks({ viewOnly = false }: { viewOnly?: boolean
     }
 
     setDiscSuccess("Discrepancy reported successfully!")
+    // Refresh both lists so the adjusted remaining (and therefore the completion
+    // guard) reflects the discrepancy immediately instead of waiting for polling.
+    fetchActiveTrucks()
+    fetchDdTrips()
     discCloseTimerRef.current = setTimeout(() => {
       discCloseTimerRef.current = null
       setShowDiscModal(false)
@@ -1084,7 +1122,7 @@ export default function MonitorTrucks({ viewOnly = false }: { viewOnly?: boolean
                             {truck.route_points.length > 0 ? "Edit Route" : "Set Route"}
                           </button>
                           <button
-                            onClick={() => updateMddTripStatus(truck.trip_id, "Completed")}
+                            onClick={() => markMddTripCompleted(truck)}
                             disabled={!canEdit}
                             style={{
                               padding: "10px 12px", background: !canEdit ? "#94a3b8" : "#10b981", color: "white",
@@ -1167,7 +1205,7 @@ export default function MonitorTrucks({ viewOnly = false }: { viewOnly?: boolean
                                 <button onClick={() => openRouteEditor(truck)} disabled={!canEdit} title={truck.route_points.length > 0 ? "Edit route" : "Set route"} style={{ padding: "6px 10px", cursor: !canEdit ? "not-allowed" : "pointer", borderRadius: 6, border: "1.5px solid #0070f3", color: !canEdit ? "#94a3b8" : "#0070f3", background: !canEdit ? "#e2e8f0" : "#f0f7ff", fontSize: FONT_SIZE.xs, fontWeight: 600, transition: "all 0.2s", minHeight: 32, whiteSpace: "nowrap", display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 4 }}
                                   onMouseEnter={e => { if (canEdit) e.currentTarget.style.background = "#e0efff" }}
                                   onMouseLeave={e => { if (canEdit) e.currentTarget.style.background = "#f0f7ff" }}><Icon icon="mdi:map-marker-outline" width={14} /> Route</button>
-                                <button onClick={() => updateMddTripStatus(truck.trip_id, "Completed")} disabled={!canEdit} title="Mark completed" style={{ padding: "6px 10px", cursor: !canEdit ? "not-allowed" : "pointer", borderRadius: 6, border: "1.5px solid #10b981", color: !canEdit ? "#94a3b8" : "#10b981", background: !canEdit ? "#e2e8f0" : "#f0fdf4", fontSize: FONT_SIZE.xs, fontWeight: 600, transition: "all 0.2s", minHeight: 32, whiteSpace: "nowrap", display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 4 }}
+                                <button onClick={() => markMddTripCompleted(truck)} disabled={!canEdit} title="Mark completed" style={{ padding: "6px 10px", cursor: !canEdit ? "not-allowed" : "pointer", borderRadius: 6, border: "1.5px solid #10b981", color: !canEdit ? "#94a3b8" : "#10b981", background: !canEdit ? "#e2e8f0" : "#f0fdf4", fontSize: FONT_SIZE.xs, fontWeight: 600, transition: "all 0.2s", minHeight: 32, whiteSpace: "nowrap", display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 4 }}
                                   onMouseEnter={e => { if (canEdit) e.currentTarget.style.background = "#dcfce7" }}
                                   onMouseLeave={e => { if (canEdit) e.currentTarget.style.background = "#f0fdf4" }}><Icon icon="mdi:check-circle-outline" width={14} /> Done</button>
                               </div>
@@ -1468,7 +1506,7 @@ export default function MonitorTrucks({ viewOnly = false }: { viewOnly?: boolean
                           Edit Route
                         </button>
                         <button
-                          onClick={() => updateDdTripStatus(trip.dd_trip_id, "Completed")}
+                          onClick={() => markDdTripCompleted(trip)}
                           disabled={!canEdit}
                           style={{
                             padding: "10px 12px", background: !canEdit ? "#94a3b8" : "#10b981", color: "white",
@@ -1540,7 +1578,7 @@ export default function MonitorTrucks({ viewOnly = false }: { viewOnly?: boolean
                               <button onClick={() => openDdRouteEditor(trip)} disabled={!canEdit} title="Edit route" style={{ padding: "6px 10px", cursor: !canEdit ? "not-allowed" : "pointer", borderRadius: 6, border: "1.5px solid #0070f3", color: !canEdit ? "#94a3b8" : "#0070f3", background: !canEdit ? "#e2e8f0" : "#f0f7ff", fontSize: FONT_SIZE.xs, fontWeight: 600, transition: "all 0.2s", minHeight: 32, whiteSpace: "nowrap", display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 4 }}
                                 onMouseEnter={e => { if (canEdit) e.currentTarget.style.background = "#e0efff" }}
                                 onMouseLeave={e => { if (canEdit) e.currentTarget.style.background = "#f0f7ff" }}><Icon icon="mdi:map-marker-outline" width={14} /> Route</button>
-                              <button onClick={() => updateDdTripStatus(trip.dd_trip_id, "Completed")} disabled={!canEdit} title="Mark completed" style={{ padding: "6px 10px", cursor: !canEdit ? "not-allowed" : "pointer", borderRadius: 6, border: "1.5px solid #10b981", color: !canEdit ? "#94a3b8" : "#10b981", background: !canEdit ? "#e2e8f0" : "#f0fdf4", fontSize: FONT_SIZE.xs, fontWeight: 600, transition: "all 0.2s", minHeight: 32, whiteSpace: "nowrap", display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 4 }}
+                              <button onClick={() => markDdTripCompleted(trip)} disabled={!canEdit} title="Mark completed" style={{ padding: "6px 10px", cursor: !canEdit ? "not-allowed" : "pointer", borderRadius: 6, border: "1.5px solid #10b981", color: !canEdit ? "#94a3b8" : "#10b981", background: !canEdit ? "#e2e8f0" : "#f0fdf4", fontSize: FONT_SIZE.xs, fontWeight: 600, transition: "all 0.2s", minHeight: 32, whiteSpace: "nowrap", display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 4 }}
                                 onMouseEnter={e => { if (canEdit) e.currentTarget.style.background = "#dcfce7" }}
                                 onMouseLeave={e => { if (canEdit) e.currentTarget.style.background = "#f0fdf4" }}><Icon icon="mdi:check-circle-outline" width={14} /> Done</button>
                             </div>
