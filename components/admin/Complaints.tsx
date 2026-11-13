@@ -1,6 +1,6 @@
 "use client"
 
-import { FONT_SIZE } from "@/lib/constants"
+import { FONT_SIZE, ACTION_FAILED_MESSAGE } from "@/lib/constants"
 import { usePolling } from "@/lib/hooks/usePolling"
 
 import { useState, useEffect } from "react"
@@ -61,6 +61,7 @@ export default function Complaints() {
   const [viewMode, setViewMode] = useState<ViewMode>("card")
   const [resolving, setResolving] = useState<string | null>(null)
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null)
+  const [actionError, setActionError] = useState("")
 
   // Reply modal
   const [replyingTo, setReplyingTo] = useState<Complaint | null>(null)
@@ -91,6 +92,7 @@ export default function Complaints() {
 
     if (driverRes.error || reportRes.error) {
       console.error("Load complaints failed", driverRes.error ?? reportRes.error)
+      setActionError(ACTION_FAILED_MESSAGE)
       setLoading(false)
       return
     }
@@ -151,18 +153,28 @@ export default function Complaints() {
   async function handleResolve(id: string) {
     if (!canEdit) return
     setResolving(id)
+    setActionError("")
     try {
       if (id.startsWith("report-")) {
         const reportId = id.replace("report-", "")
         const { error } = await apiMutate("admin", { action: "update", table: "reports", data: { resolved: true, status: "Resolved" }, filters: { id: reportId } })
-        if (error) console.error("Resolve report error:", error)
+        if (error) {
+          console.error("Resolve report failed", error)
+          setActionError(ACTION_FAILED_MESSAGE)
+          return
+        }
       } else {
         const { error } = await apiMutate("admin", { action: "update", table: "driver_complaints", data: { resolved: true }, filters: { complaint_id: id } })
-        if (error) console.error("Resolve complaint error:", error)
+        if (error) {
+          console.error("Resolve complaint failed", error)
+          setActionError(ACTION_FAILED_MESSAGE)
+          return
+        }
       }
       fetchComplaints()
     } catch {
       console.error("Network error resolving complaint")
+      setActionError(ACTION_FAILED_MESSAGE)
     } finally {
       setResolving(null)
     }
@@ -172,12 +184,18 @@ export default function Complaints() {
     if (!canEdit || !id.startsWith("report-")) return
     const reportId = id.replace("report-", "")
     setResolving(id)
+    setActionError("")
     try {
       const { error } = await apiMutate("admin", { action: "update", table: "reports", data: { status: "In Progress" }, filters: { id: reportId } })
-      if (error) console.error("Mark In Progress error:", error)
+      if (error) {
+        console.error("Mark In Progress failed", error)
+        setActionError(ACTION_FAILED_MESSAGE)
+        return
+      }
       fetchComplaints()
     } catch {
       console.error("Network error")
+      setActionError(ACTION_FAILED_MESSAGE)
     } finally {
       setResolving(null)
     }
@@ -200,12 +218,12 @@ export default function Complaints() {
         },
         filters: { id: reportId },
       })
-      if (error) { setReplyError("Failed to send reply. Try again."); return }
+      if (error) { setReplyError(ACTION_FAILED_MESSAGE); return }
       setReplyingTo(null)
       setReplyText("")
       fetchComplaints()
     } catch {
-      setReplyError("Network error. Try again.")
+      setReplyError(ACTION_FAILED_MESSAGE)
     } finally {
       setReplyLoading(false)
     }
@@ -256,6 +274,23 @@ export default function Complaints() {
         <p style={{ fontSize: FONT_SIZE.xs, color: "#94a3b8", marginBottom: 20 }}>
           Updated {lastUpdated.toLocaleTimeString()}
         </p>
+      )}
+
+      {actionError && (
+        <div style={{ padding: "12px 16px", background: "#fef2f2", borderLeft: "4px solid #ef4444", color: "#b91c1c", borderRadius: 6, marginBottom: 24, fontSize: FONT_SIZE.sm, fontWeight: 500, display: "flex", alignItems: "center", gap: 8 }}>
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ flexShrink: 0 }}>
+            <circle cx="12" cy="12" r="10" />
+            <line x1="12" y1="8" x2="12" y2="12" />
+            <line x1="12" y1="16" x2="12.01" y2="16" />
+          </svg>
+          <span style={{ flex: 1 }}>{actionError}</span>
+          <button onClick={() => setActionError("")} aria-label="Dismiss" style={{ background: "none", border: "none", color: "#b91c1c", cursor: "pointer", padding: 4, display: "flex" }}>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <line x1="18" y1="6" x2="6" y2="18" />
+              <line x1="6" y1="6" x2="18" y2="18" />
+            </svg>
+          </button>
+        </div>
       )}
 
       <div style={{ display: "flex", gap: 8, marginBottom: 24, flexWrap: "wrap" }}>

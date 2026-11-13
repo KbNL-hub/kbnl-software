@@ -72,8 +72,12 @@ export function handleApiError(err: unknown) {
   console.error('API Error:', err)
 
   if (err instanceof ApiError) {
+    // Authorization failures can carry internal detail (allowed role lists).
+    // The full error stays in the server log; the client only gets a plain
+    // message it can show the user.
+    const message = err.status === 403 ? 'Access denied.' : err.message
     return NextResponse.json(
-      { error: err.message, code: err.code },
+      { error: message, code: err.code },
       { status: err.status }
     )
   }

@@ -95,5 +95,10 @@ export async function apiMutate<T = unknown>(
 export function isAuthError(err: string | null | undefined): boolean {
   if (!err) return false
   const lower = err.toLowerCase()
-  return lower.includes("unauthorized") || lower.includes("forbidden") || lower.includes("no session")
+  return (
+    lower.includes("unauthorized") ||
+    lower.includes("forbidden") ||
+    lower.includes("access denied") ||
+    lower.includes("no session")
+  )
 }

@@ -1,7 +1,10 @@
 import { createClient } from "@supabase/supabase-js"
 import { NextRequest, NextResponse } from "next/server"
-import { requireRole, handleApiError } from "@/lib/auth-middleware"
+import { requireAuth, requireRole, handleApiError } from "@/lib/auth-middleware"
+import { ApiError } from "@/lib/api-error"
 import { includes } from "@/lib/type-utils"
+import { getEffectiveAccess } from "@/lib/permissions"
+import { ACTION_FAILED_MESSAGE } from "@/lib/constants"
 import {
   notifyTruckAdminNewSideTrip,
   notifyATCSideTripSubmitted,
@@ -19,12 +22,16 @@ const supabaseAdmin = createClient(
 
 const ALLOWED_TABLES = ["Trucks", "Trips", "tricycles", "reports", "driver_complaints", "truck_officers", "truck_admins", "cash_officers", "store_officers", "Brokers", "Profiles", "Drivers", "station_managers", "desk_officers", "atc_officers", "company_prices", "company_price_history", "side_trips", "fuel_estimates", "stores", "trip_payments", "locations", "sc_prices", "cash_authorizer_offices"] as const
 
+// Complaint triage tables are authorised through the shared "complaints"
+// permission section (lib/permissions.ts) so the API can never drift from the
+// buttons the UI renders. Desk officers, brokers and truck admins all hold
+// write access on that section.
+const COMPLAINT_TABLES = ["driver_complaints", "reports"] as const
+
 const TABLE_ROLES: Record<string, string[]> = {
   Trucks: ["TruckAdmin", "TruckOfficer", "Admin", "SuperAdmin", "ATCOfficer", "Broker", "DeskOfficer", "Supervisor"],
   Trips: ["Admin", "SuperAdmin", "ATCOfficer"],
   tricycles: ["TruckAdmin", "Admin", "SuperAdmin", "ATCOfficer", "Broker"],
-  reports: ["Admin", "SuperAdmin"],
-  driver_complaints: ["Admin", "SuperAdmin", "TruckAdmin", "Driver"],
   truck_officers: ["TruckAdmin", "Admin", "SuperAdmin", "ATCOfficer"],
   truck_admins: ["Admin", "SuperAdmin"],
   cash_officers: ["Admin", "SuperAdmin"],
@@ -50,6 +57,43 @@ function buildError(msg: string, status: number) {
   return NextResponse.json({ error: msg }, { status })
 }
 
+/**
+ * Authorises a complaint/report mutation.
+ *
+ * Staff with write access on the "complaints" section (Admin, SuperAdmin,
+ * Broker, TruckAdmin, DeskOfficer) may triage every complaint. Drivers keep
+ * access to their own complaints only, so their rows are scoped to them.
+ *
+ * Returns true when the caller is restricted to their own complaints.
+ */
+async function authorizeComplaintMutation(
+  req: NextRequest,
+  table: string,
+  action: string,
+  data?: Record<string, unknown>,
+  filters?: Record<string, unknown>,
+): Promise<boolean> {
+  const auth = await requireAuth(req)
+
+  if (getEffectiveAccess(auth.roles, "complaints").canEdit) {
+    return false
+  }
+
+  if (table === "driver_complaints" && auth.roles.includes("Driver")) {
+    if (action === "insert") {
+      // A driver may only file a complaint in their own name.
+      if (data && data.driver_id !== auth.userId) data.driver_id = null
+    } else if (filters) {
+      filters.driver_id = auth.userId
+    }
+    return true
+  }
+
+  throw ApiError.forbidden(
+    "Access denied. Requires one of: Admin, SuperAdmin, Broker, TruckAdmin, DeskOfficer"
+  )
+}
+
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json()
@@ -69,8 +113,12 @@ export async function POST(req: NextRequest) {
       return buildError(`Invalid action "${action}"`, 400)
     }
 
-    const rolesForTable = TABLE_ROLES[table] || ["Admin"]
-    await requireRole(req, rolesForTable)
+    let ownComplaintsOnly = false
+    if (includes(COMPLAINT_TABLES, table)) {
+      ownComplaintsOnly = await authorizeComplaintMutation(req, table, action, data, filters)
+    } else {
+      await requireRole(req, TABLE_ROLES[table] || ["Admin"])
+    }
 
     // sc_prices is a singleton config table — only update is permitted
     if (table === "sc_prices" && action !== "update") {
@@ -83,7 +131,7 @@ export async function POST(req: NextRequest) {
         const { data: result, error } = await supabaseAdmin.from(table).insert([data]).select()
         if (error) {
           console.error("Mutation failed", error)
-          return buildError("Action failed, try again. If the issue persists, kindly contact admin or submit a complaint.", 500)
+          return buildError(ACTION_FAILED_MESSAGE, 500)
         }
         // Side Trip Submitted
         if (table === "side_trips" && result?.[0]) {
@@ -104,7 +152,7 @@ export async function POST(req: NextRequest) {
         const { data: result, error } = await supabaseAdmin.from(table).upsert([data], upsertOptions).select()
         if (error) {
           console.error("Mutation failed", error)
-          return buildError("Action failed, try again. If the issue persists, kindly contact admin or submit a complaint.", 500)
+          return buildError(ACTION_FAILED_MESSAGE, 500)
         }
         // Company Prices Updated
         if (table === "company_prices") {
@@ -127,7 +175,12 @@ export async function POST(req: NextRequest) {
         const { data: result, error } = await query.select()
         if (error) {
           console.error("Mutation failed", error)
-          return buildError("Action failed, try again. If the issue persists, kindly contact admin or submit a complaint.", 500)
+          return buildError(ACTION_FAILED_MESSAGE, 500)
+        }
+        // A scoped (driver) update that matched no row means the complaint
+        // belongs to somebody else — surface it instead of silently succeeding.
+        if (ownComplaintsOnly && (!result || result.length === 0)) {
+          return buildError(ACTION_FAILED_MESSAGE, 404)
         }
         const row = result?.[0] as Record<string, unknown> | undefined
 
@@ -172,7 +225,10 @@ export async function POST(req: NextRequest) {
         const { data: result, error } = await query.select()
         if (error) {
           console.error("Mutation failed", error)
-          return buildError("Action failed, try again. If the issue persists, kindly contact admin or submit a complaint.", 500)
+          return buildError(ACTION_FAILED_MESSAGE, 500)
+        }
+        if (ownComplaintsOnly && (!result || result.length === 0)) {
+          return buildError(ACTION_FAILED_MESSAGE, 404)
         }
         return NextResponse.json({ data: result })
       }
