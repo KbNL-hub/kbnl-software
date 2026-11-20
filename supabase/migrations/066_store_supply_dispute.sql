@@ -202,6 +202,8 @@ DECLARE
   v_norm                jsonb;
   v_stop_type           text;
   v_store_name          text;
+  v_requested_store     text;
+  v_supported_store     text;
   v_location            text;
   v_customer_id         text;
   v_broker_text         text;
@@ -307,6 +309,37 @@ BEGIN
       IF v_store_name = '' THEN
         RAISE EXCEPTION 'store_required';
       END IF;
+
+      v_requested_store := v_store_name;
+      IF EXISTS (SELECT 1 FROM public.stores) THEN
+        SELECT store_name
+        INTO v_supported_store
+        FROM public.stores
+        WHERE lower(btrim(store_name)) = lower(v_requested_store)
+        LIMIT 1;
+      ELSE
+        SELECT supported.store_name
+        INTO v_supported_store
+        FROM unnest(ARRAY[
+          'Calabar Mini Depot',
+          'Ikom Mini Depot',
+          'Ogoja Depot',
+          'Uyo Depot',
+          'Brooks Outlet',
+          'Urua Ekpa Outlet',
+          'Urua Nyemeiko Outlet',
+          'Reserve Store',
+          'E1 Outlet',
+          'Ogoja Outlet'
+        ]) AS supported(store_name)
+        WHERE lower(supported.store_name) = lower(v_requested_store)
+        LIMIT 1;
+      END IF;
+
+      IF v_supported_store IS NULL THEN
+        RAISE EXCEPTION 'invalid_store_destination';
+      END IF;
+      v_store_name := v_supported_store;
 
       v_norm := jsonb_build_object(
         'stop_type', 'store',

@@ -1,7 +1,7 @@
 "use client"
 
 import { FONT_SIZE } from "@/lib/constants"
-import { useEffect, useState, type CSSProperties } from "react"
+import { useEffect, useRef, useState, type CSSProperties } from "react"
 import { Icon } from "@iconify/react"
 import { supabase } from "@/lib/supabase"
 import { apiMutate } from "@/lib/api-mutation"
@@ -60,6 +60,8 @@ export default function ConfirmStoreSupplyModal({
   onClose,
   onConfirmed,
 }: Props) {
+  const dialogRef = useRef<HTMLDivElement>(null)
+  const previousFocusRef = useRef<HTMLElement | null>(null)
   const [lines, setLines] = useState<SupplyLine[]>([{
     product,
     quantity: offloadedQuantity > 0 ? String(offloadedQuantity) : "",
@@ -101,8 +103,54 @@ export default function ConfirmStoreSupplyModal({
   }, [product])
 
   useEffect(() => {
+    if (!previousFocusRef.current && document.activeElement instanceof HTMLElement) {
+      previousFocusRef.current = document.activeElement
+    }
+
+    const dialog = dialogRef.current
+    if (!dialog) return
+
+    const focusable = dialog.querySelector<HTMLElement>(
+      'button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), a[href], [tabindex]:not([tabindex="-1"])',
+    )
+    ;(focusable ?? dialog).focus()
+
+    return () => {
+      const previousFocus = previousFocusRef.current
+      if (previousFocus?.isConnected) previousFocus.focus()
+      previousFocusRef.current = null
+    }
+  }, [])
+
+  useEffect(() => {
     function handleKeyDown(event: KeyboardEvent) {
       if (event.key === "Escape" && !submitting) onClose()
+      if (event.key !== "Tab") return
+
+      const dialog = dialogRef.current
+      if (!dialog) return
+      const focusable = Array.from(dialog.querySelectorAll<HTMLElement>(
+        'button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), a[href], [tabindex]:not([tabindex="-1"])',
+      )).filter(element => element.getClientRects().length > 0)
+
+      if (focusable.length === 0) {
+        event.preventDefault()
+        dialog.focus()
+        return
+      }
+
+      const first = focusable[0]
+      const last = focusable[focusable.length - 1]
+      if (!dialog.contains(document.activeElement)) {
+        event.preventDefault()
+        first.focus()
+      } else if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault()
+        last.focus()
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault()
+        first.focus()
+      }
     }
     document.addEventListener("keydown", handleKeyDown)
     return () => document.removeEventListener("keydown", handleKeyDown)
@@ -196,9 +244,11 @@ export default function ConfirmStoreSupplyModal({
       }}
     >
       <div
+        ref={dialogRef}
         role="dialog"
         aria-modal="true"
         aria-label="Confirm store supply"
+        tabIndex={-1}
         onClick={event => event.stopPropagation()}
         style={{
           background: "white",

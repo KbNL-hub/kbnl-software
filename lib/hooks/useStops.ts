@@ -71,7 +71,7 @@ export function useStops(filter?: StopsFilter) {
         } else if (filter?.broker_id) {
           query = query.eq("broker_id", filter.broker_id)
         } else if (filter?.store_name) {
-          query = query.eq("stop_location", filter.store_name)
+          query = query.eq("stop_type", "store")
           if (filter?.pending) {
             query = query.eq("confirmed", false).eq("disputed", false)
           } else if (filter?.disputed) {
@@ -84,8 +84,18 @@ export function useStops(filter?: StopsFilter) {
 
         if (!stops) { setData([]); setLoading(false); return }
 
-        const tripIds = [...new Set(stops.map(s => s.trip_id).filter(Boolean))]
-        const customerIds = [...new Set(stops.map(s => s.customer_id).filter(Boolean))]
+        const storeFilter = filter?.store_name && !filter.trip_id && !filter.broker_id
+          ? filter.store_name.trim().toLowerCase()
+          : null
+        const matchingStops = storeFilter
+          ? stops.filter(stop => {
+              const resolvedStore = (stop.store_name || "").trim() || (stop.stop_location || "").trim()
+              return resolvedStore.toLowerCase() === storeFilter
+            })
+          : stops
+
+        const tripIds = [...new Set(matchingStops.map(s => s.trip_id).filter(Boolean))]
+        const customerIds = [...new Set(matchingStops.map(s => s.customer_id).filter(Boolean))]
 
         const [tripsResult, customersResult] = await Promise.all([
           tripIds.length ? supabase.from("Trips").select("trip_id, plate_number, material_centre, ATC, order_no, child_order_no, product, driver_id, driver_name").in("trip_id", tripIds) : Promise.resolve({ data: [] }),
@@ -108,7 +118,7 @@ export function useStops(filter?: StopsFilter) {
 
         const driverMap = Object.fromEntries((drivers || []).map(d => [d.driver_id, d.full_name]))
 
-        const enriched = stops.map(s => {
+        const enriched = matchingStops.map(s => {
           const trip = tripMap[s.trip_id]
           const driverNameFromTrip = trip?.driver_name
           return {

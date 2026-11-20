@@ -484,6 +484,9 @@ export async function POST(req: NextRequest) {
       const auth = await requireRole(req, ["Broker", "Admin", "SuperAdmin", "DeskOfficer", "Supervisor", "StoreOfficer", "StoreSupervisor", "CashOfficer", "CashAuthorizer", "CreditManager"])
 
       for (const sa of sub_actions) {
+        if (sa.table === "store_supply_confirmations" || sa.table === "store_supply_lines") {
+          return buildError("Store supplies must be confirmed through the atomic trips action", 400)
+        }
         const rolesForTable = TABLE_ROLES[sa.table] || ["Admin"]
         if (!auth.roles.some(r => rolesForTable.includes(r))) {
           return buildError(`Access denied for ${sa.action} on ${sa.table}`, 403)
@@ -733,6 +736,10 @@ export async function POST(req: NextRequest) {
 
     if (table === "credit_approvals" && action !== "insert" && isBrokerOnly(auth.roles)) {
       return buildError("Brokers cannot modify or delete credit approvals", 403)
+    }
+
+    if (table === "store_supply_confirmations" || table === "store_supply_lines") {
+      return buildError("Store supplies must be confirmed through the atomic trips action", 400)
     }
 
     if (table === "customer_charts" && action !== "insert" && !auth.roles.some(r => ["Admin", "SuperAdmin"].includes(r))) {

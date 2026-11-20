@@ -455,56 +455,21 @@ export default function StoreOfficerDashboard() {
     setConfirmError("")
 
     const hasDiscrepancy = totalInLines !== confirmingStop.quantity_offloaded
-    const confirmPayload: Record<string, unknown> = {
-      stop_id: confirmingStop.stop_id,
-      officer_id: officer.officer_id,
-      store_name: officer.store_name,
-    }
-    if (hasDiscrepancy) {
-      confirmPayload.discrepancy_quantity = totalInLines - confirmingStop.quantity_offloaded
-      confirmPayload.discrepancy_note = discrepancyNote.trim()
-    }
-
-    const { data: confirmation, error: confError } = await apiMutate("finance", {
-      action: "insert", table: "store_supply_confirmations",
-      data: confirmPayload,
+    const { error: confirmationError } = await apiMutate("trips", {
+      action: "confirm_store_supply",
+      data: {
+        stop_id: confirmingStop.stop_id,
+        lines: supplyLines.map(line => ({
+          product: line.product,
+          quantity: parseInt(line.quantity),
+        })),
+        discrepancy_note: hasDiscrepancy ? discrepancyNote.trim() : "",
+      },
     })
-
-    if (confError || !confirmation) { setConfirmError("Failed to confirm supply"); setConfirmLoading(false); return }
-    const confData = Array.isArray(confirmation) ? confirmation[0] : confirmation
-
-    for (const line of supplyLines) {
-      const { error: linesError } = await apiMutate("finance", {
-        action: "insert", table: "store_supply_lines",
-        data: { confirmation_id: confData.confirmation_id, product: line.product, quantity: parseInt(line.quantity) },
-      })
-      if (linesError) { setConfirmError("Supply confirmed but product lines failed"); setConfirmLoading(false); return }
-    }
-
-    const { error: stopError } = await apiMutate("trips", {
-      action: "update", table: "Stops", data: { confirmed: true }, filters: { stop_id: confirmingStop.stop_id },
-    })
-    if (stopError) {
-      setConfirmError("Supply and lines saved but stop update failed. Contact support.")
+    if (confirmationError) {
+      setConfirmError(confirmationError)
       setConfirmLoading(false)
       return
-    }
-
-    // Add the received bags to stock. The adjustment is applied inside the
-    // database against the locked row, so a sale that is deducted at the same
-    // moment cannot be clobbered by a stale balance read on the client.
-    for (const line of supplyLines) {
-      const qty = parseInt(line.quantity)
-      const { error: stockError } = await apiMutate("finance", {
-        action: "rpc",
-        function: "adjust_store_stock",
-        params: { p_store: officer.store_name, p_product: line.product, p_delta: qty },
-      })
-      if (stockError) {
-        setConfirmError("Supply confirmed but stock update failed. Contact support.")
-        setConfirmLoading(false)
-        return
-      }
     }
 
     setConfirmLoading(false)

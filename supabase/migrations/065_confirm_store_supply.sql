@@ -70,6 +70,7 @@ DECLARE
   v_confirmed_at     timestamptz;
   v_recorded         boolean;
   v_posted           boolean;
+  v_officer          record;
 BEGIN
   -- The route already checked the role, but the function refuses an actor it
   -- was not built for if it is ever called directly.
@@ -77,7 +78,7 @@ BEGIN
     RAISE EXCEPTION 'actor_required';
   END IF;
   IF p_confirmed_by_role IS NULL
-     OR p_confirmed_by_role NOT IN ('ATCOfficer', 'Admin', 'SuperAdmin') THEN
+     OR p_confirmed_by_role NOT IN ('ATCOfficer', 'Admin', 'SuperAdmin', 'StoreOfficer') THEN
     RAISE EXCEPTION 'invalid_actor_role';
   END IF;
   IF p_confirmed_by_name IS NULL OR btrim(p_confirmed_by_name) = '' THEN
@@ -97,8 +98,13 @@ BEGIN
   IF v_stop.stop_type IS DISTINCT FROM 'store' THEN
     RAISE EXCEPTION 'not_store_stop';
   END IF;
-  IF v_stop.disputed THEN
+  IF v_stop.disputed IS TRUE THEN
     RAISE EXCEPTION 'stop_disputed';
+  END IF;
+  IF EXISTS (
+    SELECT 1 FROM store_supply_confirmations WHERE stop_id = p_stop_id
+  ) THEN
+    RAISE EXCEPTION 'supply_confirmation_exists';
   END IF;
   IF v_stop.confirmed THEN
     RAISE EXCEPTION 'already_confirmed';
@@ -132,7 +138,19 @@ BEGIN
   -- Only an Active officer blocks ATC. Invited and Suspended officers do not.
   -- Names are compared trimmed and case insensitive, matching the eligibility
   -- endpoint the browser used to show the action.
-  IF EXISTS (
+  IF p_confirmed_by_role = 'StoreOfficer' THEN
+    SELECT officer_id, full_name
+    INTO v_officer
+    FROM store_officers
+    WHERE officer_id = p_confirmed_by
+      AND status = 'Active'
+      AND lower(btrim(store_name)) = lower(v_store)
+    LIMIT 1;
+
+    IF NOT FOUND THEN
+      RAISE EXCEPTION 'not_assigned_officer';
+    END IF;
+  ELSIF EXISTS (
     SELECT 1
       FROM store_officers o
       WHERE lower(btrim(o.store_name)) = lower(v_store)

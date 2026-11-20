@@ -729,7 +729,22 @@ const loadServerPage = useCallback(async (): Promise<ListLoadOutcome> => {
     return "error"
   }
 
-  setTrips(result.data.items.map(toTrip))
+  const freshTrips = result.data.items.map(toTrip)
+  setTrips(freshTrips)
+  setSelectedTrip(current => {
+    if (!current) return current
+    const freshTrip = freshTrips.find(trip => trip.trip_id === current.trip_id)
+    return freshTrip
+      ? {
+          ...current,
+          trip_status: freshTrip.trip_status,
+          recorded: freshTrip.recorded,
+          posted: freshTrip.posted,
+          loaded_quantity: freshTrip.loaded_quantity,
+          remaining: freshTrip.remaining,
+        }
+      : current
+  })
   setListTotal(result.data.total)
   setListStats(result.data.stats)
   setUniquePlates(result.data.plates)
@@ -746,6 +761,20 @@ const loadBrowserPage = useCallback(async () => {
   const ddTripIds = new Set(dd.trips.map(t => t.trip_id))
   const allTrips = [...normal.trips.filter(t => !ddTripIds.has(t.trip_id)), ...dd.trips]
   setTrips(allTrips)
+  setSelectedTrip(current => {
+    if (!current) return current
+    const freshTrip = allTrips.find(trip => trip.trip_id === current.trip_id)
+    return freshTrip
+      ? {
+          ...current,
+          trip_status: freshTrip.trip_status,
+          recorded: freshTrip.recorded,
+          posted: freshTrip.posted,
+          loaded_quantity: freshTrip.loaded_quantity,
+          remaining: freshTrip.remaining,
+        }
+      : current
+  })
   setPricingError(normal.pricingError ?? dd.pricingError)
   setUniquePlates([...new Set(allTrips.map(t => t.plate_number))].sort())
   setListStats({
@@ -906,6 +935,14 @@ const loadAll = useCallback(async () => {
           setSelectedStops(detail.stops)
           setSelectedDiscrepancies(detail.discrepancies)
           setPricingError(detail.pricingError)
+          setSelectedTrip(current => current?.trip_id === tripId
+            ? {
+                ...current,
+                remaining: current.loaded_quantity
+                  - detail.stops.reduce((sum, stop) => sum + Number(stop.quantity_offloaded || 0), 0)
+                  - detail.discrepancies.reduce((sum, discrepancy) => sum + (discrepancy.shortage || 0) + (discrepancy.caked_bags || 0), 0),
+              }
+            : current)
         }
       } catch (err) {
         console.error("Failed to refresh trip detail after supply confirmation", err)
@@ -914,7 +951,7 @@ const loadAll = useCallback(async () => {
 
     // Refresh the list so pending counters and the record action follow the
     // confirmed stop.
-    void loadAll()
+    await loadAll()
   }
 
   useEffect(() => {

@@ -88,6 +88,12 @@ function buildMutationError(error: unknown) {
   if (uniqueViolationMessage) return buildError(uniqueViolationMessage, 409)
 
   const message = isDatabaseError(error) && error.message ? error.message : "Action failed"
+  if (message.includes("store_supply_confirmation_required")) {
+    return buildError("Store supplies must be confirmed through the atomic trips action.", 409)
+  }
+  if (message.includes("stop_disputed")) {
+    return buildError("This stop is disputed. Resolve the dispute before confirming the supply.", 409)
+  }
   return buildError(message, 500)
 }
 
@@ -315,6 +321,8 @@ const STORE_SUPPLY_ERRORS: Record<string, { message: string; status: number }> =
   stop_disputed: { message: "This stop is disputed. Resolve the dispute before confirming the supply.", status: 409 },
   already_confirmed: { message: "This store supply has already been confirmed.", status: 409 },
   active_officer_exists: { message: "This store now has an active store officer. Ask the store officer to confirm the supply.", status: 409 },
+  supply_confirmation_exists: { message: "This supply already has a confirmation. Refresh the stop before trying again.", status: 409 },
+  not_assigned_officer: { message: "You are not an active store officer for this store.", status: 403 },
   trip_locked: { message: "This trip is already recorded or posted, so its supply can no longer be confirmed.", status: 409 },
   store_required: { message: "This stop has no store name, so its supply cannot be confirmed.", status: 400 },
   lines_required: { message: "Add at least one product line.", status: 400 },
@@ -351,6 +359,7 @@ const STOP_RESOLVE_ERRORS: Record<string, { message: string; status: number }> =
   invalid_stop_type: { message: "Each destination must be a store or a customer.", status: 400 },
   invalid_quantity: { message: "Enter a valid quantity for each destination.", status: 400 },
   store_required: { message: "Select a store for each store destination.", status: 400 },
+  invalid_store_destination: { message: "The selected store is not supported.", status: 400 },
   broker_required: { message: "Select a broker for each customer destination.", status: 400 },
   invalid_broker: { message: "The selected broker no longer exists.", status: 400 },
   invalid_customer: { message: "The selected customer no longer exists.", status: 400 },
@@ -504,7 +513,7 @@ export async function POST(req: NextRequest) {
     }
 
     if (action === "confirm_store_supply") {
-      const authContext = await requireRole(req, ["ATCOfficer", "Admin", "SuperAdmin"])
+      const authContext = await requireRole(req, ["ATCOfficer", "Admin", "SuperAdmin", "StoreOfficer"])
 
       const stopId = data?.stop_id
       if (!isUuid(stopId)) {
@@ -533,21 +542,26 @@ export async function POST(req: NextRequest) {
         return buildError("Each product can only appear once. Merge duplicate lines.", 400)
       }
 
-      const actorRole = ["SuperAdmin", "Admin", "ATCOfficer"].find(role => authContext.roles.includes(role))
+      const actorRole = ["SuperAdmin", "Admin", "ATCOfficer", "StoreOfficer"].find(role => authContext.roles.includes(role))
       if (!actorRole) return buildError("Access denied.", 403)
 
-      const { data: profile, error: profileError } = await supabaseAdmin
-        .from("Profiles")
-        .select("full_name")
-        .eq("user_id", authContext.userId)
-        .maybeSingle()
+      let actorName = ""
+      if (actorRole === "StoreOfficer") {
+        actorName = (await getStoreOfficerActorName(authContext.userId)) || ""
+      } else {
+        const { data: profile, error: profileError } = await supabaseAdmin
+          .from("Profiles")
+          .select("full_name")
+          .eq("user_id", authContext.userId)
+          .maybeSingle()
 
-      if (profileError) {
-        console.error("Failed to load confirming user profile", profileError)
-        return buildError("Unable to verify your profile. Try again.", 500)
+        if (profileError) {
+          console.error("Failed to load confirming user profile", profileError)
+          return buildError("Unable to verify your profile. Try again.", 500)
+        }
+
+        actorName = typeof profile?.full_name === "string" ? profile.full_name.trim() : ""
       }
-
-      const actorName = typeof profile?.full_name === "string" ? profile.full_name.trim() : ""
       if (!actorName) {
         return buildError("Your profile has no name. Ask an Admin to set it before confirming supplies.", 400)
       }
@@ -862,6 +876,9 @@ export async function POST(req: NextRequest) {
 
       case "update": {
         if (!data) return buildError("data is required for update", 400)
+        if (table === "Stops" && data.disputed === true && auth.roles.includes("StoreOfficer")) {
+          return buildError("Store officers must use the store supply dispute action.", 403)
+        }
         if (!filters || Object.keys(filters).length === 0) {
           return buildError("filters are required for update", 400)
         }
@@ -888,9 +905,10 @@ export async function POST(req: NextRequest) {
         }
         // Snapshot the actor name with the dispute so the UI can show a person
         // instead of an id, whatever role raised it.
-        if (table === "Stops" && data.disputed === true && updateData.disputed_by_name === undefined) {
+        if (table === "Stops" && data.disputed === true) {
           const actorName = await getActorDisplayName(auth.userId)
-          if (actorName) updateData = { ...updateData, disputed_by_name: actorName }
+          if (!actorName) return buildError("Unable to verify your name before recording this dispute.", 400)
+          updateData = { ...updateData, disputed_by_name: actorName }
         }
         let query = supabaseAdmin.from(table!).update(updateData)
         for (const [key, value] of Object.entries(filters)) {
