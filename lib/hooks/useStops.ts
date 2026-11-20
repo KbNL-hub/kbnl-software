@@ -6,17 +6,22 @@ interface StopsFilter {
   broker_id?: string
   store_name?: string
   pending?: boolean
+  disputed?: boolean
 }
 
 export interface EnrichedStop {
   stop_id: string
   trip_id: string | null
+  stop_type: string | null
   customer_id: string | null
   quantity_offloaded: number
   stop_location: string | null
   stop_time: string | null
   confirmed: boolean | null
   disputed: boolean | null
+  dispute_reason: string | null
+  disputed_by_name: string | null
+  store_name: string | null
   broker_id: string | null
   plate_number?: string
   material_centre?: string
@@ -58,7 +63,7 @@ export function useStops(filter?: StopsFilter) {
       try {
         let query = supabase
           .from("Stops")
-          .select("stop_id, trip_id, customer_id, quantity_offloaded, stop_location, stop_time, confirmed, disputed, broker_id")
+          .select("stop_id, trip_id, stop_type, customer_id, quantity_offloaded, stop_location, stop_time, confirmed, disputed, dispute_reason, disputed_by_name, store_name, broker_id")
           .order("stop_time", { ascending: false })
 
         if (filter?.trip_id) {
@@ -69,6 +74,8 @@ export function useStops(filter?: StopsFilter) {
           query = query.eq("stop_location", filter.store_name)
           if (filter?.pending) {
             query = query.eq("confirmed", false).eq("disputed", false)
+          } else if (filter?.disputed) {
+            query = query.eq("disputed", true)
           }
         }
 
@@ -133,7 +140,7 @@ export function useStops(filter?: StopsFilter) {
 
     return () => { cancelled = true; mountedRef.current = false }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [queryKey, filter?.trip_id, filter?.broker_id, filter?.store_name, filter?.pending])
+  }, [queryKey, filter?.trip_id, filter?.broker_id, filter?.store_name, filter?.pending, filter?.disputed])
 
   return { data, loading, error, refetch }
 }

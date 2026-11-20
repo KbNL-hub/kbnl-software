@@ -35,6 +35,10 @@ type PendingStop = {
   quantity_offloaded: number
   stop_time: string
   trip_id: string
+  stop_type?: string | null
+  store_name?: string | null
+  dispute_reason?: string | null
+  disputed_by_name?: string | null
 }
 
 type StockBalance = {
@@ -93,13 +97,20 @@ export default function StoreOfficerDashboard() {
 
   const [officer, setOfficer] = useState<Officer | null>(null)
   const [pendingStops, setPendingStops] = useState<PendingStop[]>([])
+  const [disputedStops, setDisputedStops] = useState<PendingStop[]>([])
   const [stopsFilter, setStopsFilter] = useState<{ store_name: string; pending: boolean } | null>(null)
+  const [disputedFilter, setDisputedFilter] = useState<{ store_name: string; disputed: boolean } | null>(null)
   const { data: stopsFromHook, refetch: refetchStops } = useStops(stopsFilter ?? undefined)
+  const { data: disputedFromHook, refetch: refetchDisputed } = useStops(disputedFilter ?? undefined)
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setPendingStops(stopsFromHook as PendingStop[])
     setLastUpdated(new Date())
   }, [stopsFromHook])
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setDisputedStops(disputedFromHook as PendingStop[])
+  }, [disputedFromHook])
   const [stock, setStock] = useState<StockBalance[]>([])
   const [sales, setSales] = useState<Sale[]>([])
   const [monthlyStats, setMonthlyStats] = useState({ revenue: 0, bagsSold: 0, bagsReceived: 0 })
@@ -118,6 +129,11 @@ export default function StoreOfficerDashboard() {
   const [allProducts, setAllProducts] = useState<string[]>([])
   const [showDiscrepancyPrompt, setShowDiscrepancyPrompt] = useState(false)
   const [discrepancyNote, setDiscrepancyNote] = useState("")
+
+  const [disputingStop, setDisputingStop] = useState<PendingStop | null>(null)
+  const [disputeReason, setDisputeReason] = useState("")
+  const [disputeError, setDisputeError] = useState("")
+  const [disputeLoading, setDisputeLoading] = useState(false)
 
   const [showSaleModal, setShowSaleModal] = useState(false)
   const [saleLines, setSaleLines] = useState<SaleLine[]>([{ product: "", quantity: "", price_per_bag: "" }])
@@ -208,6 +224,7 @@ export default function StoreOfficerDashboard() {
     const { data: productsData } = await supabase.rpc("get_products")
     if (productsData) setAllProducts(productsData.map((r: { value: string }) => r.value))
     if (storeName) setStopsFilter({ store_name: storeName, pending: true })
+    if (storeName) setDisputedFilter({ store_name: storeName, disputed: true })
 
     const [fetchedStock, fetchedSales] = await Promise.all([
       fetchStock(storeName),
@@ -226,6 +243,7 @@ export default function StoreOfficerDashboard() {
   usePolling(async () => {
     if (!officer) return
     refetchStops()
+    refetchDisputed()
     const [freshStock, freshSales] = await Promise.all([
       fetchStock(officer.store_name),
       fetchSales(officer.store_name),
@@ -502,6 +520,46 @@ export default function StoreOfficerDashboard() {
     ])
     setUpdatedStockProducts(supplyLines.map(l => l.product))
     setTimeout(() => setUpdatedStockProducts([]), 3000)
+  }
+
+  async function handleDisputeSupply() {
+    if (!disputingStop) return
+
+    const reason = disputeReason.trim()
+    if (reason.length < 5) return setDisputeError("Enter a reason of at least 5 characters")
+    if (reason.length > 500) return setDisputeError("Keep the reason under 500 characters")
+
+    setDisputeLoading(true)
+    setDisputeError("")
+
+    const { error } = await apiMutate("trips", {
+      action: "dispute_store_supply",
+      data: { stop_id: disputingStop.stop_id, reason },
+    })
+
+    if (error) {
+      setDisputeError(error)
+      setDisputeLoading(false)
+      return
+    }
+
+    setDisputeLoading(false)
+    setDisputingStop(null)
+    setDisputeReason("")
+    await Promise.all([refetchStops(), refetchDisputed()])
+  }
+
+  function openDisputeModal(stop: PendingStop) {
+    setDisputingStop(stop)
+    setDisputeReason("")
+    setDisputeError("")
+  }
+
+  function closeDisputeModal() {
+    if (disputeLoading) return
+    setDisputingStop(null)
+    setDisputeReason("")
+    setDisputeError("")
   }
 
   function addSaleLine() {
@@ -1072,14 +1130,64 @@ export default function StoreOfficerDashboard() {
                       <p style={{ margin: 0, fontWeight: 700, fontSize: FONT_SIZE["2xl"], color: "#0070f3" }}>{stop.quantity_offloaded}</p>
                     </div>
                   </div>
-                  <button
-                    onClick={() => { setConfirmingStop(stop); setSupplyLines([{ product: "", quantity: "" }]); setConfirmError(""); setShowDiscrepancyPrompt(false); setDiscrepancyNote("") }}
-                    style={{ width: "100%", padding: "10px 14px", background: "#0070f3", color: "white", border: "none", borderRadius: 8, cursor: "pointer", fontWeight: 600, fontSize: FONT_SIZE.md, minHeight: 44 }}
-                  >
-                    Confirm Supply
-                  </button>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                    <button
+                      onClick={() => { setConfirmingStop(stop); setSupplyLines([{ product: "", quantity: "" }]); setConfirmError(""); setShowDiscrepancyPrompt(false); setDiscrepancyNote("") }}
+                      style={{ width: "100%", padding: "10px 14px", background: "#0070f3", color: "white", border: "none", borderRadius: 8, cursor: "pointer", fontWeight: 600, fontSize: FONT_SIZE.md, minHeight: 44 }}
+                    >
+                      Confirm Supply
+                    </button>
+                    <button
+                      onClick={() => openDisputeModal(stop)}
+                      style={{ width: "100%", padding: "10px 14px", background: "white", color: "#dc2626", border: "1.5px solid #fca5a5", borderRadius: 8, cursor: "pointer", fontWeight: 600, fontSize: FONT_SIZE.md, minHeight: 44, display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}
+                    >
+                      <Icon icon="mdi:alert-circle-outline" width={16} />
+                      Dispute
+                    </button>
+                  </div>
                 </div>
               ))}
+            </div>
+
+            <div style={{ marginTop: 28 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12, gap: 12 }}>
+                <div>
+                  <p style={{ margin: 0, fontWeight: 700, fontSize: FONT_SIZE.lg, color: "#0f172a" }}>Disputed Supplies ({disputedStops.length})</p>
+                  <p style={{ margin: "4px 0 0", fontSize: FONT_SIZE.xs, color: "#64748b" }}>ATC has been notified and will reassign these stops.</p>
+                </div>
+              </div>
+
+              {disputedStops.length === 0 && <p style={{ color: "#64748b", fontSize: FONT_SIZE.base }}>No disputed supplies.</p>}
+
+              <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                {disputedStops.map(stop => (
+                  <div key={stop.stop_id} style={{ background: "#fef2f2", border: "1px solid #fecaca", borderRadius: 12, padding: 16 }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 12, gap: 12 }}>
+                      <div>
+                        <p style={{ margin: 0, fontWeight: 700, fontSize: FONT_SIZE.lg, color: "#0f172a" }}>{stop.plate_number}</p>
+                        <p style={{ margin: "4px 0 0", fontSize: FONT_SIZE.sm, color: "#64748b" }}>{stop.driver_name}</p>
+                        <p style={{ margin: "4px 0 0", fontSize: FONT_SIZE.xs, color: "#94a3b8" }}>{formatDateTime(stop.stop_time)}</p>
+                      </div>
+                      <div style={{ textAlign: "right" }}>
+                        <p style={{ margin: "0 0 4px 0", fontSize: FONT_SIZE.xs, color: "#94a3b8" }}>Bags delivered</p>
+                        <p style={{ margin: 0, fontWeight: 700, fontSize: FONT_SIZE["2xl"], color: "#dc2626" }}>{stop.quantity_offloaded}</p>
+                      </div>
+                    </div>
+
+                    {stop.disputed_by_name && (
+                      <p style={{ margin: "0 0 6px", fontSize: FONT_SIZE.xs, color: "#b91c1c" }}>
+                        <strong>Disputed by:</strong> {stop.disputed_by_name}
+                      </p>
+                    )}
+                    <p style={{ margin: "0 0 10px", fontSize: FONT_SIZE.sm, color: "#7f1d1d" }}>{stop.dispute_reason}</p>
+
+                    <span style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "5px 10px", borderRadius: 16, background: "#fee2e2", color: "#b91c1c", fontSize: FONT_SIZE.xs, fontWeight: 600 }}>
+                      <Icon icon="mdi:clock-outline" width={14} />
+                      Waiting for ATC to resolve
+                    </span>
+                  </div>
+                ))}
+              </div>
             </div>
           </div>
         )}
@@ -1389,6 +1497,54 @@ export default function StoreOfficerDashboard() {
                 {confirmLoading ? "Confirming..." : "Confirm with Discrepancy"}
               </button>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* Dispute Supply Modal */}
+      {disputingStop && (
+        <div onClick={closeDisputeModal} style={{ position: "fixed", inset: 0, background: "rgba(15, 23, 42, 0.6)", backdropFilter: "blur(4px)", display: "flex", alignItems: isMobile ? "flex-end" : "center", justifyContent: "center", zIndex: 100, padding: isMobile ? 0 : 24 }}>
+          <div onClick={e => e.stopPropagation()} style={{ background: "white", borderRadius: isMobile ? "20px 20px 0 0" : 12, padding: isMobile ? "28px 20px" : 32, width: "100%", maxWidth: 480, maxHeight: "90vh", overflowY: "auto", boxShadow: "0 25px 50px -12px rgba(0, 0, 0, 0.25)" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 6 }}>
+              <div style={{ width: 36, height: 36, borderRadius: "50%", background: "#fee2e2", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                <Icon icon="mdi:alert-circle-outline" width={20} color="#dc2626" />
+              </div>
+              <h3 style={{ margin: 0, fontSize: FONT_SIZE.xl, fontWeight: 700, color: "#0f172a" }}>Dispute Supply</h3>
+            </div>
+            <p style={{ color: "#94a3b8", fontSize: FONT_SIZE.sm, margin: "0 0 4px 0" }}>
+              {disputingStop.plate_number} · {disputingStop.driver_name}
+            </p>
+            <p style={{ color: "#64748b", fontSize: FONT_SIZE.sm, margin: "0 0 16px 0" }}>
+              Delivered: <strong>{disputingStop.quantity_offloaded} bags</strong>
+            </p>
+
+            <div style={{ padding: 14, background: "#fffbeb", border: "1px solid #fde68a", borderRadius: 8, marginBottom: 16 }}>
+              <p style={{ margin: 0, fontSize: FONT_SIZE.sm, color: "#92400e" }}>
+                Use this when the delivery is wrong — for example the driver offloaded at the wrong store or the bags belong to another customer. The stop will be marked disputed and ATC will reassign it.
+              </p>
+            </div>
+
+            <label style={{ display: "block", fontWeight: 600, fontSize: FONT_SIZE.sm, color: "#0f172a", marginBottom: 6 }}>What is wrong with this supply? *</label>
+            <textarea
+              value={disputeReason}
+              onChange={e => { setDisputeReason(e.target.value); setDisputeError("") }}
+              placeholder="e.g. This delivery belongs to Reserve Store, not Calabar Mini Depot"
+              rows={4}
+              maxLength={500}
+              style={{ width: "100%", padding: "10px 12px", borderRadius: 8, border: "1px solid #cbd5e1", fontSize: FONT_SIZE.sm, resize: "vertical", boxSizing: "border-box", fontFamily: "inherit", background: "white", color: "#0f172a", outline: "none" }}
+            />
+            <p style={{ margin: "6px 0 16px", fontSize: FONT_SIZE.xs, color: "#94a3b8", textAlign: "right" }}>{disputeReason.trim().length} / 500</p>
+
+            {disputeError && <div style={{ padding: 12, background: "#fef2f2", borderLeft: "4px solid #ef4444", borderRadius: 4, marginBottom: 16, color: "#b91c1c", fontSize: FONT_SIZE.sm }}>{disputeError}</div>}
+
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+              <button onClick={closeDisputeModal} disabled={disputeLoading} style={{ padding: "12px 16px", background: "white", border: "1px solid #cbd5e1", color: "#475569", borderRadius: 8, cursor: disputeLoading ? "not-allowed" : "pointer", fontWeight: 600, fontSize: FONT_SIZE.md, minHeight: 44 }}>
+                Cancel
+              </button>
+              <button onClick={handleDisputeSupply} disabled={disputeLoading} style={{ padding: "12px 16px", background: "#dc2626", color: "white", border: "none", borderRadius: 8, cursor: disputeLoading ? "not-allowed" : "pointer", fontWeight: 600, fontSize: FONT_SIZE.md, opacity: disputeLoading ? 0.7 : 1, minHeight: 44 }}>
+                {disputeLoading ? "Disputing..." : "Dispute Supply"}
+              </button>
+            </div>
           </div>
         </div>
       )}

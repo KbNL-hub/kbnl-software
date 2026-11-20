@@ -309,6 +309,105 @@ function isUuid(value: unknown): value is string {
   return typeof value === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value)
 }
 
+const STORE_SUPPLY_ERRORS: Record<string, { message: string; status: number }> = {
+  stop_not_found: { message: "This stop no longer exists.", status: 404 },
+  not_store_stop: { message: "Only store stops can be confirmed here.", status: 409 },
+  stop_disputed: { message: "This stop is disputed. Resolve the dispute before confirming the supply.", status: 409 },
+  already_confirmed: { message: "This store supply has already been confirmed.", status: 409 },
+  active_officer_exists: { message: "This store now has an active store officer. Ask the store officer to confirm the supply.", status: 409 },
+  trip_locked: { message: "This trip is already recorded or posted, so its supply can no longer be confirmed.", status: 409 },
+  store_required: { message: "This stop has no store name, so its supply cannot be confirmed.", status: 400 },
+  lines_required: { message: "Add at least one product line.", status: 400 },
+  product_required: { message: "Select a product for each line.", status: 400 },
+  invalid_quantity: { message: "Enter a valid quantity for each line.", status: 400 },
+  duplicate_product: { message: "Each product can only appear once. Merge duplicate lines.", status: 400 },
+  discrepancy_note_required: { message: "Add a note explaining why the quantity differs from the driver's offloaded quantity.", status: 400 },
+  invalid_actor_role: { message: "Access denied.", status: 403 },
+  actor_required: { message: "Access denied.", status: 403 },
+  actor_name_required: { message: "Your profile has no name. Ask an Admin to set it before confirming supplies.", status: 400 },
+}
+
+const STORE_DISPUTE_ERRORS: Record<string, { message: string; status: number }> = {
+  stop_not_found: { message: "This stop no longer exists.", status: 404 },
+  not_store_stop: { message: "Only store supplies can be disputed here.", status: 409 },
+  already_confirmed: { message: "This supply has already been confirmed, so it can no longer be disputed.", status: 409 },
+  already_disputed: { message: "This supply is already disputed. ATC is reviewing it.", status: 409 },
+  store_required: { message: "This stop has no store name, so its supply cannot be disputed.", status: 400 },
+  not_assigned_officer: { message: "You are not an active store officer for this store.", status: 403 },
+  actor_name_required: { message: "Your profile has no name. Ask an Admin to set it before disputing supplies.", status: 400 },
+  trip_locked: { message: "This trip is already recorded or posted, so its supply can no longer be disputed.", status: 409 },
+  supply_confirmation_exists: { message: "This supply already has a confirmation, so it cannot be disputed.", status: 409 },
+  invalid_reason: { message: "Enter a reason between 5 and 500 characters.", status: 400 },
+  actor_required: { message: "Access denied.", status: 403 },
+}
+
+const STOP_RESOLVE_ERRORS: Record<string, { message: string; status: number }> = {
+  stop_not_found: { message: "This stop no longer exists.", status: 404 },
+  not_disputed: { message: "This stop is no longer disputed. Refresh the trip and try again.", status: 409 },
+  invalid_original_quantity: { message: "The disputed stop has no valid quantity to reassign.", status: 409 },
+  trip_locked: { message: "This trip is already recorded or posted, so its dispute can no longer be resolved.", status: 409 },
+  supply_confirmation_exists: { message: "This supply already has a confirmation, so the dispute cannot be resolved here.", status: 409 },
+  stops_required: { message: "Add at least one destination stop.", status: 400 },
+  invalid_stop_type: { message: "Each destination must be a store or a customer.", status: 400 },
+  invalid_quantity: { message: "Enter a valid quantity for each destination.", status: 400 },
+  store_required: { message: "Select a store for each store destination.", status: 400 },
+  broker_required: { message: "Select a broker for each customer destination.", status: 400 },
+  invalid_broker: { message: "The selected broker no longer exists.", status: 400 },
+  invalid_customer: { message: "The selected customer no longer exists.", status: 400 },
+  location_required: { message: "Enter a stop location for each customer destination.", status: 400 },
+  quantity_mismatch: { message: "The destinations must add up to the full disputed quantity.", status: 400 },
+  actor_required: { message: "Access denied.", status: 403 },
+}
+
+async function getActorDisplayName(userId: string): Promise<string | null> {
+  const { data: profile, error } = await supabaseAdmin
+    .from("Profiles")
+    .select("full_name")
+    .eq("user_id", userId)
+    .maybeSingle()
+
+  if (error) {
+    console.error("Failed to load actor profile", error)
+  }
+
+  const profileName = typeof profile?.full_name === "string" ? profile.full_name.trim() : ""
+  if (profileName) return profileName
+
+  const { data: officer, error: officerError } = await supabaseAdmin
+    .from("store_officers")
+    .select("full_name")
+    .eq("officer_id", userId)
+    .maybeSingle()
+
+  if (officerError) {
+    console.error("Failed to load store officer name", officerError)
+    return null
+  }
+
+  const officerName = typeof officer?.full_name === "string" ? officer.full_name.trim() : ""
+  return officerName || null
+}
+
+async function getStoreOfficerActorName(userId: string): Promise<string | null> {
+  const { data: officer, error } = await supabaseAdmin
+    .from("store_officers")
+    .select("full_name")
+    .eq("officer_id", userId)
+    .maybeSingle()
+
+  if (error) {
+    console.error("Failed to load store officer name", error)
+  }
+
+  const officerName = typeof officer?.full_name === "string" ? officer.full_name.trim() : ""
+  if (officerName) return officerName
+  return getActorDisplayName(userId)
+}
+
+function rpcErrorMessage(error: { message?: string }) {
+  return error.message?.split("\n")[0]?.trim() ?? ""
+}
+
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json()
@@ -402,6 +501,199 @@ export async function POST(req: NextRequest) {
 
       if (updateError) return buildError(updateError.message, 400)
       return NextResponse.json({ data: updatedTrip })
+    }
+
+    if (action === "confirm_store_supply") {
+      const authContext = await requireRole(req, ["ATCOfficer", "Admin", "SuperAdmin"])
+
+      const stopId = data?.stop_id
+      if (!isUuid(stopId)) {
+        return buildError("Invalid stop ID", 400)
+      }
+
+      const rawLines = data?.lines
+      if (!Array.isArray(rawLines) || rawLines.length === 0) {
+        return buildError("Add at least one product line.", 400)
+      }
+
+      const lines: Array<{ product: string; quantity: number }> = []
+      for (const raw of rawLines) {
+        const line = (raw ?? {}) as Record<string, unknown>
+        const product = typeof line.product === "string" ? line.product.trim() : ""
+        const quantity = typeof line.quantity === "number" ? line.quantity : Number(line.quantity)
+        if (!product) return buildError("Select a product for each line.", 400)
+        if (!Number.isInteger(quantity) || quantity <= 0 || quantity > 2147483647) {
+          return buildError("Enter a valid quantity for each line.", 400)
+        }
+        lines.push({ product, quantity })
+      }
+
+      const productKeys = lines.map(line => line.product.toLowerCase())
+      if (new Set(productKeys).size !== productKeys.length) {
+        return buildError("Each product can only appear once. Merge duplicate lines.", 400)
+      }
+
+      const actorRole = ["SuperAdmin", "Admin", "ATCOfficer"].find(role => authContext.roles.includes(role))
+      if (!actorRole) return buildError("Access denied.", 403)
+
+      const { data: profile, error: profileError } = await supabaseAdmin
+        .from("Profiles")
+        .select("full_name")
+        .eq("user_id", authContext.userId)
+        .maybeSingle()
+
+      if (profileError) {
+        console.error("Failed to load confirming user profile", profileError)
+        return buildError("Unable to verify your profile. Try again.", 500)
+      }
+
+      const actorName = typeof profile?.full_name === "string" ? profile.full_name.trim() : ""
+      if (!actorName) {
+        return buildError("Your profile has no name. Ask an Admin to set it before confirming supplies.", 400)
+      }
+
+      const discrepancyNote = typeof data?.discrepancy_note === "string"
+        ? data.discrepancy_note.trim()
+        : ""
+
+      const { data: result, error } = await supabaseAdmin.rpc("confirm_store_supply", {
+        p_stop_id: stopId,
+        p_confirmed_by: authContext.userId,
+        p_confirmed_by_name: actorName,
+        p_confirmed_by_role: actorRole,
+        p_lines: lines,
+        p_discrepancy_note: discrepancyNote || null,
+      })
+
+      if (error) {
+        const errorKey = error.message?.split("\n")[0]?.trim()
+        const mapped = errorKey ? STORE_SUPPLY_ERRORS[errorKey] : undefined
+        if (mapped) return buildError(mapped.message, mapped.status)
+        console.error("Store supply confirmation failed", error)
+        return buildError("Failed to confirm supply.", 500)
+      }
+
+      return NextResponse.json({ data: result })
+    }
+
+    if (action === "dispute_store_supply") {
+      const authContext = await requireRole(req, ["StoreOfficer"])
+
+      const stopId = data?.stop_id
+      if (!isUuid(stopId)) {
+        return buildError("Invalid stop ID", 400)
+      }
+
+      const reason = typeof data?.reason === "string" ? data.reason.trim() : ""
+      if (reason.length < 5 || reason.length > 500) {
+        return buildError("Enter a reason between 5 and 500 characters.", 400)
+      }
+
+      const actorName = await getStoreOfficerActorName(authContext.userId)
+
+      const { data: result, error } = await supabaseAdmin.rpc("dispute_store_supply", {
+        p_stop_id: stopId,
+        p_disputed_by: authContext.userId,
+        p_disputed_by_name: actorName,
+        p_reason: reason,
+      })
+
+      if (error) {
+        const mapped = STORE_DISPUTE_ERRORS[rpcErrorMessage(error)]
+        if (mapped) return buildError(mapped.message, mapped.status)
+        console.error("Store supply dispute failed", error)
+        return buildError("Failed to dispute supply.", 500)
+      }
+
+      const dispute = result as {
+        plate_number?: string
+        disputed_by_name?: string
+        store_name?: string
+      } | null
+      const plate = dispute?.plate_number || "Unknown truck"
+      const disputedByName = dispute?.disputed_by_name || actorName || "Store Officer"
+      const storeName = dispute?.store_name || ""
+
+      notifyATCDisputedStop(plate, disputedByName, "Store Officer", storeName).catch(console.error)
+      notifyAdminStopDisputed(plate, disputedByName, "Store Officer", storeName).catch(console.error)
+
+      return NextResponse.json({ data: result })
+    }
+
+    if (action === "resolve_stop_dispute") {
+      const authContext = await requireRole(req, ["ATCOfficer", "Admin", "SuperAdmin"])
+
+      const stopId = data?.stop_id
+      if (!isUuid(stopId)) {
+        return buildError("Invalid stop ID", 400)
+      }
+
+      const rawStops = data?.stops
+      if (!Array.isArray(rawStops) || rawStops.length === 0) {
+        return buildError("Add at least one destination stop.", 400)
+      }
+
+      const destinations: Array<{
+        stop_type: string
+        quantity_offloaded: number
+        store_name: string | null
+        broker_id: string | null
+        customer_id: string | null
+        stop_location: string | null
+      }> = []
+      for (const raw of rawStops) {
+        const row = (raw ?? {}) as Record<string, unknown>
+        const stopType = typeof row.stop_type === "string" ? row.stop_type.trim() : ""
+        if (stopType !== "store" && stopType !== "customer") {
+          return buildError("Each destination must be a store or a customer.", 400)
+        }
+
+        const quantity = row.quantity_offloaded
+        if (
+          typeof quantity !== "number"
+          || !Number.isInteger(quantity)
+          || quantity <= 0
+          || quantity > 2147483647
+        ) {
+          return buildError("Enter a valid quantity for each destination.", 400)
+        }
+
+        destinations.push({
+          stop_type: stopType,
+          quantity_offloaded: quantity,
+          store_name: typeof row.store_name === "string" ? row.store_name.trim() : null,
+          broker_id: typeof row.broker_id === "string" && row.broker_id.trim() !== "" ? row.broker_id.trim() : null,
+          customer_id: typeof row.customer_id === "string" && row.customer_id.trim() !== "" ? row.customer_id.trim() : null,
+          stop_location: typeof row.stop_location === "string" ? row.stop_location.trim() : null,
+        })
+      }
+
+      const { data: result, error } = await supabaseAdmin.rpc("resolve_stop_dispute", {
+        p_stop_id: stopId,
+        p_resolved_by: authContext.userId,
+        p_stops: destinations,
+      })
+
+      if (error) {
+        const mapped = STOP_RESOLVE_ERRORS[rpcErrorMessage(error)]
+        if (mapped) return buildError(mapped.message, mapped.status)
+        console.error("Stop dispute resolution failed", error)
+        return buildError("Failed to resolve dispute.", 500)
+      }
+
+      const resolution = result as {
+        previous_broker_id?: string | null
+        plate_number?: string
+      } | null
+
+      if (resolution?.previous_broker_id && isUuid(resolution.previous_broker_id)) {
+        notifyBrokerStopResolved(
+          resolution.previous_broker_id,
+          resolution.plate_number || "Unknown truck",
+        ).catch(console.error)
+      }
+
+      return NextResponse.json({ data: result })
     }
 
     if (action === "save_stop") {
@@ -594,6 +886,12 @@ export async function POST(req: NextRequest) {
         if (table === "Trips" && data.trip_status && data.updated_at === undefined) {
           updateData = { ...updateData, updated_at: new Date().toISOString() }
         }
+        // Snapshot the actor name with the dispute so the UI can show a person
+        // instead of an id, whatever role raised it.
+        if (table === "Stops" && data.disputed === true && updateData.disputed_by_name === undefined) {
+          const actorName = await getActorDisplayName(auth.userId)
+          if (actorName) updateData = { ...updateData, disputed_by_name: actorName }
+        }
         let query = supabaseAdmin.from(table!).update(updateData)
         for (const [key, value] of Object.entries(filters)) {
           query = query.eq(key, value)
@@ -634,8 +932,10 @@ export async function POST(req: NextRequest) {
         if (table === "Stops" && data.disputed === true && row) {
           const plate = row.plate_number as string
           const disputedBy = (data.disputed_by as string) || (row.broker_id as string) || ""
-          let brokerName = "Broker"
-          if (disputedBy) {
+          let brokerName = typeof row.disputed_by_name === "string" && row.disputed_by_name.trim()
+            ? row.disputed_by_name.trim()
+            : "Broker"
+          if (disputedBy && brokerName === "Broker") {
             if (isUuid(disputedBy)) {
               const { data: broker } = await supabaseAdmin
                 .from("Brokers")

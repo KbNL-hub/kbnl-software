@@ -14,6 +14,8 @@ import { selectInChunks } from "@/lib/supabase-batch"
 import { fetchMonitorTripPage, type MonitorTripRow } from "@/lib/monitor-trips"
 import { apiMutate } from "@/lib/api-mutation"
 import { usePermissions } from "@/lib/PermissionContext"
+import ConfirmStoreSupplyModal, { type ConfirmSupplyResult } from "@/components/admin/ConfirmStoreSupplyModal"
+import { ROLE_LABELS, isRole } from "@/lib/roles"
 
 type Stop = {
   stop_id: string
@@ -32,6 +34,7 @@ type Stop = {
   confirmed: boolean
   disputed: boolean
   dispute_reason: string | null
+  disputed_by_name: string | null
   confirmation_id: string | null
   confirmation_broker_id: string | null
   price_per_bag: number | null
@@ -44,6 +47,8 @@ type Stop = {
   credit_approval_id: string | null
   credit_status: string | null
   is_credit_approved: boolean
+  supply_confirmed_by_name: string | null
+  supply_confirmed_by_role: string | null
 }
 
 type Discrepancy = {
@@ -168,6 +173,13 @@ type StopConfirmation = {
 
 type CreditApproval = { id: string; source_id: string; status: string; adjusted_price: number | null }
 
+type SupplyConfirmation = {
+  stop_id: string | null
+  confirmed_by_name: string | null
+  confirmed_by_role: string | null
+  confirmed_at: string | null
+}
+
 type FetchResult = { trips: Trip[]; pricingError: string | null }
 
 function useBreakpoint() {
@@ -214,8 +226,9 @@ const filterOptions = ["All", "Active", "Pending", "Posted", "Disputed"]
 
 export default function MonitorTrips() {
   const { isMobile } = useBreakpoint()
-  const { getAccess } = usePermissions()
+  const { getAccess, userRoles } = usePermissions()
   const canEdit = getAccess("monitor-trips").canEdit
+  const canConfirmStoreSupply = userRoles.some(role => role === "ATCOfficer" || role === "Admin" || role === "SuperAdmin")
   const [trips, setTrips] = useState<Trip[]>([])
   const [loading, setLoading] = useState(true)
   const [query, setQuery] = useState<ListQueryState>(INITIAL_LIST_QUERY)
@@ -239,6 +252,7 @@ export default function MonitorTrips() {
   const [postLoading, setPostLoading] = useState(false)
   const [postError, setPostError] = useState("")
   const [resolvingDisputeReason, setResolvingDisputeReason] = useState<string | null>(null)
+  const [resolvingDisputedByName, setResolvingDisputedByName] = useState<string | null>(null)
   const [resolvingStops, setResolvingStops] = useState<ResolveStopForm[]>([])
   const [resolveSubmitting, setResolveSubmitting] = useState(false)
   const [resolveLoading, setResolveLoading] = useState(false)
@@ -247,10 +261,14 @@ export default function MonitorTrips() {
   const [listStats, setListStats] = useState({ pending_record: 0, disputed_trip: 0 })
   const [allBrokers, setAllBrokers] = useState<{ broker_id: string; broker_name: string }[]>([])
   const [storeLocations, setStoreLocations] = useState<string[]>([])
-  const [resolvingTripId, setResolvingTripId] = useState<string | null>(null)
   const [resolveOriginalQuantity, setResolveOriginalQuantity] = useState(0)
   const [showActionsDropdown, setShowActionsDropdown] = useState(false)
   const [isEditingTrip, setIsEditingTrip] = useState(false)
+  const [confirmingStoreStop, setConfirmingStoreStop] = useState<Stop | null>(null)
+  // null means eligibility has not loaded or the read failed; the action stays
+  // hidden until a successful list arrives, so a failed read never offers a
+  // confirmation the server will reject.
+  const [activeOfficerStores, setActiveOfficerStores] = useState<Set<string> | null>(null)
   const [pricingError, setPricingError] = useState<string | null>(null)
   const [detailLoading, setDetailLoading] = useState(false)
   const [detailFailed, setDetailFailed] = useState(false)
@@ -258,6 +276,9 @@ export default function MonitorTrips() {
   // openTripDetails can tell whether the modal has since been pointed
   // somewhere else.
   const detailTripIdRef = useRef<string | null>(null)
+  // Names captured from a successful confirmation. This keeps "Confirmed by"
+  // visible even when the browser cannot read store_supply_confirmations.
+  const supplyConfirmationCacheRef = useRef<Map<string, { name: string | null; role: string | null }>>(new Map())
   // Incremented per list request so a slow response cannot overwrite the page
   // a newer request already loaded.
   const listSeqRef = useRef(0)
@@ -479,7 +500,7 @@ async function fetchDdTrips(): Promise<FetchResult> {
   async function fetchTripDetail(tripId: string): Promise<{ stops: Stop[]; discrepancies: Discrepancy[]; pricingError: string | null }> {
     const { data: allStopsRaw, error: stopsError } = await supabase
       .from("Stops")
-      .select("stop_id, trip_id, quantity_offloaded, latitude, longitude, stop_time, stop_location, broker_id, customer_id, confirmed, disputed, dispute_reason, store_name, stop_type, discount_status, on_credit, credit_approval_id")
+      .select("stop_id, trip_id, quantity_offloaded, latitude, longitude, stop_time, stop_location, broker_id, customer_id, confirmed, disputed, dispute_reason, disputed_by_name, store_name, stop_type, discount_status, on_credit, credit_approval_id")
       .eq("trip_id", tripId)
       .order("stop_time", { ascending: true })
 
@@ -493,7 +514,7 @@ async function fetchDdTrips(): Promise<FetchResult> {
     const brokerIds = [...new Set(allStops.filter(s => s.stop_type === "customer").map(s => s.broker_id).filter(Boolean))]
     const customerIds = [...new Set(allStops.filter(s => s.stop_type === "customer" && s.customer_id).map(s => s.customer_id).filter(Boolean))]
 
-    const [brokerRes, customerRes, confirmationsRes, creditRes, discRes] = await Promise.all([
+    const [brokerRes, customerRes, confirmationsRes, creditRes, discRes, supplyRes] = await Promise.all([
       brokerIds.length > 0
         ? supabase.from("Brokers").select("broker_id, broker_name").in("broker_id", brokerIds)
         : Promise.resolve({ data: [], error: null }),
@@ -525,11 +546,26 @@ async function fetchDdTrips(): Promise<FetchResult> {
         .select("discrepancy_id, trip_id, shortage, caked_bags, notes, reported_at")
         .eq("trip_id", tripId)
         .order("reported_at", { ascending: true }),
+      stopIds.length > 0
+        ? selectInChunks<SupplyConfirmation>(
+            ids => supabase
+              .from("store_supply_confirmations")
+              .select("stop_id, confirmed_by_name, confirmed_by_role, confirmed_at")
+              .in("stop_id", ids)
+              .order("confirmed_at", { ascending: false }),
+            stopIds,
+          )
+        : Promise.resolve({ data: [] as SupplyConfirmation[], error: null }),
     ])
 
     // Same reasoning as the Stops read: a failed query must not read as
     // "this trip reported no discrepancies".
     if (discRes.error) throw discRes.error
+
+    // The confirmer name is supplementary. If the browser cannot read the
+    // supply table, the stop still renders; the action result fills the name
+    // in for confirmations made in this session.
+    if (supplyRes.error) console.error("Failed to load supply confirmations", supplyRes.error)
 
     const brokerMap = new Map<string, string>((brokerRes.data ?? []).map(b => [b.broker_id, b.broker_name]))
     const customerMap = new Map<string, { full_name: string; phone_number: string | null }>(
@@ -541,6 +577,16 @@ async function fetchDdTrips(): Promise<FetchResult> {
     }
     const creditApprovalMap = new Map<string, CreditApproval>()
     for (const ca of creditRes.data) creditApprovalMap.set(ca.source_id, ca)
+
+    const supplyConfirmationMap = new Map<string, SupplyConfirmation>()
+    for (const row of supplyRes.data) {
+      if (!row.stop_id) continue
+      const current = supplyConfirmationMap.get(row.stop_id)
+      // Prefer the newest row that actually carries a name.
+      if (!current || (!current.confirmed_by_name && row.confirmed_by_name)) {
+        supplyConfirmationMap.set(row.stop_id, row)
+      }
+    }
 
     const pricingErrors: string[] = []
     if (confirmationsRes.error) {
@@ -572,6 +618,8 @@ async function fetchDdTrips(): Promise<FetchResult> {
 
       const confirmation = confirmationMap.get(stop.stop_id)
       const creditApproval = creditApprovalMap.get(stop.stop_id)
+      const supplyConfirmation = supplyConfirmationMap.get(stop.stop_id)
+      const cachedSupplyConfirmation = supplyConfirmationCacheRef.current.get(stop.stop_id)
 
       return {
         stop_id: stop.stop_id,
@@ -590,6 +638,7 @@ async function fetchDdTrips(): Promise<FetchResult> {
         confirmed: stop.confirmed,
         disputed: stop.disputed,
         dispute_reason: stop.dispute_reason,
+        disputed_by_name: stop.disputed_by_name ?? null,
         confirmation_id: confirmation?.confirmation_id ?? null,
         confirmation_broker_id: confirmation?.broker_id ?? null,
         price_per_bag: confirmation?.price_per_bag ?? null,
@@ -602,6 +651,8 @@ async function fetchDdTrips(): Promise<FetchResult> {
         credit_approval_id: stop.credit_approval_id ?? creditApproval?.id ?? null,
         credit_status: creditApproval?.status ?? null,
         is_credit_approved: creditApproval?.status === "Approved",
+        supply_confirmed_by_name: cachedSupplyConfirmation?.name ?? supplyConfirmation?.confirmed_by_name ?? null,
+        supply_confirmed_by_role: cachedSupplyConfirmation?.role ?? supplyConfirmation?.confirmed_by_role ?? null,
       }
     })
 
@@ -722,6 +773,59 @@ const loadAll = useCallback(async () => {
   setLoading(false)
 }, [loadServerPage, loadBrowserPage])
 
+  // Reads the stores that currently have an Active store officer. A store
+  // missing from this list is eligible for the ATC confirmation action.
+  const fetchStoreEligibility = useCallback(async () => {
+    if (!canConfirmStoreSupply) return
+
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session) {
+        setActiveOfficerStores(null)
+        return
+      }
+
+      const res = await fetch("/api/store-supply/eligibility", {
+        headers: { Authorization: `Bearer ${session.access_token}` },
+      })
+      if (!res.ok) throw new Error(`Eligibility request failed (${res.status})`)
+
+      const body = await res.json()
+      const stores: string[] = Array.isArray(body?.active_officer_stores)
+        ? body.active_officer_stores.filter((name: unknown): name is string => typeof name === "string")
+        : []
+
+      setActiveOfficerStores(new Set(
+        stores.map(name => name.trim().toLowerCase()).filter(Boolean),
+      ))
+    } catch (err) {
+      console.error("Failed to load store officer eligibility", err)
+      // Fail closed: no action until a successful list arrives.
+      setActiveOfficerStores(null)
+    }
+  }, [canConfirmStoreSupply])
+
+  function storeNameForStop(stop: Stop): string {
+    const namedStore = (stop.store_name || "").trim()
+    if (namedStore) return namedStore
+    return (stop.stop_location || "").trim()
+  }
+
+  function canConfirmSupplyForStop(stop: Stop): boolean {
+    if (!canEdit || !canConfirmStoreSupply) return false
+    if (!selectedTrip || selectedTrip.recorded || selectedTrip.posted) return false
+    if (stop.stop_type !== "store" || stop.confirmed || stop.disputed) return false
+    if (!activeOfficerStores) return false
+    const storeName = storeNameForStop(stop)
+    if (!storeName) return false
+    return !activeOfficerStores.has(storeName.toLowerCase())
+  }
+
+  function supplyRoleLabel(role: string | null): string {
+    if (!role) return ""
+    return isRole(role) ? ROLE_LABELS[role] : role
+  }
+
   // Opens the stops modal immediately from the summary already in memory, then
   // fills in the detail for that one trip. Stops, prices and customer names are
   // no longer carried on every poll.
@@ -775,6 +879,50 @@ const loadAll = useCallback(async () => {
     }
   }
 
+  async function handleStoreSupplyConfirmed(result: ConfirmSupplyResult) {
+    const tripId = detailTripIdRef.current
+
+    supplyConfirmationCacheRef.current.set(result.stop_id, {
+      name: result.confirmed_by_name || null,
+      role: result.confirmed_by_role || null,
+    })
+
+    setConfirmingStoreStop(null)
+    setSelectedStops(prev => prev
+      ? prev.map(stop => stop.stop_id === result.stop_id
+          ? {
+              ...stop,
+              confirmed: true,
+              supply_confirmed_by_name: result.confirmed_by_name || null,
+              supply_confirmed_by_role: result.confirmed_by_role || null,
+            }
+          : stop)
+      : prev)
+
+    if (tripId) {
+      try {
+        const detail = await fetchTripDetail(tripId)
+        if (detailTripIdRef.current === tripId) {
+          setSelectedStops(detail.stops)
+          setSelectedDiscrepancies(detail.discrepancies)
+          setPricingError(detail.pricingError)
+        }
+      } catch (err) {
+        console.error("Failed to refresh trip detail after supply confirmation", err)
+      }
+    }
+
+    // Refresh the list so pending counters and the record action follow the
+    // confirmed stop.
+    void loadAll()
+  }
+
+  useEffect(() => {
+    // Deferred so the eligibility read cannot set state synchronously during
+    // the mount effect.
+    const timer = setTimeout(() => { void fetchStoreEligibility() }, 0)
+    return () => clearTimeout(timer)
+  }, [fetchStoreEligibility])
 
   useEffect(() => {
     loadAll()
@@ -794,6 +942,7 @@ const loadAll = useCallback(async () => {
   }, [atcSearch, plateSearch])
 
   usePolling(loadAll, 120000)
+  usePolling(fetchStoreEligibility, 120000)
 
   function handlePostTripClick() {
     if (!selectedStops || !selectedTrip) return
@@ -823,11 +972,11 @@ async function fetchResolveData() {
     }
   }
 
-  async function openResolveModal(stop: Stop, tripId: string) {
+  async function openResolveModal(stop: Stop) {
     setResolveLoading(true)
     await fetchResolveData()
-    setResolvingTripId(tripId)
     setResolvingDisputeReason(stop.dispute_reason)
+    setResolvingDisputedByName(stop.disputed_by_name)
     setResolveOriginalQuantity(stop.quantity_offloaded)
 
     const initialStop: ResolveStopForm = {
@@ -850,8 +999,8 @@ async function fetchResolveData() {
   function closeResolveModal() {
     setResolvingStops([])
     setResolveMessage("")
-    setResolvingTripId(null)
     setResolvingDisputeReason(null)
+    setResolvingDisputedByName(null)
   }
 
   function addResolveStop() {
@@ -881,14 +1030,15 @@ async function fetchResolveData() {
     ))
   }
 
-  // Calculate total quantity across all resolve stops
+  // The engineer chose the full quantity rule: every disputed bag must land on
+  // a destination before the dispute can be closed.
   const totalResolveQuantity = resolvingStops.reduce((sum, s) => sum + (s.quantity_offloaded || 0), 0)
-  const isOverLimit = totalResolveQuantity > resolveOriginalQuantity && resolveOriginalQuantity > 0
+  const hasQuantityMismatch = totalResolveQuantity !== resolveOriginalQuantity
 
   async function handleResolveStops() {
     if (resolvingStops.length === 0) return
-    if (isOverLimit) {
-      setResolveMessage(`Total quantity (${totalResolveQuantity}) cannot exceed original disputed quantity (${resolveOriginalQuantity})`)
+    if (totalResolveQuantity !== resolveOriginalQuantity) {
+      setResolveMessage(`The destinations must add up to the full disputed quantity (${resolveOriginalQuantity} bags).`)
       return
     }
     for (const [idx, stop] of resolvingStops.entries()) {
@@ -918,74 +1068,27 @@ async function fetchResolveData() {
       const originalStop = resolvingStops.find(s => s.isOriginal)
       if (!originalStop) throw new Error("Original stop not found")
 
-      // Update the original stop
-      const originalUpdateData: Record<string, unknown> = {
-        disputed: false,
-        dispute_reason: null,
-        disputed_by: null,
-        confirmed: false,
-        quantity_offloaded: originalStop.quantity_offloaded,
-        stop_type: originalStop.stop_type,
-        stop_location: originalStop.stop_type === "store" ? originalStop.store_name : originalStop.stop_location,
-        stop_time: originalStop.stop_time,
-      }
-
-      if (originalStop.stop_type === "customer") {
-        originalUpdateData.broker_id = originalStop.broker_id
-        originalUpdateData.customer_id = originalStop.customer_id
-        originalUpdateData.store_name = null
-      } else {
-        originalUpdateData.broker_id = null
-        originalUpdateData.customer_id = null
-        originalUpdateData.store_name = originalStop.store_name
-      }
-
-      const { error: updateError } = await apiMutate("trips", {
-        action: "update",
-        table: "Stops",
-        data: originalUpdateData,
-        filters: { stop_id: originalStop.tempId },
+      // One database call reassigns the original stop, inserts any split
+      // stops, and clears the dispute in a single transaction. A failure part
+      // way leaves the original stop exactly as it was.
+      const { error } = await apiMutate("trips", {
+        action: "resolve_stop_dispute",
+        data: {
+          stop_id: originalStop.tempId,
+          stops: resolvingStops.map(stop => ({
+            stop_type: stop.stop_type,
+            quantity_offloaded: stop.quantity_offloaded,
+            store_name: stop.stop_type === "store" ? stop.store_name : null,
+            broker_id: stop.stop_type === "customer" ? stop.broker_id : null,
+            customer_id: stop.stop_type === "customer" ? stop.customer_id : null,
+            stop_location: stop.stop_type === "store" ? stop.store_name : stop.stop_location,
+          })),
+        },
       })
 
-      if (updateError) {
-        setResolveMessage("Failed to update original stop")
+      if (error) {
+        setResolveMessage(error)
         return
-      }
-
-      // Create additional stops
-      const additionalStops = resolvingStops.filter(s => !s.isOriginal)
-      if (!resolvingTripId) throw new Error("Trip ID not found")
-      
-      for (const stop of additionalStops) {
-        const newStopData: Record<string, unknown> = {
-          trip_id: resolvingTripId,
-          stop_type: stop.stop_type,
-          quantity_offloaded: stop.quantity_offloaded,
-          stop_location: stop.stop_type === "store" ? stop.store_name : stop.stop_location,
-          stop_time: stop.stop_time,
-        }
-
-        if (stop.stop_type === "customer") {
-          newStopData.broker_id = stop.broker_id
-          newStopData.customer_id = stop.customer_id
-          newStopData.store_name = null
-        } else {
-          newStopData.broker_id = null
-          newStopData.customer_id = null
-          newStopData.store_name = stop.store_name
-        }
-
-        const { error: insertError } = await apiMutate("trips", {
-          action: "insert",
-          table: "Stops",
-          data: newStopData,
-        })
-
-        if (insertError) {
-          const msg = typeof insertError === "string" ? insertError : (insertError as { message?: string })?.message ?? "Unknown error"
-          setResolveMessage(`Failed to create additional stop: ${msg}`)
-          return
-        }
       }
 
       closeResolveModal()
@@ -1077,6 +1180,7 @@ async function fetchResolveData() {
     setPostingTrip(null)
     setShowActionsDropdown(false)
     setIsEditingTrip(false)
+    setConfirmingStoreStop(null)
     setPostError("")
     setDetailLoading(false)
     setDetailFailed(false)
@@ -1715,10 +1819,45 @@ async function fetchResolveData() {
                         )}
 
                         {stop.stop_type === "store" && (
-                          <p style={{ margin: "6px 0", color: "#475569", fontSize: FONT_SIZE.sm }}><strong>Store:</strong> <span style={{ color: "#0f172a" }}>{stop.stop_location}</span></p>
+                          <p style={{ margin: "6px 0", color: "#475569", fontSize: FONT_SIZE.sm }}><strong>Store:</strong> <span style={{ color: "#0f172a" }}>{stop.store_name || stop.stop_location}</span></p>
                         )}
 
                         <p style={{ margin: "6px 0", color: "#475569", fontSize: FONT_SIZE.sm }}><strong>Offloaded:</strong> <span style={{ color: "#0f172a" }}>{stop.quantity_offloaded} bags</span></p>
+
+                        {stop.stop_type === "store" && stop.confirmed && stop.supply_confirmed_by_name && (
+                          <p style={{ margin: "6px 0", color: "#475569", fontSize: FONT_SIZE.sm }}>
+                            <strong>Confirmed by:</strong>{" "}
+                            <span style={{ color: "#0f172a" }}>
+                              {stop.supply_confirmed_by_name}
+                              {stop.supply_confirmed_by_role ? ` (${supplyRoleLabel(stop.supply_confirmed_by_role)})` : ""}
+                            </span>
+                          </p>
+                        )}
+
+                        {canConfirmSupplyForStop(stop) && (
+                          <button
+                            onClick={() => setConfirmingStoreStop(stop)}
+                            style={{
+                              width: "100%",
+                              padding: "8px 0",
+                              marginTop: 10,
+                              background: "#059669",
+                              color: "white",
+                              border: "none",
+                              borderRadius: 6,
+                              cursor: "pointer",
+                              fontSize: FONT_SIZE.sm,
+                              fontWeight: 600,
+                              display: "flex",
+                              alignItems: "center",
+                              justifyContent: "center",
+                              gap: 6,
+                            }}
+                          >
+                            <Icon icon="mdi:clipboard-check-outline" width={16} />
+                            Confirm Supply
+                          </button>
+                        )}
                         {stop.stop_type === "customer" && stop.price_per_bag !== null && stop.price_per_bag > 0 && <p style={{ margin: "6px 0", color: "#475569", fontSize: FONT_SIZE.sm }}><strong>Price:</strong> <span style={{ color: "#0f172a" }}>₦{stop.price_per_bag.toLocaleString()}/bag</span>{stop.area ? ` · ${stop.area}` : ""}</p>}
                         {stop.stop_type === "customer" && (!stop.price_per_bag || stop.price_per_bag <= 0) && !pricingError && !stop.confirmed && stop.discount_status !== "pending" && stop.credit_status !== "Pending" && <p style={{ margin: "6px 0", color: "#c2410c", fontSize: FONT_SIZE.sm, fontWeight: 600 }}>Price required before recording</p>}
                         {stop.stop_type === "customer" && (!stop.price_per_bag || stop.price_per_bag <= 0) && !pricingError && stop.confirmed && <p style={{ margin: "6px 0", color: "#b45309", fontSize: FONT_SIZE.sm, fontWeight: 600 }}>No price was recorded for this stop</p>}
@@ -1728,6 +1867,11 @@ async function fetchResolveData() {
 
                         {stop.disputed && stop.dispute_reason && (
                           <div style={{ marginTop: 10, padding: 12, background: "#fff5f5", borderRadius: 6, border: "1px solid #fecaca" }}>
+                            {stop.disputed_by_name && (
+                              <p style={{ margin: "0 0 6px 0", fontSize: FONT_SIZE.xs, color: "#b91c1c" }}>
+                                <strong>Disputed by:</strong> {stop.disputed_by_name}
+                              </p>
+                            )}
                             <p style={{ margin: "0 0 6px 0", fontSize: FONT_SIZE.xs, color: "#ef4444", fontWeight: 600 }}>Dispute Reason:</p>
                             <p style={{ margin: "0 0 10px 0", fontSize: FONT_SIZE.sm, color: "#7f1d1d" }}>{stop.dispute_reason}</p>
 
@@ -1737,13 +1881,13 @@ async function fetchResolveData() {
                             </div>
 
                             <button
-                              onClick={() => openResolveModal(stop, selectedTrip?.trip_id || "")}
-                              disabled={!canEdit}
+                              onClick={() => openResolveModal(stop)}
+                              disabled={!canConfirmStoreSupply}
                               style={{
                                 width: "100%", padding: "8px 0", marginTop: 10,
-                                background: canEdit ? "#0070f3" : "#94a3b8",
+                                background: canConfirmStoreSupply ? "#0070f3" : "#94a3b8",
                                 color: "white", border: "none", borderRadius: 6,
-                                cursor: canEdit ? "pointer" : "not-allowed",
+                                cursor: canConfirmStoreSupply ? "pointer" : "not-allowed",
                                 fontSize: FONT_SIZE.sm, fontWeight: 600,
                                 display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
                               }}
@@ -1943,6 +2087,11 @@ async function fetchResolveData() {
 
             {!resolveLoading && resolvingDisputeReason && (
               <div style={{ padding: "10px 14px", background: "#fef2f2", border: "1px solid #fecaca", borderRadius: 8, marginBottom: 20 }}>
+                {resolvingDisputedByName && (
+                  <p style={{ margin: "0 0 4px 0", fontSize: FONT_SIZE.xs, color: "#b91c1c" }}>
+                    <strong>Disputed by:</strong> {resolvingDisputedByName}
+                  </p>
+                )}
                 <p style={{ margin: "0 0 4px 0", fontSize: FONT_SIZE.xs, color: "#ef4444", fontWeight: 600 }}>Dispute Reason</p>
                 <p style={{ margin: 0, fontSize: FONT_SIZE.sm, color: "#7f1d1d" }}>{resolvingDisputeReason}</p>
               </div>
@@ -2055,16 +2204,16 @@ async function fetchResolveData() {
             })}
 
             {/* Quantity summary */}
-            <div style={{ padding: "10px 14px", background: isOverLimit ? "#fef2f2" : "#f0fdf4", border: `1.5px solid ${isOverLimit ? "#fecaca" : "#bbf7d0"}`, borderRadius: 8, marginBottom: 12, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-              <span style={{ fontSize: FONT_SIZE.sm, color: isOverLimit ? "#b91c1c" : "#15803d", fontWeight: 500 }}>Total Bags</span>
-              <span style={{ fontSize: FONT_SIZE.base, fontWeight: 700, color: isOverLimit ? "#b91c1c" : "#15803d" }}>
+            <div style={{ padding: "10px 14px", background: hasQuantityMismatch ? "#fef2f2" : "#f0fdf4", border: `1.5px solid ${hasQuantityMismatch ? "#fecaca" : "#bbf7d0"}`, borderRadius: 8, marginBottom: 12, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <span style={{ fontSize: FONT_SIZE.sm, color: hasQuantityMismatch ? "#b91c1c" : "#15803d", fontWeight: 500 }}>Total Bags</span>
+              <span style={{ fontSize: FONT_SIZE.base, fontWeight: 700, color: hasQuantityMismatch ? "#b91c1c" : "#15803d" }}>
                 {totalResolveQuantity} / {resolveOriginalQuantity}
               </span>
             </div>
-            {isOverLimit && (
+            {hasQuantityMismatch && (
               <div style={{ padding: "8px 14px", background: "#fef2f2", border: "1px solid #fecaca", borderRadius: 8, marginBottom: 12 }}>
                 <p style={{ margin: 0, fontSize: FONT_SIZE.xs, color: "#b91c1c", fontWeight: 600 }}>
-                  Total quantity ({totalResolveQuantity}) cannot exceed original disputed quantity ({resolveOriginalQuantity})
+                  The destinations must add up to the full disputed quantity ({resolveOriginalQuantity} bags). Record any shortfall through a supply confirmation discrepancy instead.
                 </p>
               </div>
             )}
@@ -2097,7 +2246,7 @@ async function fetchResolveData() {
               <button onClick={closeResolveModal} disabled={resolveSubmitting || resolveLoading} style={{ padding: "12px 16px", background: "white", color: "#475569", border: "1px solid #cbd5e1", borderRadius: 8, cursor: "pointer", fontWeight: 600, fontSize: FONT_SIZE.md, minHeight: 44 }}>
                 Cancel
               </button>
-              <button onClick={handleResolveStops} disabled={resolveSubmitting || resolveLoading || isOverLimit} style={{ padding: "12px 16px", background: resolveSubmitting || resolveLoading || isOverLimit ? "#94a3b8" : "#0070f3", color: "white", border: "none", borderRadius: 8, cursor: resolveSubmitting || resolveLoading || isOverLimit ? "not-allowed" : "pointer", fontWeight: 600, fontSize: FONT_SIZE.md, minHeight: 44, display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
+              <button onClick={handleResolveStops} disabled={resolveSubmitting || resolveLoading || hasQuantityMismatch} style={{ padding: "12px 16px", background: resolveSubmitting || resolveLoading || hasQuantityMismatch ? "#94a3b8" : "#0070f3", color: "white", border: "none", borderRadius: 8, cursor: resolveSubmitting || resolveLoading || hasQuantityMismatch ? "not-allowed" : "pointer", fontWeight: 600, fontSize: FONT_SIZE.md, minHeight: 44, display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
                 {resolveLoading ? "Loading..." : resolveSubmitting ? "Saving..." : "Save & Resolve"}
               </button>
             </div>
@@ -2120,6 +2269,17 @@ async function fetchResolveData() {
           isMobile={isMobile}
           canEdit={canEdit}
           onClose={() => { closeModals(); loadAll() }}
+        />
+      )}
+
+      {confirmingStoreStop && selectedTrip && (
+        <ConfirmStoreSupplyModal
+          stopId={confirmingStoreStop.stop_id}
+          storeName={storeNameForStop(confirmingStoreStop)}
+          product={selectedTrip.product}
+          offloadedQuantity={confirmingStoreStop.quantity_offloaded}
+          onClose={() => setConfirmingStoreStop(null)}
+          onConfirmed={handleStoreSupplyConfirmed}
         />
       )}
     </div>

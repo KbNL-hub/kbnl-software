@@ -561,10 +561,11 @@ export function notifyATCRouteSet(tripId: string, plateNumber: string, materialC
   })
 }
 
-export function notifyATCDisputedStop(plateNumber: string, brokerName: string) {
+export function notifyATCDisputedStop(plateNumber: string, disputedByName: string, actorLabel = "Broker", storeName = "") {
+  const where = storeName ? ` at ${storeName}` : ""
   return notify(['ATCOfficer'], {
     title: 'Disputed Stop',
-    body: `Stop disputed by ${brokerName} for ${plateNumber}. Tap to review.`,
+    body: `Stop${where} disputed by ${disputedByName} (${actorLabel}) for truck ${plateNumber}. Tap to review.`,
     url: '/admin?section=monitor-trips',
     tag: `atc-disputed-${plateNumber}`,
   })
@@ -610,10 +611,11 @@ export function notifyAdminTruckRouteSet(tripId: string, plateNumber: string, ma
   })
 }
 
-export function notifyAdminStopDisputed(plateNumber: string, brokerName: string) {
+export function notifyAdminStopDisputed(plateNumber: string, disputedByName: string, actorLabel = "Broker", storeName = "") {
+  const where = storeName ? ` at ${storeName}` : ""
   return notify(adminRoles, {
-    title: 'Stop Disputed by Broker',
-    body: `Stop disputed by ${brokerName} for ${plateNumber}. Tap to review.`,
+    title: 'Stop Disputed',
+    body: `Stop${where} disputed by ${disputedByName} (${actorLabel}) for truck ${plateNumber}. Tap to review.`,
     url: '/admin?section=monitor-trips',
     tag: `admin-disputed-${plateNumber}`,
   })

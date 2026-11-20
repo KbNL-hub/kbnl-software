@@ -13,6 +13,7 @@ import { fetchStores } from "@/lib/stores"
 import ModernInput from "@/components/ModernInput"
 import PaginationControls from "@/components/PaginationControls"
 import { calculateStockBalances, TransactionEvent } from "@/lib/stock-utils"
+import { ROLE_LABELS, isRole } from "@/lib/roles"
 
 type SaleItem = {
   product: string
@@ -58,6 +59,8 @@ type StoreSupply = {
   total_quantity: number
   plate_number: string | null
   driver_name: string | null
+  confirmed_by_name: string | null
+  confirmed_by_role: string | null
 }
 
 type ActivityItem = {
@@ -87,6 +90,8 @@ type ActivityItem = {
   plate_number?: string | null
   posted_by?: string | null
   posted_at?: string | null
+  confirmed_by_name?: string | null
+  confirmed_by_role?: string | null
 }
 
 type ViewMode = "card" | "table"
@@ -243,7 +248,7 @@ export default function StoreSales() {
   async function fetchSupplies(): Promise<StoreSupply[]> {
     const { data: confirmations, error } = await supabase
       .from("store_supply_confirmations")
-      .select("confirmation_id, store_name, confirmed_at, stop_id")
+      .select("confirmation_id, store_name, confirmed_at, stop_id, confirmed_by_name, confirmed_by_role")
       .order("confirmed_at", { ascending: false })
 
     if (error) throw error
@@ -292,6 +297,8 @@ export default function StoreSales() {
         total_quantity: confLines.reduce((sum, l) => sum + l.quantity, 0),
         plate_number: stopInfo?.plate_number ?? null,
         driver_name: stopInfo?.driver_name ?? null,
+        confirmed_by_name: c.confirmed_by_name ?? null,
+        confirmed_by_role: c.confirmed_by_role ?? null,
       }
     })
   }
@@ -397,6 +404,8 @@ export default function StoreSales() {
       confirmation_id: s.confirmation_id,
       plate_number: s.plate_number,
       driver_name: s.driver_name,
+      confirmed_by_name: s.confirmed_by_name,
+      confirmed_by_role: s.confirmed_by_role,
     })),
   ]
 
@@ -434,6 +443,15 @@ export default function StoreSales() {
   function formatAmount(val: number | null | undefined): string {
     if (val == null) return "—"
     return `₦${val.toLocaleString()}`
+  }
+
+  function supplyConfirmerLabel(item: ActivityItem): string {
+    const name = item.confirmed_by_name?.trim()
+    const role = item.confirmed_by_role
+    if (name) {
+      return role ? `${name} (${isRole(role) ? ROLE_LABELS[role] : role})` : name
+    }
+    return role && isRole(role) ? ROLE_LABELS[role] : "Not recorded"
   }
 
   function clearFilters() {
@@ -929,6 +947,12 @@ export default function StoreSales() {
                               </span>
                             </div>
                           )}
+                          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                            <Icon icon="mdi:shield-account-outline" width={14} color="#64748b" />
+                            <span style={{ fontSize: FONT_SIZE.sm, color: "#475569" }}>
+                              <span style={{ fontWeight: 600, color: "#0f172a" }}>Confirmed by:</span> {supplyConfirmerLabel(item)}
+                            </span>
+                          </div>
                         </div>
                       </div>
 
@@ -1195,6 +1219,9 @@ export default function StoreSales() {
                             <span style={{ padding: "6px 10px", borderRadius: 14, fontSize: FONT_SIZE.xs, fontWeight: 600, background: "#ecfdf5", color: "#059669", border: "1.5px solid #059669" }}>
                               Confirmed
                             </span>
+                            <div style={{ marginTop: 4, color: "#64748b", fontSize: FONT_SIZE.xs }}>
+                              By {supplyConfirmerLabel(item)}
+                            </div>
                           </td>
                           <td style={{ padding: "12px 16px", color: "#94a3b8", fontSize: FONT_SIZE.sm }}>—</td>
                           <td style={{ padding: "12px 16px", color: "#94a3b8", fontSize: FONT_SIZE.xs }}>{new Date(item.date).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })} {new Date(item.date).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</td>

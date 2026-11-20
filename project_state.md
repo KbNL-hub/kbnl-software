@@ -103,7 +103,7 @@ lib/
 
 ### Store / Sales
 - `store_stock` — stock_id, store_name, product, balance, updated_at · UNIQUE (store_name, product)
-- `store_supply_confirmations` — confirmation_id, stop_id, officer_id, store_name, confirmed_at, discrepancy_quantity (nullable), discrepancy_note (nullable)
+- `store_supply_confirmations` — confirmation_id, stop_id, officer_id, store_name, confirmed_at, discrepancy_quantity (nullable), discrepancy_note (nullable), confirmed_by (uuid), confirmed_by_name, confirmed_by_role
 - `store_supply_lines` — line_id, confirmation_id, product, quantity
 - `store_sales` — sale_id, officer_id, store_name, items (JSONB array of {product, quantity, price_per_bag, company_price, price_reason}), total_quantity, total_amount (both set by trigger `store_sales_items_totals`), customer_name, payment_mode, delivery_mode (self/tricycle/truck), tricycle_id, sold_at, status (Pending/Confirmed/Rejected/Posted), sale_type (direct/broker/truck_load_out), posted_by, posted_at
 - `tricycles` — tricycle_id, tricycle_number, store_name, created_at ← NEW
@@ -118,6 +118,7 @@ function, so a concurrent sale cannot be clobbered by a stale balance.
   is validated and deducted as one total.
 - `adjust_store_stock(p_store text, p_product text, p_delta int)` — atomic signed balance
   adjustment (used for incoming supply). Refuses to take a balance negative.
+- `confirm_store_supply(p_stop_id uuid, p_confirmed_by uuid, p_confirmed_by_name text, p_confirmed_by_role text, p_lines jsonb, p_discrepancy_note text)` — migration 065. Confirms a store supply for a store with no Active store officer in one transaction: locks the stop, re-checks eligibility, writes the confirmation and lines, marks the stop confirmed, and adds the bags to stock.
 - `update_store_sale(p_sale_id uuid, p_sale jsonb)` — updates a logged sale. It does **not**
   touch balances: the trigger below owns every stock movement that follows a sale being
   updated.
