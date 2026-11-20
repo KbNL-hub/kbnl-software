@@ -186,6 +186,55 @@ $$;
 -- ================================================================
 -- resolve_stop_dispute: one atomic reassignment
 -- ================================================================
+CREATE OR REPLACE FUNCTION public.resolve_supported_store_name(p_store_name text)
+RETURNS text
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_requested_store text := NULLIF(btrim(p_store_name), '');
+  v_supported_store text;
+BEGIN
+  IF v_requested_store IS NULL THEN
+    RETURN NULL;
+  END IF;
+
+  IF EXISTS (SELECT 1 FROM public.stores) THEN
+    SELECT store_name
+    INTO v_supported_store
+    FROM public.stores
+    WHERE lower(btrim(store_name)) = lower(v_requested_store)
+    LIMIT 1;
+  ELSE
+    SELECT supported.store_name
+    INTO v_supported_store
+    FROM unnest(ARRAY[
+      'Calabar Mini Depot',
+      'Ikom Mini Depot',
+      'Ogoja Depot',
+      'Uyo Depot',
+      'Brooks Outlet',
+      'Urua Ekpa Outlet',
+      'Urua Nyemeiko Outlet',
+      'Reserve Store',
+      'E1 Outlet',
+      'Ogoja Outlet'
+    ]) AS supported(store_name)
+    WHERE lower(supported.store_name) = lower(v_requested_store)
+    LIMIT 1;
+  END IF;
+
+  RETURN v_supported_store;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.resolve_supported_store_name(text)
+  FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.resolve_supported_store_name(text)
+  TO service_role;
+
 CREATE OR REPLACE FUNCTION public.resolve_stop_dispute(
   p_stop_id     uuid,
   p_resolved_by uuid,
@@ -202,7 +251,6 @@ DECLARE
   v_norm                jsonb;
   v_stop_type           text;
   v_store_name          text;
-  v_requested_store     text;
   v_supported_store     text;
   v_location            text;
   v_customer_id         text;
@@ -210,7 +258,7 @@ DECLARE
   v_broker_id           uuid;
   v_qty                 int;
   v_qty_text            text;
-  v_total               int := 0;
+  v_total               bigint := 0;
   v_original_qty        int;
   v_idx                 int;
   v_id                  uuid;
@@ -310,31 +358,7 @@ BEGIN
         RAISE EXCEPTION 'store_required';
       END IF;
 
-      v_requested_store := v_store_name;
-      IF EXISTS (SELECT 1 FROM public.stores) THEN
-        SELECT store_name
-        INTO v_supported_store
-        FROM public.stores
-        WHERE lower(btrim(store_name)) = lower(v_requested_store)
-        LIMIT 1;
-      ELSE
-        SELECT supported.store_name
-        INTO v_supported_store
-        FROM unnest(ARRAY[
-          'Calabar Mini Depot',
-          'Ikom Mini Depot',
-          'Ogoja Depot',
-          'Uyo Depot',
-          'Brooks Outlet',
-          'Urua Ekpa Outlet',
-          'Urua Nyemeiko Outlet',
-          'Reserve Store',
-          'E1 Outlet',
-          'Ogoja Outlet'
-        ]) AS supported(store_name)
-        WHERE lower(supported.store_name) = lower(v_requested_store)
-        LIMIT 1;
-      END IF;
+      v_supported_store := public.resolve_supported_store_name(v_store_name);
 
       IF v_supported_store IS NULL THEN
         RAISE EXCEPTION 'invalid_store_destination';

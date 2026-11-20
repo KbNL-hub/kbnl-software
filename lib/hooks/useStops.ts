@@ -35,6 +35,23 @@ export interface EnrichedStop {
   driver_id?: string | null
 }
 
+type StopRow = Pick<
+  EnrichedStop,
+  | "stop_id"
+  | "trip_id"
+  | "stop_type"
+  | "customer_id"
+  | "quantity_offloaded"
+  | "stop_location"
+  | "stop_time"
+  | "confirmed"
+  | "disputed"
+  | "dispute_reason"
+  | "disputed_by_name"
+  | "store_name"
+  | "broker_id"
+>
+
 export function useStops(filter?: StopsFilter) {
   const [data, setData] = useState<EnrichedStop[]>([])
   const [loading, setLoading] = useState(true)
@@ -53,7 +70,12 @@ export function useStops(filter?: StopsFilter) {
     let cancelled = false
 
     async function fetchData() {
-      if (!hasFilter(filter)) {
+      if (!hasFilter(filter) || (
+        !filter?.trip_id
+        && !filter?.broker_id
+        && filter?.store_name !== undefined
+        && !filter.store_name.trim()
+      )) {
         setData([]); setLoading(false); return
       }
 
@@ -61,25 +83,44 @@ export function useStops(filter?: StopsFilter) {
       setError(null)
 
       try {
-        let query = supabase
-          .from("Stops")
-          .select("stop_id, trip_id, stop_type, customer_id, quantity_offloaded, stop_location, stop_time, confirmed, disputed, dispute_reason, disputed_by_name, store_name, broker_id")
-          .order("stop_time", { ascending: false })
+        function buildQuery() {
+          let query = supabase
+            .from("Stops")
+            .select("stop_id, trip_id, stop_type, customer_id, quantity_offloaded, stop_location, stop_time, confirmed, disputed, dispute_reason, disputed_by_name, store_name, broker_id")
+            .order("stop_time", { ascending: false })
 
-        if (filter?.trip_id) {
-          query = query.eq("trip_id", filter.trip_id)
-        } else if (filter?.broker_id) {
-          query = query.eq("broker_id", filter.broker_id)
-        } else if (filter?.store_name) {
-          query = query.eq("stop_type", "store")
-          if (filter?.pending) {
-            query = query.eq("confirmed", false).eq("disputed", false)
-          } else if (filter?.disputed) {
-            query = query.eq("disputed", true)
+          if (filter?.trip_id) {
+            query = query.eq("trip_id", filter.trip_id)
+          } else if (filter?.broker_id) {
+            query = query.eq("broker_id", filter.broker_id)
+          } else if (filter?.store_name) {
+            query = query.eq("stop_type", "store").order("stop_id", { ascending: true })
+            if (filter.pending) {
+              query = query.eq("confirmed", false).eq("disputed", false)
+            } else if (filter.disputed) {
+              query = query.eq("disputed", true)
+            }
           }
+
+          return query
         }
 
-        const { data: stops } = await query
+        let stops: StopRow[] | null
+        if (filter?.store_name && !filter.trip_id && !filter.broker_id) {
+          const pageSize = 1000
+          const allStops: StopRow[] = []
+          for (let offset = 0; ; offset += pageSize) {
+            const { data: page, error: stopsError } = await buildQuery().range(offset, offset + pageSize - 1)
+            if (stopsError) throw stopsError
+            allStops.push(...(page ?? []))
+            if (!page || page.length < pageSize) break
+          }
+          stops = allStops
+        } else {
+          const { data, error: stopsError } = await buildQuery()
+          if (stopsError) throw stopsError
+          stops = data
+        }
         if (cancelled || !mountedRef.current) return
 
         if (!stops) { setData([]); setLoading(false); return }
@@ -119,7 +160,7 @@ export function useStops(filter?: StopsFilter) {
         const driverMap = Object.fromEntries((drivers || []).map(d => [d.driver_id, d.full_name]))
 
         const enriched = matchingStops.map(s => {
-          const trip = tripMap[s.trip_id]
+          const trip = s.trip_id ? tripMap[s.trip_id] : undefined
           const driverNameFromTrip = trip?.driver_name
           return {
             ...s,

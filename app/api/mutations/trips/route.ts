@@ -66,7 +66,6 @@ class MutationError extends Error {
     this.status = status
   }
 }
-
 function isDatabaseError(error: unknown): error is DatabaseError {
   return typeof error === "object" && error !== null && "code" in error
 }
@@ -542,7 +541,7 @@ export async function POST(req: NextRequest) {
         return buildError("Each product can only appear once. Merge duplicate lines.", 400)
       }
 
-      const actorRole = ["SuperAdmin", "Admin", "ATCOfficer", "StoreOfficer"].find(role => authContext.roles.includes(role))
+      const actorRole = ["SuperAdmin", "Admin", "StoreOfficer", "ATCOfficer"].find(role => authContext.roles.includes(role))
       if (!actorRole) return buildError("Access denied.", 403)
 
       let actorName = ""
@@ -769,6 +768,15 @@ export async function POST(req: NextRequest) {
       }
       const rolesForTable = TABLE_ROLES[table] || ["Admin"]
       auth = await requireRole(req, rolesForTable)
+
+      if (table === "Stops" && data?.disputed === true) {
+        if (auth.roles.includes("StoreOfficer")) {
+          return buildError("Store officers must use the store supply dispute action.", 403)
+        }
+        const actorName = await getActorDisplayName(auth.userId)
+        if (!actorName) return buildError("Unable to verify your name before recording this dispute.", 400)
+        data.disputed_by_name = actorName
+      }
       if (table === "credit_approvals" && action !== "insert" && isBrokerOnly(auth.roles)) {
         return buildError("Brokers cannot modify or delete credit approvals", 403)
       }
@@ -784,6 +792,18 @@ export async function POST(req: NextRequest) {
         }
         if (sa.table === "credit_approvals" && sa.action !== "insert" && isBrokerOnly(auth.roles)) {
           return buildError("Brokers cannot modify or delete credit approvals", 403)
+        }
+      }
+      if (sub_actions.some(sa => sa.table === "Stops" && sa.data?.disputed === true)) {
+        if (auth.roles.includes("StoreOfficer")) {
+          return buildError("Store officers must use the store supply dispute action.", 403)
+        }
+        const actorName = await getActorDisplayName(auth.userId)
+        if (!actorName) return buildError("Unable to verify your name before recording this dispute.", 400)
+        for (const sa of sub_actions) {
+          if (sa.table === "Stops" && sa.data?.disputed === true) {
+            sa.data = { ...sa.data, disputed_by_name: actorName }
+          }
         }
       }
     }
@@ -876,9 +896,6 @@ export async function POST(req: NextRequest) {
 
       case "update": {
         if (!data) return buildError("data is required for update", 400)
-        if (table === "Stops" && data.disputed === true && auth.roles.includes("StoreOfficer")) {
-          return buildError("Store officers must use the store supply dispute action.", 403)
-        }
         if (!filters || Object.keys(filters).length === 0) {
           return buildError("filters are required for update", 400)
         }
@@ -902,13 +919,6 @@ export async function POST(req: NextRequest) {
         }
         if (table === "Trips" && data.trip_status && data.updated_at === undefined) {
           updateData = { ...updateData, updated_at: new Date().toISOString() }
-        }
-        // Snapshot the actor name with the dispute so the UI can show a person
-        // instead of an id, whatever role raised it.
-        if (table === "Stops" && data.disputed === true) {
-          const actorName = await getActorDisplayName(auth.userId)
-          if (!actorName) return buildError("Unable to verify your name before recording this dispute.", 400)
-          updateData = { ...updateData, disputed_by_name: actorName }
         }
         let query = supabaseAdmin.from(table!).update(updateData)
         for (const [key, value] of Object.entries(filters)) {

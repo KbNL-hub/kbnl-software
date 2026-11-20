@@ -1,0 +1,72 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"label": "Inspect store supply access policies",
+			"type": "shell",
+			"command": "npx",
+			"args": [
+				"supabase",
+				"db",
+				"query",
+				"--linked",
+				"SELECT 'grant' AS kind, table_name || ':' || grantee || ':' || privilege_type AS detail FROM information_schema.role_table_grants WHERE table_schema = 'public' AND table_name IN ('store_supply_confirmations', 'store_supply_lines') AND grantee IN ('anon', 'authenticated', 'service_role', 'PUBLIC') UNION ALL SELECT 'policy' AS kind, tablename || ':' || policyname || ':' || cmd || ':' || array_to_string(roles, ',') AS detail FROM pg_policies WHERE schemaname = 'public' AND tablename IN ('store_supply_confirmations', 'store_supply_lines') ORDER BY kind, detail;"
+			],
+			"isBackground": false
+		},
+		{
+			"label": "Inspect supply inventory constraints",
+			"type": "shell",
+			"command": "npx",
+			"args": [
+				"supabase",
+				"db",
+				"query",
+				"--linked",
+				"SELECT 'rls' AS kind, c.relname AS item, c.relrowsecurity::text || ':' || c.relforcerowsecurity::text AS detail FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace WHERE n.nspname = 'public' AND c.relname IN ('store_supply_confirmations', 'store_supply_lines', 'store_stock') UNION ALL SELECT 'constraint', conrelid::regclass::text, pg_get_constraintdef(oid) FROM pg_constraint WHERE conrelid = 'public.store_stock'::regclass AND contype = 'c';"
+			],
+			"isBackground": false
+		},
+		{
+			"label": "Reapply shared store lookup migration",
+			"type": "shell",
+			"command": "npx",
+			"args": [
+				"supabase",
+				"db",
+				"query",
+				"--linked",
+				"-f",
+				"supabase\\migrations\\069_shared_store_destination_lookup.sql"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "Verify shared lookup and diff",
+			"type": "shell",
+			"command": "cmd.exe",
+			"args": [
+				"/d",
+				"/c",
+				"npx supabase db query --linked \"SELECT position('resolve_supported_store_name' IN pg_get_functiondef('public.resolve_stop_dispute(uuid,uuid,jsonb)'::regprocedure)) > 0 AS resolver_shared_lookup, position('resolve_supported_store_name' IN pg_get_functiondef('public.validate_store_stop_destination()'::regprocedure)) > 0 AS trigger_shared_lookup, public.resolve_supported_store_name(' reserve store ') AS normalized_fallback;\" && git diff --check"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "Verify shared store lookup definitions",
+			"type": "shell",
+			"command": "npx",
+			"args": [
+				"supabase",
+				"db",
+				"query",
+				"--linked",
+				"SELECT position('resolve_supported_store_name' IN pg_get_functiondef('public.resolve_stop_dispute(uuid,uuid,jsonb)'::regprocedure)) > 0 AS resolver_shared_lookup, position('resolve_supported_store_name' IN pg_get_functiondef('public.validate_store_stop_destination()'::regprocedure)) > 0 AS trigger_shared_lookup, public.resolve_supported_store_name(' reserve store ') AS normalized_fallback;"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		}
+	]
+}

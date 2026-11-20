@@ -439,7 +439,8 @@ export default function StoreOfficerDashboard() {
     const products = supplyLines.map(l => l.product)
     if (new Set(products).size !== products.length) return setConfirmError("Duplicate products — merge them")
 
-    if (totalInLines !== confirmingStop.quantity_offloaded) {
+    const hasDiscrepancy = totalInLines !== confirmingStop.quantity_offloaded || showDiscrepancyPrompt
+    if (hasDiscrepancy) {
       if (!showDiscrepancyPrompt) {
         setConfirmError("")
         setShowDiscrepancyPrompt(true)
@@ -454,7 +455,6 @@ export default function StoreOfficerDashboard() {
     setConfirmLoading(true)
     setConfirmError("")
 
-    const hasDiscrepancy = totalInLines !== confirmingStop.quantity_offloaded
     const { error: confirmationError } = await apiMutate("trips", {
       action: "confirm_store_supply",
       data: {
@@ -467,6 +467,9 @@ export default function StoreOfficerDashboard() {
       },
     })
     if (confirmationError) {
+      if (/note explaining why the quantity differs/i.test(confirmationError)) {
+        setShowDiscrepancyPrompt(true)
+      }
       setConfirmError(confirmationError)
       setConfirmLoading(false)
       return

@@ -1,6 +1,13 @@
 -- Keep store supply confirmation, stock reversal, and store destination
 -- validation safe for databases that have already applied migrations 056-066.
 
+ALTER TABLE public.store_supply_confirmations
+  ADD COLUMN IF NOT EXISTS stock_credit_state text NOT NULL DEFAULT 'unverified'
+  CHECK (stock_credit_state IN ('credited', 'unverified'));
+
+COMMENT ON COLUMN public.store_supply_confirmations.stock_credit_state IS
+  'credited marks atomic stock credits safe to reverse; unverified rows require manual reconciliation before reversal';
+
 CREATE OR REPLACE FUNCTION public.confirm_store_supply(
   p_stop_id            uuid,
   p_confirmed_by       uuid,
@@ -17,8 +24,8 @@ DECLARE
   v_stop             "Stops"%ROWTYPE;
   v_store            text;
   v_trip_id          uuid;
-  v_total            int := 0;
-  v_discrepancy      int;
+  v_total            bigint := 0;
+  v_discrepancy      bigint;
   v_line             jsonb;
   v_product          text;
   v_product_key      text;
@@ -142,7 +149,14 @@ BEGIN
     v_total := v_total + v_qty;
   END LOOP;
 
-  v_discrepancy := v_total - COALESCE(v_stop.quantity_offloaded, 0);
+  IF v_total > 2147483647 THEN
+    RAISE EXCEPTION 'invalid_quantity';
+  END IF;
+
+  v_discrepancy := v_total - COALESCE(v_stop.quantity_offloaded, 0)::bigint;
+  IF v_discrepancy NOT BETWEEN -2147483648 AND 2147483647 THEN
+    RAISE EXCEPTION 'invalid_quantity';
+  END IF;
   IF v_discrepancy <> 0
      AND (p_discrepancy_note IS NULL OR btrim(p_discrepancy_note) = '') THEN
     RAISE EXCEPTION 'discrepancy_note_required';
@@ -156,7 +170,8 @@ BEGIN
     confirmed_by_name,
     confirmed_by_role,
     discrepancy_quantity,
-    discrepancy_note
+    discrepancy_note,
+    stock_credit_state
   ) VALUES (
     p_stop_id,
     CASE WHEN p_confirmed_by_role = 'StoreOfficer' THEN p_confirmed_by ELSE NULL END,
@@ -165,7 +180,8 @@ BEGIN
     btrim(p_confirmed_by_name),
     p_confirmed_by_role,
     v_discrepancy,
-    NULLIF(btrim(COALESCE(p_discrepancy_note, '')), '')
+    NULLIF(btrim(COALESCE(p_discrepancy_note, '')), ''),
+    'credited'
   )
   RETURNING confirmation_id, confirmed_at
   INTO v_confirmation_id, v_confirmed_at;
@@ -213,14 +229,21 @@ SECURITY DEFINER
 SET search_path = public
 AS $$
 DECLARE
-  v_store text;
+  v_store              text;
+  v_stock_credit_state text;
 BEGIN
-  SELECT store_name
-  INTO v_store
+  SELECT store_name, stock_credit_state
+  INTO v_store, v_stock_credit_state
   FROM store_supply_confirmations
   WHERE confirmation_id = OLD.confirmation_id;
 
-  IF NOT FOUND OR NULLIF(btrim(v_store), '') IS NULL THEN
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'supply_confirmation_missing';
+  END IF;
+  IF v_stock_credit_state IS DISTINCT FROM 'credited' THEN
+    RAISE EXCEPTION 'supply_credit_unverified';
+  END IF;
+  IF NULLIF(btrim(v_store), '') IS NULL THEN
     RAISE EXCEPTION 'supply_confirmation_missing';
   END IF;
 
@@ -265,9 +288,9 @@ BEGIN
      AND (
        OLD.stop_type IS DISTINCT FROM NEW.stop_type
        OR OLD.quantity_offloaded IS DISTINCT FROM NEW.quantity_offloaded
-       OR COALESCE(NULLIF(btrim(OLD.store_name), ''), NULLIF(btrim(OLD.stop_location), ''))
+       OR lower(COALESCE(NULLIF(btrim(OLD.store_name), ''), NULLIF(btrim(OLD.stop_location), '')))
           IS DISTINCT FROM
-          COALESCE(NULLIF(btrim(NEW.store_name), ''), NULLIF(btrim(NEW.stop_location), ''))
+          lower(COALESCE(NULLIF(btrim(NEW.store_name), ''), NULLIF(btrim(NEW.stop_location), '')))
      ) THEN
     DELETE FROM store_supply_lines
     WHERE confirmation_id IN (
@@ -294,26 +317,19 @@ CREATE TRIGGER trg_clear_changed_store_supply_confirmation
   FOR EACH ROW
   EXECUTE FUNCTION public.clear_changed_store_supply_confirmation();
 
-CREATE OR REPLACE FUNCTION public.validate_store_stop_destination()
-RETURNS trigger
+CREATE OR REPLACE FUNCTION public.resolve_supported_store_name(p_store_name text)
+RETURNS text
 LANGUAGE plpgsql
+STABLE
 SECURITY DEFINER
 SET search_path = public
 AS $$
 DECLARE
-  v_requested_store text;
+  v_requested_store text := NULLIF(btrim(p_store_name), '');
   v_supported_store text;
 BEGIN
-  IF NEW.stop_type IS DISTINCT FROM 'store' THEN
-    RETURN NEW;
-  END IF;
-
-  v_requested_store := COALESCE(
-    NULLIF(btrim(NEW.store_name), ''),
-    NULLIF(btrim(NEW.stop_location), '')
-  );
   IF v_requested_store IS NULL THEN
-    RAISE EXCEPTION 'store_required';
+    RETURN NULL;
   END IF;
 
   IF EXISTS (SELECT 1 FROM public.stores) THEN
@@ -340,6 +356,39 @@ BEGIN
     WHERE lower(supported.store_name) = lower(v_requested_store)
     LIMIT 1;
   END IF;
+
+  RETURN v_supported_store;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.resolve_supported_store_name(text)
+  FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.resolve_supported_store_name(text)
+  TO service_role;
+
+CREATE OR REPLACE FUNCTION public.validate_store_stop_destination()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_requested_store text;
+  v_supported_store text;
+BEGIN
+  IF NEW.stop_type IS DISTINCT FROM 'store' THEN
+    RETURN NEW;
+  END IF;
+
+  v_requested_store := COALESCE(
+    NULLIF(btrim(NEW.store_name), ''),
+    NULLIF(btrim(NEW.stop_location), '')
+  );
+  IF v_requested_store IS NULL THEN
+    RAISE EXCEPTION 'store_required';
+  END IF;
+
+  v_supported_store := public.resolve_supported_store_name(v_requested_store);
 
   IF v_supported_store IS NULL THEN
     RAISE EXCEPTION 'invalid_store_destination';
@@ -369,13 +418,31 @@ BEGIN
       RAISE EXCEPTION 'stop_disputed';
     END IF;
 
-    IF TG_OP = 'INSERT' THEN
-      RAISE EXCEPTION 'store_supply_confirmation_required';
-    ELSIF OLD.confirmed IS DISTINCT FROM TRUE THEN
-      IF current_setting('app.store_supply_confirmation_stop', true)
-         IS DISTINCT FROM NEW.stop_id::text THEN
-        RAISE EXCEPTION 'store_supply_confirmation_required';
+    IF current_setting('app.store_supply_confirmation_stop', true)
+       IS DISTINCT FROM NEW.stop_id::text THEN
+      IF TG_OP = 'UPDATE' THEN
+        IF OLD.stop_type = 'store'
+           AND OLD.confirmed IS TRUE
+           AND EXISTS (
+             SELECT 1
+             FROM store_supply_confirmations
+             WHERE stop_id = NEW.stop_id
+           ) THEN
+          RETURN NEW;
+        END IF;
       END IF;
+      RAISE EXCEPTION 'store_supply_confirmation_required';
+    END IF;
+  ELSIF TG_OP = 'UPDATE' THEN
+    IF OLD.stop_type = 'store'
+       AND OLD.confirmed IS TRUE
+       AND NEW.confirmed IS DISTINCT FROM TRUE
+       AND EXISTS (
+         SELECT 1
+         FROM store_supply_confirmations
+         WHERE stop_id = OLD.stop_id
+       ) THEN
+      RAISE EXCEPTION 'store_supply_confirmation_required';
     END IF;
   END IF;
 

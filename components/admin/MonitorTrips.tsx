@@ -276,6 +276,9 @@ export default function MonitorTrips() {
   // openTripDetails can tell whether the modal has since been pointed
   // somewhere else.
   const detailTripIdRef = useRef<string | null>(null)
+  const detailIsDdRef = useRef(false)
+  const detailSyncingRef = useRef(false)
+  const detailRefreshSeqRef = useRef(0)
   // Names captured from a successful confirmation. This keeps "Confirmed by"
   // visible even when the browser cannot read store_supply_confirmations.
   const supplyConfirmationCacheRef = useRef<Map<string, { name: string | null; role: string | null }>>(new Map())
@@ -497,18 +500,25 @@ async function fetchDdTrips(): Promise<FetchResult> {
   // Loads everything the stops-detail modal needs for exactly one trip: full
   // stop rows, their confirmations, and the credit/customers/brokers needed to
   // label them. Runs on click rather than on every poll.
-  async function fetchTripDetail(tripId: string): Promise<{ stops: Stop[]; discrepancies: Discrepancy[]; pricingError: string | null }> {
-    const { data: allStopsRaw, error: stopsError } = await supabase
-      .from("Stops")
-      .select("stop_id, trip_id, quantity_offloaded, latitude, longitude, stop_time, stop_location, broker_id, customer_id, confirmed, disputed, dispute_reason, disputed_by_name, store_name, stop_type, discount_status, on_credit, credit_approval_id")
-      .eq("trip_id", tripId)
-      .order("stop_time", { ascending: true })
+  const fetchTripDetail = useCallback(async (tripId: string, isDd: boolean): Promise<{ stops: Stop[]; discrepancies: Discrepancy[]; pricingError: string | null; loadedQuantity: number }> => {
+    const [tripResult, stopsResult] = await Promise.all([
+      isDd
+        ? supabase.from("dd_trips").select("loaded_quantity").eq("dd_trip_id", tripId).maybeSingle()
+        : supabase.from("Trips").select("loaded_quantity").eq("trip_id", tripId).maybeSingle(),
+      supabase
+        .from("Stops")
+        .select("stop_id, trip_id, quantity_offloaded, latitude, longitude, stop_time, stop_location, broker_id, customer_id, confirmed, disputed, dispute_reason, disputed_by_name, store_name, stop_type, discount_status, on_credit, credit_approval_id")
+        .eq("trip_id", tripId)
+        .order("stop_time", { ascending: true }),
+    ])
 
     // A failed read must not look like a trip with no stops, so let it reach
     // openTripDetails' catch rather than degrading to an empty list.
-    if (stopsError) throw stopsError
+    if (tripResult.error) throw tripResult.error
+    if (!tripResult.data) throw new Error("Trip no longer exists")
+    if (stopsResult.error) throw stopsResult.error
 
-    const allStops = allStopsRaw ?? []
+    const allStops = stopsResult.data ?? []
     const stopIds = allStops.map(s => s.stop_id).filter(Boolean)
 
     const brokerIds = [...new Set(allStops.filter(s => s.stop_type === "customer").map(s => s.broker_id).filter(Boolean))]
@@ -575,6 +585,7 @@ async function fetchDdTrips(): Promise<FetchResult> {
     for (const c of confirmationsRes.data) {
       if (!confirmationMap.has(c.stop_id)) confirmationMap.set(c.stop_id, c)
     }
+
     const creditApprovalMap = new Map<string, CreditApproval>()
     for (const ca of creditRes.data) creditApprovalMap.set(ca.source_id, ca)
 
@@ -660,8 +671,43 @@ async function fetchDdTrips(): Promise<FetchResult> {
       stops,
       discrepancies: (discRes.data ?? []) as Discrepancy[],
       pricingError: pricingErrors.length > 0 ? pricingErrors.join(" and ") : null,
+      loadedQuantity: Number(tripResult.data.loaded_quantity),
     }
-  }
+  }, [])
+
+  const refreshSelectedTripDetails = useCallback(async (tripId: string) => {
+    if (detailTripIdRef.current !== tripId) return
+
+    const refreshSeq = ++detailRefreshSeqRef.current
+    detailSyncingRef.current = true
+    setDetailLoading(true)
+    setDetailFailed(false)
+    try {
+      const detail = await fetchTripDetail(tripId, detailIsDdRef.current)
+      if (detailTripIdRef.current !== tripId || detailRefreshSeqRef.current !== refreshSeq) return
+
+      const totalOffloaded = detail.stops.reduce((sum, stop) => sum + Number(stop.quantity_offloaded || 0), 0)
+      const totalDiscrepancies = detail.discrepancies.reduce((sum, discrepancy) => sum + (discrepancy.shortage || 0) + (discrepancy.caked_bags || 0), 0)
+      setSelectedStops(detail.stops)
+      setSelectedDiscrepancies(detail.discrepancies)
+      setPricingError(detail.pricingError)
+      setSelectedTrip(current => current?.trip_id === tripId
+        ? {
+            ...current,
+            loaded_quantity: detail.loadedQuantity,
+            remaining: detail.loadedQuantity - totalOffloaded - totalDiscrepancies,
+          }
+        : current)
+    } catch (err) {
+      console.error("Failed to refresh trip detail", err)
+      if (detailTripIdRef.current === tripId && detailRefreshSeqRef.current === refreshSeq) setDetailFailed(true)
+    } finally {
+      if (detailTripIdRef.current === tripId && detailRefreshSeqRef.current === refreshSeq) {
+        detailSyncingRef.current = false
+        setDetailLoading(false)
+      }
+    }
+  }, [fetchTripDetail])
 
 // Shape returned by list_monitor_trips into the Trip the render code expects.
 // stops/discrepancies stay empty here; they are fetched for one trip on click.
@@ -741,15 +787,19 @@ const loadServerPage = useCallback(async (): Promise<ListLoadOutcome> => {
           recorded: freshTrip.recorded,
           posted: freshTrip.posted,
           loaded_quantity: freshTrip.loaded_quantity,
-          remaining: freshTrip.remaining,
+          remaining: current.remaining,
         }
       : current
   })
+  const selectedTripId = detailTripIdRef.current
+  if (selectedTripId) {
+    void refreshSelectedTripDetails(selectedTripId)
+  }
   setListTotal(result.data.total)
   setListStats(result.data.stats)
   setUniquePlates(result.data.plates)
   return "ok"
-}, [query.status, query.atc, query.plate, query.dateFrom, query.dateTo, query.page, dateMode])
+}, [query.status, query.atc, query.plate, query.dateFrom, query.dateTo, query.page, dateMode, refreshSelectedTripDetails])
 
 // Browser-side path used when migration 060 has not been applied yet. Pulls
 // every trip and filters here, exactly as the page did before.
@@ -771,10 +821,14 @@ const loadBrowserPage = useCallback(async () => {
           recorded: freshTrip.recorded,
           posted: freshTrip.posted,
           loaded_quantity: freshTrip.loaded_quantity,
-          remaining: freshTrip.remaining,
+          remaining: current.remaining,
         }
       : current
   })
+  const selectedTripId = detailTripIdRef.current
+  if (selectedTripId) {
+    void refreshSelectedTripDetails(selectedTripId)
+  }
   setPricingError(normal.pricingError ?? dd.pricingError)
   setUniquePlates([...new Set(allTrips.map(t => t.plate_number))].sort())
   setListStats({
@@ -782,7 +836,7 @@ const loadBrowserPage = useCallback(async () => {
     disputed_trip: allTrips.filter(t => t.stop_summary.disputed > 0).length,
   })
   return true
-}, [])
+}, [refreshSelectedTripDetails])
 
 const loadAll = useCallback(async () => {
   // Await first so that no setState can run synchronously in the mount effect.
@@ -886,26 +940,8 @@ const loadAll = useCallback(async () => {
     setDetailFailed(false)
     setShowActionsDropdown(false)
     detailTripIdRef.current = trip.trip_id
-    setDetailLoading(true)
-
-    try {
-      const detail = await fetchTripDetail(trip.trip_id)
-      // A poll may have swapped the list out from under us while this was in
-      // flight; only apply the result if the modal is still on the same trip.
-      if (detailTripIdRef.current !== trip.trip_id) return
-      setSelectedStops(detail.stops)
-      setSelectedDiscrepancies(detail.discrepancies)
-      setPricingError(detail.pricingError)
-    } catch (err) {
-      console.error("Failed to load trip detail", err)
-      // The modal renders its own message for this, so postError stays
-      // reserved for action-level failures such as Record Trip.
-      if (detailTripIdRef.current === trip.trip_id) {
-        setDetailFailed(true)
-      }
-    } finally {
-      if (detailTripIdRef.current === trip.trip_id) setDetailLoading(false)
-    }
+    detailIsDdRef.current = trip.isDD ?? false
+    await refreshSelectedTripDetails(trip.trip_id)
   }
 
   async function handleStoreSupplyConfirmed(result: ConfirmSupplyResult) {
@@ -929,24 +965,7 @@ const loadAll = useCallback(async () => {
       : prev)
 
     if (tripId) {
-      try {
-        const detail = await fetchTripDetail(tripId)
-        if (detailTripIdRef.current === tripId) {
-          setSelectedStops(detail.stops)
-          setSelectedDiscrepancies(detail.discrepancies)
-          setPricingError(detail.pricingError)
-          setSelectedTrip(current => current?.trip_id === tripId
-            ? {
-                ...current,
-                remaining: current.loaded_quantity
-                  - detail.stops.reduce((sum, stop) => sum + Number(stop.quantity_offloaded || 0), 0)
-                  - detail.discrepancies.reduce((sum, discrepancy) => sum + (discrepancy.shortage || 0) + (discrepancy.caked_bags || 0), 0),
-              }
-            : current)
-        }
-      } catch (err) {
-        console.error("Failed to refresh trip detail after supply confirmation", err)
-      }
+      await refreshSelectedTripDetails(tripId)
     }
 
     // Refresh the list so pending counters and the record action follow the
@@ -982,7 +1001,7 @@ const loadAll = useCallback(async () => {
   usePolling(fetchStoreEligibility, 120000)
 
   function handlePostTripClick() {
-    if (!selectedStops || !selectedTrip) return
+    if (detailSyncingRef.current || detailLoading || detailFailed || !selectedStops || !selectedTrip) return
     if (pricingError) {
       setPostError(`Couldn't load ${pricingError}, so prices can't be verified. Retry in a moment.`)
       return
@@ -1221,7 +1240,10 @@ async function fetchResolveData() {
     setPostError("")
     setDetailLoading(false)
     setDetailFailed(false)
+    detailRefreshSeqRef.current += 1
+    detailSyncingRef.current = false
     detailTripIdRef.current = null
+    detailIsDdRef.current = false
   }
 
   return (
@@ -1979,7 +2001,7 @@ async function fetchResolveData() {
                   )}
                   {selectedTrip && !selectedTrip.recorded && (() => {
                     const allConfirmed = selectedStops && selectedStops.length > 0 && selectedStops.every((s) => s.confirmed) && !selectedStops.some((s) => s.disputed) && selectedStops.every((s) => s.stop_type === "store" || (s.price_per_bag !== null && s.price_per_bag > 0)) && selectedTrip.remaining === 0
-                    const canAttempt = allConfirmed || !!pricingError
+                    const canAttempt = !detailLoading && !detailFailed && !!selectedStops && (allConfirmed || !!pricingError)
                     return (
                       <div style={{ position: "relative" }}>
                         <button
